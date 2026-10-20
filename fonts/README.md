@@ -1,0 +1,1 @@
+Noto Sans Arabic — self-hosted variable 400–700, Arabic/Latin/Latin-ext WOFF2 subsets. Source: Google Fonts Noto Sans Arabic v33. SIL Open Font License 1.1 in OFL.txt. No runtime third-party font request.

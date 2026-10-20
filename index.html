@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#1b4b3c" />
+    <title>دليل التغذية | أكلنا وتفاصيله</title>
+    <meta
+      name="description"
+      content="ابحث عن الأكل المصري والأطعمة المتاحة، وشوف السعرات والماكروز والحصص ومصدر كل قيمة، مع توضيح التقديرات."
+    />
+    <link
+      rel="preload"
+      href="./fonts/noto-sans-arabic-arabic.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="./fonts.css" />
+    <link rel="stylesheet" href="./style.css?v=quantity1" /><link rel="stylesheet" href="./planner.css?v=planner5" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">انتقل للمحتوى</a>
+    <aside class="sidebar">
+      <a class="brand" href="#egypt" aria-label="دليل التغذية، الصفحة الرئيسية"
+        ><span class="brand-mark"
+          ><svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M5 19C-1 8 12 3 21 3c0 10-6 21-16 16Zm0 0L17 7"
+            /></svg></span
+        ><span>دليل التغذية<small>EGYPT NUTRITION DATABASE</small></span></a
+      >
+      <div class="side-label">على ذوقك، وبمعلومة واضحة</div>
+      <nav aria-label="التنقل الرئيسي">
+        <button
+          class="nav active"
+          data-view="egypt"
+          aria-controls="egypt-view"
+          aria-label="الأكل المصري"
+          aria-current="page"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M3 11h18a9 9 0 0 1-18 0ZM6 21h12M7 7l1-3m4 3 1-3m4 3 1-3"
+            /></svg
+          ><span>الأكل المصري</span></button
+        ><button
+          class="nav"
+          data-view="foods"
+          aria-controls="foods-view"
+          aria-label="كل الأطعمة في قاعدة البيانات"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <rect x="3" y="3" width="7" height="7" rx="2" />
+            <rect x="14" y="3" width="7" height="7" rx="2" />
+            <rect x="3" y="14" width="7" height="7" rx="2" />
+            <rect x="14" y="14" width="7" height="7" rx="2" /></svg
+          ><span>كل الأطعمة</span></button
+        ><button
+          class="nav"
+          data-view="sources"
+          aria-controls="sources-view"
+          aria-label="المصادر والتوثيق"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M12 5v16M12 5C8 2 3 3 3 3v16s5-1 9 2c4-3 9-2 9-2V3s-5-1-9 2Z"
+            /></svg
+          ><span>المصادر</span></button
+        ><button
+          class="nav"
+          data-view="about"
+          aria-controls="about-view"
+          aria-label="عن قاعدة البيانات والتنزيلات"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v6m0-10v.1" /></svg
+          ><span>عن الدليل</span>
+        </button>
+        <button class="nav" data-view="planner" aria-controls="planner-view" aria-label="خطتي الغذائية الأسبوعية"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-12 5 2 2 4-4"/></svg><span>خطتي</span></button>
+      </nav>
+      <div class="side-note">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="m5 12 4 4 10-10" /></svg
+        ><strong>التفاصيل تفرق</strong>
+        <p>طريقة التحضير وحجم الحصة ومصدر القيمة، قدامك في كل ملف.</p>
+        <a href="#sources" data-view-link="sources"
+          >تعرف على المصادر
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="m14 6-6 6 6 6M8 12h12" /></svg
+        ></a>
+      </div>
+      <div class="side-bottom">
+        <span class="status-dot"></span><span>متاح للجميع</span
+        ><small id="side-version"></small>
+      </div>
+    </aside>
+    <main id="main-content" tabindex="-1">
+      <header class="topbar">
+        <span
+          >دليل التغذية <span class="slash">/</span>
+          <span id="breadcrumb">الأكل المصري</span></span
+        ><span class="top-badge"
+          ><span class="status-dot"></span> تصفح بدون تسجيل</span
+        >
+      </header>
+      <div id="load-status" class="load-status" role="status">
+        جارٍ تجهيز دليل الأطعمة…
+      </div>
+      <section id="planner-view" aria-label="خطتي الغذائية الأسبوعية" hidden><p role="status">جارٍ تجهيز التخطيط…</p></section>
+      <section id="egypt-view" aria-labelledby="egypt-title">
+        <div class="egypt-hero">
+          <div class="hero-copy">
+            <span class="eyebrow">من أول لقمة، اعرف التفاصيل</span>
+            <h1 id="egypt-title">
+              أكلنا، وتفاصيله<span class="heading-dot">.</span>
+            </h1>
+            <p>اختار أكلتك وشوف السعرات، الماكروز، والحصة اللي تتحسب عليها.</p><p><a href="#planner" data-view-link="planner" class="outline-btn">جهّز خطتك الغذائية الأسبوعية ←</a></p>
+            <div class="hero-meta">
+              <span
+                ><svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <circle cx="10.5" cy="10.5" r="6.5" />
+                  <path d="m16 16 4.5 4.5" />
+                </svg>
+                بحث بالعربي وبالأسماء القريبة</span
+              ><span id="egypt-catalog-count">دليل الأكل المصري</span>
+            </div>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <svg viewBox="0 0 260 190" fill="none">
+              <circle cx="130" cy="95" r="83" fill="#dfe9ce" />
+              <ellipse cx="130" cy="109" rx="70" ry="52" fill="#fffdf7" />
+              <ellipse cx="130" cy="102" rx="48" ry="31" fill="#becfa6" />
+              <path
+                d="M100 85c19-15 35 19 57 6M101 104c16-14 39 11 58 0"
+                stroke="#3f6a4c"
+                stroke-width="6"
+                stroke-linecap="round"
+              />
+              <circle cx="129" cy="90" r="7" fill="#cc9a5f" />
+              <circle cx="149" cy="107" r="6" fill="#cc9a5f" />
+              <circle cx="109" cy="104" r="5" fill="#cc9a5f" />
+              <path
+                d="M211 53v86m-9-89v22c0 12 18 12 18 0V50"
+                stroke="#6c8870"
+                stroke-width="5"
+                stroke-linecap="round"
+              />
+              <path
+                d="M47 91v49M47 47c-14 0-16 43 0 44s14-44 0-44Z"
+                stroke="#6c8870"
+                stroke-width="5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </div>
+        </div>
+        <div class="search-panel">
+          <label class="field-label" for="egypt-search">بتدور على إيه؟</label>
+          <div class="search-row egypt-search">
+            <div class="search-input">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <circle cx="10.5" cy="10.5" r="6.5" />
+                <path d="m16 16 4.5 4.5" /></svg
+              ><input
+                id="egypt-search"
+                type="search"
+                autocomplete="off"
+                placeholder="فول، ملوخية، مكرونة بالبشاميل…"
+              /><button
+                id="clear-egypt-search"
+                class="clear-search"
+                type="button"
+                aria-label="مسح البحث عن الأكل المصري"
+                hidden
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="m6 6 12 12M6 18 18 6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="quick-searches" aria-label="اقتراحات بحث سريعة">
+            <span>جرّب:</span
+            ><button
+              type="button"
+              class="quick-search"
+              data-query="فول"
+              aria-pressed="false"
+            >
+              فول</button
+            ><button
+              type="button"
+              class="quick-search"
+              data-query="طعمية"
+              aria-pressed="false"
+            >
+              طعمية</button
+            ><button
+              type="button"
+              class="quick-search"
+              data-query="كشري"
+              aria-pressed="false"
+            >
+              كشري</button
+            ><button
+              type="button"
+              class="quick-search"
+              data-query="محشي"
+              aria-pressed="false"
+            >
+              محشي</button
+            ><button
+              type="button"
+              class="quick-search"
+              data-query="بشاميل"
+              aria-pressed="false"
+            >
+              بشاميل</button
+            ><button
+              type="button"
+              class="quick-search"
+              data-query="عصير مانجو"
+              aria-pressed="false"
+            >
+              عصير مانجو
+            </button>
+          </div>
+          <div class="egypt-filters">
+            <label
+              >مجموعة الأكل<select id="egypt-group">
+                <option value="">كل المجموعات</option>
+              </select></label
+            ><label
+              >نوع البيانات<select id="egypt-quality">
+                <option value="">المراجع والتقديرات</option>
+                <option value="approved">المراجع فقط</option>
+                <option value="estimated">الوصفات التقريبية</option>
+                <option value="reference_proxy">البدائل المرجعية</option>
+              </select></label
+            ><button id="reset-egypt" class="text-btn" type="button" hidden>
+              مسح الاختيارات
+            </button>
+          </div>
+        </div>
+        <details class="data-guide">
+          <summary>كيف تقرأ الأرقام؟ <span>مرجع · تقدير · بديل</span></summary>
+          <div class="guide-grid">
+            <p>
+              <span class="quality-badge reference">مرجعي</span> قيم من مصدر
+              موثق، تخص الطعام وطريقة التحضير المذكورة.
+            </p>
+            <p>
+              <span class="quality-badge estimate">تقريبي</span> حساب من مكونات
+              مرجعية بمقادير معلنة قابلة للتعديل.
+            </p>
+            <p>
+              <span class="quality-badge proxy">بديل مرجعي</span> غذاء مختلف
+              استُخدم كبديل حسابي؛ اختلافاته موضحة ودرجة التقريب مرتفعة.
+            </p>
+          </div>
+          <p id="egypt-summary"></p>
+        </details>
+        <div class="section-heading">
+          <h2>اختار أكلتك</h2>
+          <p id="egypt-results" role="status">جارٍ تحميل الأطعمة…</p>
+        </div>
+        <div id="egypt-cards" class="egypt-cards" aria-busy="true">
+          <div class="skeleton-card" aria-hidden="true"></div>
+          <div class="skeleton-card" aria-hidden="true"></div>
+          <div class="skeleton-card" aria-hidden="true"></div>
+        </div>
+        <div class="more-wrap">
+          <button class="outline-btn" id="egypt-more" hidden>عرض المزيد</button>
+        </div>
+        <p class="data-footnote">
+          الدليل الحالي لا يحصر كل أكلات مصر. القيم تخص الملف أو المقادير
+          المعروضة، وليست متوسطًا ثابتًا لكل تحضير.
+        </p>
+      </section>
+      <section id="foods-view" hidden aria-labelledby="foods-title">
+        <div class="page-heading">
+          <div>
+            <span class="eyebrow">المكونات، الأطباق، والمشروبات</span>
+            <h1 id="foods-title">
+              كل الأطعمة<span class="heading-dot">.</span>
+            </h1>
+            <p>ابحث، اختار طريقة التحضير، واحسب الكمية المناسبة لك.</p>
+          </div>
+          <button class="outline-btn" id="download-results">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" />
+            </svg>
+            تصدير النتائج
+          </button>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <span>ملفات قابلة للاستخدام</span><strong id="food-count">—</strong
+            ><small>مراجع ونماذج تقديرية</small>
+          </div>
+          <div class="stat">
+            <span>أطباق ومخبوزات</span><strong id="dish-count">—</strong
+            ><small>تشمل نسخ التحضير</small>
+          </div>
+          <div class="stat">
+            <span>مشروبات</span><strong id="beverage-count">—</strong
+            ><small>مراجع ونماذج حسابية</small>
+          </div>
+          <div class="stat">
+            <span>حصص مرجعية</span><strong id="portion-count">—</strong
+            ><small>تخص ملفاتها المرجعية</small>
+          </div>
+        </div>
+        <div class="catalog">
+          <div class="catalog-top">
+            <h2>ابحث في الدليل <span id="approved-total"></span></h2>
+            <button id="reset-all" class="text-btn" hidden>مسح الفلاتر</button>
+          </div>
+          <div class="search-row">
+            <div class="search-input">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <circle cx="10.5" cy="10.5" r="6.5" />
+                <path d="m16 16 4.5 4.5" /></svg
+              ><input
+                id="search"
+                type="search"
+                autocomplete="off"
+                aria-label="البحث في كل الأطعمة"
+                placeholder="اسم الأكلة بالعربي أو الإنجليزي"
+              /><button
+                id="clear-search"
+                class="clear-search"
+                aria-label="مسح البحث"
+                hidden
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="m6 6 12 12M6 18 18 6" />
+                </svg></button
+              ><kbd>/</kbd>
+            </div>
+          </div>
+          <div class="filter-row">
+            <div class="chips" id="kind-chips" aria-label="نوع الطعام">
+              <button class="chip active" data-kind="" aria-pressed="true">
+                الكل</button
+              ><button class="chip" data-kind="ingredient" aria-pressed="false">
+                مكونات</button
+              ><button class="chip" data-kind="dish" aria-pressed="false">
+                أطباق ومخبوزات</button
+              ><button class="chip" data-kind="beverage" aria-pressed="false">
+                مشروبات
+              </button>
+            </div>
+          </div>
+          <details class="advanced-filters" id="advanced-filters">
+            <summary>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M4 6h16M7 12h10m-7 6h4" />
+              </svg>
+              فلاتر البحث <span id="filter-count" hidden></span
+              ><span class="disclosure-hint"
+                >المصدر، التحضير، ونوع البيانات</span
+              >
+            </summary>
+            <div class="filter-grid"><label>نطاق الأسماء<select id="name-scope"><option value="ready">الأسماء العربية المجهزة للاستخدام</option><option value="all">كل المراجع، بما فيها أسماء تحتاج مراجعة</option></select></label><label>مناسب لأي وجبة؟<select id="meal-filter"><option value="">كل المواعيد</option><option value="breakfast">فطار</option><option value="lunch">غداء</option><option value="dinner">عشاء</option><option value="snack">سناك</option></select></label><label>الميزانية التقديرية<select id="budget-filter"><option value="">كل المستويات</option><option value="low">قليلة</option><option value="medium">متوسطة</option><option value="high">كبيرة</option></select></label>
+              <label
+                >نوع البيانات<select id="quality-filter">
+                  <option value="published">المراجع والتقديرات</option>
+                  <option value="approved">المراجع فقط</option>
+                  <option value="estimated">النماذج التقريبية والبدائل</option>
+                </select></label
+              ><label
+                >المصدر<select id="source-filter">
+                  <option value="">كل المصادر</option>
+                </select></label
+              ><label
+                >طريقة التحضير<select id="state-filter">
+                  <option value="">كل الحالات</option>
+                  <option value="raw">نيّ</option>
+                  <option value="cooked">مطبوخ</option>
+                  <option value="dried">مجفف</option>
+                  <option value="as_sold">كما ورد بالمصدر</option>
+                  <option value="unknown">غير محدد</option>
+                </select></label
+              ><label
+                >التصنيف<select id="category-filter">
+                  <option value="">كل التصنيفات</option>
+                </select></label
+              >
+            </div>
+            <p>القيم لكل 100 جرام أو للحصة المحددة على النتيجة. مواعيد الوجبات والميزانية اقتراحات قابلة للتعديل، وليست أسعارًا حالية أو اعتمادًا علميًا.</p>
+          </details>
+          <div class="results-meta">
+            <span id="results-label" aria-live="polite"
+              >جارٍ تحميل البيانات…</span
+            ><label class="sort-label"
+              >الترتيب<select id="sort">
+                <option value="relevance">الأقرب للبحث</option>
+                <option value="name">الاسم</option>
+                <option value="energy-low">السعرات: الأقل</option>
+                <option value="energy-high">السعرات: الأعلى</option>
+              </select></label
+            >
+          </div>
+          <div class="table-wrap">
+            <table class="food-table" aria-label="نتائج البحث عن الأطعمة">
+              <thead>
+                <tr>
+                  <th class="food-col">الطعام والحصة</th>
+                  <th>السعرات <small>kcal</small></th>
+                  <th>البروتين <small>g</small></th>
+                  <th>الدهون <small>g</small></th>
+                  <th>الكربوهيدرات <small>g</small></th>
+                  <th>المصدر</th>
+                  <th aria-label="التفاصيل"></th>
+                </tr>
+              </thead>
+              <tbody id="food-rows">
+                <tr>
+                  <td colspan="7" class="loading">جارٍ تحميل الأطعمة…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="empty-state" class="empty" hidden>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle cx="10.5" cy="10.5" r="6.5" />
+              <path d="m16 16 4.5 4.5" />
+            </svg>
+            <h3>مفيش نتيجة بالاختيارات دي</h3>
+            <p>جرّب اسمًا أقصر، أو امسح الفلاتر وابحث تاني.</p>
+            <button class="outline-btn" id="reset-filters">
+              مسح البحث والفلاتر
+            </button>
+          </div>
+          <div class="pagination">
+            <span id="page-summary"></span>
+            <div>
+              <button id="previous-page" aria-label="الصفحة السابقة">→</button
+              ><span id="page-number"></span
+              ><button id="next-page" aria-label="الصفحة التالية">←</button>
+            </div>
+          </div>
+        </div>
+        <p class="data-footnote">
+          المرجع يصف طعامًا وطريقة تحضير محددين. بعض الفيتامينات والمعادن قد لا
+          تتوفر؛ التفاصيل والمصدر داخل كل ملف.
+        </p>
+      </section>
+      <section id="sources-view" hidden aria-labelledby="sources-title">
+        <div class="page-heading">
+          <div>
+            <span class="eyebrow">كل رقم له حكاية</span>
+            <h1 id="sources-title">
+              المصادر والتوثيق<span class="heading-dot">.</span>
+            </h1>
+            <p>اعرف أصل القيم، وطريقة الحصول عليها، وحدود استخدامها.</p>
+          </div>
+        </div>
+        <div id="source-cards" class="source-cards"></div>
+      </section>
+      <section id="about-view" hidden aria-labelledby="about-title">
+        <div class="page-heading">
+          <div>
+            <span class="eyebrow">المعلومة، وحدودها</span>
+            <h1 id="about-title">
+              عن دليل التغذية<span class="heading-dot">.</span>
+            </h1>
+            <p>معلومات الإصدار، طريقة الحساب، وملفات التنزيل.</p>
+          </div>
+        </div>
+        <div class="about-card" id="about-content"></div>
+      </section>
+      <footer>
+        دليل التغذية <span>·</span><span id="footer-version"></span
+        ><span>·</span> تصفح وحساب مع مصدر واضح
+      </footer>
+    </main>
+    <dialog id="food-dialog" aria-labelledby="dialog-label">
+      <div class="dialog-top">
+        <span id="dialog-label">تفاصيل الطعام</span
+        ><button
+          class="close-dialog"
+          id="close-dialog"
+          aria-label="إغلاق التفاصيل"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="m6 6 12 12M6 18 18 6" />
+          </svg>
+        </button>
+      </div>
+      <div id="detail-content"></div>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <noscript
+      ><p class="noscript">
+        فعّل JavaScript لعرض الأطعمة وحساب الكميات. ملفات البيانات متاحة في صفحة
+        التنزيلات على الموقع.
+      </p></noscript
+    >
+    <script type="module" src="./app.mjs?v=planner5"></script>
+  </body>
+</html>
