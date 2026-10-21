@@ -1442,5 +1442,96 @@ body:has(.plan-meal-sheet[open]) { overflow: hidden; }
   color: #5b7565;
 }
 
+/* US-MOB-01, US-MOB-02 & US-MOB-09 Auth, Resume & Edit Mode Styles */
+.coach-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.coach-resume-pill {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.chat-edit-mode-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #bfdbfe;
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+.chat-status-info-banner {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+.chat-auth-card {
+  background: #f8faf6;
+  border: 1px solid #c5d9be;
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.chat-auth-head h3 {
+  margin: 4px 0 6px !important;
+  color: #1b4332 !important;
+}
+.chat-auth-head p {
+  margin: 0 !important;
+  font-size: 0.92rem;
+  color: #3d5a47;
+}
+.chat-auth-fields input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid #bfd0b8;
+  border-radius: 12px;
+  font-size: 0.96rem;
+  background: #ffffff;
+}
+.summary-auth-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f3f8f4;
+  border: 1px solid #c4dccb;
+  border-radius: 14px;
+}
+.summary-auth-status-bar strong {
+  display: block;
+  color: #1b4332;
+  font-size: 0.95rem;
+}
+.summary-auth-status-bar small {
+  display: block;
+  color: #466352;
+  font-size: 0.83rem;
+  margin-top: 2px;
+}
+
+
 
 

@@ -1297,12 +1297,76 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
     chatController = mountOnboardingChat({
       container: onboardingSection,
       getState: () => state,
-      onRestoreExisting: () => {
-        onboardingSection.hidden = true;
-        $("plan-settings").open = false;
-        renderPlan();
-        $("plan-dashboard").scrollIntoView({ behavior: "smooth" });
-        toast("أهلاً بيك يا بطل! كملنا على خطتك المحفوظة 🚀");
+      onRestoreExisting: (draftFromChat) => {
+        safely(() => {
+          if (!active() && !state.workoutPlan) {
+            const restoredProfile = {
+              name: draftFromChat?.name || "أحمد",
+              weight: Number(draftFromChat?.weight) || 82,
+              height: Number(draftFromChat?.height) || 175,
+              age: Number(draftFromChat?.age) || 29,
+              seniorMode: false,
+              sex: draftFromChat?.sex || "male",
+              maternalStatus: "none",
+              activity: "light",
+              goal: "lose",
+              targetWeight: 73,
+              goalPace: "moderate",
+              trainingDays: 4,
+              workoutDays: [0, 1, 3, 4],
+              diseases: [],
+            };
+            const restoredWorkoutPrefs = {
+              fitnessLevel: "intermediate",
+              selectedWorkoutDays: [0, 1, 3, 4],
+              workoutDaysCount: 4,
+              workoutSplitPreference: "auto",
+              workoutLocation: "gym_only",
+              sessionDuration: 45,
+              injuries: ["none"],
+            };
+            const restoredWorkout = generateWorkoutWeek(restoredWorkoutPrefs, restoredProfile);
+            const restoredPlan = makeWeek(
+              restoredProfile,
+              {
+                diet: "balanced",
+                fasting: "none",
+                eatingStart: "12:00",
+                region: draftFromChat?.region || "egypt",
+                budget: "medium",
+                meals: 4,
+                proteins: ["legumes", "eggs", "dairy", "chicken", "fish", "meat", "nuts"],
+                excludedKeys: [],
+                excludedFoodIds: [],
+                excludedGroups: [],
+              },
+              library,
+              today(),
+              uid()
+            );
+            save((s) => {
+              s.onboarding = {
+                completedAt: new Date().toISOString(),
+                accountCheck: "logged_in_existing",
+                isAuthenticated: true,
+                authEmail: draftFromChat?.authEmail || "returning@coach.app",
+                serviceTrack: "nutrition_and_workouts",
+                workoutPrefs: restoredWorkoutPrefs,
+                completedExercises: [],
+              };
+              s.workoutPlan = restoredWorkout;
+              selectedDate = restoredPlan.start_date;
+              activatePlan(s, restoredPlan);
+              simplifyActivePlan(s);
+            });
+            fillForm();
+          }
+          onboardingSection.hidden = true;
+          $("plan-settings").open = false;
+          renderPlan();
+          $("plan-dashboard").scrollIntoView({ behavior: "smooth" });
+          toast("🔄 تم استرجاع بياناتك وخطتك المحفوظة بنجاح ودخول الصفحة الرئيسية 🚀");
+        });
       },
       onCompleteOnboarding: (draft) => {
         safely(() => {
@@ -1399,6 +1463,9 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
           save((s) => {
             s.onboarding = {
               completedAt: new Date().toISOString(),
+              accountCheck: draft.accountCheck || "no",
+              isAuthenticated: Boolean(draft.isAuthenticated),
+              authEmail: draft.authEmail || "",
               serviceTrack: draft.serviceTrack,
               workoutPrefs,
               completedExercises: [],
@@ -1419,7 +1486,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
           fillForm();
           renderPlan();
           $("plan-dashboard").scrollIntoView({ behavior: "smooth" });
-          toast(`مبروك يا ${profileObj.name}! خطتك المتفصلة جاهزة للانطلاق 🎯`);
+          toast(`☁️ تم مزامنة بياناتك مع الحساب (${draft.authEmail || "حسابك"}) وفتح خطتك يا ${profileObj.name} 🎯`);
         });
       },
     });

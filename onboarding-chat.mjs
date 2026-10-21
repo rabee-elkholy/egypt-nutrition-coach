@@ -14,6 +14,8 @@ import {
   resolveWorkoutSplit
 } from './workout-engine.mjs';
 
+export const ONBOARDING_DRAFT_STORAGE_KEY = 'egypt-nutrition-onboarding-draft-v2';
+
 export const CHRONIC_DISEASES = [
   { id: 'none', label: 'لا يوجد الحمد لله ✅', isNone: true },
   { id: 'insulin_resistance', label: 'مقاومة إنسولين 🩸' },
@@ -259,6 +261,12 @@ export function createInitialOnboardingDraft(savedState = null) {
         ? [...new Set(p.workoutDays.map(Number).filter(n => n >= 0 && n <= 6))].sort((a, b) => a - b)
         : getTrainingDayIndices(initialCount);
   return {
+    // US-MOB-01 Account & Auth State
+    accountCheck: savedState?.onboarding?.accountCheck || 'no',
+    isAuthenticated: Boolean(savedState?.onboarding?.isAuthenticated),
+    authEmail: savedState?.onboarding?.authEmail || '',
+    socialSuggestedName: savedState?.onboarding?.socialSuggestedName || '',
+    // US-MOB-03..05 Personal & Goal
     name: p.name || '',
     age: p.age || '',
     sex: p.sex || 'male',
@@ -269,7 +277,7 @@ export function createInitialOnboardingDraft(savedState = null) {
     targetWeight: p.targetWeight || '',
     goalPace: p.goalPace || 'moderate',
     serviceTrack: savedState?.onboarding?.serviceTrack || 'nutrition_and_workouts',
-    // US-06 Workout prefs
+    // US-MOB-06..07 Workout prefs
     fitnessLevel: wp.fitnessLevel || 'beginner',
     workoutLocation: wp.workoutLocation || 'gym_only',
     selectedWorkoutDays: initialSelectedDays,
@@ -279,7 +287,7 @@ export function createInitialOnboardingDraft(savedState = null) {
     homeEquipment: Array.isArray(wp.homeEquipment) && wp.homeEquipment.length ? [...wp.homeEquipment] : ['none'],
     sessionDuration: wp.sessionDuration || 45,
     injuries: Array.isArray(wp.injuries) && wp.injuries.length ? [...wp.injuries] : ['none'],
-    // US-07 Nutrition prefs
+    // US-MOB-08 Nutrition prefs
     region: detectedRegion,
     dailyActivity: p.activity || 'light',
     diseases: Array.isArray(p.diseases) && p.diseases.length ? [...p.diseases] : ['none'],
@@ -297,13 +305,13 @@ export function getActiveSteps(draft, hasExistingData = false, forceFresh = fals
     steps.push('welcome_existing');
     return steps;
   }
-  steps.push('name', 'age');
+  steps.push('account_check', 'name', 'age');
   if (Number(draft.age) > 0 && Number(draft.age) < 18) {
     steps.push('underage_gate');
     return steps;
   }
   steps.push('sex');
-  if (draft.sex === 'female') {
+  if (draft.sex === 'female' && (!draft.age || Number(draft.age) <= 50)) {
     steps.push('maternal');
   }
   steps.push('height', 'weight', 'goal');
@@ -347,6 +355,156 @@ export function getActiveSteps(draft, hasExistingData = false, forceFresh = fals
   return steps;
 }
 
+/**
+ * US-MOB-02 (KAN-36): Smart Dependency Invalidation Matrix when editing a previous answer.
+ * Preserves all valid downstream answers and invalidates ONLY conflicting dependent steps.
+ */
+export function applyEditInvalidationMatrix(draft, editedStepId, answeredStepsInput = []) {
+  const answered = new Set(answeredStepsInput);
+  answered.add(editedStepId);
+  const invalidated = [];
+  const markInvalid = stepId => {
+    if (answered.has(stepId)) {
+      answered.delete(stepId);
+      invalidated.push(stepId);
+    }
+  };
+
+  if (editedStepId === 'age') {
+    if (Number(draft.age) > 50 && draft.sex === 'female') {
+      draft.maternalStatus = 'none';
+      markInvalid('maternal');
+    }
+  }
+
+  if (editedStepId === 'sex') {
+    if (draft.sex === 'male') {
+      draft.maternalStatus = 'none';
+      markInvalid('maternal');
+      if (Array.isArray(draft.injuries) && draft.injuries.includes('diastasis_recti')) {
+        draft.injuries = draft.injuries.filter(i => i !== 'diastasis_recti');
+        if (!draft.injuries.length) draft.injuries = ['none'];
+      }
+    }
+  }
+
+  if (editedStepId === 'maternal') {
+    const isPreg = draft.maternalStatus?.startsWith('pregnant');
+    if (isPreg && draft.goal === 'lose') {
+      draft.goal = 'maintain';
+      draft.targetWeight = '';
+      markInvalid('goal');
+      markInvalid('target_weight');
+      markInvalid('goal_pace');
+    }
+    const tempProfile = {
+      maternalStatus: draft.maternalStatus,
+      diseases: (draft.diseases || []).filter(x => x !== 'none')
+    };
+    if (isDietUnsafeForProfile(draft.dietType, tempProfile)) {
+      draft.dietType = 'balanced';
+      markInvalid('diet_type');
+      markInvalid('if_start_hour');
+    }
+  }
+
+  if (editedStepId === 'height' || editedStepId === 'weight') {
+    const w = Number(draft.weight);
+    const tw = Number(draft.targetWeight);
+    if (tw && w) {
+      const invalidLose = draft.goal === 'lose' && tw >= w;
+      const invalidGain = draft.goal === 'gain' && tw <= w;
+      const invalidMuscle = draft.goal === 'muscle_gain' && tw < w;
+      if (invalidLose || invalidGain || invalidMuscle) {
+        draft.targetWeight = '';
+        markInvalid('target_weight');
+        markInvalid('goal_pace');
+      }
+    }
+  }
+
+  if (editedStepId === 'goal') {
+    if (draft.goal === 'maintain') {
+      draft.targetWeight = '';
+      markInvalid('target_weight');
+      markInvalid('goal_pace');
+    } else {
+      const w = Number(draft.weight);
+      const tw = Number(draft.targetWeight);
+      const invalidLose = draft.goal === 'lose' && (!tw || tw >= w);
+      const invalidGain = draft.goal === 'gain' && (!tw || tw <= w);
+      const invalidMuscle = draft.goal === 'muscle_gain' && (!tw || tw < w);
+      if (invalidLose || invalidGain || invalidMuscle) {
+        draft.targetWeight = '';
+        markInvalid('target_weight');
+        markInvalid('goal_pace');
+      }
+    }
+  }
+
+  if (editedStepId === 'workout_location') {
+    if (draft.workoutLocation === 'home_only') {
+      draft.workoutSplitPreference = 'auto';
+      markInvalid('workout_day_split');
+      markInvalid('workout_split');
+    } else if (draft.workoutLocation === 'gym_only') {
+      markInvalid('workout_day_split');
+      markInvalid('home_equipment');
+    }
+    draft.dayLocations = buildDefaultDayLocations(
+      draft.workoutDaysCount,
+      draft.workoutLocation,
+      draft.dayLocations,
+      draft.selectedWorkoutDays
+    );
+  }
+
+  if (editedStepId === 'workout_days') {
+    const daysCount = Array.isArray(draft.selectedWorkoutDays)
+      ? draft.selectedWorkoutDays.length
+      : Number(draft.workoutDaysCount) || 3;
+    if (daysCount < 3) {
+      draft.workoutSplitPreference = 'auto';
+      markInvalid('workout_split');
+    } else if (draft.workoutSplitPreference && draft.workoutSplitPreference !== 'auto') {
+      const validIds = getAvailableWorkoutSplits(daysCount).map(s => s.id);
+      if (!validIds.includes(draft.workoutSplitPreference)) {
+        draft.workoutSplitPreference = 'auto';
+        markInvalid('workout_split');
+      }
+    }
+  }
+
+  if (editedStepId === 'diseases') {
+    const tempProfile = {
+      maternalStatus: draft.maternalStatus,
+      diseases: (draft.diseases || []).filter(x => x !== 'none')
+    };
+    if (isDietUnsafeForProfile(draft.dietType, tempProfile)) {
+      draft.dietType = 'balanced';
+      markInvalid('diet_type');
+      markInvalid('if_start_hour');
+      markInvalid('meals_count');
+    }
+  }
+
+  if (editedStepId === 'diet_type') {
+    if (draft.dietType === 'intermittent_fasting') {
+      markInvalid('meals_count');
+    } else if (draft.dietType === 'balanced') {
+      markInvalid('if_start_hour');
+    } else {
+      markInvalid('if_start_hour');
+      markInvalid('meals_count');
+    }
+  }
+
+  return {
+    answeredSteps: [...answered],
+    invalidatedSteps: invalidated
+  };
+}
+
 const REGION_FLAGS = {
   egypt: 'مصر 🇪🇬',
   gulf: 'الخليج العربي 🇸🇦🇦🇪',
@@ -359,17 +517,79 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
   let hasExisting = Boolean(state?.plans?.length || state?.profile || state?.workoutPlan);
   let forceFresh = false;
   let draft = createInitialOnboardingDraft(state);
-  let currentStepId = hasExisting ? 'welcome_existing' : 'name';
+  let answeredSteps = new Set();
+  let currentStepId = hasExisting ? 'welcome_existing' : 'account_check';
+  let editingStepId = null;
+  let returnTargetStepId = null;
+  let modalView = null; // 'login_from_start' | 'login_from_summary' | 'summary_conflict_prompt'
+  let resumedFromStorage = false;
+  let statusBannerMsg = '';
   let errorMsg = '';
   let bmiWarningPendingFor = null;
+
+  function loadPersistedDraft() {
+    if (hasExisting && !forceFresh) return false;
+    try {
+      const raw = globalThis.localStorage?.getItem(ONBOARDING_DRAFT_STORAGE_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.draft && typeof parsed.draft === 'object' && parsed.currentStepId) {
+        draft = { ...createInitialOnboardingDraft(state), ...parsed.draft };
+        answeredSteps = new Set(Array.isArray(parsed.answeredSteps) ? parsed.answeredSteps : []);
+        const active = getActiveSteps(draft, false, true);
+        if (active.includes(parsed.currentStepId)) {
+          currentStepId = parsed.currentStepId;
+          resumedFromStorage = currentStepId !== 'account_check' || answeredSteps.size > 0;
+          return true;
+        }
+      }
+    } catch {
+      // Ignore storage read errors
+    }
+    return false;
+  }
+
+  function savePersistedDraft() {
+    try {
+      globalThis.localStorage?.setItem(
+        ONBOARDING_DRAFT_STORAGE_KEY,
+        JSON.stringify({
+          version: 2,
+          updatedAt: new Date().toISOString(),
+          currentStepId,
+          answeredSteps: [...answeredSteps],
+          draft
+        })
+      );
+    } catch {
+      // Ignore storage write errors
+    }
+  }
+
+  function clearPersistedDraft() {
+    try {
+      globalThis.localStorage?.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+    } catch {
+      // Ignore storage remove errors
+    }
+  }
+
+  loadPersistedDraft();
 
   function getStepMeta(stepId) {
     const userName = draft.name?.trim() || 'بطل';
     switch (stepId) {
       case 'welcome_existing':
         return {
-          bot: `أهلاً بيك من تاني يا ${esc(state?.profile?.name || 'بطل')}! 👋 تحب نكمل على خطتك المحفوظة ولا نبدأ من جديد؟`,
+          bot: `لقينا بيانات وخطة قديمة متسجلة على حسابك يا ${esc(state?.profile?.name || draft.name || 'بطل')}! 👋 تحب نعمل استرجاع للبيانات وندخل على الصفحة الرئيسية (الهوم) علطول، ولا نبدأ مع بعض من الأول وجديد؟`,
           answer: null
+        };
+      case 'account_check':
+        return {
+          bot: `أهلاً بيك في كوتش التغذية والتمارين الذكي! 👋 قبل ما نبدأ رحلتنا ونصمملك خطتك، قولي.. هل عندك حساب مسجل معانا قبل كدا؟`,
+          answer: draft.isAuthenticated
+            ? `🔑 أيوة، سجلت دخول (${draft.authEmail || 'حساب مسجل'})`
+            : '✨ لا، أنا مستخدم جديد — يلا نبدأ'
         };
       case 'name':
         return {
@@ -579,7 +799,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       }
       case 'summary':
         return {
-          bot: `كده خطتك الرقمية جاهزة يا ${esc(userName)}! 🎉 راجعها تحت واضغط «اعتمد الخطة» للبدء:`,
+          bot: `كده خطتك الرقمية جاهزة يا ${esc(userName)}! 🎉 راجعها تحت واضغط «ابدأ الخطة» للانطلاق:`,
           answer: null
         };
       default:
@@ -589,26 +809,87 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
 
   function advanceFrom(stepId) {
     errorMsg = '';
+    const invalidationResult = applyEditInvalidationMatrix(draft, stepId, answeredSteps);
+    answeredSteps = new Set(invalidationResult.answeredSteps);
+
     const steps = getActiveSteps(draft, hasExisting, forceFresh);
+    if (steps.includes('underage_gate')) {
+      currentStepId = 'underage_gate';
+      editingStepId = null;
+      returnTargetStepId = null;
+      savePersistedDraft();
+      render();
+      return;
+    }
+
+    // US-MOB-02: Smart Edit Resolution
+    if (returnTargetStepId && steps.includes(returnTargetStepId)) {
+      const returnIdx = steps.indexOf(returnTargetStepId);
+      const nextRequiredBeforeReturn = steps
+        .slice(0, returnIdx)
+        .find(s => s !== 'welcome_existing' && s !== 'summary' && !answeredSteps.has(s));
+
+      if (nextRequiredBeforeReturn) {
+        currentStepId = nextRequiredBeforeReturn;
+        editingStepId = nextRequiredBeforeReturn;
+        statusBannerMsg = 'ℹ️ عشان عدلت إجابتك السابقة، محتاجين نأكد معاك السؤال ده كمان قبل ما نرجع مكان ما كنت 👇';
+      } else {
+        currentStepId = returnTargetStepId;
+        editingStepId = null;
+        returnTargetStepId = null;
+        statusBannerMsg = '✅ تم تعديل إجابتك وتحديث الحسابات بنجاح، ورجعناك مكان ما كنت!';
+      }
+      savePersistedDraft();
+      render();
+      return;
+    }
+
     const idx = steps.indexOf(stepId);
     if (idx >= 0 && idx + 1 < steps.length) {
       currentStepId = steps[idx + 1];
     }
+    editingStepId = null;
+    savePersistedDraft();
     render();
   }
 
   function goBack() {
     errorMsg = '';
+    statusBannerMsg = '';
+    if (modalView) {
+      modalView = null;
+      render();
+      return;
+    }
+    if (editingStepId && returnTargetStepId) {
+      currentStepId = returnTargetStepId;
+      editingStepId = null;
+      returnTargetStepId = null;
+      render();
+      return;
+    }
     const steps = getActiveSteps(draft, hasExisting, forceFresh);
     const idx = steps.indexOf(currentStepId);
     if (idx > 0) {
       currentStepId = steps[idx - 1];
+      savePersistedDraft();
       render();
     }
   }
 
   function jumpToStep(stepId) {
     errorMsg = '';
+    modalView = null;
+    const steps = getActiveSteps(draft, hasExisting, forceFresh);
+    const targetIdx = steps.indexOf(stepId);
+    const currentIdx = steps.indexOf(currentStepId);
+    if (targetIdx >= 0 && targetIdx < currentIdx) {
+      editingStepId = stepId;
+      if (!returnTargetStepId) {
+        returnTargetStepId = currentStepId;
+      }
+      statusBannerMsg = '✏️ وضع تعديل إجابة سابقة: عدّل إجابتك وهنرجعك تلقائياً لمكانك (مع الحفاظ على كل إجاباتك السليمة)!';
+    }
     currentStepId = stepId;
     render();
   }
@@ -629,26 +910,122 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
     render();
   }
 
+  function renderLoginModalView() {
+    const isFromSummary = modalView === 'login_from_summary';
+    if (modalView === 'summary_conflict_prompt') {
+      return `
+        <div class="chat-auth-card" role="dialog" aria-label="تعارض البيانات المحفوظة">
+          <div class="chat-auth-head">
+            <span class="eyebrow">US-MOB-09 (KAN-43) · فحص بيانات الحساب بعد تسجيل الدخول</span>
+            <h3>⚠️ لقينا خطة قديمة محفوظة على الحساب ده (${esc(draft.authEmail || 'returning@coach.app')})!</h3>
+            <p>أنت لسه مخلص تصميم خطة جديدة دلوقتي، وفي نفس الوقت الحساب ده عليه بيانات قديمة متخزنة. تحب نعمل إيه؟</p>
+          </div>
+          <div class="chat-quick-replies">
+            <button type="button" class="primary-btn chat-choice-btn" data-chat-action="sync-overwrite-and-finish">
+              <strong>🚀 اعتمد خطتي الجديدة وارفعها للسيرفر (Sync New Plan)</strong>
+              <small>استبدال البيانات القديمة بالخطة اللي لسه مصممها ودخول الهوم</small>
+            </button>
+            <button type="button" class="outline-btn chat-choice-btn" data-chat-action="restore-existing">
+              <strong>🔄 استرجاع بياناتي القديمة من السيرفر (Restore Old Data)</strong>
+              <small>إهمال التعديلات الحالية وفتح خطتي المحفوظة سابقاً في الهوم</small>
+            </button>
+            <button type="button" class="outline-btn chat-choice-btn" data-chat-action="close-auth-modal">
+              <strong>↩️ رجوع لملخص الخطة</strong>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="chat-auth-card" role="dialog" aria-label="شاشة تسجيل الدخول">
+        <div class="chat-auth-head">
+          <span class="eyebrow">${isFromSummary ? 'US-MOB-09 (KAN-43) · المسار الثاني: تسجيل الدخول لحفظ الخطة' : 'US-MOB-01 (KAN-35) · شاشة تسجيل الدخول'}</span>
+          <h3>🔐 ${isFromSummary ? 'سجّل دخولك أو أنشئ حسابك لحفظ خطتك والبدء' : 'تسجيل الدخول لحسابك'}</h3>
+          <p>${isFromSummary
+            ? 'خطتك جاهزة ومحفوظة مؤقتاً! سجّل دخولك الآن عشان نعمل Sync ونرفع الداتا للسيرفر مع معلومات حسابك وندخل الهوم.'
+            : 'ادخل بيانات حسابك (أو جرّب أزرار المحاكاة التفاعلية بالأسفل لاختبار مسارات اليوزر ستوري KAN-35).'}</p>
+        </div>
+        <div class="chat-auth-fields">
+          <input type="email" id="chat-auth-email" aria-label="البريد الإلكتروني أو رقم الموبايل" placeholder="البريد الإلكتروني أو الموبايل (اختياري للمحاكاة)..." value="${esc(draft.authEmail || 'ahmed@example.com')}">
+        </div>
+        ${!isFromSummary ? `
+          <div class="chat-quick-replies">
+            <button type="button" class="primary-btn chat-choice-btn" data-chat-action="login-new-account">
+              <strong>🆕 تسجيل دخول (حساب جديد — لم يكمل الـ Onboarding من قبل)</strong>
+              <small>يرجع للشات وهو مسجل دخول (Authenticated) عشان يكمل الأسئلة من البداية</small>
+            </button>
+            <button type="button" class="outline-btn chat-choice-btn" data-chat-action="login-existing-account">
+              <strong>🔄 تسجيل دخول (حساب عليه داتا قديمة متخزنة)</strong>
+              <small>يسأل اليوزر: «تحب تعمل استرجاع وتدخل الهوم ولا نبدأ من الأول وجديد؟»</small>
+            </button>
+            <button type="button" class="outline-btn chat-choice-btn" data-chat-action="close-auth-modal">
+              <strong>↩️ رجوع لسؤال الحساب في الشات</strong>
+            </button>
+          </div>
+        ` : `
+          <div class="chat-quick-replies">
+            <button type="button" class="primary-btn chat-choice-btn" data-chat-action="login-summary-clean-sync">
+              <strong>✅ تسجيل الدخول ومزامنة الخطة مع السيرفر فوراً (Sync & Enter Home)</strong>
+              <small>يرفع الخطة وبيانات الحساب للسيرفر ويفتح الصفحة الرئيسية (الهوم)</small>
+            </button>
+            <button type="button" class="outline-btn chat-choice-btn" data-chat-action="login-summary-has-conflict">
+              <strong>🧪 محاكاة: الدخول بحساب قديم عليه داتا سابقة (اختبار سؤال الاسترجاع)</strong>
+              <small>يخيّر اليوزر بين اعتماد الخطة الجديدة أو استرجاع الخطة القديمة</small>
+            </button>
+            <button type="button" class="outline-btn chat-choice-btn" data-chat-action="close-auth-modal">
+              <strong>↩️ رجوع لصفحة الملخص</strong>
+            </button>
+          </div>
+        `}
+      </div>
+    `;
+  }
+
   function renderControlsForStep(stepId) {
+    if (modalView) {
+      return renderLoginModalView();
+    }
     switch (stepId) {
       case 'welcome_existing':
         return `
           <div class="chat-quick-replies">
             <button type="button" class="primary-btn chat-choice-btn" data-chat-action="restore-existing">
-              <strong>🏃‍♂️ كمّل على خطتي المحفوظة</strong>
-              <small>افتح جدول وجباتي وتماريني الحالي فوراً</small>
+              <strong>🏃‍♂️ استرجاع بياناتي القديمة (دخول للهوم فوراً)</strong>
+              <small>استرجاع الخطة المحفوظة وفتح الصفحة الرئيسية مباشرة</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn" data-chat-action="start-fresh">
-              <strong>🔄 ابدأ خطة جديدة من الأول</strong>
-              <small>تعديل الوزن أو الهدف أو أيام التمرين</small>
+              <strong>🔄 نبدأ من الأول وجديد</strong>
+              <small>تصميم خطة جديدة خطوة بخطوة مع الكوتش في الشات</small>
+            </button>
+          </div>
+        `;
+      case 'account_check':
+        return `
+          <div class="chat-quick-replies">
+            <button type="button" class="primary-btn chat-choice-btn" data-chat-action="account-check-no">
+              <strong>✨ لا، أنا مستخدم جديد — يلا نبدأ</strong>
+              <small>نكمل أسئلة الشات عادي وفي الآخر نحفظ الخطة</small>
+            </button>
+            <button type="button" class="outline-btn chat-choice-btn" data-chat-action="account-check-yes">
+              <strong>🔑 أيوة، عندي حساب قبل كدا — تسجيل الدخول</strong>
+              <small>الذهاب لشاشة الـ Login (لو الحساب جديد يرجع للشات، ولو عليه داتا يسألك استرجاع ولا من جديد)</small>
             </button>
           </div>
         `;
       case 'name':
         return `
-          <div class="chat-input-row">
-            <input type="text" id="chat-input-name" aria-label="اسمك" placeholder="اكتب اسمك هنا (مثلاً: أحمد، سارة)..." value="${esc(draft.name)}" maxlength="50">
-            <button type="button" class="primary-btn" data-chat-action="submit-name">التالي ⬅️</button>
+          <div class="chat-number-step-box">
+            ${draft.isAuthenticated && draft.socialSuggestedName ? `
+              <div class="chat-quick-num-chips">
+                <span>من حسابك المسجل:</span>
+                <button type="button" class="outline-btn chat-chip" data-fill-social-name="${esc(draft.socialSuggestedName)}">✨ استخدم «${esc(draft.socialSuggestedName)}»</button>
+              </div>
+            ` : ''}
+            <div class="chat-input-row">
+              <input type="text" id="chat-input-name" aria-label="اسمك" placeholder="اكتب اسمك هنا (مثلاً: أحمد، سارة)..." value="${esc(draft.name)}" maxlength="50">
+              <button type="button" class="primary-btn" data-chat-action="submit-name">التالي ⬅️</button>
+            </div>
           </div>
         `;
       case 'age':
@@ -1140,7 +1517,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       <div class="onboarding-summary-card">
         <div class="summary-header">
           <div>
-            <span class="eyebrow">بطاقة المراجعة النهائية (US-08)</span>
+            <span class="eyebrow">بطاقة المراجعة النهائية (US-MOB-09 / KAN-43)</span>
             <h3>خطة الكوتش الذكي لـ ${esc(draft.name || 'بطل')} 🌟</h3>
           </div>
           <div class="summary-region-picker">
@@ -1216,7 +1593,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
                 <button type="button" class="outline-btn summary-edit-btn" data-chat-jump="workout_days">📅 تعديل الأيام</button>
               </div>
               <p><strong>المستوى والمدة:</strong> ${esc(FITNESS_LEVELS[draft.fitnessLevel]?.shortLabel)} · ${draft.sessionDuration} دقيقة للحصة</p>
-              <p><strong>المكان:</strong> ${esc(WORKOUT_LOCATIONS[draft.workoutLocation]?.shortLabel)}</p>
+              <p><strong>المكان والتقسيمة:</strong> ${esc(WORKOUT_LOCATIONS[draft.workoutLocation]?.shortLabel)} · ${esc(insights.splitPreview.name)}</p>
               <div class="summary-days-pills">
                 ${Object.entries(locs).map(([idx, loc]) => `
                   <button type="button" class="summary-day-pill" data-summary-toggle-day="${idx}" title="اضغط للتبديل بين البيت والجيم">
@@ -1242,9 +1619,23 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
           ` : ''}
         </div>
 
+        <div class="summary-auth-status-bar">
+          <div>
+            <strong>${draft.isAuthenticated ? `🔑 حالة الحساب: مسجل دخول (${esc(draft.authEmail || 'user@coach.app')})` : '👤 حالة الحساب: غير مسجل دخول بعد (مستخدم جديد)'}</strong>
+            <small>${draft.isAuthenticated
+              ? 'المسار 1 (Path 1): عند الضغط على «ابدأ الخطة» سيتم عمل Sync مباشر ورفع الداتا للسيرفر ودخول الهوم فوراً.'
+              : 'المسار 2 (Path 2): عند الضغط على «ابدأ الخطة» سيذهب لشاشة الـ Login أولاً ثم يرفع الخطة ويدخل الهوم.'}</small>
+          </div>
+          <button type="button" class="outline-btn summary-edit-btn" data-chat-action="toggle-auth-state">
+            🔄 تبديل حالة الدخول (لاختبار المسارين)
+          </button>
+        </div>
+
         <div class="summary-actions">
           <button type="button" class="primary-btn plan-primary summary-launch-btn" id="onboarding-launch-btn" data-chat-action="finish-onboarding">
-            🚀 اعتمد الخطة وابدأ رحلتك الآن!
+            ${draft.isAuthenticated
+              ? '🚀 ابدأ الخطة الآن (مزامنة مع السيرفر ودخول الهوم فوراً)'
+              : '🔐 ابدأ الخطة الآن (تسجيل الدخول لحفظ الخطة ودخول الهوم)'}
           </button>
         </div>
       </div>
@@ -1268,11 +1659,13 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
             <span class="coach-avatar" aria-hidden="true">🤖</span>
             <div>
               <h2>كوتش التغذية والتمارين الذكي</h2>
-              <p>تخصيص دقيق لأكل ${esc(REGION_FLAGS[draft.region] || 'الشرق الأوسط')} · خطوة ${currentIdx + 1} من ${steps.length}</p>
+              <p>تخصيص دقيق لأكل ${esc(REGION_FLAGS[draft.region] || 'الشرق الأوسط')} · خطوة ${currentIdx + 1} من ${steps.length}${draft.isAuthenticated ? ' · 🔑 مسجل دخول' : ''}</p>
             </div>
           </div>
           <div class="coach-header-actions">
-            ${currentIdx > 0 ? `<button type="button" class="outline-btn coach-back-btn" data-chat-action="back">↩️ رجوع / تعديل</button>` : ''}
+            ${resumedFromStorage ? `<span class="coach-resume-pill" title="تم حفظ مكانك تلقائياً (US-MOB-01)">🔄 استكمال تلقائي</span>` : ''}
+            ${currentIdx > 0 || modalView ? `<button type="button" class="outline-btn coach-back-btn" data-chat-action="back">↩️ رجوع</button>` : ''}
+            ${currentIdx > 0 ? `<button type="button" class="outline-btn coach-back-btn" data-chat-action="reset-draft" title="إعادة الشات من أول سؤال">🗑️ من الصفر</button>` : ''}
           </div>
         </header>
 
@@ -1287,9 +1680,9 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
               <div class="chat-turn is-past">
                 <div class="chat-bubble bot-bubble">${m.bot}</div>
                 ${m.answer ? `
-                  <div class="chat-bubble user-bubble" data-chat-jump="${sid}" title="اضغط لتعديل الإجابة">
+                  <div class="chat-bubble user-bubble" data-chat-jump="${sid}" title="اضغط لتعديل الإجابة في أي وقت (US-MOB-02)">
                     <span>${esc(m.answer)}</span>
-                    <small class="edit-pill">✎</small>
+                    <small class="edit-pill">✎ تعديل</small>
                   </div>
                 ` : ''}
               </div>
@@ -1302,6 +1695,14 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         </div>
 
         <div class="coach-sticky-controls">
+          ${editingStepId && returnTargetStepId ? `
+            <div class="chat-edit-mode-banner" role="status">
+              <span>${esc(statusBannerMsg || '✏️ وضع تعديل إجابة سابقة: عدّل إجابتك وهنرجعك لمكانك تلقائياً')}</span>
+              <button type="button" class="outline-btn summary-edit-btn" data-chat-action="cancel-edit-jump">إلغاء والعودة ↩️</button>
+            </div>
+          ` : statusBannerMsg ? `
+            <div class="chat-status-info-banner" role="status">${esc(statusBannerMsg)}</div>
+          ` : ''}
           ${errorMsg ? `<div class="chat-error-banner" role="alert">⚠️ ${esc(errorMsg)}</div>` : ''}
           ${renderControlsForStep(currentStepId)}
         </div>
@@ -1333,7 +1734,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
     if (currentStepId === 'age') {
       const val = Number(container.querySelector('#chat-input-age')?.value);
       if (!Number.isInteger(val) || val < 10 || val > 95) {
-        errorMsg = 'من فضلك اكتب عمر صحيح بالسنوات.';
+        errorMsg = 'من فضلك اكتب عمر صحيح بالسنوات (بين 10 و 95 سنة).';
         render();
         return;
       }
@@ -1342,7 +1743,10 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       return;
     }
     if (currentStepId === 'height') {
-      const val = Number(container.querySelector('#chat-input-height')?.value);
+      let val = Number(container.querySelector('#chat-input-height')?.value);
+      if (Number.isFinite(val) && val >= 1.2 && val <= 2.3) {
+        val = Math.round(val * 100);
+      }
       if (!Number.isFinite(val) || val < 120 || val > 230) {
         errorMsg = 'من فضلك أدخل طول صحيح بين 120 و 230 سم.';
         render();
@@ -1426,6 +1830,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
   container.addEventListener('change', e => {
     if (e.target.id === 'summary-region-select') {
       draft.region = e.target.value;
+      savePersistedDraft();
       render();
     }
   });
@@ -1437,6 +1842,13 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
     if (btn.dataset.chatJump) {
       bmiWarningPendingFor = null;
       jumpToStep(btn.dataset.chatJump);
+      return;
+    }
+
+    if (btn.dataset.fillSocialName != null) {
+      draft.name = btn.dataset.fillSocialName;
+      errorMsg = '';
+      advanceFrom('name');
       return;
     }
 
@@ -1514,14 +1926,100 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       goBack();
       return;
     }
+    if (action === 'cancel-edit-jump') {
+      if (returnTargetStepId) {
+        currentStepId = returnTargetStepId;
+      }
+      editingStepId = null;
+      returnTargetStepId = null;
+      statusBannerMsg = '';
+      errorMsg = '';
+      render();
+      return;
+    }
+    if (action === 'reset-draft') {
+      clearPersistedDraft();
+      hasExisting = false;
+      forceFresh = true;
+      resumedFromStorage = false;
+      answeredSteps = new Set();
+      editingStepId = null;
+      returnTargetStepId = null;
+      modalView = null;
+      statusBannerMsg = '🔄 تم مسح المسودة وبدء المحادثة من أول سؤال!';
+      errorMsg = '';
+      draft = createInitialOnboardingDraft(null);
+      currentStepId = 'account_check';
+      render();
+      return;
+    }
+    if (action === 'account-check-no') {
+      draft.accountCheck = 'no';
+      draft.isAuthenticated = false;
+      statusBannerMsg = '';
+      advanceFrom('account_check');
+      return;
+    }
+    if (action === 'account-check-yes') {
+      draft.accountCheck = 'yes';
+      modalView = 'login_from_start';
+      errorMsg = '';
+      render();
+      return;
+    }
+    if (action === 'close-auth-modal') {
+      modalView = null;
+      errorMsg = '';
+      render();
+      return;
+    }
+    if (action === 'login-new-account') {
+      const emailVal = container.querySelector('#chat-auth-email')?.value?.trim() || 'new.user@coach.app';
+      draft.isAuthenticated = true;
+      draft.authEmail = emailVal;
+      draft.accountCheck = 'logged_in_new';
+      draft.socialSuggestedName = emailVal.split('@')[0].replace(/[._-]/g, ' ');
+      modalView = null;
+      statusBannerMsg = '✅ تم تسجيل دخولك بنجاح! لأن الحساب جديد ومدخلش الهوم قبل كدا، رجعناك للشات عشان نكمل إعداد خطتك 🎯';
+      advanceFrom('account_check');
+      return;
+    }
+    if (action === 'login-existing-account') {
+      const emailVal = container.querySelector('#chat-auth-email')?.value?.trim() || 'returning@coach.app';
+      draft.isAuthenticated = true;
+      draft.authEmail = emailVal;
+      draft.accountCheck = 'logged_in_existing';
+      modalView = null;
+      hasExisting = true;
+      forceFresh = false;
+      currentStepId = 'welcome_existing';
+      statusBannerMsg = '🔑 تم تسجيل الدخول بحساب مسجل مسبقاً — يرجى اختيار استرجاع البيانات أو البدء من جديد 👇';
+      render();
+      return;
+    }
     if (action === 'restore-existing') {
-      onRestoreExisting();
+      clearPersistedDraft();
+      onRestoreExisting(draft);
       return;
     }
     if (action === 'start-fresh') {
       forceFresh = true;
+      hasExisting = false;
       bmiWarningPendingFor = null;
+      modalView = null;
+      answeredSteps.add('account_check');
       currentStepId = 'name';
+      statusBannerMsg = '🆕 بدأنا من الأول وجديد! عند الانتهاء سيتم تحديث خطتك المحفوظة.';
+      savePersistedDraft();
+      render();
+      return;
+    }
+    if (action === 'toggle-auth-state') {
+      draft.isAuthenticated = !draft.isAuthenticated;
+      if (draft.isAuthenticated && !draft.authEmail) {
+        draft.authEmail = 'ahmed@example.com';
+      }
+      savePersistedDraft();
       render();
       return;
     }
@@ -1567,6 +2065,37 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       return;
     }
     if (action === 'finish-onboarding') {
+      // US-MOB-09 (KAN-43): Dual-Path Start Plan CTA
+      if (draft.isAuthenticated) {
+        clearPersistedDraft();
+        onCompleteOnboarding(draft);
+      } else {
+        modalView = 'login_from_summary';
+        savePersistedDraft();
+        render();
+      }
+      return;
+    }
+    if (action === 'login-summary-clean-sync') {
+      const emailVal = container.querySelector('#chat-auth-email')?.value?.trim() || 'ahmed@example.com';
+      draft.isAuthenticated = true;
+      draft.authEmail = emailVal;
+      modalView = null;
+      clearPersistedDraft();
+      onCompleteOnboarding(draft);
+      return;
+    }
+    if (action === 'login-summary-has-conflict') {
+      const emailVal = container.querySelector('#chat-auth-email')?.value?.trim() || 'returning@coach.app';
+      draft.isAuthenticated = true;
+      draft.authEmail = emailVal;
+      modalView = 'summary_conflict_prompt';
+      render();
+      return;
+    }
+    if (action === 'sync-overwrite-and-finish') {
+      modalView = null;
+      clearPersistedDraft();
       onCompleteOnboarding(draft);
       return;
     }
@@ -1611,6 +2140,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       locs[idx] = locs[idx] === 'home' ? 'gym' : 'home';
       draft.workoutLocation = 'home_and_gym';
       draft.dayLocations = locs;
+      savePersistedDraft();
       render();
       return;
     }
@@ -1627,8 +2157,17 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       state = newState;
       hasExisting = Boolean(state?.plans?.length || state?.profile || state?.workoutPlan);
       forceFresh = openFresh;
+      modalView = null;
+      editingStepId = null;
+      returnTargetStepId = null;
+      if (openFresh) {
+        clearPersistedDraft();
+      }
       draft = createInitialOnboardingDraft(state);
-      currentStepId = hasExisting && !openFresh ? 'welcome_existing' : 'name';
+      currentStepId = hasExisting && !openFresh ? 'welcome_existing' : 'account_check';
+      if (!hasExisting || openFresh) {
+        loadPersistedDraft();
+      }
       render();
     }
   };
