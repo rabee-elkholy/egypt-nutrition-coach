@@ -1,24 +1,24 @@
 export const FITNESS_LEVELS = {
   beginner: {
     id: 'beginner',
-    label: '🌱 مبتدئ (لسه ببدأ أو راجع بعد انقطاع)',
-    desc: 'تمارين أساسية سهلة الأداء · 3 مجموعات · تركيز على التكنيك الصحيح بدون إجهاد للمفاصل',
+    label: '🌱 مبتدئ',
+    desc: 'لسه ببدأ أو راجع بعد انقطاع (3 مجموعات خفيفة)',
     shortLabel: 'مبتدئ 🌱',
     setsMultiplier: 0.8,
     defaultSets: 3
   },
   intermediate: {
     id: 'intermediate',
-    label: '⚡ متوسط (بتمرن بانتظام من شهور) ⭐',
-    desc: 'تنوع ممتاز في الزوايا والأجهزة · 3 مجموعات مركزة · مثالي لشد الجسم وبناء العضل',
+    label: '⚡ متوسط ⭐',
+    desc: 'بتمرن بانتظام من شهور (3 مجموعات مركزة)',
     shortLabel: 'متوسط ⚡',
     setsMultiplier: 1.0,
     defaultSets: 3
   },
   advanced: {
     id: 'advanced',
-    label: '🔥 متقدم (بتمرن من أكتر من سنة وبأوزان عالية)',
-    desc: 'تمارين مركبة وعزل متقدمة · 4 مجموعات · حجم تدريبي عالي (High Volume)',
+    label: '🔥 متقدم',
+    desc: 'خبرة أكتر من سنة وأوزان عالية (4 مجموعات)',
     shortLabel: 'متقدم 🔥',
     setsMultiplier: 1.2,
     defaultSets: 4
@@ -28,20 +28,20 @@ export const FITNESS_LEVELS = {
 export const WORKOUT_LOCATIONS = {
   gym_only: {
     id: 'gym_only',
-    label: '🏋️ في الجيم بس',
-    desc: 'استخدام كامل للأجهزة، الكابلات، البار، والدمبلز في كل حصص التمرين',
+    label: '🏋️ في الجيم',
+    desc: 'أجهزة وكابلات وأوزان حرة كاملة',
     shortLabel: 'الجيم 🏋️'
   },
   home_only: {
     id: 'home_only',
-    label: '🏠 في البيت بس',
-    desc: 'تمارين منزلية فعالة على قد الأدوات المتاحة عندك في البيت (أو بوزن الجسم فقط)',
+    label: '🏠 في البيت',
+    desc: 'تمارين منزلية بوزن الجسم أو أدواتك',
     shortLabel: 'البيت 🏠'
   },
   home_and_gym: {
     id: 'home_and_gym',
-    label: '🔄 ميكس (أيام في البيت وأيام في الجيم)',
-    desc: 'تختار بنفسك الأيام اللي هتروح فيها الجيم والأيام اللي هتتمرنها في البيت',
+    label: '🔄 ميكس (بيت + جيم)',
+    desc: 'أيام في الجيم وأيام في البيت',
     shortLabel: 'بيت وجيم 🔄'
   }
 };
@@ -49,11 +49,11 @@ export const WORKOUT_LOCATIONS = {
 export const WORKOUT_SPLITS = {
   auto: {
     id: 'auto',
-    label: '🤖 تلقائي ذكي حسب أيامك (موصى به ⭐)',
+    label: '🤖 تلقائي ذكي ⭐',
     shortLabel: 'تلقائي ذكي 🤖',
     minDays: 1,
     maxDays: 7,
-    desc: 'يختار أفضل تقسيمة علمية تلقائياً لعدد أيامك (Full Body لـ 1–3 أيام · Upper/Lower لـ 4 أيام · PPL لـ 5+ أيام)'
+    desc: 'يختار الأفضل علمياً لعدد أيامك تلقائياً'
   },
   full_body: {
     id: 'full_body',
@@ -61,7 +61,7 @@ export const WORKOUT_SPLITS = {
     shortLabel: 'Full Body (شامل للجسم)',
     minDays: 1,
     maxDays: 4,
-    desc: 'يمرن كل عضلات الجسم في الحصة الواحدة — ممتاز لحرق الدهون، المبتدئين، وتنشيط العضلات عدة مرات أسبوعياً'
+    desc: 'كل عضلات الجسم في التمرينة الواحدة'
   },
   upper_lower: {
     id: 'upper_lower',
@@ -69,23 +69,23 @@ export const WORKOUT_SPLITS = {
     shortLabel: 'Upper / Lower (علوي / سفلي)',
     minDays: 2,
     maxDays: 6,
-    desc: 'يوم لعضلات الجزء العلوي (صدر/ظهر/كتف/ذراع) ويوم للسفلي والبطن — توازن ممتاز بين البناء والاستشفاء'
+    desc: 'يوم نص علوي ويوم رجل وبطن'
   },
   ppl: {
     id: 'ppl',
-    label: '🔥 دفع / سحب / أرجل (Push / Pull / Legs)',
+    label: '🔥 دفع / سحب / أرجل (PPL)',
     shortLabel: 'Push / Pull / Legs (دفع · سحب · أرجل)',
     minDays: 3,
     maxDays: 7,
-    desc: 'يوم دفع (صدر وكتف وتراي) · يوم سحب (ظهر وباي) · يوم أرجل وبطن — أشهر نظام لبناء الكتلة العضلية'
+    desc: 'يوم دفع · يوم سحب · يوم رجل'
   },
   bro_split: {
     id: 'bro_split',
-    label: '💪 نظام الجيم الكلاسيكي — عضلة كل يوم (Bro Split)',
+    label: '💪 عضلة كل يوم (Bro Split)',
     shortLabel: 'Bro Split (عضلة كل يوم — كلاسيكي)',
     minDays: 3,
     maxDays: 6,
-    desc: 'تركيز عميق على كل عضلة في يوم مخصص (صدر وباي · ظهر وتراي · كتف وترابيس · أرجل وبطن) — المفضل لعشاق الجيم'
+    desc: 'نظام الجيم الكلاسيكي (صدر · ظهر · كتف · رجل)'
   }
 };
 
@@ -94,8 +94,11 @@ export function getAvailableWorkoutSplits(daysCount = 3) {
   return Object.values(WORKOUT_SPLITS).filter(s => n >= s.minDays && n <= s.maxDays);
 }
 
-export function resolveWorkoutSplit(splitPreference = 'auto', daysCount = 3) {
+export function resolveWorkoutSplit(splitPreference = 'auto', daysCount = 3, locationMode = 'gym_only') {
   const n = Math.max(1, Math.min(7, Number(daysCount) || 3));
+  if (locationMode === 'home_only') {
+    return n <= 3 ? 'full_body' : 'upper_lower';
+  }
   if (splitPreference && splitPreference !== 'auto' && WORKOUT_SPLITS[splitPreference]) {
     const sp = WORKOUT_SPLITS[splitPreference];
     if (n >= sp.minDays && n <= sp.maxDays) {
@@ -108,37 +111,37 @@ export function resolveWorkoutSplit(splitPreference = 'auto', daysCount = 3) {
 }
 
 export const HOME_EQUIPMENT = [
-  { id: 'none', label: 'بدون أدوات خالص — وزن الجسم 🧘', icon: '🧘' },
-  { id: 'dumbbells', label: 'دامبلز (Dumbbells) 🏋️', icon: '🏋️' },
-  { id: 'resistance_bands', label: 'استك مقاومة (Resistance Bands) ➰', icon: '➰' },
-  { id: 'pullup_bar', label: 'عقلة باب (Pull-up Bar) 🪜', icon: '🪜' },
-  { id: 'kettlebell', label: 'كيتل بيل (Kettlebell) 🔔', icon: '🔔' },
-  { id: 'bench', label: 'بنش منزلي (Bench) 🛋️', icon: '🛋️' },
-  { id: 'barbell', label: 'بار وأوزان (Barbell & Plates) 🏋️‍♂️', icon: '🏋️‍♂️' },
-  { id: 'jump_rope', label: 'حبل نط (Jump Rope) 🪢', icon: '🪢' },
-  { id: 'yoga_mat', label: 'سجادة يوجا / مات (Yoga Mat) 🧎', icon: '🧎' },
-  { id: 'cardio_machine', label: 'مشاية أو عجلة ثابتة (Treadmill / Bike) 🚴', icon: '🚴' }
+  { id: 'none', label: '🧘 وزن الجسم فقط', icon: '🧘' },
+  { id: 'dumbbells', label: '🏋️ دامبلز', icon: '🏋️' },
+  { id: 'resistance_bands', label: '➰ استك مقاومة', icon: '➰' },
+  { id: 'pullup_bar', label: '🪜 عقلة باب', icon: '🪜' },
+  { id: 'kettlebell', label: '🔔 كيتل بيل', icon: '🔔' },
+  { id: 'bench', label: '🛋️ بنش منزلي', icon: '🛋️' },
+  { id: 'barbell', label: '🏋️‍♂️ بار وأوزان', icon: '🏋️‍♂️' },
+  { id: 'jump_rope', label: '🪢 حبل نط', icon: '🪢' },
+  { id: 'yoga_mat', label: '🧎 سجادة يوجا', icon: '🧎' },
+  { id: 'cardio_machine', label: '🚴 مشاية / عجلة', icon: '🚴' }
 ];
 
 export const INJURIES = [
-  { id: 'none', label: 'الحمد لله لا يوجد ✅', isNone: true },
-  { id: 'knee_pain', label: 'ألم أو إصابة في الركبة 🦵' },
-  { id: 'lower_back_pain', label: 'ألم أسفل الظهر / غضروف قطني 🔙' },
-  { id: 'neck_pain', label: 'ألم الرقبة / فقرات عنقية 🧣' },
-  { id: 'shoulder_injury', label: 'إصابة أو ألم في الكتف 💪' },
-  { id: 'elbow_pain', label: 'ألم الكوع (التهاب أوتار) 🦾' },
-  { id: 'wrist_pain', label: 'ألم الرسغ (المعصم) ✋' },
-  { id: 'ankle_injury', label: 'إصابة الكاحل 🦶' },
-  { id: 'hip_pain', label: 'ألم مفصل الفخذ / الحوض 🦴' },
-  { id: 'diastasis_recti', label: 'انفصال عضلي بعد الولادة (Diastasis Recti) 🤰' }
+  { id: 'none', label: '✅ لا يوجد', isNone: true },
+  { id: 'knee_pain', label: '🦵 الركبة' },
+  { id: 'lower_back_pain', label: '🔙 أسفل الظهر' },
+  { id: 'shoulder_injury', label: '💪 الكتف' },
+  { id: 'neck_pain', label: '🧣 الرقبة' },
+  { id: 'elbow_pain', label: '🦾 الكوع' },
+  { id: 'wrist_pain', label: '✋ الرسغ' },
+  { id: 'ankle_injury', label: '🦶 الكاحل' },
+  { id: 'hip_pain', label: '🦴 الفخذ / الحوض' },
+  { id: 'diastasis_recti', label: '🤰 انفصال عضلي' }
 ];
 
 export const SESSION_DURATIONS = [
-  { value: 20, label: '⏱️ 20 دقيقة (سريع وعملي)', desc: '4 تمارين أساسية مركزة — ممتاز لو يومك زحمة جداً ووقتك ضيق' },
-  { value: 30, label: '⏱️ 30 دقيقة (خفيف ومباشر)', desc: '5 تمارين متوازنة — يخلص بسرعة بدون تضييع وقت' },
-  { value: 45, label: '⏱️ 45 دقيقة (المثالي والموصى به ⭐)', desc: '6 تمارين شاملة + إحماء — أفضل توازن لبناء العضل وحرق الدهون' },
-  { value: 60, label: '⏱️ 60 دقيقة (تمرين كامل)', desc: '7 تمارين تفصيلية تغطي كل زوايا العضلة المستهدفة' },
-  { value: 90, label: '⏱️ 90 دقيقة (شامل ومكثف)', desc: '8 تمارين كاملة + بطن ومرونة — للي عنده وقت مفتوح في الجيم' }
+  { value: 20, label: '⏱️ 20 دقيقة', desc: '4 تمارين سريعة' },
+  { value: 30, label: '⏱️ 30 دقيقة', desc: '5 تمارين مباشرة' },
+  { value: 45, label: '⏱️ 45 دقيقة ⭐', desc: '6 تمارين (المثالي)' },
+  { value: 60, label: '⏱️ 60 دقيقة', desc: '7 تمارين كاملة' },
+  { value: 90, label: '⏱️ 90 دقيقة', desc: '8 تمارين شاملة' }
 ];
 
 export const WEEKDAYS_AR = [
@@ -618,9 +621,9 @@ export function buildDefaultDayLocations(
   return out;
 }
 
-function getSplitDefinitions(daysCount, splitPreference = 'auto') {
+function getSplitDefinitions(daysCount, splitPreference = 'auto', locationMode = 'gym_only') {
   const n = Math.max(1, Math.min(7, Number(daysCount) || 3));
-  const effectiveSplit = resolveWorkoutSplit(splitPreference, n);
+  const effectiveSplit = resolveWorkoutSplit(splitPreference, n, locationMode);
 
   const fullBodyTemplates = [
     {
@@ -911,8 +914,8 @@ export function generateWorkoutWeek(workoutPrefs = {}, profile = {}) {
   const activeDayIndices = Object.keys(dayLocations).map(Number).sort((a, b) => a - b);
   const daysCount = activeDayIndices.length;
   const splitPreference = workoutPrefs.workoutSplitPreference || 'auto';
-  const effectiveSplit = resolveWorkoutSplit(splitPreference, daysCount);
-  const splits = getSplitDefinitions(daysCount, splitPreference);
+  const effectiveSplit = resolveWorkoutSplit(splitPreference, daysCount, locationMode);
+  const splits = getSplitDefinitions(daysCount, splitPreference, locationMode);
 
   const exerciseCountForDuration = duration <= 20 ? 4 : duration <= 30 ? 5 : duration <= 45 ? 6 : duration <= 60 ? 7 : 8;
 

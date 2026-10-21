@@ -191,10 +191,10 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
     return `${esc(displayIngredientName(i))} · <strong>${amount}</strong>${h?`<details class="portion-evidence"><summary>وزن الحصة ومصدرها</summary>${quantityNumber(i.grams)} جرام؛ الوحدة المرجعية ${quantityNumber(h.source_grams)} جرام. الحجم الفعلي قد يختلف.${i.key==='bread'?' الرغيف بحجم عينة المصدر، وليس وزنًا ثابتًا لكل العيش.':''}</details>`:''}`;
   };
   root.innerHTML = `<div class="plan-hero"><span class="eyebrow">كوتش التغذية والتمارين للشرق الأوسط</span><h1>خطتك الذكية<span class="heading-dot">.</span></h1><p>نظام غذائي من أكلنا اليومي وجدول تمارين مفصّل لهدفك وميزانيتك ومكان تمرينك. علّم اللي أكلته أو اتمرنته، وبدّل أي وجبة أو تمرين بضغطة واحدة.</p><div class="plan-privacy">بياناتك وخطتك محفوظة محلياً على جهازك فقط لخصوصيتك الكاملة.</div></div>
- <div class="plan-toolbar"><button class="primary-btn" id="open-coach-chat-btn" type="button">💬 المحادثة الذكية مع الكوتش</button><button class="outline-btn" id="plan-settings-toggle">بياناتي واختياراتي</button><button class="outline-btn" id="plan-export">حفظ نسخة احتياطية</button><label class="outline-btn plan-file">استرجاع نسخة<input type="file" id="plan-import" accept="application/json,.json"></label><button class="outline-btn" id="plan-clear">مسح بياناتي</button></div>
+ <div class="plan-toolbar"><button class="primary-btn" id="open-coach-chat-btn" type="button">💬 المحادثة الذكية مع الكوتش</button><button class="outline-btn" id="plan-export">حفظ نسخة احتياطية</button><label class="outline-btn plan-file">استرجاع نسخة<input type="file" id="plan-import" accept="application/json,.json"></label><button class="outline-btn" id="plan-clear">مسح بياناتي</button></div>
  <div id="planner-error" class="plan-notice" role="alert" hidden></div>
  <section id="coach-onboarding-section"></section>
- <details id="plan-settings"><summary>جهّز الأسبوع (الإعدادات المفصلة)</summary><form id="plan-form"><fieldset><legend>1. جسمك وهدفك</legend><div class="plan-fields"><label>الوزن بالكيلو<input name="weight" type="number" min="35" max="250" step="0.1" required></label><label>الطول بالسنتيمتر<input name="height" type="number" min="120" max="230" step="0.1" required></label><label>العمر بالسنوات<input name="age" type="number" min="18" max="90" step="1" required></label><label>النوع في معادلة الاحتياج<select name="sex"><option value="male">ذكر</option><option value="female">أنثى</option></select></label><label><span id="activity-label">نشاطك المعتاد شامل التمرين</span><select name="activity">${options({ sedentary: "جلوس أغلب اليوم", light: "نشاط خفيف", moderate: "نشاط متوسط", active: "نشاط مرتفع" }, "light")}</select></label><label>هدفك<select name="goal">${options(GOALS, "maintain")}</select></label><label>عدد أيام التمارين أسبوعيًا<input name="trainingDays" type="number" min="0" max="7" step="1" value="0" required></label><label>بداية الأسبوع<input name="startDate" type="date" required value="${today()}"></label></div><details class="plan-sports"><summary>الرياضات اللي بتمارسها</summary><label>طريقة حساب النشاط<select name="exerciseMode"><option value="included">مستوى نشاطي يشمل التمرين</option><option value="separate">أحسب نشاطي اليومي والرياضة بشكل منفصل</option></select></label><p id="sports-method" class="plan-hint"></p><div class="sports-list">${Object.entries(SPORTS).map(([id,sport])=>`<div class="sport-row"><label class="plan-check"><input type="checkbox" data-sport="${id}">${esc(sport.label)}</label><div class="plan-fields"><label>دقائق المرة<input data-sport-minutes="${id}" type="number" min="5" max="180" step="1" value="30" disabled></label><label>مرات أسبوعيًا<input data-sport-sessions="${id}" type="number" min="1" max="7" step="1" value="1" disabled></label></div></div>`).join('')}</div><p class="plan-hint">اختار وصف المجهود الأقرب لتمرينك. المدة الفعلية لكل رياضة، من غير تكرار نفس الوقت في رياضتين. التقدير موزع على أيام الأسبوع، وليس قياسًا مباشرًا للحرق.</p><a href="https://pacompendium.com/" target="_blank" rel="noopener">مرجع الأنشطة البدنية 2024 ↗</a></details><label class="plan-check"><input name="healthNeeds" type="checkbox"> عندي حمل أو رضاعة أو حساسية غذائية أو حالة تحتاج نظامًا علاجيًا</label><p class="plan-hint">اختار عدد الأيام من 0 إلى 7. افتح الرياضات لتحديد النوع والمدة وطريقة احتسابها.</p></fieldset>
+ <details id="plan-settings" hidden style="display:none !important"><summary>جهّز الأسبوع (الإعدادات المفصلة)</summary><form id="plan-form"><fieldset><legend>1. جسمك وهدفك</legend><div class="plan-fields"><label>الوزن بالكيلو<input name="weight" type="number" min="35" max="250" step="0.1" required></label><label>الطول بالسنتيمتر<input name="height" type="number" min="120" max="230" step="0.1" required></label><label>العمر بالسنوات<input name="age" type="number" min="18" max="90" step="1" required></label><label>النوع في معادلة الاحتياج<select name="sex"><option value="male">ذكر</option><option value="female">أنثى</option></select></label><label><span id="activity-label">نشاطك المعتاد شامل التمرين</span><select name="activity">${options({ sedentary: "جلوس أغلب اليوم", light: "نشاط خفيف", moderate: "نشاط متوسط", active: "نشاط مرتفع" }, "light")}</select></label><label>هدفك<select name="goal">${options(GOALS, "maintain")}</select></label><label>عدد أيام التمارين أسبوعيًا<input name="trainingDays" type="number" min="0" max="7" step="1" value="0" required></label><label>بداية الأسبوع<input name="startDate" type="date" required value="${today()}"></label></div><details class="plan-sports"><summary>الرياضات اللي بتمارسها</summary><label>طريقة حساب النشاط<select name="exerciseMode"><option value="included">مستوى نشاطي يشمل التمرين</option><option value="separate">أحسب نشاطي اليومي والرياضة بشكل منفصل</option></select></label><p id="sports-method" class="plan-hint"></p><div class="sports-list">${Object.entries(SPORTS).map(([id,sport])=>`<div class="sport-row"><label class="plan-check"><input type="checkbox" data-sport="${id}">${esc(sport.label)}</label><div class="plan-fields"><label>دقائق المرة<input data-sport-minutes="${id}" type="number" min="5" max="180" step="1" value="30" disabled></label><label>مرات أسبوعيًا<input data-sport-sessions="${id}" type="number" min="1" max="7" step="1" value="1" disabled></label></div></div>`).join('')}</div><p class="plan-hint">اختار وصف المجهود الأقرب لتمرينك. المدة الفعلية لكل رياضة، من غير تكرار نفس الوقت في رياضتين. التقدير موزع على أيام الأسبوع، وليس قياسًا مباشرًا للحرق.</p><a href="https://pacompendium.com/" target="_blank" rel="noopener">مرجع الأنشطة البدنية 2024 ↗</a></details><label class="plan-check"><input name="healthNeeds" type="checkbox"> عندي حمل أو رضاعة أو حساسية غذائية أو حالة تحتاج نظامًا علاجيًا</label><p class="plan-hint">اختار عدد الأيام من 0 إلى 7. افتح الرياضات لتحديد النوع والمدة وطريقة احتسابها.</p></fieldset>
  <fieldset><legend>2. نظامك وأكل منطقتك</legend><label>تحب تمشي على أي نظام؟<select name="diet">${options(DIETS,'balanced')}</select></label><div id="diet-description" class="diet-guide"></div><details class="plan-sports"><summary>مواعيد الأكل والصيام المتقطع — اختياري</summary><p class="plan-hint">الصيام المتقطع تنظيم لمواعيد الأكل، مش نوع أكل ولا تخفيض إضافي للسعرات. قد يناسبك لو الالتزام بوقت محدد أسهل؛ مش شرط لنزول الوزن. هنا لا نمنع الماء.</p><label>نظام المواعيد<select name="fasting">${options(FASTING,'none')}</select></label><div id="fasting-settings" hidden><label>بداية وقت الأكل<input name="eatingStart" type="time" value="08:00"></label><p class="plan-hint">هنوزع الوجبات داخل النافذة، وآخر موعد قبل نهايتها بنصف ساعة. لا يدخل الصيام في حساب الحرق.</p><label class="plan-check"><input name="fastingRisk" type="checkbox"> عندي سكري أو أدوية خفض السكر أو اضطراب أكل</label><label class="plan-check"><input name="fastingAcknowledged" type="checkbox"> لا تنطبق عليّ هذه الحالات وقرأت شروط الصيام</label></div></details><div id="keto-screen" hidden><p class="plan-notice">الكيتو هنا بحد أقصى 50 جرام كربوهيدرات كلية يوميًا. مع السكري أو أدوية خفض السكر، أو أمراض الكلى أو الكبد أو البنكرياس: استخدم خطة مختص.</p><label class="plan-check"><input name="ketoRisk" type="checkbox"> عندي إحدى الحالات أو الأدوية المذكورة</label><label class="plan-check"><input name="ketoAcknowledged" type="checkbox"> قرأت الشروط، ولا تنطبق عليّ الحالات المذكورة</label></div><div class="plan-fields"><label>منطقتك<select name="region">${options(REGIONS, "egypt")}</select></label><label>الميزانية<select name="budget">${options(BUDGETS, "medium")}</select></label><label>عدد مرات الأكل يوميًا<select name="meals"><option value="2">وجبتين كبار</option><option value="3">3 وجبات</option><option value="4" selected>3 وجبات + سناك</option><option value="5">3 وجبات + 2 سناك</option></select></label></div><p id="plan-region-summary" class="plan-hint" role="status" aria-live="polite"></p><h3>مصادر البروتين اللي تحبها</h3><div class="plan-check-grid">${Object.entries(
    PROTEINS,
  )
@@ -230,7 +230,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
      "",
    )}</div></details><p class="plan-hint">${EXCLUSIONS.length} اختيارًا للذوق. مكتبة التخطيط فيها ${Object.keys(library.ingredients).length} مكوّنًا موثقًا، وقائمة مصر فيها ${planningTemplates(library, {region:"egypt"}).length} وجبة وسناك مختارة، ضمن ${new Set(planningTemplates(library, {region:"egypt"}).filter(t=>!t.meal_slots.includes("snack")).map(t=>t.dish_family)).size} عائلة أطباق رئيسية؛ وتتغير الخيارات حسب المنطقة. بقية الاختيارات تُنبّهك عند البحث اليدوي إذا ظهر المكوّن في الاسم؛ لا تكشف مكونات طبق غير موثقة ولا تصلح لمنع الحساسية.</p></fieldset><button class="primary-btn plan-primary" type="submit" id="plan-generate">اعمل خطة 7 أيام</button><p class="plan-hint">الأسماء والوجبات الجديدة تظهر لما تعمل خطة جديدة؛ الخطط المحفوظة وسجل أكلك يفضلوا زي ما هم. الأوزان للكميات المقترحة من المكونات بالحالة المكتوبة. ليست وصفات مصرية مقاسة أو اعتمادًا غذائيًا جديدًا.</p></form></details>
  <div id="plan-dashboard"></div>
- <details class="plan-method"><summary>إزاي حسبنا الاحتياج واخترنا الوجبات؟</summary>
+ <details class="plan-method" hidden style="display:none !important"><summary>إزاي حسبنا الاحتياج واخترنا الوجبات؟</summary>
  <div class="plan-method-intro">الخطة تقدير كبداية، ونوضح لك الحساب والاختيارات خطوة بخطوة.</div>
  <div class="plan-method-grid">
  <section class="plan-method-card"><h3><span aria-hidden="true">1</span> احتياجك من الطاقة</h3><p>نحسب معدل الراحة بمعادلة <bdi dir="ltr">Mifflin–St Jeor</bdi>:</p>
@@ -317,16 +317,18 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
             <span class="eyebrow">جدول التمارين الأسبوعي الذكي · ${esc(wp.splitName)}</span>
             <h2>${esc(wp.workoutLocationLabel)} · ${wp.workoutDaysCount} أيام تمرين أسبوعياً (${esc(wp.fitnessLevelLabel)})</h2>
             <p class="plan-hint">مدة الحصة: ${wp.sessionDuration} دقيقة · اضغط على أي يوم لعرض تمارينه أو تبديل مكانه بين البيت 🏠 والجيم 🏋️.</p>
-            <div class="workout-split-switcher">
-              <span>نظام تقسيمة العضلات:</span>
-              <div class="workout-split-chips">
-                ${availableSplits.map(sp => `
-                  <button type="button" class="outline-btn chat-chip ${currentSplitPref === sp.id ? "is-selected" : ""}" data-switch-workout-split="${sp.id}">
-                    ${esc(sp.shortLabel)}
-                  </button>
-                `).join("")}
+            ${wp.workoutLocation !== "home_only" && wp.workoutDaysCount >= 3 ? `
+              <div class="workout-split-switcher">
+                <span>نظام تقسيمة العضلات:</span>
+                <div class="workout-split-chips">
+                  ${availableSplits.map(sp => `
+                    <button type="button" class="outline-btn chat-chip ${currentSplitPref === sp.id ? "is-selected" : ""}" data-switch-workout-split="${sp.id}">
+                      ${esc(sp.shortLabel)}
+                    </button>
+                  `).join("")}
+                </div>
               </div>
-            </div>
+            ` : ""}
             ${wp.injuryAdjustments?.length ? `<div class="workout-injury-banner">🛡️ <strong>حماية المفاصل والإصابات المفعّلة:</strong><ul>${wp.injuryAdjustments.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>` : ""}
           </div>
         </div>
@@ -561,11 +563,13 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
       )
       .join("");
   }
-  $("plan-settings-toggle").onclick = () => {
-    $("plan-settings").open = !$("plan-settings").open;
-    if ($("plan-settings").open)
-      $("plan-settings").scrollIntoView({ behavior: "smooth" });
-  };
+  if ($("plan-settings-toggle")) {
+    $("plan-settings-toggle").onclick = () => {
+      $("plan-settings").open = !$("plan-settings").open;
+      if ($("plan-settings").open)
+        $("plan-settings").scrollIntoView({ behavior: "smooth" });
+    };
+  }
   $("plan-form").onsubmit = (e) => {
     e.preventDefault();
     safely(() => {
@@ -762,7 +766,13 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
         updateExclusionSummary();
         updateRegionSummary();
         updateAvailability();
-        $("plan-settings").open = true;
+        $("plan-settings").open = false;
+        const onboardingSec = $("coach-onboarding-section");
+        if (onboardingSec) {
+          onboardingSec.hidden = false;
+          chatController?.refresh(state, true);
+          onboardingSec.scrollIntoView({ behavior: "smooth" });
+        }
       });
   };
   root.addEventListener("change", (e) => {
@@ -1012,7 +1022,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
     const mealId=context?.meal?.id;
     context = null;
     const returnButton=[...root.querySelectorAll("[data-meal-details]")].find(b=>b.dataset.mealDetails===mealId);
-    (returnButton || (lastFocus?.isConnected && lastFocus.getClientRects().length ? lastFocus : $("plan-settings-toggle"))).focus();
+    (returnButton || (lastFocus?.isConnected && lastFocus.getClientRects().length ? lastFocus : $("open-coach-chat-btn"))).focus();
   }
   $("plan-picker").addEventListener("keydown", (e) => {
     if (e.key !== "Tab") return;

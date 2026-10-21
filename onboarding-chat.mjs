@@ -15,24 +15,24 @@ import {
 } from './workout-engine.mjs';
 
 export const CHRONIC_DISEASES = [
-  { id: 'none', label: 'الحمد لله لا يوجد ✅', isNone: true },
-  { id: 'insulin_resistance', label: 'مقاومة الإنسولين 🩸' },
-  { id: 'diabetes', label: 'السكري (النوع الثاني / تنظيم السكر) 🩺' },
-  { id: 'hypertension', label: 'الضغط المرتفع ❤️‍🩹' },
-  { id: 'hypothyroidism', label: 'خمول الغدة الدرقية 🦋' },
-  { id: 'hyperthyroidism', label: 'نشاط الغدة الدرقية ⚡' },
-  { id: 'pcos', label: 'تكيس المبايض (PCOS) 🌸' },
-  { id: 'cholesterol', label: 'الكوليسترول والدهون الثلاثية 🫀' },
-  { id: 'gout', label: 'النقرس والأملاح العالية 🦶' },
-  { id: 'ibs', label: 'القولون العصبي (IBS) 🌿' },
-  { id: 'anemia', label: 'الأنيميا ونقص الحديد 🥩' },
-  { id: 'vitamin_d_calcium', label: 'نقص فيتامين د / الكالسيوم ☀️' }
+  { id: 'none', label: 'لا يوجد الحمد لله ✅', isNone: true },
+  { id: 'insulin_resistance', label: 'مقاومة إنسولين 🩸' },
+  { id: 'diabetes', label: 'سكري 🩺' },
+  { id: 'hypertension', label: 'ضغط مرتفع ❤️‍🩹' },
+  { id: 'hypothyroidism', label: 'خمول غدة 🦋' },
+  { id: 'hyperthyroidism', label: 'نشاط غدة ⚡' },
+  { id: 'pcos', label: 'تكيس مبايض 🌸' },
+  { id: 'cholesterol', label: 'كوليسترول 🫀' },
+  { id: 'gout', label: 'نقرس وأملاح 🦶' },
+  { id: 'ibs', label: 'قولون عصبي 🌿' },
+  { id: 'anemia', label: 'أنيميا 🥩' },
+  { id: 'vitamin_d_calcium', label: 'نقص فيتامين د ☀️' }
 ];
 
 export const QUICK_EXCLUSION_CHIPS = [
-  { id: 'none', label: 'باكل كل حاجة الحمد لله ✅', isNone: true },
+  { id: 'none', label: 'باكل كل حاجة ✅', isNone: true },
   { id: 'fish', label: 'السمك', proteinUncheck: null },
-  { id: 'shellfish', label: 'الجمبري والمأكولات البحرية', proteinUncheck: null },
+  { id: 'shellfish', label: 'الجمبري والسي فود', proteinUncheck: null },
   { id: 'dairy', label: 'الألبان والجبن', proteinUncheck: 'dairy' },
   { id: 'eggs', label: 'البيض', proteinUncheck: 'eggs' },
   { id: 'chicken', label: 'الفراخ', proteinUncheck: 'chicken' },
@@ -42,7 +42,7 @@ export const QUICK_EXCLUSION_CHIPS = [
   { id: 'tree_nuts', label: 'المكسرات', proteinUncheck: null },
   { id: 'onion', label: 'البصل', proteinUncheck: null },
   { id: 'garlic', label: 'الثوم', proteinUncheck: null },
-  { id: 'tomato', label: 'الطماطم والصلصة', proteinUncheck: null },
+  { id: 'tomato', label: 'الطماطم', proteinUncheck: null },
   { id: 'okra', label: 'البامية', proteinUncheck: null },
   { id: 'eggplant', label: 'الباذنجان', proteinUncheck: null }
 ];
@@ -112,15 +112,15 @@ export function evaluateTargetWeightBmi(heightCm, targetWeightKg) {
 }
 
 export const DIET_USER_DESCRIPTIONS = {
-  balanced: 'كل أكل البيت الطبيعي (رز، عيش بلدي، مكرونة، فراخ، لحمة، سمك، فول، جبنة قريش) بكميات محسوبة · وتختار عدد وجباتك براحتك',
-  low_carb: 'تقليل العيش والرز والمكرونة والتركيز على البروتين والخضار والدهون الصحية · 3 وجبات مشبعة بدون سناك (ممتاز لتنشيف الدهون ومقاومة الإنسولين)',
-  high_protein: 'حصص بروتين أعلى في كل وجبة لبناء العضل والشبع العالي طول اليوم · 3 وجبات رئيسية + سناك غني بالبروتين',
-  intermittent_fasting: 'صيام 16 ساعة (مسموح مية وشاي وقهوة بدون سكر) وأكل في نافذة 8 ساعات · وجبتين رئيسيتين مشبعتين + سناك',
-  keto: 'منع العيش والرز والمكرونة والسكريات (أقل من 50 جم كارب يومياً) والاعتماد على البروتين والدهون الصحية · 3 وجبات كيتو مشبعة',
-  mediterranean: 'أكل صحي للقلب والشرايين غني بالأسماك، زيت الزيتون، الخضار، البقوليات، والحبوب · 3 وجبات رئيسية + سناك صحي',
-  dash: 'أكل قليل الملح والصوديوم وغني بالخضار والفاكهة والبوتاسيوم لضبط ضغط الدم · 3 وجبات رئيسية + سناك',
-  vegetarian: 'بدون لحوم أو فراخ أو سمك، ويعتمد على البيض، الجبنة القريش، الزبادي، الفول، والعدس · 3 وجبات رئيسية + سناك',
-  vegan: 'نباتي صيامي خالي تماماً من أي منتجات حيوانية، يعتمد على الفول، العدس، الحمص، الكشري، والمكسرات · 3 وجبات رئيسية + سناك'
+  balanced: 'أكل البيت الطبيعي بكميات محسوبة · تختار عدد وجباتك',
+  low_carb: 'تقليل النشويات والتركيز على البروتين · 3 وجبات مشبعة',
+  high_protein: 'بروتين أعلى لبناء العضل والشبع · 3 وجبات + سناك',
+  intermittent_fasting: 'صيام 16 ساعة وأكل في 8 ساعات · وجبتين + سناك',
+  keto: 'منع النشويات والسكريات (<50 جم كارب) · 3 وجبات كيتو',
+  mediterranean: 'صحي للقلب (سمك وزيت زيتون وخضار) · 3 وجبات + سناك',
+  dash: 'قليل الملح لضبط ضغط الدم · 3 وجبات + سناك',
+  vegetarian: 'بدون لحوم أو فراخ أو سمك (بيض وألبان وبقوليات)',
+  vegan: 'نباتي صيامي 100% من البقوليات والحبوب والمكسرات'
 };
 
 export function getGoalPaceDetails(draft) {
@@ -146,28 +146,28 @@ export function getGoalPaceDetails(draft) {
         id: 'slow',
         rateKg: rates.slow,
         durationText: formatDuration(rates.slow),
-        title: `🐢 هادي ومريح (حوالي ${rates.slow} كجم / أسبوع)`,
+        title: `🐢 هادي ومريح (~${rates.slow} كجم/أسبوع)`,
         desc: isGain
-          ? `⏱️ توصل لـ ${targetW} كجم في ${formatDuration(rates.slow)} · زيادة تدريجية صافية بكميات أكل مريحة للمعدة`
-          : `⏱️ توصل لـ ${targetW} كجم في ${formatDuration(rates.slow)} · كميات أكل كبيرة ومرونة عالية بدون أي إحساس بالجوع`
+          ? `⏱️ توصل في ${formatDuration(rates.slow)} · كميات مريحة للمعدة`
+          : `⏱️ توصل في ${formatDuration(rates.slow)} · مرونة عالية بدون جوع`
       },
       {
         id: 'moderate',
         rateKg: rates.moderate,
         durationText: formatDuration(rates.moderate),
-        title: `⚡ متوازن ومثالي — موصى به ⭐ (حوالي ${rates.moderate} كجم / أسبوع)`,
+        title: `⚡ متوازن ومثالي ⭐ (~${rates.moderate} كجم/أسبوع)`,
         desc: isGain
-          ? `⏱️ توصل لـ ${targetW} كجم في ${formatDuration(rates.moderate)} · أفضل توازن بين زيادة الوزن وبناء العضلات بدون دهون زيادة`
-          : `⏱️ توصل لـ ${targetW} كجم في ${formatDuration(rates.moderate)} · المعيار الذهبي علمياً لنزول الدهون مع الحفاظ الكامل على العضلات`
+          ? `⏱️ توصل في ${formatDuration(rates.moderate)} · زيادة صافية بدون دهون`
+          : `⏱️ توصل في ${formatDuration(rates.moderate)} · أفضل توازن لحرق الدهون وحفظ العضل`
       },
       {
         id: 'fast',
         rateKg: rates.fast,
         durationText: formatDuration(rates.fast),
-        title: `🚀 سريع ومكثف (حوالي ${rates.fast} كجم / أسبوع)`,
+        title: `🚀 سريع ومكثف (~${rates.fast} كجم/أسبوع)`,
         desc: isGain
-          ? `⏱️ توصل لـ ${targetW} كجم في ${formatDuration(rates.fast)} · وجبات كثيفة السعرات لنتيجة أسرع وتحتاج التزام يومي`
-          : `⏱️ توصل لـ ${targetW} كجم في ${formatDuration(rates.fast)} · عجز سعرات أعلى وكميات أكل أقل لمن يريد نتيجة سريعة بالتزام صارم`
+          ? `⏱️ توصل في ${formatDuration(rates.fast)} · وجبات مكثفة لنتيجة أسرع`
+          : `⏱️ توصل في ${formatDuration(rates.fast)} · التزام أعلى لنتيجة أسرع`
       }
     ]
   };
@@ -223,11 +223,15 @@ export function computeSmartOnboardingInsights(draft) {
   const paceDetails = getGoalPaceDetails(draft);
   const chosenPace = paceDetails.options.find(o => o.id === (draft.goalPace || 'moderate')) || paceDetails.options[1];
 
-  const effectiveSplitId = resolveWorkoutSplit(draft.workoutSplitPreference || 'auto', trainingDays);
+  const effectiveSplitId = resolveWorkoutSplit(
+    draft.workoutSplitPreference || 'auto',
+    trainingDays,
+    draft.workoutLocation || 'gym_only'
+  );
   const splitObj = WORKOUT_SPLITS[effectiveSplitId] || WORKOUT_SPLITS.full_body;
   const splitPreview = {
     id: effectiveSplitId,
-    preference: draft.workoutSplitPreference || 'auto',
+    preference: draft.workoutLocation === 'home_only' ? 'auto' : draft.workoutSplitPreference || 'auto',
     name: splitObj.shortLabel,
     desc: splitObj.desc
   };
@@ -267,10 +271,10 @@ export function createInitialOnboardingDraft(savedState = null) {
     serviceTrack: savedState?.onboarding?.serviceTrack || 'nutrition_and_workouts',
     // US-06 Workout prefs
     fitnessLevel: wp.fitnessLevel || 'beginner',
+    workoutLocation: wp.workoutLocation || 'gym_only',
     selectedWorkoutDays: initialSelectedDays,
     workoutDaysCount: initialSelectedDays.length || 3,
     workoutSplitPreference: wp.workoutSplitPreference || 'auto',
-    workoutLocation: wp.workoutLocation || 'gym_only',
     dayLocations: wp.dayLocations || null,
     homeEquipment: Array.isArray(wp.homeEquipment) && wp.homeEquipment.length ? [...wp.homeEquipment] : ['none'],
     sessionDuration: wp.sessionDuration || 45,
@@ -312,12 +316,19 @@ export function getActiveSteps(draft, hasExistingData = false, forceFresh = fals
   steps.push('service_track');
 
   if (draft.serviceTrack !== 'nutrition_only') {
-    steps.push('fitness_level', 'workout_days', 'workout_location');
+    steps.push('fitness_level', 'workout_location', 'workout_days');
     if (draft.workoutLocation === 'home_and_gym') {
       steps.push('workout_day_split');
     }
     if (draft.workoutLocation === 'home_only' || draft.workoutLocation === 'home_and_gym') {
       steps.push('home_equipment');
+    }
+    const daysCount =
+      Array.isArray(draft.selectedWorkoutDays) && draft.selectedWorkoutDays.length
+        ? draft.selectedWorkoutDays.length
+        : Number(draft.workoutDaysCount) || 3;
+    if (draft.workoutLocation !== 'home_only' && daysCount >= 3) {
+      steps.push('workout_split');
     }
     steps.push('session_duration', 'injuries');
   }
@@ -357,32 +368,32 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
     switch (stepId) {
       case 'welcome_existing':
         return {
-          bot: `أهلاً بيك من تاني يا ${esc(state?.profile?.name || 'بطل')}! 👋 لقيت عندك خطة وبيانات متسجلة على جهازك.. تحب نكمل عليها علطول ولا نبدأ خطة جديدة من الأول؟`,
+          bot: `أهلاً بيك من تاني يا ${esc(state?.profile?.name || 'بطل')}! 👋 تحب نكمل على خطتك المحفوظة ولا نبدأ من جديد؟`,
           answer: null
         };
       case 'name':
         return {
-          bot: `أهلاً بيك يا بطل! 🌟 أنا الكوتش الذكي بتاعك.. في خطوات سريعة هجهزلك نظام غذائي وجدول تمارين متفصلين على جسمك وأكلك اليومي في ${REGION_FLAGS[draft.region] || 'منطقتك'}. قولي الأول، تحب أناديك بإيه؟`,
+          bot: `أهلاً بيك يا بطل! 🌟 أنا الكوتش الذكي بتاعك.. تحب أناديك بإيه؟`,
           answer: draft.name ? `اسمي ${draft.name}` : null
         };
       case 'age':
         return {
-          bot: `عاشت الأسامي يا ${esc(userName)}! تشرفنا بيك ❤️ عندك كام سنة؟ (عشان نحسب معدل الحرق الأساسي لجسمك بدقة)`,
-          answer: draft.age ? `${draft.age} سنة${Number(draft.age) > 70 ? ' (وضع كبار السن الآمن مفعّل 🛡️)' : ''}` : null
+          bot: `عاشت الأسامي يا ${esc(userName)} ❤️ عندك كام سنة؟`,
+          answer: draft.age ? `${draft.age} سنة${Number(draft.age) > 70 ? ' (وضع كبار السن 🛡️)' : ''}` : null
         };
       case 'underage_gate':
         return {
-          bot: `يا ${esc(userName)}، عشان سنك أقل من 18 سنة (${esc(draft.age)} سنة)، جسمك في مرحلة نمو مهمة جداً ومينفعش يمشي على عجز سعرات أو أنظمة آلية من غير متابعة دكتور تغذية أو ولي أمرك. تقدر تعدل السن لو كتبته غلط أو تتصفح دليل الأطعمة بحرية! 🌱`,
+          bot: `يا ${esc(userName)}، عشان سنك أقل من 18 سنة (${esc(draft.age)} سنة)، جسمك في مرحلة نمو ومحتاج متابعة دكتور تغذية مباشرة. تقدر تعدل السن لو كتبته بالخطأ! 🌱`,
           answer: null
         };
       case 'sex':
         return {
-          bot: `${Number(draft.age) > 70 ? 'ربنا يديك الصحة وطولة العمر! هنراعي في خطتك تمارين آمنة للمفاصل وبروتين يحافظ على العضلات. ' : ''}نوعك إيه عشان نظبط معادلات الحرق والاحتياج بدقة؟`,
+          bot: `${Number(draft.age) > 70 ? 'ربنا يديك الصحة! هنراعي تمارين آمنة للمفاصل. ' : ''}نوعك إيه يا ${esc(userName)}؟`,
           answer: draft.sex === 'female' ? '👩 أنثى' : '👨 ذكر'
         };
       case 'maternal':
         return {
-          bot: `هل في حمل أو رضاعة حالياً؟ عشان نضيف السعرات والبروتين اللازمين لصحتك وصحة البيبي ونمنع أي أنظمة قاسية.`,
+          bot: `هل في حمل أو رضاعة حالياً؟`,
           answer: {
             none: 'لا يوجد ✅',
             pregnant_t1: 'حامل — الثلث الأول 🤰',
@@ -393,55 +404,50 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         };
       case 'height':
         return {
-          bot: `تمام جداً.. طولك كام سنتيمتر؟ 📏 (عشان نحسب مدى وزنك الصحي المثالي)`,
+          bot: `طولك كام سنتيمتر؟ 📏`,
           answer: draft.height ? `${draft.height} سم` : null
         };
       case 'weight':
         return {
-          bot: `ووزنك الحالي كام كيلو؟ ⚖️ (ده نقطة البداية اللي هنبني عليها سعراتك وحصص البروتين والمية)`,
+          bot: `ووزنك الحالي كام كيلو؟ ⚖️`,
           answer: draft.weight ? `${draft.weight} كجم` : null
         };
       case 'goal': {
         const bmi = draft.weight && draft.height ? (Number(draft.weight) / ((Number(draft.height) / 100) ** 2)).toFixed(1) : null;
         const range = getIdealWeightRange(draft.height);
-        const bmiHint = bmi
-          ? Number(bmi) < 18.5
-            ? ` (مؤشر كتلتك ${bmi} أقل من الطبيعي — أنصحك بـ «زيادة الوزن» أو «بناء عضلات» للوصول لمدى ${range?.minWeight}–${range?.maxWeight} كجم)`
-            : Number(bmi) >= 25
-              ? ` (مؤشر كتلتك ${bmi} — أنصحك بـ «خسارة دهون وتخسيس» للوصول لمدى وزنك الصحي ${range?.minWeight}–${range?.maxWeight} كجم مع الحفاظ على عضلاتك)`
-              : ` (مؤشر كتلتك ${bmi} في المدى الصحي المثالي ✅ — تقدر تختار تنسيق الجسم وبناء العضل أو الحفاظ على وزنك)`
+        const bmiHint = bmi && range
+          ? ` (مؤشر كتلتك ${bmi} · المدى الصحي لطولك ${range.minWeight}–${range.maxWeight} كجم)`
           : '';
         return {
-          bot: `إيه هدفك الأساسي اللي عايزين نوصله سوا؟ 🎯${bmiHint}`,
+          bot: `إيه هدفك الأساسي؟ 🎯${bmiHint}`,
           answer: GOALS[draft.goal] || draft.goal
         };
       }
       case 'target_weight': {
         const range = getIdealWeightRange(draft.height);
         const rangeHint = range
-          ? ` · المدى الصحي المثالي لطولك (${esc(draft.height)} سم) هو بين ${range.minWeight} و ${range.maxWeight} كجم حسب مؤشر كتلة الجسم (BMI 18.5–24.9)، والمتوسط المثالي حوالي ${range.idealMid} كجم`
+          ? ` · المدى الصحي لطولك: ${range.minWeight}–${range.maxWeight} كجم`
           : '';
         const evalTarget = draft.targetWeight ? evaluateTargetWeightBmi(draft.height, draft.targetWeight) : null;
         return {
-          bot: `جميل جداً! نفسك توصل لوزن كام كيلو؟ 🎯 (وزنك الحالي ${esc(draft.weight)} كجم${rangeHint})`,
+          bot: `جميل جداً! نفسك توصل لوزن كام كيلو؟ 🎯 (وزنك ${esc(draft.weight)} كجم${rangeHint})`,
           answer: draft.targetWeight
-            ? `الوزن المستهدف: ${draft.targetWeight} كجم${evalTarget ? ` (BMI ${evalTarget.targetBmi}${evalTarget.isOutOfRange ? ' · خارج المدى القياسي' : ' · مدى صحي مثالي ✅'})` : ''}`
+            ? `${draft.targetWeight} كجم${evalTarget ? ` (BMI ${evalTarget.targetBmi}${evalTarget.isOutOfRange ? ' · خارج المدى' : ' ✅'})` : ''}`
             : null
         };
       }
       case 'goal_pace': {
         const paceDetails = getGoalPaceDetails(draft);
         const chosen = paceDetails.options.find(o => o.id === draft.goalPace) || paceDetails.options[1];
-        const targetW = Number(draft.targetWeight) || (draft.goal === 'lose' ? Number(draft.weight) - 8 : Number(draft.weight) + 6);
-        const actionWord = draft.goal === 'gain' ? 'نزيد' : 'ننزل';
+        const actionWord = draft.goal === 'gain' ? 'تزيد' : 'تنزل';
         return {
-          bot: `عشان نوصل من ${esc(draft.weight)} كجم لـ ${esc(targetW)} كجم (فرق ${paceDetails.diffKg} كجم)، تحب ${actionWord} بأي معدل سرعة أسبوعي؟ ⏱️ (ده بيحدد كمية الأكل اليومية والمدة المتوقعة للوصول لهدفك)`,
-          answer: `${chosen.title} — ${chosen.durationText}`
+          bot: `تحب ${actionWord} بأي سرعة أسبوعية؟ ⏱️ (الفرق ${paceDetails.diffKg} كجم عن هدفك)`,
+          answer: `${chosen.title} (${chosen.durationText})`
         };
       }
       case 'service_track':
         return {
-          bot: `تحب أجهزلك إيه في خطتك الأسبوعية يا ${esc(userName)}؟ (لما نجمع التغذية والتمارين مع بعض، السيستم بيظبط سعراتك وبروتينك تلقائياً على أيام تمرينك!)`,
+          bot: `تحب أجهزلك إيه في خطتك الأسبوعية؟`,
           answer: {
             nutrition_and_workouts: '🔥 تغذية + تمارين مع بعض',
             nutrition_only: '🥗 نظام غذائي بس',
@@ -450,33 +456,31 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         };
       case 'fitness_level':
         return {
-          bot: `يلا نظبط جدول التمارين! 💪 مستواك الرياضي الحالي وخبرتك في التمرين إيه؟ (عشان نحدد عدد الجولات ومستوى صعوبة التمارين المناسبة ليك)`,
+          bot: `يلا نظبط التمارين! 💪 مستواك الرياضي الحالي إيه؟`,
           answer: FITNESS_LEVELS[draft.fitnessLevel]?.label
+        };
+      case 'workout_location':
+        return {
+          bot: `تحب تتمرن فين؟ 🏋️🏠`,
+          answer: WORKOUT_LOCATIONS[draft.workoutLocation]?.label
         };
       case 'workout_days': {
         const selectedDays = Array.isArray(draft.selectedWorkoutDays) && draft.selectedWorkoutDays.length
           ? draft.selectedWorkoutDays
           : getTrainingDayIndices(draft.workoutDaysCount);
         const dayNames = selectedDays.map(i => WEEKDAYS_AR[Number(i)]?.name).filter(Boolean).join('، ');
-        const effectiveSplit = resolveWorkoutSplit(draft.workoutSplitPreference || 'auto', selectedDays.length);
-        const splitLabel = WORKOUT_SPLITS[effectiveSplit]?.shortLabel || 'Full Body';
         return {
-          bot: `اختار أيام الأسبوع اللي فاضي تتمرن فيها بالظبط! 📅 (السيستم بيظبطلك أفضل تقسيمة عضلات تلقائياً حسب أيامك، وتقدر كمان تختار نظامك المفضل زي PPL أو Bro Split الكلاسيكي لو حابب)`,
-          answer: `${selectedDays.length} ${selectedDays.length === 1 ? 'يوم' : selectedDays.length === 2 ? 'يومين' : 'أيام'} (${dayNames}) · ${splitLabel}`
+          bot: `اختار أيام الأسبوع اللي فاضي تتمرن فيها 📅:`,
+          answer: `${selectedDays.length} ${selectedDays.length === 1 ? 'يوم' : selectedDays.length === 2 ? 'يومين' : 'أيام'} (${dayNames})`
         };
       }
-      case 'workout_location':
-        return {
-          bot: `تحب تتمرن فين؟ 🏋️🏠 (لو بتروح الجيم أيام وتتمرن في البيت أيام، اختار «ميكس بين البيت والجيم»)`,
-          answer: WORKOUT_LOCATIONS[draft.workoutLocation]?.label
-        };
       case 'workout_day_split': {
         const locs = buildDefaultDayLocations(draft.workoutDaysCount, 'home_and_gym', draft.dayLocations, draft.selectedWorkoutDays);
         const summary = Object.entries(locs)
           .map(([idx, loc]) => `${WEEKDAYS_AR[Number(idx)].name}: ${loc === 'home' ? '🏠 بيت' : '🏋️ جيم'}`)
           .join(' · ');
         return {
-          bot: `بما إنك اخترت ميكس بين البيت والجيم، حدد لكل يوم من الأيام اللي اخترتها تحب تتمرنه في البيت 🏠 ولا في الجيم 🏋️:`,
+          bot: `حدد لكل يوم تحب تتمرنه في البيت 🏠 ولا في الجيم 🏋️:`,
           answer: summary
         };
       }
@@ -485,13 +489,24 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
           .map(id => HOME_EQUIPMENT.find(e => e.id === id)?.label || id)
           .join('، ');
         return {
-          bot: `إيه الأدوات المتاحة عندك في البيت؟ 🏠 (اختار كل الموجود عندك، أو «بدون أدوات خالص» وهنعملك تمارين قوية بوزن الجسم)`,
+          bot: `إيه الأدوات المتاحة عندك في البيت؟ 🏠`,
           answer: labels
+        };
+      }
+      case 'workout_split': {
+        const selectedDays = Array.isArray(draft.selectedWorkoutDays) && draft.selectedWorkoutDays.length
+          ? draft.selectedWorkoutDays
+          : getTrainingDayIndices(draft.workoutDaysCount);
+        const effectiveSplit = resolveWorkoutSplit(draft.workoutSplitPreference || 'auto', selectedDays.length, draft.workoutLocation);
+        const splitLabel = WORKOUT_SPLITS[effectiveSplit]?.shortLabel || 'Full Body';
+        return {
+          bot: `تحب نمشي على أي نظام تقسيمة عضلات في الجيم؟ 🎯`,
+          answer: draft.workoutSplitPreference === 'auto' ? `🤖 تلقائي ذكي (${splitLabel})` : splitLabel
         };
       }
       case 'session_duration':
         return {
-          bot: `وقت حصة التمرين الواحدة اللي يناسب يومك قد إيه؟ ⏱️ (شامل التسخين، التمرين الأساسي، والتهدئة)`,
+          bot: `وقت التمرينة الواحدة قد إيه؟ ⏱️`,
           answer: `${draft.sessionDuration} دقيقة`
         };
       case 'injuries': {
@@ -499,18 +514,18 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
           .map(id => INJURIES.find(i => i.id === id)?.label || id)
           .join('، ');
         return {
-          bot: `سلامتك تهمنا قبل أي تمرين ❤️ هل عندك أي ألم أو إصابة حالياً عشان نستبعد التمارين اللي بتضغط عليها ونحط بدائل آمنة للمفاصل؟`,
+          bot: `عندك أي ألم أو إصابة حالياً نراعيها في التمارين؟ ❤️‍🩹`,
           answer: labels
         };
       }
       case 'daily_activity':
         return {
-          bot: `دلوقتي نظبط التغذية الذكية! 🥗 طبيعة شغلك وحركتك اليومية المعتادة (بره وقت الجيم أو التمرين) عاملة إزاي؟ (عشان منحسبش مجهود التمرين مرتين!)`,
+          bot: `دلوقتي التغذية! 🥗 حركتك اليومية المعتادة (بره التمرين) عاملة إزاي؟`,
           answer: {
-            sedentary: '🪑 مكتبي / جلوس أغلب اليوم',
-            light: '🚶 حركة خفيفة خلال اليوم',
-            moderate: '🏃 حركة متوسطة / شغل فيه مشي',
-            active: '🔥 مجهود بدني عالي يومياً'
+            sedentary: '🪑 جلوس أغلب اليوم',
+            light: '🚶 حركة خفيفة',
+            moderate: '🏃 حركة متوسطة',
+            active: '🔥 مجهود بدني عالي'
           }[draft.dailyActivity]
         };
       case 'diseases': {
@@ -518,39 +533,39 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
           .map(id => CHRONIC_DISEASES.find(d => d.id === id)?.label || id)
           .join('، ');
         return {
-          bot: `هل عندك أي حالة صحية من دول؟ 🩺 (عشان نظبط نسب الكارب والصوديوم والدهون، ونرشحلك أنسب نظام غذائي طبياً لحالتك)`,
+          bot: `هل عندك أي حالة صحية نراعيها في الأكل؟ 🩺`,
           answer: labels
         };
       }
       case 'diet_type': {
         const fixed = FIXED_DIET_MEALS[draft.dietType];
         return {
-          bot: `تحب تمشي على أي مدرسة غذائية؟ 🍽️ (اختار الطريقة اللي تريحك في الأكل وتقدر تلتزم بيها بدون ملل — كل اختيار موضح تحته نوع الأكل وعدد الوجبات)`,
+          bot: `تحب تمشي على أي نظام غذائي؟ 🍽️`,
           answer: `${DIETS[draft.dietType] || draft.dietType}${fixed ? ` (${fixed.label})` : ''}`
         };
       }
       case 'if_start_hour':
         return {
-          bot: `في الصيام المتقطع (16/8) هتصوم 16 ساعة (مسموح مية وشاي وقهوة بدون سكر) وتاكل في نافذة 8 ساعات (وجبتين رئيسيتين + سناك) ⏰.. تحب تبدأ أول وجبة الساعة كام؟`,
+          bot: `تحب تبدأ أول وجبة في الصيام المتقطع الساعة كام؟ ⏰`,
           answer: `بداية الأكل الساعة ${draft.eatingStart}`
         };
       case 'meals_count':
         return {
-          bot: `بما إنك اخترت النظام المتوازن، تحب نقسم سعراتك اليومية على كام وجبة؟ 🍱 (نفس إجمالي السعرات والنتيجة في الآخر، فاختار التقسيمة اللي تناسب مواعيد يومك وشهيتك)`,
+          bot: `تحب نقسم أكلك اليومي على كام وجبة؟ 🍱`,
           answer: {
-            2: 'وجبتين كبار مشبعين (2 وجبات)',
-            3: '3 وجبات رئيسية (فطار وغداء وعشاء)',
-            4: '3 وجبات رئيسية + سناك (4 وجبات)',
-            5: '3 وجبات رئيسية + 2 سناك (5 وجبات)'
+            2: 'وجبتين كبار (2)',
+            3: '3 وجبات رئيسية (3)',
+            4: '3 وجبات + سناك (4)',
+            5: '3 وجبات + 2 سناك (5)'
           }[draft.mealsCount]
         };
       case 'budget':
         return {
-          bot: `تحب نرتب جدول أكلاتك اليومي على أي ميزانية؟ 💰 (كل الميزانيات بتحقق نفس البروتين والسعرات بالظبط، الفرق بس في نوع الأصناف المختارة!)`,
+          bot: `تحب نرتب الأكلات على أي ميزانية؟ 💰`,
           answer: {
-            low: '🪙 اقتصادية وشعبية (فول، بيض، جبنة قريش، عدس، بطاطس، فراخ وسمك اقتصادي)',
-            medium: '⚖️ متوسطة ومتوازنة (تنوع يومي ممتاز)',
-            high: '✨ مفتوحة ومتنوعة (تشمل السلمون، اللحوم، المكسرات، والأفوكادو)'
+            low: '🪙 اقتصادية وشعبية',
+            medium: '⚖️ متوسطة ومتوازنة',
+            high: '✨ مفتوحة ومتنوعة'
           }[draft.budget]
         };
       case 'exclusions': {
@@ -558,13 +573,13 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
           .map(id => QUICK_EXCLUSION_CHIPS.find(c => c.id === id)?.label || id)
           .join('، ');
         return {
-          bot: `آخر سؤال يا ${esc(userName)}! 🙌 في أي أكلات مش بتحبها أو عندك حساسية منها وعايز نستبعدها تماماً من جدولك؟`,
+          bot: `آخر سؤال! 🙌 في أي أكلات مش بتحبها نستبعدها من جدولك؟`,
           answer: labels
         };
       }
       case 'summary':
         return {
-          bot: `كده كل حاجة جاهزة يا ${esc(userName)}! 🎉 حسبتلك خطتك الرقمية الكاملة (السعرات، الماكروز، المية، والمدة المتوقعة).. راجعها تحت وتقدر تعدل أي تفصيلة بضغطة واحدة قبل ما نولّد الجدول:`,
+          bot: `كده خطتك الرقمية جاهزة يا ${esc(userName)}! 🎉 راجعها تحت واضغط «اعتمد الخطة» للبدء:`,
           answer: null
         };
       default:
@@ -620,12 +635,12 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         return `
           <div class="chat-quick-replies">
             <button type="button" class="primary-btn chat-choice-btn" data-chat-action="restore-existing">
-              <strong>🏃‍♂️ كمّل على خطتي وبياناتي المحفوظة</strong>
+              <strong>🏃‍♂️ كمّل على خطتي المحفوظة</strong>
               <small>افتح جدول وجباتي وتماريني الحالي فوراً</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn" data-chat-action="start-fresh">
-              <strong>🔄 ابدأ خطة جديدة وتعديل البيانات من الأول</strong>
-              <small>أعد ضبط الوزن أو الهدف أو أيام التمرين والنظام الغذائي</small>
+              <strong>🔄 ابدأ خطة جديدة من الأول</strong>
+              <small>تعديل الوزن أو الهدف أو أيام التمرين</small>
             </button>
           </div>
         `;
@@ -646,7 +661,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
               `).join('')}
             </div>
             <div class="chat-input-row">
-              <input type="number" id="chat-input-age" aria-label="العمر بالسنوات" placeholder="أو اكتب عمرك بالسنوات (مثلاً: 28)" min="10" max="95" step="1" value="${esc(draft.age)}">
+              <input type="number" id="chat-input-age" aria-label="العمر بالسنوات" placeholder="أو اكتب عمرك (مثلاً: 28)" min="10" max="95" step="1" value="${esc(draft.age)}">
               <button type="button" class="primary-btn" data-chat-action="submit-age">التالي ⬅️</button>
             </div>
           </div>
@@ -662,11 +677,9 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
           <div class="chat-quick-replies">
             <button type="button" class="outline-btn chat-choice-btn ${draft.sex === 'male' ? 'is-selected' : ''}" data-chat-select="sex" data-val="male">
               <strong>👨 ذكر</strong>
-              <small>حساب معدل الحرق والكتلة العضلية بمعادلة الرجال</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.sex === 'female' ? 'is-selected' : ''}" data-chat-select="sex" data-val="female">
               <strong>👩 أنثى</strong>
-              <small>حساب معدل الحرق بمعادلة السيدات مع مراعاة الحمل والرضاعة</small>
             </button>
           </div>
         `;
@@ -675,23 +688,18 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
           <div class="chat-quick-replies">
             <button type="button" class="outline-btn chat-choice-btn ${draft.maternalStatus === 'none' ? 'is-selected' : ''}" data-chat-select="maternalStatus" data-val="none">
               <strong>❌ لا يوجد حمل أو رضاعة</strong>
-              <small>حساب الاحتياج اليومي الطبيعي</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.maternalStatus === 'pregnant_t1' ? 'is-selected' : ''}" data-chat-select="maternalStatus" data-val="pregnant_t1">
-              <strong>🤰 حامل — الثلث الأول (الشهر 1 إلى 3)</strong>
-              <small>تثبيت صحي آمن مع منع عجز السعرات والكيتو والصيام</small>
+              <strong>🤰 حامل — الثلث الأول (شهر 1–3)</strong>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.maternalStatus === 'pregnant_t2' ? 'is-selected' : ''}" data-chat-select="maternalStatus" data-val="pregnant_t2">
-              <strong>🤰 حامل — الثلث الثاني (الشهر 4 إلى 6)</strong>
-              <small>إضافة +340 سعرة و+15 جم بروتين يومياً لنمو الجنين</small>
+              <strong>🤰 حامل — الثلث الثاني (شهر 4–6)</strong>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.maternalStatus === 'pregnant_t3' ? 'is-selected' : ''}" data-chat-select="maternalStatus" data-val="pregnant_t3">
-              <strong>🤰 حامل — الثلث الثالث (الشهر 7 إلى 9)</strong>
-              <small>إضافة +450 سعرة و+25 جم بروتين يومياً لدعم الشهور الأخيرة</small>
+              <strong>🤰 حامل — الثلث الثالث (شهر 7–9)</strong>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.maternalStatus === 'breastfeeding' ? 'is-selected' : ''}" data-chat-select="maternalStatus" data-val="breastfeeding">
               <strong>🤱 مرضعة</strong>
-              <small>إضافة +400 سعرة و+20 جم بروتين ومياه إضافية لإدرار الحليب</small>
             </button>
           </div>
         `;
@@ -720,7 +728,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
               `).join('')}
             </div>
             <div class="chat-input-row">
-              <input type="number" id="chat-input-weight" aria-label="الوزن بالكيلوجرام" placeholder="أو اكتب وزنك الحالي بالـ كجم (مثلاً: 78)" min="35" max="250" step="0.1" value="${esc(draft.weight)}">
+              <input type="number" id="chat-input-weight" aria-label="الوزن بالكيلوجرام" placeholder="أو اكتب وزنك بالـ كجم (مثلاً: 78)" min="35" max="250" step="0.1" value="${esc(draft.weight)}">
               <button type="button" class="primary-btn" data-chat-action="submit-weight">التالي ⬅️</button>
             </div>
           </div>
@@ -735,21 +743,21 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
           <div class="chat-quick-replies">
             ${!isPregnant ? `
               <button type="button" class="outline-btn chat-choice-btn ${draft.goal === 'lose' ? 'is-selected' : ''}" data-chat-select="goal" data-val="lose">
-                <strong>🔥 خسارة دهون وتخسيس${recLose ? ' (⭐ الأنسب لجسمك حالياً)' : ''}</strong>
-                <small>حرق الدهون الزائدة ونزول المقاسات مع بروتين عالي يمنع ترهل الجسم أو فقدان العضلات</small>
+                <strong>🔥 خسارة دهون وتخسيس${recLose ? ' ⭐' : ''}</strong>
+                <small>حرق الدهون مع الحفاظ على العضلات</small>
               </button>
             ` : ''}
             <button type="button" class="outline-btn chat-choice-btn ${draft.goal === 'muscle_gain' ? 'is-selected' : ''}" data-chat-select="goal" data-val="muscle_gain">
-              <strong>💪 بناء عضلات وجسم متناسق${recMuscle ? ' (⭐ الأنسب لجسمك حالياً)' : ''}</strong>
-              <small>زيادة الكتلة العضلية الصافية وشد الجسم بوجبات عالية البروتين وفائض سعرات مدروس</small>
+              <strong>💪 بناء عضلات وشد الجسم${recMuscle ? ' ⭐' : ''}</strong>
+              <small>زيادة الكتلة العضلية الصافية ببروتين عالي</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.goal === 'gain' ? 'is-selected' : ''}" data-chat-select="goal" data-val="gain">
-              <strong>📈 زيادة الوزن وعلاج النحافة${recGain ? ' (⭐ الأنسب لجسمك حالياً)' : ''}</strong>
-              <small>وجبات غنية بالسعرات وسهلة الهضم لزيادة الوزن بشكل صحي ومستمر بدون تخمة</small>
+              <strong>📈 زيادة الوزن وعلاج النحافة${recGain ? ' ⭐' : ''}</strong>
+              <small>وجبات غنية بالسعرات وسهلة الهضم</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.goal === 'maintain' ? 'is-selected' : ''}" data-chat-select="goal" data-val="maintain">
-              <strong>⚖️ الحفاظ على الوزن وصحة الجسم${isPregnant ? ' (⭐ الآمن للحمل)' : ''}</strong>
-              <small>تثبيت وزنك الحالي وتنظيم أكلك اليومي لتحسين الطاقة والهضم واللياقة</small>
+              <strong>⚖️ الحفاظ على الوزن وصحة الجسم${isPregnant ? ' ⭐' : ''}</strong>
+              <small>تثبيت الوزن وتنظيم الأكل والطاقة</small>
             </button>
           </div>
         `;
@@ -774,25 +782,24 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         const quickOptions = [];
         if (range) {
           if (draft.goal === 'lose') {
-            if (range.idealMid < w) quickOptions.push({ val: range.idealMid, label: `🎯 الوزن المثالي المتوسط (${range.idealMid} كجم)` });
-            if (range.maxWeight < w && range.maxWeight !== range.idealMid) quickOptions.push({ val: range.maxWeight, label: `✅ بداية المدى الصحي (${range.maxWeight} كجم)` });
-            if (range.minWeight < w) quickOptions.push({ val: range.minWeight, label: `📉 الحد الأدنى الصحي (${range.minWeight} كجم)` });
+            if (range.idealMid < w) quickOptions.push({ val: range.idealMid, label: `🎯 المثالي (${range.idealMid} كجم)` });
+            if (range.maxWeight < w && range.maxWeight !== range.idealMid) quickOptions.push({ val: range.maxWeight, label: `✅ أول الصحي (${range.maxWeight} كجم)` });
+            if (range.minWeight < w) quickOptions.push({ val: range.minWeight, label: `📉 الأدنى الصحي (${range.minWeight} كجم)` });
           } else if (draft.goal === 'gain') {
-            if (range.minWeight > w) quickOptions.push({ val: range.minWeight, label: `✅ أول مدى الوزن الصحي (${range.minWeight} كجم)` });
-            if (range.idealMid > w) quickOptions.push({ val: range.idealMid, label: `🎯 الوزن المثالي المتوسط (${range.idealMid} كجم)` });
-            if (range.maxWeight > w && range.maxWeight !== range.idealMid) quickOptions.push({ val: range.maxWeight, label: `💪 الحد الأعلى الصحي (${range.maxWeight} كجم)` });
+            if (range.minWeight > w) quickOptions.push({ val: range.minWeight, label: `✅ أول الصحي (${range.minWeight} كجم)` });
+            if (range.idealMid > w) quickOptions.push({ val: range.idealMid, label: `🎯 المثالي (${range.idealMid} كجم)` });
+            if (range.maxWeight > w && range.maxWeight !== range.idealMid) quickOptions.push({ val: range.maxWeight, label: `💪 الأعلى الصحي (${range.maxWeight} كجم)` });
           } else {
-            quickOptions.push({ val: Math.round(w + 4), label: `💪 زيادة +4 كجم عضل (${Math.round(w + 4)} كجم)` });
-            if (range.idealMid >= w) quickOptions.push({ val: range.idealMid, label: `🎯 الوزن المثالي المتوسط (${range.idealMid} كجم)` });
-            if (range.maxWeight >= w) quickOptions.push({ val: range.maxWeight, label: `🏆 الحد الأعلى لـ BMI الصحي (${range.maxWeight} كجم)` });
+            quickOptions.push({ val: Math.round(w + 4), label: `💪 +4 كجم عضل (${Math.round(w + 4)} كجم)` });
+            if (range.idealMid >= w) quickOptions.push({ val: range.idealMid, label: `🎯 المثالي (${range.idealMid} كجم)` });
+            if (range.maxWeight >= w) quickOptions.push({ val: range.maxWeight, label: `🏆 الأعلى الصحي (${range.maxWeight} كجم)` });
           }
         }
         return `
           <div class="chat-target-weight-box">
             ${range ? `
               <div class="chat-ideal-range-banner">
-                <div class="ideal-range-title">📏 <strong>المدى الصحي المثالي لطولك (${esc(draft.height)} سم):</strong> من <strong>${range.minWeight} كجم</strong> إلى <strong>${range.maxWeight} كجم</strong> <small>(BMI 18.5 – 24.9)</small></div>
-                <div class="ideal-range-sub">المتوسط المثالي لطولك: <strong>${range.idealMid} كجم</strong> · وزنك الحالي: <strong>${esc(draft.weight)} كجم</strong></div>
+                <div class="ideal-range-title">📏 المدى الصحي لطولك (${esc(draft.height)} سم): <strong>${range.minWeight} – ${range.maxWeight} كجم</strong> · المتوسط المثالي: <strong>${range.idealMid} كجم</strong></div>
                 ${quickOptions.length ? `
                   <div class="ideal-quick-chips">
                     ${quickOptions.map(q => `
@@ -809,14 +816,14 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
             <div id="chat-target-bmi-live" class="chat-bmi-live ${evalBmi?.isOutOfRange ? 'is-warning' : 'is-healthy'}" role="status" aria-live="polite">
               ${evalBmi ? (
                 evalBmi.isOutOfRange
-                  ? `⚠️ <strong>تحذير مؤشر كتلة الجسم (BMI ${evalBmi.targetBmi}):</strong> ${esc(evalBmi.warningText)}`
-                  : `✅ <strong>مدى صحي مثالي (BMI ${evalBmi.targetBmi}):</strong> الوزن المختار (${evalBmi.targetWeight} كجم) يقع داخل المدى الصحي المثالي لطولك (${evalBmi.minWeight} – ${evalBmi.maxWeight} كجم).`
+                  ? `⚠️ <strong>تحذير (BMI ${evalBmi.targetBmi}):</strong> ${esc(evalBmi.warningText)}`
+                  : `✅ <strong>وزن صحي مثالي (BMI ${evalBmi.targetBmi})</strong> ضمن المدى الطبيعي لطولك (${evalBmi.minWeight}–${evalBmi.maxWeight} كجم).`
               ) : ''}
             </div>
             ${bmiWarningPendingFor != null && evalBmi?.isOutOfRange ? `
               <div class="chat-bmi-confirm-actions" role="alert">
-                <button type="button" class="primary-btn" data-chat-action="accept-healthy-weight" data-healthy-val="${evalBmi.clampedHealthy}">✨ اعتمد أقرب وزن صحي مثالي (${evalBmi.clampedHealthy} كجم) والمتابعة</button>
-                <button type="button" class="outline-btn" data-chat-action="force-target-weight">⚠️ فاهم التحذير، كمّل على الوزن ده (${evalBmi.targetWeight} كجم) ⬅️</button>
+                <button type="button" class="primary-btn" data-chat-action="accept-healthy-weight" data-healthy-val="${evalBmi.clampedHealthy}">✨ اعتمد أقرب وزن صحي (${evalBmi.clampedHealthy} كجم)</button>
+                <button type="button" class="outline-btn" data-chat-action="force-target-weight">⚠️ كمّل على (${evalBmi.targetWeight} كجم) ⬅️</button>
               </div>
             ` : ''}
           </div>
@@ -839,16 +846,16 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         return `
           <div class="chat-quick-replies">
             <button type="button" class="outline-btn chat-choice-btn ${draft.serviceTrack === 'nutrition_and_workouts' ? 'is-selected' : ''}" data-chat-select="serviceTrack" data-val="nutrition_and_workouts">
-              <strong>🔥 الاتنين مع بعض (نظام غذائي + جدول تمارين) — موصى به ⭐</strong>
-              <small>أفضل نتيجة؛ سعراتك وبروتينك هيتظبطوا تلقائياً على أيام ومجهود تمرينك</small>
+              <strong>🔥 تغذية + تمارين مع بعض ⭐</strong>
+              <small>سعراتك وبروتينك هيتظبطوا تلقائياً على أيام تمرينك</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.serviceTrack === 'nutrition_only' ? 'is-selected' : ''}" data-chat-select="serviceTrack" data-val="nutrition_only">
-              <strong>🥗 نظام غذائي بس (بدون تمارين)</strong>
-              <small>جدول وجبات يومي محسوب السعرات والماكروز بالجرام والوحدات المنزلية</small>
+              <strong>🥗 نظام غذائي بس</strong>
+              <small>جدول وجبات يومي محسوب بالجرام والوحدات المنزلية</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.serviceTrack === 'workouts_only' ? 'is-selected' : ''}" data-chat-select="serviceTrack" data-val="workouts_only">
-              <strong>💪 جدول تمارين بس (جيم أو بيت)</strong>
-              <small>خطة تدريبية أسبوعية مفصلة بالجولات والعدات والبدائل الآمنة</small>
+              <strong>💪 جدول تمارين بس</strong>
+              <small>خطة تدريبية أسبوعية للجيم أو البيت</small>
             </button>
           </div>
         `;
@@ -863,65 +870,6 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
             `).join('')}
           </div>
         `;
-      case 'workout_days': {
-        const selectedDays = Array.isArray(draft.selectedWorkoutDays) && draft.selectedWorkoutDays.length
-          ? draft.selectedWorkoutDays
-          : getTrainingDayIndices(draft.workoutDaysCount);
-        draft.selectedWorkoutDays = selectedDays;
-        draft.workoutDaysCount = selectedDays.length;
-        const availableSplits = getAvailableWorkoutSplits(selectedDays.length);
-        if (!availableSplits.some(s => s.id === (draft.workoutSplitPreference || 'auto'))) {
-          draft.workoutSplitPreference = 'auto';
-        }
-        const currentSplitPref = draft.workoutSplitPreference || 'auto';
-        const selectedNames = selectedDays.map(i => WEEKDAYS_AR[Number(i)]?.name).filter(Boolean).join('، ');
-        const insights = computeSmartOnboardingInsights(draft);
-        const presets = [
-          { label: '3 أيام (سبت · اثنين · أربعاء) ⭐', days: [0, 2, 4] },
-          { label: '3 أيام (أحد · ثلاثاء · خميس)', days: [1, 3, 5] },
-          { label: '4 أيام (سبت · أحد · ثلاثاء · أربعاء)', days: [0, 1, 3, 4] },
-          { label: '5 أيام (سبت–أربعاء ماعدا الثلاثاء)', days: [0, 1, 3, 4, 5] }
-        ];
-        return `
-          <div class="chat-multi-box">
-            <p class="chat-days-helper">اضغط على الأيام اللي فاضي تتمرن فيها عشان تحدد جدولك بنفسك (من يوم لحد 7 أيام):</p>
-            <div class="chat-weekdays-picker" role="group" aria-label="أيام الأسبوع للتمرين">
-              ${WEEKDAYS_AR.map(wd => {
-                const isSelected = selectedDays.includes(wd.index);
-                return `
-                  <button type="button" class="outline-btn chat-weekday-btn ${isSelected ? 'is-selected' : ''}" data-toggle-workout-day="${wd.index}" aria-pressed="${isSelected}">
-                    <span class="weekday-check">${isSelected ? '✅' : '⬜'}</span>
-                    <strong>${esc(wd.name)}</strong>
-                    <small>${isSelected ? 'يوم تمرين 💪' : 'يوم راحة 🌿'}</small>
-                  </button>
-                `;
-              }).join('')}
-            </div>
-            <div class="chat-days-presets">
-              <span>اختيارات أيام سريعة:</span>
-              ${presets.map(p => `
-                <button type="button" class="outline-btn chat-preset-chip" data-preset-workout-days="${p.days.join(',')}">${esc(p.label)}</button>
-              `).join('')}
-            </div>
-            <div class="chat-split-preview" role="status" aria-live="polite">
-              <div class="chat-split-preview-head">
-                💡 <strong>نظام تقسيمة العضلات (${esc(insights.splitPreview.name)}):</strong>
-                <small>${esc(insights.splitPreview.desc)}</small>
-              </div>
-              <div class="chat-split-selector-chips" role="group" aria-label="نظام تقسيمة التمارين">
-                ${availableSplits.map(sp => `
-                  <button type="button" class="outline-btn chat-chip ${currentSplitPref === sp.id ? 'is-selected' : ''}" data-select-workout-split="${sp.id}">
-                    ${esc(sp.label)}
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-            <button type="button" class="primary-btn chat-confirm-multi" data-chat-action="confirm-workout-days">
-              تأكيد الأيام والتقسيمة (${selectedDays.length} ${selectedDays.length === 1 ? 'يوم' : selectedDays.length === 2 ? 'يومين' : 'أيام'}: ${esc(selectedNames)} · ${esc(insights.splitPreview.name)}) ✅
-            </button>
-          </div>
-        `;
-      }
       case 'workout_location':
         return `
           <div class="chat-quick-replies">
@@ -933,6 +881,43 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
             `).join('')}
           </div>
         `;
+      case 'workout_days': {
+        const selectedDays = Array.isArray(draft.selectedWorkoutDays) && draft.selectedWorkoutDays.length
+          ? draft.selectedWorkoutDays
+          : getTrainingDayIndices(draft.workoutDaysCount);
+        draft.selectedWorkoutDays = selectedDays;
+        draft.workoutDaysCount = selectedDays.length;
+        const selectedNames = selectedDays.map(i => WEEKDAYS_AR[Number(i)]?.name).filter(Boolean).join('، ');
+        const presets = [
+          { label: '3 أيام (سبت·اثنين·أربعاء) ⭐', days: [0, 2, 4] },
+          { label: '4 أيام (سبت·أحد·ثلاثاء·أربعاء)', days: [0, 1, 3, 4] },
+          { label: '5 أيام (سبت–أربعاء)', days: [0, 1, 2, 3, 4] }
+        ];
+        return `
+          <div class="chat-multi-box">
+            <div class="chat-weekdays-picker" role="group" aria-label="أيام الأسبوع للتمرين">
+              ${WEEKDAYS_AR.map(wd => {
+                const isSelected = selectedDays.includes(wd.index);
+                return `
+                  <button type="button" class="outline-btn chat-weekday-btn ${isSelected ? 'is-selected' : ''}" data-toggle-workout-day="${wd.index}" aria-pressed="${isSelected}">
+                    <span class="weekday-check">${isSelected ? '✅' : '⬜'}</span>
+                    <strong>${esc(wd.name)}</strong>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+            <div class="chat-days-presets">
+              <span>اختيار سريع:</span>
+              ${presets.map(p => `
+                <button type="button" class="outline-btn chat-preset-chip" data-preset-workout-days="${p.days.join(',')}">${esc(p.label)}</button>
+              `).join('')}
+            </div>
+            <button type="button" class="primary-btn chat-confirm-multi" data-chat-action="confirm-workout-days">
+              تأكيد الأيام (${selectedDays.length} ${selectedDays.length === 1 ? 'يوم' : selectedDays.length === 2 ? 'يومين' : 'أيام'}: ${esc(selectedNames)}) ✅
+            </button>
+          </div>
+        `;
+      }
       case 'workout_day_split': {
         const locs = buildDefaultDayLocations(draft.workoutDaysCount, 'home_and_gym', draft.dayLocations, draft.selectedWorkoutDays);
         draft.dayLocations = locs;
@@ -961,9 +946,28 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
                 <button type="button" class="outline-btn chat-chip ${draft.homeEquipment.includes(item.id) ? 'is-selected' : ''}" data-multi-key="homeEquipment" data-item-id="${item.id}">${esc(item.label)}</button>
               `).join('')}
             </div>
-            <button type="button" class="primary-btn chat-confirm-multi" data-chat-action="confirm-multi" data-step="home_equipment">تأكيد الأدوات المتاحة (${draft.homeEquipment.length}) ✅</button>
+            <button type="button" class="primary-btn chat-confirm-multi" data-chat-action="confirm-multi" data-step="home_equipment">تأكيد الأدوات (${draft.homeEquipment.length}) ✅</button>
           </div>
         `;
+      case 'workout_split': {
+        const daysCount = Array.isArray(draft.selectedWorkoutDays) && draft.selectedWorkoutDays.length
+          ? draft.selectedWorkoutDays.length
+          : Number(draft.workoutDaysCount) || 3;
+        const availableSplits = getAvailableWorkoutSplits(daysCount);
+        const currentSplitPref = availableSplits.some(s => s.id === draft.workoutSplitPreference)
+          ? draft.workoutSplitPreference
+          : 'auto';
+        return `
+          <div class="chat-quick-replies">
+            ${availableSplits.map(sp => `
+              <button type="button" class="outline-btn chat-choice-btn ${currentSplitPref === sp.id ? 'is-selected' : ''}" data-chat-select="workoutSplitPreference" data-val="${sp.id}">
+                <strong>${esc(sp.label)}</strong>
+                ${sp.desc ? `<small>${esc(sp.desc)}</small>` : ''}
+              </button>
+            `).join('')}
+          </div>
+        `;
+      }
       case 'session_duration':
         return `
           <div class="chat-quick-replies">
@@ -990,20 +994,20 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         return `
           <div class="chat-quick-replies">
             <button type="button" class="outline-btn chat-choice-btn ${draft.dailyActivity === 'sedentary' ? 'is-selected' : ''}" data-chat-select="dailyActivity" data-val="sedentary">
-              <strong>🪑 جلوس أغلب اليوم (شغل مكتبي / مذاكرة / قيادة)</strong>
-              <small>حركة يومية قليلة وأقل من 4,000 خطوة يومياً بره وقت التمرين</small>
+              <strong>🪑 جلوس أغلب اليوم</strong>
+              <small>شغل مكتبي أو مذاكرة أو قيادة</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.dailyActivity === 'light' ? 'is-selected' : ''}" data-chat-select="dailyActivity" data-val="light">
-              <strong>🚶 نشاط خفيف (مشاوير يومية / شغل منزلي خفيف)</strong>
-              <small>تتحرك على رجلك فترات متقطعة (حوالي 4,000 إلى 7,500 خطوة يومياً)</small>
+              <strong>🚶 نشاط خفيف</strong>
+              <small>مشاوير يومية أو حركة منزلية خفيفة</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.dailyActivity === 'moderate' ? 'is-selected' : ''}" data-chat-select="dailyActivity" data-val="moderate">
-              <strong>🏃 نشاط متوسط (حركة مستمرة / شغل واقف أو ميداني)</strong>
-              <small>مثل المدرس، المهندس الميداني، الطبيب، أو البيع (7,500 إلى 10,000+ خطوة يومياً)</small>
+              <strong>🏃 نشاط متوسط</strong>
+              <small>حركة مستمرة أو شغل واقف / ميداني</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.dailyActivity === 'active' ? 'is-selected' : ''}" data-chat-select="dailyActivity" data-val="active">
-              <strong>🔥 نشاط بدني عالي (شغل يدوي شاق أو حركة طوال اليوم)</strong>
-              <small>مجهود عضلي وحركي عالي ومستمر لساعات طويلة يومياً</small>
+              <strong>🔥 نشاط بدني عالي</strong>
+              <small>مجهود عضلي وحركي شاق طوال اليوم</small>
             </button>
           </div>
         `;
@@ -1029,15 +1033,15 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
             ${availableDiets.map(([k, label]) => {
               let badge = '';
               if (k === 'low_carb' && (draft.diseases.includes('insulin_resistance') || draft.diseases.includes('pcos') || draft.diseases.includes('diabetes'))) {
-                badge = ' ⭐ موصى به لحالتك الصحية';
+                badge = ' ⭐ موصى به لحالتك';
               } else if (k === 'dash' && draft.diseases.includes('hypertension')) {
-                badge = ' ⭐ موصى به لضبط الضغط';
+                badge = ' ⭐ لضبط الضغط';
               } else if (k === 'mediterranean' && draft.diseases.includes('cholesterol')) {
-                badge = ' ⭐ موصى به للكوليسترول والقلب';
+                badge = ' ⭐ للقلب والكوليسترول';
               } else if (k === 'high_protein' && draft.goal === 'muscle_gain') {
-                badge = ' ⭐ ممتاز لبناء العضل';
+                badge = ' ⭐ لبناء العضل';
               } else if (k === 'balanced') {
-                badge = ' ⭐ الأكثر مرونة وشعبية';
+                badge = ' ⭐ الأكثر مرونة';
               }
               const userDesc = DIET_USER_DESCRIPTIONS[k] || FIXED_DIET_MEALS[k]?.label || '';
               return `
@@ -1054,13 +1058,11 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         return `
           <div class="chat-quick-replies chat-days-grid">
             ${[
-              ['09:00', '9:00 صباحاً', 'نافذة الأكل من 9 صباحاً حتى 5 مساءً (ممتاز لمن يستيقظ مبكراً)'],
-              ['10:00', '10:00 صباحاً', 'نافذة الأكل من 10 صباحاً حتى 6 مساءً'],
-              ['11:00', '11:00 صباحاً', 'نافذة الأكل من 11 صباحاً حتى 7 مساءً'],
-              ['12:00', '12:00 ظهراً ⭐ (الأشهر)', 'نافذة الأكل من 12 ظهراً حتى 8 مساءً — سهلة ومناسبة لأغلب المواعيد'],
-              ['13:00', '1:00 ظهراً', 'نافذة الأكل من 1 ظهراً حتى 9 مساءً'],
-              ['14:00', '2:00 ظهراً', 'نافذة الأكل من 2 ظهراً حتى 10 مساءً (ممتاز لمن يسهر)'],
-              ['15:00', '3:00 عصراً', 'نافذة الأكل من 3 عصراً حتى 11 مساءً']
+              ['09:00', '9:00 صباحاً', 'الأكل من 9 ص حتى 5 م'],
+              ['10:00', '10:00 صباحاً', 'الأكل من 10 ص حتى 6 م'],
+              ['12:00', '12:00 ظهراً ⭐', 'الأكل من 12 ظ حتى 8 م (الأشهر)'],
+              ['14:00', '2:00 ظهراً', 'الأكل من 2 ظ حتى 10 م'],
+              ['16:00', '4:00 عصراً', 'الأكل من 4 ع حتى 12 ص']
             ].map(([val, title, desc]) => `
               <button type="button" class="outline-btn chat-choice-btn ${draft.eatingStart === val ? 'is-selected' : ''}" data-chat-select="eatingStart" data-val="${val}">
                 <strong>⏰ ${esc(title)}</strong>
@@ -1073,20 +1075,20 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         return `
           <div class="chat-quick-replies">
             <button type="button" class="outline-btn chat-choice-btn ${Number(draft.mealsCount) === 2 ? 'is-selected' : ''}" data-chat-select="mealsCount" data-val="2">
-              <strong>2️⃣ وجبتين كبار مشبعين (2 وجبات)</strong>
-              <small>ممتاز لو يومك مشغول ومش بتحب تحضر أكل كتير</small>
+              <strong>2️⃣ وجبتين كبار مشبعين</strong>
+              <small>مناسب لو يومك مشغول</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${Number(draft.mealsCount) === 3 ? 'is-selected' : ''}" data-chat-select="mealsCount" data-val="3">
-              <strong>3️⃣ 3 وجبات رئيسية (فطار + غداء + عشاء)</strong>
-              <small>التقسيمة الكلاسيكية المريحة بدون سناك بين الوجبات</small>
+              <strong>3️⃣ 3 وجبات رئيسية</strong>
+              <small>فطار وغداء وعشاء بدون سناك</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${Number(draft.mealsCount) === 4 ? 'is-selected' : ''}" data-chat-select="mealsCount" data-val="4">
-              <strong>4️⃣ 3 وجبات رئيسية + سناك (موصى به ⭐)</strong>
-              <small>أفضل توازن يمنع الجوع بين الغداء والعشاء ويحافظ على ثبات الطاقة</small>
+              <strong>4️⃣ 3 وجبات + سناك ⭐</strong>
+              <small>يمنع الجوع بين الوجبات</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${Number(draft.mealsCount) === 5 ? 'is-selected' : ''}" data-chat-select="mealsCount" data-val="5">
-              <strong>5️⃣ 3 وجبات رئيسية + 2 سناك (5 وجبات)</strong>
-              <small>ممتاز لزيادة الوزن وبناء العضل أو لمن يفضل وجبات أصغر على مدار اليوم</small>
+              <strong>5️⃣ 3 وجبات + 2 سناك</strong>
+              <small>ممتاز لزيادة الوزن وبناء العضل</small>
             </button>
           </div>
         `;
@@ -1094,16 +1096,16 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         return `
           <div class="chat-quick-replies">
             <button type="button" class="outline-btn chat-choice-btn ${draft.budget === 'low' ? 'is-selected' : ''}" data-chat-select="budget" data-val="low">
-              <strong>🪙 اقتصادية وشعبية (أكل البيت المتوفر)</strong>
-              <small>فول، بيض، جبنة قريش، عدس، كشري، بطاطس، صدور فراخ، وسمك بلطي — بتحقق كامل البروتين بأقل تكلفة</small>
+              <strong>🪙 اقتصادية وشعبية</strong>
+              <small>فول، بيض، جبنة قريش، عدس، بطاطس، فراخ وبلطي</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.budget === 'medium' ? 'is-selected' : ''}" data-chat-select="budget" data-val="medium">
-              <strong>⚖️ متوسطة ومتوازنة (موصى به ⭐)</strong>
-              <small>تنوع يومي بين الفراخ، اللحمة البلدي، الأسماك، التونة، الشوفان، والزبادي اليوناني</small>
+              <strong>⚖️ متوسطة ومتوازنة ⭐</strong>
+              <small>فراخ، لحمة بلدي، أسماك، تونة، شوفان وزبادي</small>
             </button>
             <button type="button" class="outline-btn chat-choice-btn ${draft.budget === 'high' ? 'is-selected' : ''}" data-chat-select="budget" data-val="high">
-              <strong>✨ مفتوحة ومتنوعة (شاملة الأصناف الفاخرة)</strong>
-              <small>تضيف السلمون، الجمبري، الستيك، المكسرات المشكلة، والأفوكادو لجدولك</small>
+              <strong>✨ مفتوحة ومتنوعة</strong>
+              <small>تشمل السلمون، الجمبري، الستيك، والمكسرات</small>
             </button>
           </div>
         `;
@@ -1115,7 +1117,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
                 <button type="button" class="outline-btn chat-chip ${draft.excludedGroups.includes(c.id) ? 'is-selected' : ''}" data-multi-key="excludedGroups" data-item-id="${c.id}">${esc(c.label)}</button>
               `).join('')}
             </div>
-            <button type="button" class="primary-btn chat-confirm-multi" data-chat-action="confirm-multi" data-step="exclusions">اعرض ملخص خطتي الرقمية النهائية 🎯</button>
+            <button type="button" class="primary-btn chat-confirm-multi" data-chat-action="confirm-multi" data-step="exclusions">اعرض ملخص خطتي 🎯</button>
           </div>
         `;
       case 'summary':
@@ -1581,6 +1583,9 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         draft.dayLocations = buildDefaultDayLocations(draft.workoutDaysCount, draft.workoutLocation, null, draft.selectedWorkoutDays);
       }
       if (key === 'workoutLocation') {
+        if (val === 'home_only') {
+          draft.workoutSplitPreference = 'auto';
+        }
         draft.dayLocations = buildDefaultDayLocations(draft.workoutDaysCount, draft.workoutLocation, draft.dayLocations, draft.selectedWorkoutDays);
       }
       if (key === 'dietType' && FIXED_DIET_MEALS[val]) {
