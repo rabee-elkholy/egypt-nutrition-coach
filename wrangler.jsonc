@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "egypt-nutrition-coach",
+  "main": "dist/server/cloudflare.js",
+  "compatibility_date": "2025-10-11",
+  "compatibility_flags": ["nodejs_als"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS",
+    "run_worker_first": ["/v1/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "egypt-nutrition-coaching",
+      "database_id": "90fa62f1-7866-4156-ac29-f0aec4814bab",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}
