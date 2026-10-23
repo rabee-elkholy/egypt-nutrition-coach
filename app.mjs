@@ -1,4 +1,4 @@
-import {mountPlanner} from './planner-ui.mjs';
+import {mountPlanner} from './coaching-ui.mjs';
 import {planningFilter,SLOTS,BUDGETS} from './planning-tags.mjs';
 import {portionInfo,sourceVolume,volumeGrams} from './portions.mjs';
 import {

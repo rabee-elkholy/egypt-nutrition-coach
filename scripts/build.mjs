@@ -1,0 +1,9 @@
+import {build} from 'esbuild';
+import {mkdir,rm,copyFile,cp,readFile,readdir,writeFile} from 'node:fs/promises';
+await rm('dist',{recursive:true,force:true});await mkdir('dist/server',{recursive:true});await mkdir('dist/client',{recursive:true});await mkdir('dist/.openai',{recursive:true});
+await build({entryPoints:['server/worker.mjs'],outfile:'dist/server/index.js',bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true});
+for(const f of await readdir('.'))if(/\.(mjs|css|html)$/.test(f))await copyFile(f,'dist/client/'+f);
+for(const dir of ['data','fonts'])await cp(dir,'dist/client/'+dir,{recursive:true});
+await cp('drizzle','dist/drizzle',{recursive:true});await copyFile('.openai/hosting.json','dist/.openai/hosting.json');
+await writeFile('dist/server/wrangler.json',JSON.stringify({name:'egypt-nutrition-coach',main:'index.js',compatibility_date:'2025-10-11',assets:{directory:'../client',binding:'ASSETS',run_worker_first:['/v1/*']},d1_databases:[{binding:'DB',database_name:'coaching',database_id:'local',migrations_dir:'../drizzle'}]}));
+console.log('Built Worker, static assets, and schema migrations.');

@@ -110,13 +110,6 @@ export function estimateNeeds(input) {
 
   let ree =
     10 * weight + 6.25 * height - 5 * age + (input.sex === "male" ? 5 : -161);
-  if (diseases.has("hypothyroidism")) {
-    ree *= 0.95;
-    notes.push("تم تعديل معدل الحرق الأساسي (-5%) لمراعاة خمول الغدة الدرقية.");
-  } else if (diseases.has("hyperthyroidism")) {
-    ree *= 1.08;
-    notes.push("تم تعديل معدل الحرق الأساسي (+8%) لمراعاة فرط نشاط الغدة الدرقية.");
-  }
 
   const baseline = ree * ACTIVITY[input.activity],
     exercise = sportsEnergy(input, weight, baseline),
@@ -775,19 +768,13 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
   );
 
   for (let day = 0; day < 7; day++) {
-    const isWorkoutDay = workoutDayIndices.has(day) && (targets.training_days || 0) > 0;
+    const isWorkoutDay = workoutDayIndices.has(new Date(addDays(startDate, day) + "T12:00:00Z").getUTCDay()) && (targets.training_days || 0) > 0;
     const meals = [];
     const chosen = new Set(),
       chosenProteins = new Set(),
       chosenMains = new Set();
     for (const slot of slots) {
       let slotShare = slot.share;
-      // Coupling workout days with nutrition: boost Lunch/Post-workout slot on training days
-      if (isWorkoutDay && slots.length >= 3) {
-        if (slot.slot === "lunch") slotShare += 0.04;
-        else if (slot.slot === "breakfast") slotShare -= 0.02;
-        else if (slot.slot === "snack") slotShare -= 0.02 / Math.max(1, slots.filter(s => s.slot === "snack").length);
-      }
       const desired = targets.energy * slotShare,
         protein = targets.protein * slotShare;
       const mainIdentity = t => t.dish_family || (t.component_definitions
