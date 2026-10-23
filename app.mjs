@@ -1,5 +1,7 @@
-// Adaptive coaching UI needs the Worker /v1 API (D1). On static hosting (GitHub Pages)
-// that API does not exist, so fall back to the local-storage planner.
+// Canonical hosting is Cloudflare Workers + D1. Redirect legacy GitHub Pages visitors automatically.
+if (typeof location !== 'undefined' && location.hostname === 'rabee-elkholy.github.io') {
+  location.replace('https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev' + location.search + (location.hash || '#planner'));
+}
 async function mountPlanner(opts){
   let hasBackend=false;
   try{const r=await fetch('/v1/state',{headers:{Accept:'application/json'}});hasBackend=(r.headers.get('content-type')||'').includes('application/json');}catch{hasBackend=false;}

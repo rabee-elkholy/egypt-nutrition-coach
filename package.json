@@ -7,6 +7,8 @@
     "test": "node --test tests/*.test.mjs",
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",
+    "deploy": "npm run build && npx wrangler deploy --config wrangler.jsonc",
+    "deploy:d1": "npx wrangler d1 migrations apply egypt-nutrition-coaching --remote --config wrangler.jsonc",
     "db:generate": "drizzle-kit generate",
     "test:browser": "node scripts/browser-onboarding.mjs && node scripts/browser-smoke.mjs && node scripts/browser-audit.mjs && node scripts/browser-simulation.mjs",
     "check": "npm run build && npm test",
