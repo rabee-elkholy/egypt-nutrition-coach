@@ -1,20 +1,23 @@
+import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {eachSide} from './workouts.mjs';
 import {localDate,dateOffset,MUSCLE_REGIONS,validDate} from '../coaching-shared.mjs';
 const DAY=86400000;
 const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:null;
 const reportComplete=c=>Number.isFinite(c.sleepHours)&&c.sleepHours>=0&&c.sleepHours<=24&&Number.isInteger(c.sleepQuality)&&c.sleepQuality>=1&&c.sleepQuality<=5&&Number.isInteger(c.fatigue)&&c.fatigue>=1&&c.fatigue<=5&&['pain','illness','redFlags'].every(k=>typeof c[k]==='boolean');
 const validReports=(reports,now,days)=>[...new Map(reports.filter(c=>reportComplete(c)&&Number.isFinite(Date.parse(c.at))&&Date.parse(c.at)<=now&&Date.parse(c.at)>=now-days*DAY&&!c.illness&&!c.redFlags).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).map(c=>[c.date||localDate(Date.parse(c.at)),c])).values()];
-export function chronologicalExposures(logs,now=Date.now(),days=28){
+export function chronologicalExposures(logs,now=clockNow(),days=28){
  const start=dateOffset(localDate(now),-(days-1)),end=localDate(now),dated=logs.map(l=>({...l,date:l.date||l.at?.slice(0,10)})).filter(l=>validDate(l.date)&&l.date>=start&&l.date<=end);
  return [...new Map(dated.sort((a,b)=>a.date.localeCompare(b.date)||(Date.parse(a.at)||0)-(Date.parse(b.at)||0)).map(l=>[l.date,l])).values()];
 }
-export function recovery(checkins, now=Date.now(),workoutLogs=[]){
+export function recovery(checkins, now=clockNow(),workoutLogs=[]){
  const fresh=checkins.filter(c=>Date.parse(c.at)<=now&&now-Date.parse(c.at)<=DAY).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).at(-1);
  const coverage=validReports(checkins,now,14);const baselineReports=validReports(checkins.filter(c=>(c.date||c.at?.slice(0,10))<(fresh?.date||fresh?.at?.slice(0,10)||localDate(now))),now,28);
  const baselineReady=baselineReports.length>=7;
  const baseline=baselineReady?{sleepHours:mean(baselineReports.map(c=>c.sleepHours)),fatigue:mean(baselineReports.map(c=>c.fatigue)),reports:baselineReports.length}:null;
  const base={confidence:coverage.length>=14?'high':baselineReady?'medium':'low',baselineReady,baseline,coverage:coverage.length,muscles:{},setFactor:1,progressionAllowed:false};
  if(fresh?.redFlags===true)return {...base,status:'stop',reasons:['أوقف التمرين واطلب تقييمًا طبيًا عاجلًا مع ألم الصدر أو الدوخة الشديدة.'],setFactor:0};
+ const newPain=workoutLogs.some(l=>validDate(l.date)&&l.date>=dateOffset(localDate(now),-1)&&l.date<=localDate(now)&&Date.parse(l.at)<=now&&Date.parse(l.at)>=now-DAY&&(!fresh||Date.parse(l.at)>Date.parse(fresh.at))&&l.sets?.some(set=>set.pain===true));
+ if(newPain)return {...base,status:'hold',reasons:['سجلت ألمًا أثناء تمرين بعد آخر متابعة؛ أوقف الحركة المؤلمة وسجّل تقييم استشفاء جديدًا قبل زيادة الحمل.']};
  if(!fresh||!reportComplete(fresh))return {...base,status:'unknown',reasons:['سجّل النوم والإجهاد والألم قبل التمرين؛ غياب البيانات مش معناه استشفاء كامل.']};
  const domains=[];const reasons=[];
  if(fresh.sleepHours<6||fresh.sleepQuality<=2||(baseline?.sleepHours&&fresh.sleepHours<baseline.sleepHours-1.5)){domains.push('sleep');reasons.push('النوم قليل أو جودته ضعيفة مقارنة باحتياجك المعتاد');}
@@ -35,7 +38,7 @@ export function recovery(checkins, now=Date.now(),workoutLogs=[]){
  if(performanceDrop&&difficult>=3)reasons.push('مع انخفاض أداء في جلسات قابلة للمقارنة');
  return {...base,status,reasons:reasons.length?reasons:['البيانات الحالية تسمح بتمرينك المعتاد؛ راقب إحساسك أثناء الحركة.'],setFactor:status==='high'?.6:status==='caution'?.8:1,progressionAllowed:status==='ready',domains,asOf:fresh.at};
 }
-export function hasPerformanceDrop(logs,now=Date.now()){
+export function hasPerformanceDrop(logs,now=clockNow()){
  const grouped=new Map();for(const l of logs){if(!l.sets?.length||l.sets.some(s=>s.pain)||eachSide(l)&&l.bothSides!==true)continue;const k=l.exerciseId+'|'+l.loadMode+'|'+(l.progressionKey||l.planId);const a=grouped.get(k)||[];a.push(l);grouped.set(k,a);}
  for(const records of grouped.values()){
   const byDate=chronologicalExposures(records,now,14).slice(-2);if(byDate.length<2)continue;
@@ -44,7 +47,7 @@ export function hasPerformanceDrop(logs,now=Date.now()){
  }
  return false;
 }
-export function calorieReview(weights,foodDays,goal,energy,now=Date.now(),lastChange=0){
+export function calorieReview(weights,foodDays,goal,energy,now=clockNow(),lastChange=0){
  const end=localDate(now),start=dateOffset(end,-13),middle=dateOffset(end,-6);
  if(lastChange&&now-lastChange<14*DAY)return {action:'hold',reason:'نحتاج 14 يومًا بعد آخر تعديل.'};
  const recent=[...new Map(weights.filter(x=>x.date>=start&&x.date<=end&&Number.isFinite(x.kg)).map(x=>[x.date,x])).values()];
@@ -55,7 +58,7 @@ export function calorieReview(weights,foodDays,goal,energy,now=Date.now(),lastCh
  const rate=(mean(b.map(x=>x.kg))-mean(a.map(x=>x.kg)))/mean(a.map(x=>x.kg))*100;
  let delta=0;if(goal==='lose')delta=rate>-.25?-1:rate< -1?1:0;
  if(['gain','muscle_gain'].includes(goal))delta=rate<.1?1:rate>.5?-1:0;
- if(goal==='recomposition')delta=rate<-.5?1:rate>.5?-1:0;
+ if(['maintain','recomposition'].includes(goal))delta=rate<-.5?1:rate>.5?-1:0;
  if(!delta)return {action:'hold',reason:'اتجاه الوزن مناسب؛ مفيش تعديل سعرات مطلوب دلوقتي.',rate,coverage};
  return {action:'propose',delta:delta*Math.min(150,Math.floor(energy*.05)),rate,coverage,reason:`متوسط الوزن اتغير ${rate.toFixed(2)}% في الأسبوع مع بيانات كافية؛ نقترح تعديلًا صغيرًا بموافقتك.`};
 }

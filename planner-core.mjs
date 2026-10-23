@@ -7,7 +7,7 @@ import { EXCLUSIONS, expandedKeys } from "./planner-exclusions.mjs";
 import { egyptianMenus, regionalMenus } from './egyptian-menu.mjs';
 import { EGYPTIAN_POLICY_VERSION, egyptianBreadChoice, egyptianSlotPool,
   egyptianMealFamily, egyptianMealName } from "./egyptian-meals.mjs";
-export const ENGINE_VERSION = "weekly-planner-0.9.0";
+export const ENGINE_VERSION = "weekly-planner-0.10.0";
 export const REGIONS = {
   egypt: "مصر",
   levant: "بلاد الشام",

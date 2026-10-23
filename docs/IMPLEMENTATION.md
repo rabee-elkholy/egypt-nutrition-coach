@@ -1,4 +1,16 @@
-# Coaching preview 0.9
+# Coaching preview 0.10
+
+## Daily simulation and lifecycle review
+
+`server/clock.mjs` supplies request-local domain time via AsyncLocalStorage, enabled by the Workers `nodejs_als` compatibility flag. `server/simulation.mjs` uses the same generation, logging, recovery, review and acceptance functions as real accounts. The HTTP `simulation=1` namespace derives a separate key from the authenticated visitor; identity, accounts, receipts, archives and sync queries stay partitioned. Source profile copying never copies actual logs. There is no global Date patch or shared mutable current-day variable.
+
+The website exposes manual day-by-day entry, optional synthetic scenario fill, daily checklists/history, advancing one day, resuming after refresh, returning to the real account and restarting a round. An empty day remains empty on advance. The server renews an expired nutrition week and exposes any constraint failure; advancing does not silently accept adaptations. A round is capped at 90 days. Restart clears the round aggregate while retaining monotonic revision and owned internal archive/receipt rows. No hard-deletion promise is made.
+
+The second audit added lifecycle regressions: pain logged after the latest check-in now holds progression until a new assessment; a two-set beginner prescription actually drops a set on accepted deload (integer rounding means the realized percentage can differ from the nominal factor); new nutrition goals start a fresh evidence context; maintenance drift beyond ±0.5%/week uses the same bounded proposal rule as recomposition; daily-total API values match the UI; completion flags are strict booleans; changed evidence clears old reviews/proposals. These remain product heuristics, not validated clinical protocols.
+
+The store includes a per-attempt internal commit token in the exact-body transactional guard. This prevents a losing concurrent writer with an otherwise identical account body from inserting its own receipt. The token is stripped on account reads and is not an identity or authentication mechanism.
+
+See [MATURITY_AND_SIMULATION_AR.md](MATURITY_AND_SIMULATION_AR.md) for the current requirement-by-requirement assessment, remaining gaps and simulation test results. The 0.9 report below remains a historical evidence snapshot, not a claim that 0.10 has no remaining work.
 
 ## Boundaries
 

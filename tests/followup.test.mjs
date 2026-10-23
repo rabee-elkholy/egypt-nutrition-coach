@@ -7,6 +7,8 @@ import {workoutPlan} from '../server/workouts.mjs';
 import {dateOffset,localDate} from '../coaching-shared.mjs';
 const draft={name:'Test',age:30,weight:80,height:175,sex:'male',goal:'lose',serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5]};
 const fixture=generate(empty(),draft);
+// These follow-up scenarios represent an established goal, not today's first onboarding.
+fixture.nutritionContextStartedOn=dateOffset(today(),-28);
 const run=(s,a,p)=>{const result=command(structuredClone(s),a,p);result.revision++;return result;};
 test('actual planned portions freeze quantity; duplicates are rejected; deleting reopens completion',()=>{
  const source=structuredClone(fixture),meal=source.plans[0].days[0].meals[0],energy=Number(meal.snapshot.values.energy);
@@ -51,8 +53,8 @@ test('accepted calorie proposal preserves past/today and protein targets; stale 
  s.revision++;assert.throws(()=>run(s,'adaptation',{id:'proposal',accept:true}),e=>e.status===409);
 });
 test('mixed loads and same-day repeat logs never count as two comparable successful exposures',()=>{
- const e={id:'e',sets:2,repMax:12,rir:2,loadMode:'external'},a={exerciseId:'e',loadMode:'external',at:'2026-10-20',sets:[{kg:20,reps:12,rir:2},{kg:18,reps:12,rir:2}],increment:1};
- assert.equal(progression(e,[a,{...a,at:'2026-10-22'}],{progressionAllowed:true}).action,'hold');
+ const e={id:'e',sets:2,repMax:12,rir:2,loadMode:'external'},a={exerciseId:'e',loadMode:'external',at:dateOffset(today(),-3),sets:[{kg:20,reps:12,rir:2},{kg:18,reps:12,rir:2}],increment:1};
+ assert.equal(progression(e,[a,{...a,at:dateOffset(today(),-1)}],{progressionAllowed:true}).action,'hold');
  const flat={...a,sets:[{kg:20,reps:12,rir:2},{kg:20,reps:12,rir:2}]};assert.equal(progression(e,[flat,flat],{progressionAllowed:true}).action,'hold');
 });
 test('training respects time and split preferences, including equipment setup',()=>{

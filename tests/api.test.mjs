@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Miniflare} from 'miniflare';import {migrateLocal} from '../scripts/local-migrations.mjs';
 test('D1 API authenticates, isolates accounts, persists and rejects stale/idempotency conflicts',async()=>{
- const mf=new Miniflare({modules:true,scriptPath:'dist/server/index.js',compatibilityDate:'2025-10-11',d1Databases:['DB']});
+ const mf=new Miniflare({modules:true,scriptPath:'dist/server/index.js',compatibilityDate:'2025-10-11',compatibilityFlags:['nodejs_als'],d1Databases:['DB']});
  try{
  const db=await mf.getD1Database('DB');await migrateLocal(db);
  const req=(path='state',opts={})=>mf.dispatchFetch('http://localhost/v1/'+path,opts);

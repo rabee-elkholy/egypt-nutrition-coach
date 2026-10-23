@@ -19,7 +19,8 @@ export function plainRecord(value,label){if(!value||typeof value!=='object'||Arr
 export function effectiveSets(s,exercise,date=localDate(),now=Date.now()){
  const a=s.sessionAdjustment;
  const factor=a&&date===localDate(now)&&Date.parse(a.expiresAt)>now&&(!a.planId||a.planId===s.workoutPlan?.id)?a.setFactor:1;
- return Math.max(1,Math.round(exercise.sets*factor));
+ const rounded=Math.round(exercise.sets*factor);
+ return Math.max(1,factor<1?Math.min(exercise.sets-1,rounded):rounded);
 }
 export function dateForLog(date,now=Date.now()){if(!validDate(date)||date>localDate(now))throw Error('تاريخ التسجيل غير صالح أو في المستقبل.');if(date<dateOffset(localDate(now),-90))throw Error('التسجيل بأثر رجعي متاح لآخر 90 يومًا.');return date;}
 export const needsHealthConfirmation=s=>s.onboarding?.serviceTrack==='workouts_only'&&s.onboarding?.workoutPrefs?.healthConfirmed!==true;

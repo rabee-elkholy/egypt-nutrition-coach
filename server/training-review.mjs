@@ -1,8 +1,9 @@
+import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {dateOffset,localDate,needsHealthConfirmation,needsScheduleConfirmation} from '../coaching-shared.mjs';
 import {sessionCompletion} from './training-state.mjs';
 import {chronologicalExposures} from './recovery.mjs';
 import {regionForMuscle,muscleRegions,eachSide,repetitionSeconds} from './workouts.mjs';
-export function volumeReview(s,readiness,now=Date.now()){
+export function volumeReview(s,readiness,now=clockNow()){
  const hold=reason=>({action:'hold',reason});const plan=s.workoutPlan;
  if(needsHealthConfirmation(s)||needsScheduleConfirmation(s))return hold('نحتاج تأكيد الجاهزية الصحية قبل زيادة المجموعات.');
  if(!plan||s.profile.goal!=='muscle_gain')return hold('زيادة حجم التمرين مش مطلوبة تلقائيًا لهدفك الحالي.');

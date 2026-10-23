@@ -2,6 +2,20 @@
 
 JSON over HTTPS. Existing Sites identity is used for the preview. Mobile login work is deferred; the untrusted caller must never choose `oai-authenticated-user-id` in a public production mobile gateway. No new auth endpoint is added here.
 
+## Simulation namespace (0.10)
+
+Append `?simulation=1` (or `&simulation=1`) to state, diary, archive, sync and command requests to use the signed-in visitor's separate simulation aggregate. The server derives its storage key from the authenticated identity; callers cannot select another account. Existing real-account keys are unchanged. Simulation actions are rejected in the real namespace. No simulation data is copied back to the real account.
+
+| Action | Payload and effect |
+| --- | --- |
+| `simulation_reset` | `{source:"sample"}` or `{source:"current"}` to start; subsequent rounds require `confirm:true`. Current copies confirmed profile/preferences only, with fresh plans and empty logs. Revision remains monotonic. Old internal archive rows/receipts are retained; this is a round restart, not account deletion. |
+| `simulation_next` | `{}` freezes the day's summary, advances exactly one virtual day, supersedes pending proposals and renews an expired nutrition week under the same saved constraints. Up to day 90. It never fills missing logs. Renewal failure is exposed in `simulation.renewalError`, with the existing plan retained. |
+| `simulation_fill` | `{scenario:"consistent"|"plateau"|"poor_recovery"|"missed_workout"|"low_adherence"|"pain"}`; fills only an empty day with explicitly synthetic data by executing the ordinary domain commands, then runs the ordinary review. Existing same-day data causes rejection rather than replacement. |
+
+Ordinary `generate`, food/workout/recovery logs, review and adaptation commands work inside the same namespace. `serverDate` and `serverNow` describe its virtual clock. Use these for default dates and expiry display; never assume the device date equals the simulation date. The state includes `simulation:{runId,day,startedDate,source,history,scenarioByDate,renewalError?}` and `simulationToday` with diary, weight, scheduled/completed sessions, recovery and review summary.
+
+An AsyncLocalStorage context supplies request-local domain time; concurrent real and simulated requests cannot mutate each other's clock. The virtual day anchors at 12:00 UTC on the starting Cairo date and advances by one day, with a revision-based second offset for event order. Domain/plan timestamps use virtual time; storage receipts/change audit timestamps use wall time. Builds require the Workers `nodejs_als` compatibility flag. Reusing a command key returns the current round state without advancing or resetting twice.
+
 ## Reads
 
 | Endpoint | Response |
@@ -62,3 +76,5 @@ Dates use `YYYY-MM-DD`; `serverDate` follows Africa/Cairo for this preview. Past
 All canonical weekday indexes are Sunday=0 through Saturday=6. `generate` accepts `weekdayConvention:"saturday_0"` for the unchanged legacy onboarding and converts selectedWorkoutDays, dayLocations and externalTrainingDays once. Omission defaults to `js_sunday_0` for API clients. Saved profiles/preferences always carry `weekdayConvention:"js_sunday_0"`; a legacy saved account without that marker requires `confirm_schedule` rather than guessed conversion. Do not use the legacy UI convention in KMM without the explicit marker.
 
 Exercise alternatives require a valid dayIndex, respect the full session's time budget including both sides, and may return an empty items list. Nutrition alternatives can also be empty under strict constraints. Nutrition day.targets is the historical target for that day; top-level plan.targets can describe a later accepted adjustment. A muscle_gain target equal to current weight is accepted as recomposition, beginning at estimated maintenance.
+
+Legacy daily `complete` must be a JSON boolean, and `food-diary.totals` returns its known total even without detailed entries. A new `generate` starts `nutritionContextStartedOn`; old weights/intake remain accessible but cannot immediately authorize changes for the new goal. Weekly renewal preserves that context. Accepted maintenance starts a new context on its effective date. New evidence clears the old lastReview and supersedes its pending proposals; request a fresh review before accepting a decision for changed inputs.

@@ -1,8 +1,10 @@
+import {clockNow,isoNow,clockDate} from './clock.mjs';
 import library from '../data/planning-library.json' with {type:'json'};
 import {alternatives,scaleSnapshot,sumSnapshots,assessDay,nutritionQualityIssues} from '../planner-core.mjs';
 import {assertDietDay} from '../diet-patterns.mjs';
-import {number,dateForLog,localDate} from '../coaching-shared.mjs';
+import {number,dateForLog as validateLogDate,localDate} from '../coaching-shared.mjs';
 export {library};
+const dateForLog=date=>validateLogDate(date,clockNow());
 const metrics=['energy','protein','fat','carbs','fiber','saturated','sodium','sugars'];
 export const activePlan=s=>s.plans.find(p=>p.id===s.active_plan_id);
 export function plannedEnergyForDate(s,date){
@@ -15,7 +17,9 @@ function freezeSnapshot(snapshot){return {name:snapshot.name,values:structuredCl
 export function dayTotals(s,date){
  const entries=(s.foodEntries||[]).filter(e=>e.date===date);
  const totals=Object.fromEntries(metrics.map(k=>[k,entries.length&&entries.every(e=>e.snapshot.values[k]!=null)?Math.round(entries.reduce((sum,e)=>sum+Number(e.snapshot.values[k]),0)*100)/100:null]));
- const day=s.foodLogs.find(d=>d.date===date);return {date,entries,totals,complete:!!day?.complete,planEnergy:day?.plannedEnergy??plannedEnergyForDate(s,date)};
+ const day=s.foodLogs.find(d=>d.date===date);
+ if(!entries.length&&day&&day.source!=='entries')for(const key of metrics)totals[key]=day[key]??null;
+ return {date,entries,totals,complete:!!day?.complete,planEnergy:day?.plannedEnergy??plannedEnergyForDate(s,date)};
 }
 function refreshDay(s,date){
  const day=s.foodLogs.find(d=>d.date===date)||{date,complete:false};
@@ -26,7 +30,7 @@ function refreshDay(s,date){
 export function foodCommand(s,action,p){
  s.foodEntries||=[];
  if(action==='food_entry'){
-  const date=dateForLog(p.date||localDate());if(!['planned','ingredient','manual'].includes(p.source))throw Error('مصدر الوجبة غير صالح.');
+  const date=dateForLog(p.date||clockDate());if(!['planned','ingredient','manual'].includes(p.source))throw Error('مصدر الوجبة غير صالح.');
   if(!['breakfast','lunch','dinner','snack'].includes(p.slot))throw Error('حدد الوجبة.');
   const previous=s.foodLogs.find(d=>d.date===date);if(previous&&previous.source!=='entries')throw Error('اليوم مسجل كإجمالي؛ حوّله صراحةً إلى السجل التفصيلي قبل إضافة وجبات.');
   let snapshot,mealId=null,planId=null,quantity;
@@ -42,12 +46,12 @@ export function foodCommand(s,action,p){
    snapshot={name,values:Object.fromEntries(metrics.map(k=>[k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))])),ingredients:[],is_approximate:true};
    if(snapshot.values.energy==null||Number(snapshot.values.energy)<=0)throw Error('السعرات الفعلية مطلوبة للوجبة اليدوية.');
   }
-  s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,source:p.source,mealId,planId,quantity,at:new Date().toISOString(),snapshot:freezeSnapshot(snapshot)});
+  s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,source:p.source,mealId,planId,quantity,at:isoNow(),snapshot:freezeSnapshot(snapshot)});
   refreshDay(s,date);s.foodLogs.find(d=>d.date===date).complete=false;
  }else if(action==='food_switch_to_entries'){
   const date=dateForLog(p.date),previous=s.foodLogs.find(d=>d.date===date);
   if(p.confirm!==true||!previous||previous.source==='entries')throw Error('تأكيد تحويل إجمالي اليوم إلى تسجيل تفصيلي مطلوب.');
-  s.history.push({kind:'food_diary_mode',at:new Date().toISOString(),previous:structuredClone(previous)});
+  s.history.push({kind:'food_diary_mode',at:isoNow(),previous:structuredClone(previous)});
   s.foodLogs=s.foodLogs.filter(d=>d.date!==date);refreshDay(s,date);
  }else if(action==='food_delete'){
   const entry=s.foodEntries.find(e=>e.id===p.id);if(!entry)throw Error('التسجيل غير موجود.');s.foodEntries=s.foodEntries.filter(e=>e.id!==p.id);refreshDay(s,entry.date);
@@ -68,10 +72,10 @@ export function mealAlternatives(s,mealId){
 }
 export function replaceMeal(s,p){
  const {plan,day,meal}=plannedMeal(s,p.mealId);
- if(day.date<localDate())throw Error('لا نغيّر خطط أيام فاتت.');
+ if(day.date<clockDate())throw Error('لا نغيّر خطط أيام فاتت.');
  if((s.foodEntries||[]).some(e=>e.mealId===meal.id))throw Error('الوجبة اتسجلت كأكل فعلي؛ اختار وجبة لسه متاكلتش.');
  const alternative=mealAlternatives(s,p.mealId).find(a=>a.snapshot.template_id===p.templateId);if(!alternative)throw Error('البديل لم يعد متاحًا تحت نفس اختياراتك.');
- const next=structuredClone(plan);next.id='plan-'+crypto.randomUUID();next.parent_id=plan.id;next.created_at=new Date().toISOString();next.changeReason='استبدال وجبة باختيارك';
+ const next=structuredClone(plan);next.id='plan-'+crypto.randomUUID();next.parent_id=plan.id;next.created_at=isoNow();next.changeReason='استبدال وجبة باختيارك';
  const updated=next.days.find(d=>d.date===day.date);updated.meals.find(m=>m.id===meal.id).snapshot=alternative.snapshot;
  updated.summary=sumSnapshots(updated.meals.map(m=>m.snapshot));next.warnings=next.days.flatMap(d=>{const messages=assessDay(d.summary,d.targets||next.targets);return messages.length?[{date:d.date,messages}]:[];});
  s.plans.push(next);s.active_plan_id=next.id;return s;

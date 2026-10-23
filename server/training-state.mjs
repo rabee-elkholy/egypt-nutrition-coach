@@ -1,3 +1,4 @@
+import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {catalog,eachSide,estimatedSessionMinutes} from './workouts.mjs';
 import {localDate,effectiveSets} from '../coaching-shared.mjs';
 export const prescriptionSignature=e=>[e.id,e.loadMode,e.tracking,e.laterality,e.sets,e.repMin,e.repMax,e.rir,e.restSeconds].join('|');
@@ -29,7 +30,7 @@ export function ensureTrainingState(s){
  }
  return s;
 }
-export function expectedExercises(s,day,date){return day.exercises.map(e=>({exerciseId:e.id,sets:effectiveSets(s,e,date),progressionKey:e.progressionKey,requiresBothSides:eachSide(e)}));}
+export function expectedExercises(s,day,date){return day.exercises.map(e=>({exerciseId:e.id,sets:effectiveSets(s,e,date,clockNow()),progressionKey:e.progressionKey,requiresBothSides:eachSide(e)}));}
 export function sessionCompletion(s,session){
  const plan=s.workoutPlan;
  const expected=session.expectedExercises||(session.planId===plan?.id?plan.days.find(d=>d.dayIndex===session.dayIndex)?.exercises.map(e=>({exerciseId:e.id,sets:e.sets})):null);
@@ -56,7 +57,7 @@ export function forkWorkout(s,next,{oldDayIndexByNew={},carryCalendar=true}={}){
   delete e.suggestedKg;delete e.progressionReason;delete e.suggestionAt;
  }
  // A new prescription version does not cancel a previously accepted calendar move.
- const moved=carryCalendar?(s.scheduleOverrides||[]).filter(o=>o.planId===previous.id&&(o.fromDate>=localDate()||o.toDate>=localDate())):[];
+ const moved=carryCalendar?(s.scheduleOverrides||[]).filter(o=>o.planId===previous.id&&(o.fromDate>=clockDate()||o.toDate>=clockDate())):[];
  s.scheduleOverrides=[...(s.scheduleOverrides||[]),...moved.map(o=>({...o,planId:next.id}))];
  s.workoutArchives||=[];s.workoutArchives.push(previous);
  s.workoutPlan=next;s.sessionAdjustment=null;return s;

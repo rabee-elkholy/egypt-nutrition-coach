@@ -1,3 +1,4 @@
+import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {localDate,dateOffset,integer,stringList,plainRecord} from '../coaching-shared.mjs';
 import catalog from '../data/exercises.json' with {type:'json'};
 export {catalog};
@@ -81,7 +82,7 @@ export function exerciseAlternatives(s,dayIndex,exerciseId){
  }).slice(0,6);
 }
 
-export function scheduledSessions(s,from=localDate(),count=14){
+export function scheduledSessions(s,from=clockDate(),count=14){
  const plan=s.workoutPlan;if(!plan)return [];
  const overrides=(s.scheduleOverrides||[]).filter(o=>o.planId===plan.id);
  const sessions=[];

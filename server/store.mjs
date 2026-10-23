@@ -3,6 +3,7 @@ const reference=p=>({id:p.id,start_date:p.start_date,end_date:p.days.at(-1)?.dat
 export async function loadAccount(db,user){
  const row=await db.prepare('SELECT revision,body FROM coaching_accounts WHERE user_id=?').bind(user).first();
  const s=normalize(row?JSON.parse(row.body):empty());
+ delete s._commitToken;
  const cache=new Map(s.plans.map(p=>[p.id,p]));
  const findPlan=async id=>{
   if(cache.has(id))return cache.get(id);
@@ -30,7 +31,7 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
  const workoutRefs=new Map((state.workoutPlanRefs||[]).map(p=>[p.id,p]));
  for(const p of workouts)workoutRefs.set(p.id,{id:p.id,version:p.version,split:p.split,parent_id:p.parent_id});
  state.workoutPlanRefs=[...workoutRefs.values()];
- const body=JSON.stringify({...state,plans:[],workoutArchives:[]});if(new TextEncoder().encode(body).length>1500000)throw Object.assign(Error('سجل المتابعة وصل لسعة النسخة التجريبية؛ صدّر بياناتك قبل إضافة سجلات جديدة.'),{status:413});
+ const body=JSON.stringify({...state,_commitToken:crypto.randomUUID(),plans:[],workoutArchives:[]});if(new TextEncoder().encode(body).length>1500000)throw Object.assign(Error('سجل المتابعة وصل لسعة النسخة التجريبية؛ صدّر بياناتك قبل إضافة سجلات جديدة.'),{status:413});
  const receipt=JSON.stringify({revision:state.revision,at:new Date().toISOString()});
  const statements=[db.prepare('INSERT INTO coaching_accounts(user_id,revision,body) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision,body=excluded.body WHERE coaching_accounts.revision=?').bind(user,state.revision,body,previousRevision)];
  // The exact body guards every dependent insert inside one atomic batch.
