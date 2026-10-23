@@ -282,6 +282,7 @@ export async function mountPlanner({root,toast}){
      <div><strong>${round(plan.targets.fat)}</strong> جم دهون</div>
     </div>
     ${plan.effective_from&&(plan.effective_from>todayStr)?`<p class="coach-notice">الأهداف الجديدة تبدأ يوم ${plan.effective_from}. سجل الأيام السابقة محفوظ.</p>`:''}
+    ${plan.targets.forecast?`<p class="coach-notice">🎯 <strong>هدف الوزن: ${plan.targets.forecast.target_weight_kg} كجم</strong> (${plan.targets.forecast.target_delta_kg>0?'+':''}${plan.targets.forecast.target_delta_kg} كجم) · المدى التقديري: <strong>${plan.targets.forecast.estimated_weeks_min}–${plan.targets.forecast.estimated_weeks_max} أسبوع</strong> (${esc(plan.targets.forecast.basis)})</p>`:''}
     ${todayPlanDay?`<div class="coach-card">
      <h3>📅 وجبات يومك المقترحة (${todayPlanDay.date} · ${round(todayPlanDay.summary.values.energy)} سعر)</h3>
      <p><small>اضغط «✓ أكلت الوجبة» لتسجيلها في يومك الفعلي بضغطة واحدة:</small></p>
@@ -305,6 +306,12 @@ export async function mountPlanner({root,toast}){
    <section class="coach-card" id="coach-review" ${activeTab==='review'?'':'hidden'}>
     <h2>📊 مراجعة الأداء والقرارات الذكية</h2>
     <p>المحرك بيراجع اتجاه الوزن لآخر أسبوعين (مطلوب 3 أوزان على الأقل في كل أسبوع)، واكتمال تسجيل الأكل (10 أيام من 14)، وأداء التمارين والاستشفاء.</p>
+    ${state.progressSummary?`<div class="coach-tags" style="margin-bottom:10px">
+     <span>⚖️ أوزان الأسبوع السابق: ${state.progressSummary.weightTrend.previous7dCount}/3 (${state.progressSummary.weightTrend.previous7dAvgKg??'—'} كجم)</span>
+     <span>⚖️ أوزان الأسبوع الحالي: ${state.progressSummary.weightTrend.current7dCount}/3 (${state.progressSummary.weightTrend.current7dAvgKg??'—'} كجم)</span>
+     <span>🥗 أيام الأكل المكتملة: ${state.progressSummary.foodCompleteness.completeDays14d}/10</span>
+     <span>🏋️ جلسات مكتملة: ${state.progressSummary.workoutSummary.completed14d}</span>
+    </div>`:''}
     <button id="review-coach">🔍 شغّل مراجعة الأداء الآن</button>
     ${state.lastReview?`<div class="coach-notice" style="margin-top:14px">
      <strong>النتيجة: ${esc(state.lastReview.message)}</strong>

@@ -210,6 +210,40 @@ export function estimateNeeds(input) {
     notes.push(
       "هدف بناء العضلات تقديري: فائض معتدل وبروتين 1.6 جرام/كجم مع المقاومة. راقب الوزن والأداء؛ الزيادة ليست ضمانًا لكتلة عضلية صافية.",
     );
+  const targetWeightNum =
+    input.targetWeight != null && String(input.targetWeight).trim() !== ""
+      ? finite(input.targetWeight, 35, 250, "الوزن المستهدف")
+      : null;
+  const actualChange = round(energy - tdee);
+  const targetDeltaKg =
+    targetWeightNum != null ? round(targetWeightNum - weight, 1) : null;
+  let forecast = null;
+  if (targetDeltaKg != null) {
+    if (Math.abs(targetDeltaKg) < 0.2 || actualChange === 0) {
+      forecast = {
+        target_weight_kg: targetWeightNum,
+        target_delta_kg: targetDeltaKg,
+        daily_energy_delta: actualChange,
+        weekly_rate_kg: 0,
+        estimated_weeks_min: 0,
+        estimated_weeks_max: 0,
+        basis: "ثبات الوزن أو إعادة تشكيل الجسم حول الوزن الحالي.",
+      };
+    } else {
+      const weeklyKg = round((Math.abs(actualChange) * 7) / 7700, 2);
+      const centerWeeks = Math.max(1, Math.ceil(Math.abs(targetDeltaKg) / Math.max(0.1, weeklyKg)));
+      forecast = {
+        target_weight_kg: targetWeightNum,
+        target_delta_kg: targetDeltaKg,
+        daily_energy_delta: actualChange,
+        weekly_rate_kg: actualChange < 0 ? -weeklyKg : weeklyKg,
+        estimated_weeks_min: Math.max(1, Math.floor(centerWeeks * 0.85)),
+        estimated_weeks_max: Math.ceil(centerWeeks * 1.25),
+        basis: "تقدير مبدئي مبني على فرق السعرات الفعلي بعد تطبيق حدود الأمان؛ يُحدّث من اتجاه الوزن الفعلي.",
+      };
+    }
+  }
+
   return {
     training_days: trainingDays,
     ...(input.exerciseMode || input.sports?.length ? {exercise, baseline_tdee:round(baseline)} : {}),
@@ -218,6 +252,8 @@ export function estimateNeeds(input) {
     energy,
     protein: proteinGrams,
     protein_factor: factor,
+    effective_weight: round(effectiveWeight, 2),
+    max_protein_factor: diseases.has("gout") ? 1.4 : 1.8,
     fat: fatGrams,
     carbs: carbGrams,
     carb_target_scope:
@@ -226,7 +262,9 @@ export function estimateNeeds(input) {
     ree: round(ree),
     tdee: round(tdee),
     activity_factor: ACTIVITY[input.activity],
-    energy_change: round(energy - tdee),
+    energy_change: actualChange,
+    goal_pace: pace,
+    ...(forecast ? { forecast } : {}),
     ...(maternalStatus !== "none" ? { maternal_status: maternalStatus } : {}),
     ...(diseases.size ? { medical_conditions: [...diseases] } : {}),
     notes,
@@ -724,7 +762,14 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
   const targets = estimateNeeds(profile),
     p = validatePreferences(prefs, lib),
     slots = daySlots(p.meals, p.diet);
-  if(p.diet==='high_protein'){targets.protein=round(Number(profile.weight)*1.6);targets.protein_factor=1.6;targets.carbs=round(Math.max(0,targets.energy-targets.protein*4-targets.fat*9)/4);}
+  if(p.diet==='high_protein'){
+    const weightBasis=targets.effective_weight??Number(profile.weight);
+    const maxFactor=targets.max_protein_factor??1.8;
+    const resolvedFactor=Math.min(maxFactor,Math.max(targets.protein_factor||1.6,1.6));
+    targets.protein=round(weightBasis*resolvedFactor);
+    targets.protein_factor=resolvedFactor;
+    targets.carbs=round(Math.max(0,targets.energy-targets.protein*4-targets.fat*9)/4);
+  }
   if(p.diet==='low_carb'){targets.carbs=100;targets.fat=round(Math.max(0,targets.energy-targets.protein*4-400)/9);targets.carb_target_scope='كربوهيدرات كلية حتى 130 جرام يوميًا؛ ليست خطة كيتو.';}
   if(p.diet==='keto'){
     if(profile.ketoAcknowledged!==true || isDietUnsafeForProfile('keto', profile))throw Error('الكيتو غير متاح تلقائيًا عند وجود سكري أو أدوية خفض السكر أو مرض بالكلى أو الكبد أو البنكرياس أو اضطراب أكل. راجع مختصًا؛ أكّد قراءة شروط الكيتو إذا لم تنطبق عليك.');

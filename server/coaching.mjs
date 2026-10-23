@@ -2,7 +2,7 @@ import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {makeWeek,scaleSnapshot,sumSnapshots,assessDay,validatePreferences,nutritionQualityIssues} from '../planner-core.mjs';
 import {FIXED_DIET_MEALS,assertDietDay} from '../diet-patterns.mjs';
 import {workoutPlan,exerciseAlternatives,muscleRegions,weeklySetTotals,scheduledSessions,estimatedSessionMinutes,eachSide} from './workouts.mjs';
-import {recovery,calorieReview,progression} from './recovery.mjs';
+import {recovery,calorieReview,progression,hasPerformanceDrop} from './recovery.mjs';
 import {library,activePlan,foodCommand,replaceMeal,plannedEnergyForDate} from './food.mjs';
 import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reconcileSessions} from './training-state.mjs';
 import {volumeReview} from './training-review.mjs';
@@ -62,6 +62,7 @@ export function review(s){
  else if(plan&&ready.status==='ready'&&(!s.lastVolumeChange||clockNow()-s.lastVolumeChange>=14*86400000)){
   nutrition=calorieReview(contextWeights,contextFood,s.profile.recomposition?'recomposition':s.profile.goal,Number(plan.targets.energy),clockNow(),s.lastCalorieChange||0);
   if(contextStart)nutrition.contextStartedOn=contextStart;
+  if(nutrition.action==='propose'&&nutrition.delta<0&&hasPerformanceDrop(s.workoutLogs,clockNow()))nutrition={...nutrition,action:'hold',reason:'رغم ثبات الوزن، لاحظنا انخفاضًا في أداء التمرين؛ ثبتنا السعرات لحماية الكتلة العضلية والأداء بدل تعميق العجز.'};
   if(nutrition.action==='propose'){
    try{validateEnergyChange(s,Number(plan.targets.energy)+nutrition.delta);retargetPlan(structuredClone(plan),Number(plan.targets.energy)+nutrition.delta,s.preferences,dateOffset(today(),1));proposals.push({kind:'calories',...nutrition,expiresAt:new Date(clockNow()+86400000).toISOString()});}
    catch(error){if(error instanceof TypeError||error instanceof ReferenceError)throw error;nutrition={...nutrition,action:'hold',reason:'التعديل لا يحقق حدود السعرات أو قيود النظام الحالي؛ احتفظنا بالخطة بدل اقتراح تغيير غير قابل للتطبيق.'};}
@@ -212,4 +213,53 @@ export function command(input,action,p){
   a.status='accepted';a.acceptedAt=isoNow();
  }else throw Error('عملية غير معروفة');
  return s;
+}
+export function evaluateEligibility(d={}){
+ const reasons=[],questions=[];
+ const ageNum=Number(d.age),weightNum=Number(d.weight),heightNum=Number(d.height);
+ if(d.age==null||!Number.isInteger(ageNum)||ageNum<18){reasons.push({code:'AGE_UNSUPPORTED_OR_MISSING',severity:'requires_review',message:'التخطيط الآلي متاح للبالغين من 18 إلى 70 سنة فقط.'});}
+ else if(ageNum>70){reasons.push({code:'SENIOR_REQUIRES_REVIEW',severity:'requires_review',message:'العمر فوق 70 سنة يحتاج تقييمًا فرديًا من متخصص.'});}
+ const diseases=Array.isArray(d.diseases)?d.diseases.filter(x=>x&&x!=='none'):[];
+ const injuries=Array.isArray(d.injuries)?d.injuries.filter(x=>x&&x!=='none'):[];
+ const maternal=d.maternalStatus&&d.maternalStatus!=='none'?d.maternalStatus:null;
+ if(diseases.length||injuries.length||maternal){
+  reasons.push({code:'CLINICAL_OR_INJURY_REQUIRES_REVIEW',severity:'requires_review',message:'الحالة الصحية أو الإصابة أو الحمل/الرضاعة تحتاج مراجعة متخصص قبل إصدار خطة آلية.'});
+ }
+ if(Number.isFinite(weightNum)&&Number.isFinite(heightNum)&&heightNum>=120&&heightNum<=230){
+  const bmi=weightNum/((heightNum/100)**2);
+  if(bmi<12.5||bmi>65)reasons.push({code:'BMI_OUT_OF_RANGE',severity:'requires_review',message:'الوزن والطول خارج النطاق الفسيولوجي للتخطيط الآلي.'});
+  else if(bmi<18.5&&d.goal==='lose')reasons.push({code:'UNDERWEIGHT_LOSS_FORBIDDEN',severity:'requires_review',message:'هدف إنقاص الوزن غير آمن مع مؤشر كتلة جسم أقل من 18.5.'});
+ }
+ if(d.serviceTrack==='workouts_only'&&d.healthConfirmed!==true){
+  questions.push({code:'CONFIRM_WORKOUT_HEALTH',field:'healthConfirmed',prompt:'أكد عدم وجود حالة صحية أو إصابة حالية تحتاج خطة متخصص.'});
+ }
+ if(d.serviceTrack==='nutrition_only'&&d.goal==='muscle_gain'&&(!Array.isArray(d.externalTrainingDays)||!d.externalTrainingDays.length)){
+  questions.push({code:'CONFIRM_EXTERNAL_TRAINING_DAYS',field:'externalTrainingDays',prompt:'حدد أيام تمارين المقاومة التي تؤديها خارج التطبيق لهدف بناء العضلات.'});
+ }
+ const status=reasons.length?'requires_review':questions.length?'needs_input':'eligible';
+ return {
+  status,
+  reasons,
+  questions,
+  permittedFunctions:status==='requires_review'?['browse_food_catalog','browse_exercise_catalog','export_clinical_summary']:['generate_plan','log_execution','adaptive_review'],
+  clinicalSummary:status==='requires_review'?{generatedAt:isoNow(),age:Number.isFinite(ageNum)?ageNum:null,weightKg:Number.isFinite(weightNum)?weightNum:null,heightCm:Number.isFinite(heightNum)?heightNum:null,declaredDiseases:diseases,declaredInjuries:injuries,maternalStatus:maternal||'none',note:'ملخص قابل للمشاركة مع طبيب أو أخصائي تغذية/علاج طبيعي.'}:null
+ };
+}
+export function progressSummary(s){
+ const end=today(),start14=dateOffset(end,-13),mid7=dateOffset(end,-6);
+ const w14=[...new Map((s.weights||[]).filter(x=>x.date>=start14&&x.date<=end).map(x=>[x.date,x])).values()];
+ const prev7=w14.filter(x=>x.date<mid7),curr7=w14.filter(x=>x.date>=mid7);
+ const avg=arr=>arr.length?Math.round(arr.reduce((sum,x)=>sum+x.kg,0)/arr.length*100)/100:null;
+ const prevAvg=avg(prev7),currAvg=avg(curr7);
+ const weeklyChangePct=prevAvg&&currAvg?Math.round((currAvg-prevAvg)/prevAvg*10000)/100:null;
+ const completeFood14=[...new Map((s.foodLogs||[]).filter(x=>x.complete&&x.energy>0&&x.date>=start14&&x.date<=end).map(x=>[x.date,x])).values()].length;
+ const sessions14=(s.sessions||[]).filter(x=>x.date>=start14&&x.date<=end);
+ const perfDrop=hasPerformanceDrop(s.workoutLogs||[],clockNow());
+ return {
+  windowStart:start14,
+  windowEnd:end,
+  weightTrend:{measurements14d:w14.length,previous7dCount:prev7.length,current7dCount:curr7.length,previous7dAvgKg:prevAvg,current7dAvgKg:currAvg,weeklyChangePct,note:'نعتمد على متوسط الأسبوعين وليس تذبذب يوم واحد.'},
+  foodCompleteness:{completeDays14d:completeFood14,requiredDays14d:10,sufficientForCalorieReview:completeFood14>=10&&prev7.length>=3&&curr7.length>=3},
+  workoutSummary:{completed14d:sessions14.filter(x=>x.status==='completed').length,partial14d:sessions14.filter(x=>x.status==='partial').length,missed14d:sessions14.filter(x=>x.status==='missed').length,performanceDrop:perfDrop}
+ };
 }

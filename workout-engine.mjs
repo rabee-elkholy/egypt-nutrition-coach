@@ -542,13 +542,12 @@ export const INJURY_LABELS_MAP = Object.fromEntries(INJURIES.map(i => [i.id, i.l
 export const EQUIPMENT_LABELS_MAP = Object.fromEntries(HOME_EQUIPMENT.map(e => [e.id, e.label]));
 
 export function effectiveInjuries(workoutPrefs = {}, profile = {}) {
-  const raw = Array.isArray(workoutPrefs.injuries) ? workoutPrefs.injuries.filter(x => x && x !== 'none') : [];
-  const set = new Set(raw);
-  if (profile?.maternalStatus && profile.maternalStatus.startsWith('pregnant')) {
-    set.add('diastasis_recti');
-    set.add('lower_back_pain');
-  }
-  return [...set];
+  const raw = Array.isArray(workoutPrefs.injuries)
+    ? workoutPrefs.injuries.filter(x => x && x !== 'none')
+    : Array.isArray(profile?.injuries)
+      ? profile.injuries.filter(x => x && x !== 'none')
+      : [];
+  return [...new Set(raw)];
 }
 
 export function isExerciseSafe(ex, injuries = [], maternalStatus = 'none') {
@@ -821,7 +820,7 @@ function pickExerciseForPattern(pattern, dayLocation, homeEquipment, injuries, m
         isExerciseSafe(ex, injuries, maternalStatus) &&
         ex.movement === (pattern.includes('cardio') ? 'cardio' : pattern === 'mobility' ? 'mobility' : 'strength')
       );
-  if (!fallbackPool.length) return EXERCISE_LIBRARY[0];
+  if (!fallbackPool.length) return null;
 
   const rankExercise = ex => {
     let score = 0;
@@ -893,6 +892,15 @@ function prescriptionForExercise(ex, level = 'beginner', goal = 'maintain', inju
   };
 }
 
+export function estimateExerciseSeconds(ex, rx) {
+  if (!ex || !rx) return 0;
+  if (ex.movement === 'cardio') return 8 * 60;
+  if (ex.movement === 'mobility') return (rx.sets || 2) * 45 + 30;
+  const sets = Number(rx.sets) || 3;
+  const restSec = ex.pattern && ['squat', 'hinge', 'horizontal_push', 'horizontal_pull', 'vertical_push', 'vertical_pull', 'lunge'].includes(ex.pattern) ? 90 : 60;
+  return sets * 40 + Math.max(0, sets - 1) * restSec + 45;
+}
+
 export function generateWorkoutWeek(workoutPrefs = {}, profile = {}) {
   const level = FITNESS_LEVELS[workoutPrefs.fitnessLevel] ? workoutPrefs.fitnessLevel : 'beginner';
   const requestedDays = Array.isArray(workoutPrefs.selectedWorkoutDays) && workoutPrefs.selectedWorkoutDays.length
@@ -900,7 +908,9 @@ export function generateWorkoutWeek(workoutPrefs = {}, profile = {}) {
     : Array.isArray(profile?.workoutDays) && profile.workoutDays.length
       ? profile.workoutDays
       : null;
-  const fallbackCount = Math.max(1, Math.min(7, Number(workoutPrefs.workoutDaysCount ?? profile.trainingDays ?? 3) || 3));
+  const rawRequestedCount = workoutPrefs.workoutDaysCount ?? profile?.trainingDays ?? 3;
+  const isExplicitZeroDays = Number(rawRequestedCount) === 0 && (!requestedDays || requestedDays.length === 0);
+  const fallbackCount = isExplicitZeroDays ? 0 : Math.max(1, Math.min(7, Number(rawRequestedCount) || 3));
   const locationMode = WORKOUT_LOCATIONS[workoutPrefs.workoutLocation] ? workoutPrefs.workoutLocation : 'gym_only';
   const homeEquipment = Array.isArray(workoutPrefs.homeEquipment) && workoutPrefs.homeEquipment.length
     ? workoutPrefs.homeEquipment
@@ -910,14 +920,16 @@ export function generateWorkoutWeek(workoutPrefs = {}, profile = {}) {
   const maternalStatus = profile?.maternalStatus || 'none';
   const goal = profile?.goal || 'maintain';
 
-  const dayLocations = buildDefaultDayLocations(fallbackCount, locationMode, workoutPrefs.dayLocations, requestedDays);
+  const dayLocations = isExplicitZeroDays
+    ? {}
+    : buildDefaultDayLocations(fallbackCount, locationMode, workoutPrefs.dayLocations, requestedDays);
   const activeDayIndices = Object.keys(dayLocations).map(Number).sort((a, b) => a - b);
   const daysCount = activeDayIndices.length;
   const splitPreference = workoutPrefs.workoutSplitPreference || 'auto';
-  const effectiveSplit = resolveWorkoutSplit(splitPreference, daysCount, locationMode);
-  const splits = getSplitDefinitions(daysCount, splitPreference, locationMode);
+  const effectiveSplit = daysCount === 0 ? 'none' : resolveWorkoutSplit(splitPreference, daysCount, locationMode);
+  const splits = daysCount === 0 ? [] : getSplitDefinitions(daysCount, splitPreference, locationMode);
 
-  const exerciseCountForDuration = duration <= 20 ? 4 : duration <= 30 ? 5 : duration <= 45 ? 6 : duration <= 60 ? 7 : 8;
+  const maxPatternCap = duration <= 20 ? 4 : duration <= 30 ? 5 : duration <= 45 ? 6 : duration <= 60 ? 7 : 8;
 
   const injuryAdjustments = [];
   if (injuries.includes('knee_pain')) {
@@ -965,18 +977,28 @@ export function generateWorkoutWeek(workoutPrefs = {}, profile = {}) {
     splitIdx++;
 
     const usedIds = new Set();
-    const patterns = split.patterns.slice(0, exerciseCountForDuration);
-    while (patterns.length < exerciseCountForDuration) {
+    const patterns = split.patterns.slice(0, maxPatternCap);
+    while (patterns.length < maxPatternCap) {
       patterns.push(patterns.length % 2 === 0 ? 'postpartum_core' : 'mobility');
     }
 
-    const exercises = patterns.map((pat, idx) => {
+    const exercises = [];
+    let elapsedSeconds = 240; // 4 min warmup/cooldown baseline
+    const budgetSeconds = duration * 60;
+
+    for (const pat of patterns) {
       const chosen = pickExerciseForPattern(pat, loc, homeEquipment, injuries, maternalStatus, level, usedIds);
-      usedIds.add(chosen.id);
+      if (!chosen) continue;
       const rx = prescriptionForExercise(chosen, level, goal, injuries);
+      const exSeconds = estimateExerciseSeconds(chosen, rx);
+      if (exercises.length >= 2 && elapsedSeconds + exSeconds > budgetSeconds) {
+        continue;
+      }
+      usedIds.add(chosen.id);
+      elapsedSeconds += exSeconds;
       const safeMatch = injuries.filter(inj => chosen.safe_for_injuries.includes(inj));
-      return {
-        slotIndex: idx,
+      exercises.push({
+        slotIndex: exercises.length,
         id: chosen.id,
         name_ar: chosen.name_ar,
         name_en: chosen.name_en,
@@ -990,10 +1012,16 @@ export function generateWorkoutWeek(workoutPrefs = {}, profile = {}) {
         tempo: rx.tempo,
         instructions: chosen.instructions,
         injury_safe_badge: safeMatch.length
-          ? 'آمن ومناسب لـ: ' + safeMatch.map(i => INJURY_LABELS_MAP[i]?.replace(/ [\u{1F300}-\u{1FAFF}]/gu, '') || i).join('، ')
+          ? 'بديل منخفض التحميل لـ: ' + safeMatch.map(i => INJURY_LABELS_MAP[i]?.replace(/ [\u{1F300}-\u{1FAFF}]/gu, '') || i).join('، ')
           : null
-      };
-    });
+      });
+    }
+
+    if (!exercises.length) {
+      throw Error('لا توجد تمارين مناسبة تجمع بين المعدات المختارة والقيود الصحية الحالية؛ يُرجى مراجعة مختص أو تعديل المعدات المتاحة.');
+    }
+
+    const estimatedMinutes = Math.min(duration, Math.max(10, Math.ceil(elapsedSeconds / 60)));
 
     return {
       dayIndex: wd.index,
@@ -1005,6 +1033,7 @@ export function generateWorkoutWeek(workoutPrefs = {}, profile = {}) {
       title: split.title,
       focus: split.focus,
       durationMinutes: duration,
+      estimatedMinutes,
       warmup: '5 دقائق إحماء مفصلي ديناميكي (دوران الكتفين والحوض ومشي في المكان)',
       cooldown: '3–5 دقائق إطالة هادئة وتنفس عميق لتهدئة النبض',
       exercises
