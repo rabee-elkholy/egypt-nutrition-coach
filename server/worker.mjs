@@ -1,21 +1,33 @@
+import {nutritionQualityIssues} from '../planner-core.mjs';
 import {command} from './coaching.mjs';
 import {catalog,exerciseAlternatives,regionForMuscle,scheduledSessions} from './workouts.mjs';
 import {recovery} from './recovery.mjs';
 import {loadAccount,saveAccount} from './store.mjs';
 import {library,mealAlternatives,dayTotals} from './food.mjs';
-import {localDate} from '../coaching-shared.mjs';
+import {localDate,integer,validDate,needsHealthConfirmation,needsScheduleConfirmation} from '../coaching-shared.mjs';
 const json=(data,status=200,headers={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
-const present=s=>({...s,scheduledSessions:scheduledSessions(s),serverDate:localDate(),recovery:recovery(s.checkins,Date.now(),s.workoutLogs)});
+const present=s=>{
+ const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=recovery(s.checkins,Date.now(),s.workoutLogs),needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
+ return {...s,eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},planQuality:plan?.days.flatMap(d=>nutritionQualityIssues(d.summary,d.targets||plan.targets).map(message=>({date:d.date,message})))||[],scheduledSessions:scheduledSessions(s),serverDate:localDate(),recovery:{...ready,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule}};
+};
+async function requestJson(request){
+ const reader=request.body?.getReader();if(!reader)throw Error('محتوى JSON مطلوب.');const chunks=[];let size=0;
+ while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>40000){await reader.cancel();throw Object.assign(Error('الطلب أكبر من المسموح.'),{status:413});}chunks.push(value);}
+ const raw=new Uint8Array(size);let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.byteLength;}
+ try{return new TextDecoder('utf-8',{fatal:true}).decode(raw);}catch{throw Object.assign(Error('ترميز JSON غير صالح.'),{status:400});}
+}
+function cursor(value,label){return value==null?0:integer(value,0,Number.MAX_SAFE_INTEGER,label);}
 export default {async fetch(request,env){
  const url=new URL(request.url);if(!url.pathname.startsWith('/v1/'))return env.ASSETS.fetch(request);
- if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.8.0'});
+ if(url.pathname==='/v1/health'&&request.method!=='GET')return json({error:'GET فقط.'},405,{Allow:'GET'});
+ if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.9.0'});
  const user=request.headers.get('oai-authenticated-user-id');if(!user)return json({error:'سجّل الدخول لحفظ ومتابعة خطتك.'},401);
  try{
  if(!env.DB)return json({error:'قاعدة البيانات غير متاحة.'},503);
  if(request.method==='GET'&&url.pathname==='/v1/catalog/manifest')return json(catalog.manifest);
  if(request.method==='GET'&&url.pathname==='/v1/catalog/muscles')return json({items:catalog.muscles,translations:catalog.muscleTranslations});
  if(request.method==='GET'&&url.pathname==='/v1/exercises'){
-  const q=(url.searchParams.get('q')||'').toLowerCase().slice(0,100),muscle=url.searchParams.get('muscle'),equipment=url.searchParams.get('equipment');const offset=Math.max(0,Math.floor(Number(url.searchParams.get('offset'))||0));
+  const q=(url.searchParams.get('q')||'').toLowerCase().slice(0,100),muscle=url.searchParams.get('muscle'),equipment=url.searchParams.get('equipment');const offset=cursor(url.searchParams.get('offset'),'بداية الصفحة');
   const found=catalog.exercises.filter(e=>(!q||e.name.toLowerCase().includes(q))&&(!muscle||e.muscles.some(m=>m.muscle_id===muscle||regionForMuscle(m.muscle_id)===muscle))&&(!equipment||e.equipment.some(x=>x.equipment_id===equipment)));
   return json({total:found.length,items:found.slice(offset,offset+30),nextOffset:offset+30<found.length?offset+30:null});
  }
@@ -26,7 +38,7 @@ export default {async fetch(request,env){
  const s=await loadAccount(env.DB,user);
  if(request.method==='GET'){
   if(url.pathname==='/v1/state')return json(present(s));
-  if(url.pathname==='/v1/food-diary')return json(dayTotals(s,url.searchParams.get('date')||localDate()));
+  if(url.pathname==='/v1/food-diary'){const date=url.searchParams.get('date')||localDate();if(!validDate(date))throw Error('تاريخ غير صالح.');return json(dayTotals(s,date));}
   if(url.pathname==='/v1/meal-alternatives')return json({items:mealAlternatives(s,url.searchParams.get('mealId'))});
   if(url.pathname==='/v1/exercise-alternatives')return json({items:exerciseAlternatives(s,url.searchParams.get('dayIndex'),url.searchParams.get('exerciseId'))});
   if(url.pathname==='/v1/plans')return json({items:s.planRefs||[]});
@@ -40,22 +52,22 @@ export default {async fetch(request,env){
    const row=await env.DB.prepare('SELECT body FROM coaching_workout_plans WHERE user_id=? AND plan_id=?').bind(user,id).first();return row?json(JSON.parse(row.body)):json({error:'الخطة غير موجودة.'},404);
   }
   if(url.pathname==='/v1/sync/changes'){
-   const after=Math.max(0,Math.floor(Number(url.searchParams.get('after'))||0));const rows=await env.DB.prepare('SELECT revision,action,at FROM coaching_changes WHERE user_id=? AND revision>? ORDER BY revision LIMIT 100').bind(user,after).all();return json({items:rows.results,currentRevision:s.revision,nextCursor:rows.results.at(-1)?.revision||after,hasMore:rows.results.length===100});
+   const after=cursor(url.searchParams.get('after'),'مؤشر المزامنة');const rows=await env.DB.prepare('SELECT revision,action,at FROM coaching_changes WHERE user_id=? AND revision>? ORDER BY revision LIMIT 100').bind(user,after).all();return json({items:rows.results,currentRevision:s.revision,nextCursor:rows.results.at(-1)?.revision||after,hasMore:rows.results.length===100});
   }
  }
  if(request.method!=='POST'||url.pathname!=='/v1/commands')return json({error:'المسار غير موجود.'},404);
  if(request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)return json({error:'Origin غير مسموح.'},403);
- if(!request.headers.get('Content-Type')?.includes('application/json'))return json({error:'JSON مطلوب.'},415);
- const raw=await request.text();if(new TextEncoder().encode(raw).length>40000)return json({error:'الطلب أكبر من المسموح.'},413);
+ if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return json({error:'JSON مطلوب.'},415);
+ const raw=await requestJson(request);
  const body=JSON.parse(raw),key=request.headers.get('Idempotency-Key');
- if(!body||Array.isArray(body)||typeof body.action!=='string'||!Number.isInteger(body.revision)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload))return json({error:'صيغة العملية غير صالحة.'},400);
+ if(!body||Array.isArray(body)||typeof body.action!=='string'||!Number.isSafeInteger(body.revision)||body.revision<0||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload))return json({error:'صيغة العملية غير صالحة.'},400);
  if(!key||key.length>100)return json({error:'Idempotency-Key مطلوب.'},400);
  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)))).map(x=>x.toString(16).padStart(2,'0')).join('');
  const previous=await env.DB.prepare('SELECT digest,response FROM coaching_requests WHERE user_id=? AND request_key=?').bind(user,key).first();
- if(previous){if(previous.digest!==digest)return json({error:'مفتاح الطلب مستخدم لمحتوى مختلف.'},409);return json({...present(s),commandReceipt:{revision:JSON.parse(previous.response).revision,replayed:true}},200,{'Idempotency-Replayed':'true'});}
+ if(previous){if(previous.digest!==digest)return json({error:'مفتاح الطلب مستخدم لمحتوى مختلف.'},409);return json({...present(await loadAccount(env.DB,user)),commandReceipt:{revision:JSON.parse(previous.response).revision,replayed:true}},200,{'Idempotency-Replayed':'true'});}
  if(body.revision!==s.revision)return json({error:'تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.'},409);
  const next=command(structuredClone(s),body.action,body.payload);next.revision=s.revision+1;
  await saveAccount(env.DB,user,next,s.revision,{key,digest,action:body.action});
  return json(present({...next,plans:next.plans.filter(p=>p.id===next.active_plan_id)}));
- }catch(error){if(/D1_ERROR|SQLITE|no such table/i.test(error.message||'')){console.error('Database operation failed',url.pathname,new Date().toISOString());return json({error:'تعذر حفظ البيانات حاليًا؛ حاول تاني بعد لحظات.'},503);}const status=error.status||400;return json({error:error instanceof SyntaxError?'JSON غير صالح.':error.message||'تعذر تنفيذ الطلب.'},status);}
+ }catch(error){if(!error.status&&(error instanceof TypeError||error instanceof ReferenceError)){console.error('Unexpected application failure',url.pathname,new Date().toISOString());return json({error:'تعذر تنفيذ العملية؛ حاول مرة أخرى.'},500);}if(/D1_ERROR|SQLITE|no such table/i.test(error.message||'')){console.error('Database operation failed',url.pathname,new Date().toISOString());return json({error:'تعذر حفظ البيانات حاليًا؛ حاول تاني بعد لحظات.'},503);}const status=error.status||400;return json({error:error instanceof SyntaxError?'JSON غير صالح.':error.message||'تعذر تنفيذ الطلب.'},status);}
 }};

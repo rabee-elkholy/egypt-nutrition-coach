@@ -7,7 +7,7 @@ import { EXCLUSIONS, expandedKeys } from "./planner-exclusions.mjs";
 import { egyptianMenus, regionalMenus } from './egyptian-menu.mjs';
 import { EGYPTIAN_POLICY_VERSION, egyptianBreadChoice, egyptianSlotPool,
   egyptianMealFamily, egyptianMealName } from "./egyptian-meals.mjs";
-export const ENGINE_VERSION = "weekly-planner-0.6.0";
+export const ENGINE_VERSION = "weekly-planner-0.9.0";
 export const REGIONS = {
   egypt: "مصر",
   levant: "بلاد الشام",
@@ -119,6 +119,7 @@ export function estimateNeeds(input) {
   if(!['slow','moderate','fast'].includes(pace))throw Error('سرعة الهدف غير صالحة');
   let change = 0;
   if(input.goal === 'lose')change=-Math.min(tdee*{slow:.1,moderate:.15,fast:.2}[pace],500);
+  else if(input.goal === 'muscle_gain'&&(input.recomposition||Number(input.targetWeight)===weight)){change=0;notes.push('هدف بناء العضلات مع نفس الوزن يبدأ بسعرات التثبيت وتمارين المقاومة؛ نراجع الاتجاه والأداء من متابعتك.');}
   else if(input.goal === 'muscle_gain')change=Math.min(tdee*{slow:.05,moderate:.08,fast:.1}[pace],250);
   else if(input.goal === 'gain')change=Math.min(tdee*{slow:.08,moderate:.12,fast:.15}[pace],400);
   notes.push('سرعة الهدف تحدد عجزًا أو فائضًا مبدئيًا محدودًا؛ معدل تغير الوزن الفعلي بيتراجع من قياساتك، ومش ضمان لتاريخ وصول.');
@@ -538,13 +539,13 @@ export function fitMeal(t, desiredEnergy, desiredProtein, lib) {
     };
   });
   const get = () => totalsForParts(parts, lib).values;
-  // Discount incomplete plant protein from grains/veg when deciding how much main protein is needed
+  // Count reference protein grams without inventing digestibility percentages for food groups.
   const effectiveProtein = () => {
     let total = 0;
     for (const p of parts) {
       const i = lib.ingredients[p.key];
       const prot = (Number(i.values.protein) * Number(p.grams)) / 100;
-      total += ["carb", "veg", "seasoning"].includes(i.role) ? prot * 0.55 : prot;
+      total += prot;
     }
     return total;
   };
@@ -851,8 +852,6 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
         slot_id: slot.id,
         target_energy: round(desired),
         target_protein: round(protein),
-        ...(isWorkoutDay && slot.slot === "lunch" ? { workout_tag: "وجبة بعد التمرين 💪" } : {}),
-        ...(isWorkoutDay && slot.slot === "breakfast" ? { workout_tag: "طاقة قبل التمرين ⚡" } : {}),
         snapshot: copy(best.snapshot),
       });
     }
@@ -874,20 +873,39 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
           const nextTotal=currentTotal-Number(m.snapshot.values.energy)+Number(next.values.energy);
           const dashOk = p.diet!=='dash' || Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium ?? 0)<=2300;
           const carbOk = !['keto','low_carb'].includes(p.diet) || Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.carbs ?? 0)<=(p.diet==='keto'?50:130);
-          if((Math.abs(targets.energy-nextTotal)<Math.abs(targets.energy-currentTotal) || (pGap >= 4 && Number(next.values.protein) > Number(m.snapshot.values.protein))) && dashOk && carbOk) {
+          const currentSummary=sumSnapshots(meals.map(x=>x.snapshot));
+          const nextSummary=sumSnapshots(meals.map(x=>x===m?next:x.snapshot));
+          if(nutritionObjective(nextSummary,targets)<nutritionObjective(currentSummary,targets) && dashOk && carbOk) {
             m.snapshot=next;
           }
         }
       }
     }
+    // Nutrition feasibility outranks variety. Repair an out-of-bounds day using the same strict pool.
+    for(let repair=0;repair<2&&nutritionQualityIssues(sumSnapshots(meals.map(m=>m.snapshot)),targets).length;repair++){
+      let best=null,current=nutritionObjective(sumSnapshots(meals.map(m=>m.snapshot)),targets);
+      const gap=Math.max(0,targets.protein-Number(sumSnapshots(meals.map(m=>m.snapshot)).values.protein));
+      for(const meal of meals)for(const template of pool.filter(t=>t.meal_slots.includes(meal.slot))){
+        const desiredProtein=meal.target_protein+gap/Math.max(1,meals.length-1),key=template.id+'|repair|'+meal.target_energy+'|'+Math.round(desiredProtein);
+        if(!fitted.has(key))fitted.set(key,fitMeal(template,meal.target_energy,desiredProtein,lib));
+        const snapshot=fitted.get(key),snapshots=meals.map(m=>m===meal?snapshot:m.snapshot);
+        try{assertDietDay(snapshots,p.diet,targets);}catch{continue;}
+        const score=nutritionObjective(sumSnapshots(snapshots),targets);
+        if(score<current){best={meal,snapshot};current=score;}
+      }
+      if(!best)break;best.meal.snapshot=copy(best.snapshot);
+    }
     assertDietDay(meals.map(m=>m.snapshot),p.diet,targets);
     const summary = sumSnapshots(meals.map((m) => m.snapshot));
+    const quality=nutritionQualityIssues(summary,targets);
+    if(quality.length)throw Error('المكتبة الحالية لا تحقق حدود السعرات والبروتين مع كل اختياراتك. جرّب مصادر بروتين أو ميزانية أو عدد وجبات مختلف؛ لم نغيّر القيود أو نحفظ خطة ناقصة.');
     const checks = assessDay(summary, targets);
     if (checks.length)
       warnings.push({ date: addDays(startDate, day), messages: checks });
     days.push({
       date: addDays(startDate, day),
       is_workout_day: isWorkoutDay,
+      targets: copy(targets),
       meals,
       summary,
     });
@@ -904,6 +922,16 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
     data_version: lib.data_version,
     created_at: new Date().toISOString(),
   };
+}
+function nutritionObjective(summary,targets){
+ const energy=Number(summary.values.energy),protein=Number(summary.values.protein);
+ return Math.abs(energy-targets.energy)/targets.energy*5+Math.max(0,targets.protein-protein)/Math.max(1,targets.protein)*3;
+}
+export function nutritionQualityIssues(summary,targets){
+ const messages=[],energy=Number(summary.values.energy),protein=Number(summary.values.protein);
+ if(summary.values.energy==null||!Number.isFinite(energy)||Math.abs(energy-targets.energy)>targets.energy*.15)messages.push('السعرات أبعد من 15% عن الهدف.');
+ if(summary.values.protein==null||!Number.isFinite(protein)||protein<targets.protein*.8)messages.push('البروتين أقل من 80% من الهدف.');
+ return messages;
 }
 export function assessDay(summary, targets) {
   const out = [],

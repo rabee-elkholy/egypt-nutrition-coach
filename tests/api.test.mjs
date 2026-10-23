@@ -6,7 +6,7 @@ test('D1 API authenticates, isolates accounts, persists and rejects stale/idempo
  const req=(path='state',opts={})=>mf.dispatchFetch('http://localhost/v1/'+path,opts);
  assert.equal((await req()).status,401);
  const headers={'oai-authenticated-user-id':'user-a','Content-Type':'application/json','Idempotency-Key':'test-1'};
- const body=JSON.stringify({revision:0,action:'generate',payload:{name:'Test',age:30,weight:80,height:175,sex:'male',goal:'maintain',serviceTrack:'workouts_only',selectedWorkoutDays:[1,3,5]}});
+ const body=JSON.stringify({revision:0,action:'generate',payload:{name:'Test',age:30,weight:80,height:175,sex:'male',goal:'maintain',serviceTrack:'workouts_only',healthConfirmed:true,selectedWorkoutDays:[1,3,5]}});
  let r=await req('commands',{method:'POST',headers,body});assert.equal(r.status,200,await r.clone().text());assert.equal((await r.json()).revision,1);
  r=await req('commands',{method:'POST',headers,body});assert.equal(r.status,200);
  r=await req('commands',{method:'POST',headers:{...headers,'Idempotency-Key':'different'},body});assert.equal(r.status,409);

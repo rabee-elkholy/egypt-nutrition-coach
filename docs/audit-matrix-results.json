@@ -1,0 +1,48 @@
+{
+  "at": "2026-10-23T03:51:33.159Z",
+  "workouts": {
+    "cases": 2250,
+    "partialCases": 1828,
+    "errors": []
+  },
+  "nutrition": {
+    "cases": 333,
+    "generated": 330,
+    "blocked": [
+      {
+        "configuration": 60,
+        "seed": 0,
+        "diet": "vegan",
+        "sex": "female",
+        "goal": "lose",
+        "region": "egypt",
+        "budget": "medium",
+        "reason": "المكتبة الحالية لا تحقق حدود السعرات والبروتين مع كل اختياراتك. جرّب مصادر بروتين أو ميزانية أو عدد وجبات مختلف؛ لم نغيّر القيود أو نحفظ خطة ناقصة."
+      },
+      {
+        "configuration": 60,
+        "seed": 1,
+        "diet": "vegan",
+        "sex": "female",
+        "goal": "lose",
+        "region": "egypt",
+        "budget": "medium",
+        "reason": "المكتبة الحالية لا تحقق حدود السعرات والبروتين مع كل اختياراتك. جرّب مصادر بروتين أو ميزانية أو عدد وجبات مختلف؛ لم نغيّر القيود أو نحفظ خطة ناقصة."
+      },
+      {
+        "configuration": 60,
+        "seed": 2,
+        "diet": "vegan",
+        "sex": "female",
+        "goal": "lose",
+        "region": "egypt",
+        "budget": "medium",
+        "reason": "المكتبة الحالية لا تحقق حدود السعرات والبروتين مع كل اختياراتك. جرّب مصادر بروتين أو ميزانية أو عدد وجبات مختلف؛ لم نغيّر القيود أو نحفظ خطة ناقصة."
+      }
+    ],
+    "errors": [],
+    "quality": [],
+    "configurations": 111,
+    "seeds": 3
+  }
+}

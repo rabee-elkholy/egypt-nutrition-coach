@@ -1,3 +1,4 @@
+import {healthyCheckin,completedTraining} from './helpers.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {empty,generate,command,today} from '../server/coaching.mjs';
 import {dayTotals,mealAlternatives,plannedEnergyForDate} from '../server/food.mjs';
@@ -44,7 +45,7 @@ test('calorie review deduplicates dates and requires complete adherent days with
 });
 test('accepted calorie proposal preserves past/today and protein targets; stale acceptance fails',()=>{
  const s=structuredClone(fixture),plan=s.plans[0],before=JSON.stringify(plan.days[0]);
- s.adaptations=[{id:'proposal',kind:'calories',delta:-100,reason:'test',status:'pending',baseRevision:s.revision}];
+ s.checkins=[healthyCheckin()];s.adaptations=[{id:'proposal',kind:'calories',delta:-100,reason:'test',status:'pending',baseRevision:s.revision}];
  const next=run(s,'adaptation',{id:'proposal',accept:true}),current=next.plans.find(p=>p.id===next.active_plan_id);
  assert.equal(JSON.stringify(current.days[0]),before);assert.equal(current.targets.energy,plan.targets.energy-100);assert.equal(current.targets.protein,plan.targets.protein);assert.equal(current.effective_from,dateOffset(today(),1));assert.equal(plannedEnergyForDate(next,today()),plan.targets.energy);assert.equal(plannedEnergyForDate(next,dateOffset(today(),1)),current.targets.energy);
  s.revision++;assert.throws(()=>run(s,'adaptation',{id:'proposal',accept:true}),e=>e.status===409);
@@ -71,8 +72,7 @@ test('onboarding goal pace changes the bounded starting energy without changing 
 test('stable plateau with enough recovery and adherence proposes <=20% more weekly sets, requiring acceptance',async()=>{
  const {volumeReview}=await import('../server/training-review.mjs');
  const s=structuredClone(fixture);s.profile.goal='muscle_gain';const e=s.workoutPlan.days[0].exercises[0];const plan=s.workoutPlan;
- s.sessions=Array.from({length:6},(_,i)=>({date:dateOffset(today(),-i),dayIndex:plan.days[i%3].dayIndex,planId:plan.id,status:'completed'}));
- s.workoutLogs=Array.from({length:3},(_,i)=>({exerciseId:e.id,dayIndex:plan.days[i].dayIndex,planId:plan.id,date:dateOffset(today(),-i),loadMode:e.loadMode,sets:Array.from({length:e.sets},()=>({kg:20,reps:10,rir:3,pain:false}))}));
+ completedTraining(s);s.checkins=Array.from({length:8},(_,i)=>healthyCheckin(i));
  const ready={status:'ready',baselineReady:true,muscles:{}};const proposal=volumeReview(s,ready);assert.equal(proposal.action,'propose');assert.ok(proposal.extraSets/plan.weeklySets[proposal.region]<=.2);
  s.adaptations=[{...proposal,id:'v',status:'pending',baseRevision:s.revision}];const next=run(s,'adaptation',{id:'v',accept:true});assert.notEqual(next.workoutPlan.id,plan.id);assert.equal(next.workoutPlan.days[0].exercises[0].sets,e.sets+1);assert.equal(s.workoutPlan.days[0].exercises[0].sets,e.sets);
  assert.equal(volumeReview(s,{...ready,baselineReady:false}).action,'hold');

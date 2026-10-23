@@ -1,11 +1,12 @@
 import library from '../data/planning-library.json' with {type:'json'};
-import {alternatives,scaleSnapshot,sumSnapshots,assessDay} from '../planner-core.mjs';
+import {alternatives,scaleSnapshot,sumSnapshots,assessDay,nutritionQualityIssues} from '../planner-core.mjs';
 import {assertDietDay} from '../diet-patterns.mjs';
 import {number,dateForLog,localDate} from '../coaching-shared.mjs';
 export {library};
 const metrics=['energy','protein','fat','carbs','fiber','saturated','sodium','sugars'];
 export const activePlan=s=>s.plans.find(p=>p.id===s.active_plan_id);
 export function plannedEnergyForDate(s,date){
+ const direct=activePlan(s)?.days.find(d=>d.date===date);if(direct?.targets?.energy!=null)return direct.targets.energy;
  const refs=[...(s.planRefs||[]),...s.plans.filter(p=>!(s.planRefs||[]).some(r=>r.id===p.id)).map(p=>({start_date:p.start_date,end_date:p.days.at(-1)?.date,effective_from:p.effective_from,energy:p.targets.energy}))];
  return refs.slice().reverse().find(p=>(p.effective_from||p.start_date)<=date&&p.end_date>=date)?.energy??null;
 }
@@ -27,21 +28,27 @@ export function foodCommand(s,action,p){
  if(action==='food_entry'){
   const date=dateForLog(p.date||localDate());if(!['planned','ingredient','manual'].includes(p.source))throw Error('مصدر الوجبة غير صالح.');
   if(!['breakfast','lunch','dinner','snack'].includes(p.slot))throw Error('حدد الوجبة.');
+  const previous=s.foodLogs.find(d=>d.date===date);if(previous&&previous.source!=='entries')throw Error('اليوم مسجل كإجمالي؛ حوّله صراحةً إلى السجل التفصيلي قبل إضافة وجبات.');
   let snapshot,mealId=null,planId=null,quantity;
   if(p.source==='planned'){
    const {plan,day,meal}=plannedMeal(s,p.mealId);if(day.date!==date)throw Error('التاريخ لا يطابق الوجبة المخططة.');if(p.slot!==meal.slot)throw Error('نوع الوجبة لا يطابق الخطة.');
    if(s.foodEntries.some(e=>e.date===date&&e.mealId===meal.id))throw Error('الوجبة دي متسجلة بالفعل؛ احذف التسجيل قبل تصحيح الكمية.');
    quantity=number(p.quantity,.1,4,'نسبة الحصة');snapshot=scaleSnapshot(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;
   }else if(p.source==='ingredient'){
-   const i=library.ingredients[p.key];if(!i)throw Error('الصنف غير موجود.');quantity=number(p.grams,1,2000,'الكمية بالجرام');
+   const i=typeof p.key==='string'&&Object.hasOwn(library.ingredients,p.key)?library.ingredients[p.key]:null;if(!i)throw Error('الصنف غير موجود.');quantity=number(p.grams,1,2000,'الكمية بالجرام');
    snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
   }else{
-   const name=String(p.name||'').trim();if(!name||name.length>120)throw Error('اكتب اسم الوجبة في حدود 120 حرف.');
+   const name=typeof p.name==='string'?p.name.trim():'';if(!name||name.length>120)throw Error('اكتب اسم الوجبة في حدود 120 حرف.');
    snapshot={name,values:Object.fromEntries(metrics.map(k=>[k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))])),ingredients:[],is_approximate:true};
    if(snapshot.values.energy==null||Number(snapshot.values.energy)<=0)throw Error('السعرات الفعلية مطلوبة للوجبة اليدوية.');
   }
   s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,source:p.source,mealId,planId,quantity,at:new Date().toISOString(),snapshot:freezeSnapshot(snapshot)});
   refreshDay(s,date);s.foodLogs.find(d=>d.date===date).complete=false;
+ }else if(action==='food_switch_to_entries'){
+  const date=dateForLog(p.date),previous=s.foodLogs.find(d=>d.date===date);
+  if(p.confirm!==true||!previous||previous.source==='entries')throw Error('تأكيد تحويل إجمالي اليوم إلى تسجيل تفصيلي مطلوب.');
+  s.history.push({kind:'food_diary_mode',at:new Date().toISOString(),previous:structuredClone(previous)});
+  s.foodLogs=s.foodLogs.filter(d=>d.date!==date);refreshDay(s,date);
  }else if(action==='food_delete'){
   const entry=s.foodEntries.find(e=>e.id===p.id);if(!entry)throw Error('التسجيل غير موجود.');s.foodEntries=s.foodEntries.filter(e=>e.id!==p.id);refreshDay(s,entry.date);
   // A changed diary must be reviewed before being called complete again.
@@ -56,7 +63,7 @@ export function foodCommand(s,action,p){
 export function mealAlternatives(s,mealId){
  const {plan,day,meal}=plannedMeal(s,mealId);
  return alternatives(meal,s.preferences,library,30).filter(a=>{
-  try{assertDietDay(day.meals.map(m=>m.id===mealId?a.snapshot:m.snapshot),s.preferences.diet,plan.targets);return true;}catch{return false;}
+  try{const snapshots=day.meals.map(m=>m.id===mealId?a.snapshot:m.snapshot);assertDietDay(snapshots,s.preferences.diet,day.targets||plan.targets);return !nutritionQualityIssues(sumSnapshots(snapshots),day.targets||plan.targets).length;}catch{return false;}
  }).slice(0,6);
 }
 export function replaceMeal(s,p){
@@ -66,6 +73,6 @@ export function replaceMeal(s,p){
  const alternative=mealAlternatives(s,p.mealId).find(a=>a.snapshot.template_id===p.templateId);if(!alternative)throw Error('البديل لم يعد متاحًا تحت نفس اختياراتك.');
  const next=structuredClone(plan);next.id='plan-'+crypto.randomUUID();next.parent_id=plan.id;next.created_at=new Date().toISOString();next.changeReason='استبدال وجبة باختيارك';
  const updated=next.days.find(d=>d.date===day.date);updated.meals.find(m=>m.id===meal.id).snapshot=alternative.snapshot;
- updated.summary=sumSnapshots(updated.meals.map(m=>m.snapshot));next.warnings=next.days.flatMap(d=>{const messages=assessDay(d.summary,next.targets);return messages.length?[{date:d.date,messages}]:[];});
+ updated.summary=sumSnapshots(updated.meals.map(m=>m.snapshot));next.warnings=next.days.flatMap(d=>{const messages=assessDay(d.summary,d.targets||next.targets);return messages.length?[{date:d.date,messages}]:[];});
  s.plans.push(next);s.active_plan_id=next.id;return s;
 }
