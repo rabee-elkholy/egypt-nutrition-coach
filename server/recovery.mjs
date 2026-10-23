@@ -42,10 +42,51 @@ export function hasPerformanceDrop(logs,now=clockNow()){
  const grouped=new Map();for(const l of logs){if(!l.sets?.length||l.sets.some(s=>s.pain)||eachSide(l)&&l.bothSides!==true)continue;const k=l.exerciseId+'|'+l.loadMode+'|'+(l.progressionKey||l.planId);const a=grouped.get(k)||[];a.push(l);grouped.set(k,a);}
  for(const records of grouped.values()){
   const byDate=chronologicalExposures(records,now,14).slice(-2);if(byDate.length<2)continue;
-  const [a,b]=byDate;if(a.sets.length!==b.sets.length||a.sets.some((s,i)=>s.kg!==b.sets[i].kg))continue;
-  const sum=x=>x.sets.reduce((v,s)=>v+s.reps,0);if(sum(b)<sum(a)*.9)return true;
+  const [a,b]=byDate,sum=x=>x.sets.reduce((v,s)=>v+s.reps,0);
+  const avgKg=x=>x.sets.reduce((v,s)=>v+s.kg,0)/x.sets.length;
+  if(a.sets.length===b.sets.length&&a.sets.every((s,i)=>s.kg===b.sets[i].kg)&&sum(b)<sum(a)*.9)return true;
+  if(avgKg(a)>0&&avgKg(b)<avgKg(a)*.9&&b.sets.every(s=>s.rir!=null&&s.rir<=1))return true;
  }
  return false;
+}
+export function workoutProgressionSummary(workoutPlan,logs=[],now=clockNow()){
+ const loadIncreases=[],loadDecreases=[],repIncreases=[],readyForNextLoad=[];
+ if(!workoutPlan?.days)return {loadIncreases,loadDecreases,repIncreases,readyForNextLoad,summaryText:'لا توجد تمارين مسجلة بعد.'};
+ const seen=new Set();
+ for(const day of workoutPlan.days){
+  for(const ex of day.exercises||[]){
+   if(seen.has(ex.id))continue;
+   seen.add(ex.id);
+   const compatible=logs.filter(l=>l.exerciseId===ex.id&&(ex.progressionKey?l.progressionKey===ex.progressionKey:l.planId===workoutPlan.id)&&l.sets?.length);
+   const hist=chronologicalExposures(compatible,now,14);
+   if(!hist.length)continue;
+   const latest=hist.at(-1);
+   const latestKg=Math.round(latest.sets.reduce((v,s)=>v+Number(s.kg||0),0)/latest.sets.length*10)/10;
+   const latestReps=latest.sets.reduce((v,s)=>v+Number(s.reps||0),0);
+   if(ex.suggestedKg!=null){
+    readyForNextLoad.push({exerciseId:ex.id,name:ex.name,kg:latestKg,suggestedKg:ex.suggestedKg});
+   }
+   if(hist.length>=2){
+    const prev=hist.at(-2);
+    const prevKg=Math.round(prev.sets.reduce((v,s)=>v+Number(s.kg||0),0)/prev.sets.length*10)/10;
+    const prevReps=prev.sets.reduce((v,s)=>v+Number(s.reps||0),0);
+    if(latestKg>prevKg){
+     loadIncreases.push({exerciseId:ex.id,name:ex.name,fromKg:prevKg,toKg:latestKg,deltaKg:Math.round((latestKg-prevKg)*10)/10,date:latest.date});
+    }else if(latestKg<prevKg){
+     const fatigueDrop=latest.sets.some(s=>s.rir!=null&&s.rir<=1)||latestReps<prevReps;
+     loadDecreases.push({exerciseId:ex.id,name:ex.name,fromKg:prevKg,toKg:latestKg,deltaKg:Math.round((prevKg-latestKg)*10)/10,date:latest.date,fatigueDrop});
+    }else if(latestReps>prevReps){
+     repIncreases.push({exerciseId:ex.id,name:ex.name,kg:latestKg,fromReps:prevReps,toReps:latestReps,date:latest.date});
+    }
+   }
+  }
+ }
+ const parts=[];
+ if(loadIncreases.length)parts.push(`زودت أوزانك في (${loadIncreases.map(x=>`${x.name}: ${x.fromKg}←${x.toKg} كجم`).join('، ')})`);
+ if(repIncreases.length)parts.push(`زودت عداتك في (${repIncreases.map(x=>`${x.name}: ${x.fromReps}←${x.toReps} عدة`).join('، ')})`);
+ if(loadDecreases.length)parts.push(`خففت الوزن في (${loadDecreases.map(x=>`${x.name}: ${x.fromKg}←${x.toKg} كجم`).join('، ')}) ${loadDecreases.some(x=>x.fatigueDrop)?'واعتبرناه مؤشر إجهاد لحماية سعراتك وعضلاتك':'للحفاظ على جودة الأداء والمدى الحركي'}`);
+ if(readyForNextLoad.length)parts.push(`جاهز لرفع الوزن الجلسة الجاية في (${readyForNextLoad.map(x=>`${x.name} إلى ${x.suggestedKg} كجم`).join('، ')})`);
+ return {loadIncreases,loadDecreases,repIncreases,readyForNextLoad,summaryText:parts.length?parts.join(' · '):'أداؤك مستقر، كمّل تسجيل أوزانك وعداتك في كل جلسة لمقارنة التطور.'};
 }
 export function calorieReview(weights,foodDays,goal,energy,now=clockNow(),lastChange=0){
  const end=localDate(now),start=dateOffset(end,-13),middle=dateOffset(end,-6);

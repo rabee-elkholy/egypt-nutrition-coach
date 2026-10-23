@@ -1,11 +1,11 @@
-import {simulationPanel} from './simulation-ui.mjs?v=sim5';
+import {simulationPanel} from './simulation-ui.mjs?v=sim6';
 import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
 import {householdQuantity,displayPortion} from './planner-household.mjs';
 import {displayMealName,displayIngredientName} from './meal-presentation.mjs';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const round=n=>n==null?'—':Math.round(Number(n)||0);
-const days=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','السبت'].length===6?['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت']:['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const days=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 const stateLabels={cooked:'مطبوخ',raw:'نيّ',as_sold:'كما يباع'};
 const regionNames=regions=>(regions||[]).map(r=>MUSCLE_REGIONS[r]||r).join('، ');
 const macroLine=s=>`${round(s.values.energy)} سعر · ${round(s.values.protein)} جرام بروتين`;
@@ -16,6 +16,16 @@ const ingredientLine=x=>{
   :`<li><strong>${name}:</strong> ${round(x.grams)} جرام <small>(${st})</small></li>`;
 };
 const formData=form=>{const p=Object.fromEntries(new FormData(form));for(const x of form.querySelectorAll('[type=checkbox]'))p[x.name]=x.checked;return p;};
+
+function defaultStartKg(e,state){
+ if(e.loadMode==='bodyweight')return 0;
+ const level=state.onboarding?.workoutPrefs?.level||'beginner';
+ const adv=level==='intermediate'||level==='advanced';
+ if(['squat','hinge'].includes(e.pattern))return adv?30:20;
+ if(['horizontal_push','horizontal_pull'].includes(e.pattern))return adv?22.5:15;
+ if(['vertical_push','vertical_pull','lunge'].includes(e.pattern))return adv?15:10;
+ return adv?12.5:8;
+}
 
 const DISEASE_LABELS={
  hypertension:'الضغط المرتفع (ملح منخفض)',
@@ -45,6 +55,8 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
  const plan=state.plans.find(p=>p.id===state.active_plan_id);
  const ready=state.recovery||{status:'unknown',reasons:[]};
  const notes=[];
+ const hyd=state.progressSummary?.hydration;
+ const waterLow=hyd&&(hyd.todayCups||0)<Math.ceil((hyd.targetCups||10)*0.6);
  // 1. Nutrition Specialist Note
  const weights=(state.weights||[]).slice().sort((a,b)=>a.date.localeCompare(b.date));
  const lastW=weights.at(-1),prevW=weights.at(-2);
@@ -52,20 +64,21 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
  const yesterdayFood=state.foodLogs.find(x=>x.date===dateOffset(todayStr,-1));
  if(lastW&&prevW&&lastW.date===todayStr&&(lastW.kg-prevW.kg)>=0.4&&state.profile.goal==='lose'){
   const diff=Math.round((lastW.kg-prevW.kg)*10)/10;
-  notes.push({role:'🥗 أخصائي التغذية',text:`زيادة الميزان النهاردة (+${diff} كجم) طبيعية جداً ومش دهون خالص؛ دي غالباً احتباس سوائل مؤقت بسبب الأملاح أو مجهود التمرين. مكملين على خطتنا بنفس الهدوء!`});
+  notes.push({role:'🥗 أخصائي التغذية',text:`زيادة الميزان النهاردة (+${diff} كجم) طبيعية جداً ومش دهون خالص؛ دي غالباً احتباس سوائل مؤقت${waterLow?` (خصوصاً إن شرب المية اليوم لسه ${hyd.todayCups}/${hyd.targetCups} كوب)`:' بسبب الأملاح أو مجهود التمرين'}. اشرب ميتك كاملة ومكملين على خطتنا بنفس الهدوء!`});
  }else if(lastW&&prevW&&lastW.date===todayStr&&(prevW.kg-lastW.kg)>=0.3&&state.profile.goal==='lose'){
   notes.push({role:'🥗 أخصائي التغذية',text:`نزول هايل في الميزان (${lastW.kg} كجم)! جسمك بيستجيب للخطة بشكل صحي ومنتظم من غير ما نفقد كتلة عضلية.`});
  }else if(todayFood?.complete){
-  notes.push({role:'🥗 أخصائي التغذية',text:`برافو يا بطل! قفّلت وجبات النهاردة بالتزام ممتاز — جسمك كدة واخد احتياجه المظبوط من البروتين والطاقة.`});
+  notes.push({role:'🥗 أخصائي التغذية',text:hyd&&hyd.todayCups>=hyd.targetCups?`برافو يا بطل! قفّلت وجبات النهاردة وهدف شرب المية (${hyd.targetCups} أكواب) بالتزام ممتاز — جسمك كدة في أفضل حالة حرق واستشفاء.`:`برافو يا بطل! قفّلت وجبات النهاردة بالتزام ممتاز — باقي تكمل هدف شرب المية (${hyd?.todayCups||0} من ${hyd?.targetCups||10} كوب) علشان الهضم والاستشفاء.`});
  }else if(yesterdayFood?.complete&&(yesterdayFood.adherence??100)>=80){
-  notes.push({role:'🥗 أخصائي التغذية',text:`التزامك بوجبات إمبارح كان ممتاز (${yesterdayFood.adherence||100}%)! كمل النهاردة بنفس الهدوء والبساطة.`});
+  notes.push({role:'🥗 أخصائي التغذية',text:`التزامك بوجبات إمبارح كان ممتاز (${yesterdayFood.adherence||100}%)! كمل النهاردة بنفس الهدوء وما تنساش تسجل أكواب المية (${hyd?.targetLiters||2.5} لتر اليوم).`});
  }else if(plan){
-  notes.push({role:'🥗 أخصائي التغذية',text:`وجبات يومك جاهزة على مقاس هدفك (${round(plan.targets.energy)} سعر و${round(plan.targets.protein)} جم بروتين) — علّم على كل وجبة تخلصها بلمسة واحدة وهنقفل لك اليوم تلقائياً.`});
+  notes.push({role:'🥗 أخصائي التغذية',text:`وجبات يومك جاهزة على مقاس هدفك (${round(plan.targets.energy)} سعر و${round(plan.targets.protein)} جم بروتين) مع هدف مية ${hyd?.targetCups||10} أكواب (${hyd?.targetLiters||2.5} لتر) — علّم على كل وجبة وكوب مية بلمسة واحدة.`});
  }
 
  // 2. Training Captain Note
  const adjustment=state.sessionAdjustment&&Date.parse(state.sessionAdjustment.expiresAt)>Date.parse(state.serverNow||new Date().toISOString())?state.sessionAdjustment:null;
  const upgradedEx=state.workoutPlan?.days?.flatMap(d=>d.exercises||[]).find(e=>e.suggestedKg!=null);
+ const insights=state.progressSummary?.workoutSummary?.insights;
  const todayScheduled=(state.scheduledSessions||[]).find(s=>s.date===todayStr);
  const todaySession=(state.sessions||[]).find(s=>s.date===todayStr&&s.planId===state.workoutPlan?.id);
  const nextScheduled=(state.scheduledSessions||[])[0];
@@ -74,14 +87,23 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
   notes.push({role:'💪 كابتن التدريب',text:ready.reasons?.[0]||'سلامتك أولاً — ريّح جسمك النهاردة لحد ما تطمنّا عليك.'});
  }else if(adjustment||['caution','high'].includes(ready.status)){
   notes.push({role:'💪 كابتن التدريب',text:`لأن نومك كان قليل أو حاسس بإجهاد، خففنا لك حمل التمرين النهاردة علشان تحافظ على نشاطك وتحمي مفاصلك من غير إرهاق.`});
+ }else if(insights?.loadDecreases?.length&&todaySession){
+  const dec=insights.loadDecreases[0];
+  notes.push({role:'💪 كابتن التدريب',text:`لاحظنا إنك قللت الوزن في (${dec.name}) من ${dec.fromKg} إلى ${dec.toKg} كجم — خطوة صح لحماية مفاصلك وإتقان الأداء، وفريق المتابعة هيحافظ على سعراتك كاملة لدعم استشفائك.`});
+ }else if(insights?.loadIncreases?.length&&todaySession){
+  const inc=insights.loadIncreases[0];
+  notes.push({role:'💪 كابتن التدريب',text:`عاش يا بطل! 💪 رفعت وزنك في (${inc.name}) من ${inc.fromKg} إلى ${inc.toKg} كجم (+${inc.deltaKg} كجم) — التطور ده متسجل في ملفك وبيدعم الحفاظ على العضلات.`});
+ }else if(insights?.repIncreases?.length&&todaySession){
+  const rep=insights.repIncreases[0];
+  notes.push({role:'💪 كابتن التدريب',text:`تطور ممتاز في القوة والتحمل! زودت عداتك في (${rep.name}) من ${rep.fromReps} إلى ${rep.toReps} عدة عند وزن ${rep.kg} كجم.`});
  }else if(todaySession?.status==='completed'){
-  notes.push({role:'💪 كابتن التدريب',text:`عاش يا بطل! 💪 قفّلت تمرينة النهاردة بالكامل، اهتم بشرب المية ووجبة بعد التمرين للاستشفاء.`});
+  notes.push({role:'💪 كابتن التدريب',text:`عاش يا بطل! 💪 قفّلت تمرينة النهاردة بالكامل، اهتم بشرب المية (${hyd?.targetCups||10} أكواب) ووجبة بعد التمرين للاستشفاء.`});
  }else if(upgradedEx&&ready.progressionAllowed){
   notes.push({role:'💪 كابتن التدريب',text:`تطوّر ممتاز! لأن أوزانك وعداتك في آخر تمرينتين كانت قوية وثابتة، الكابتن رفع لك الوزن المستهدف النهاردة في (${upgradedEx.name}) لـ ${upgradedEx.suggestedKg} كجم.`});
  }else if(todayScheduled){
-  notes.push({role:'💪 كابتن التدريب',text:hasTrainedBefore?`عندك النهاردة تمرينة (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) — سجّل أوزانك وعداتك في كل تمرين وهنحسب لك الجلسة تلقائياً.`:`أهلاً بيك في أول يوم يا بطل! تمرينتك الأولى (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) جاهزة النهاردة في تبويب «التمرين» — ابدأ بأوزان مريحة وسجّل أداءك.`});
+  notes.push({role:'💪 كابتن التدريب',text:hasTrainedBefore?`عندك النهاردة تمرينة (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) — هتلاقي اقتراح الأوزان والعدات والمجموعات جاهز لكل تمرين وتقدر تزود أو تقلل بلمسة واحدة.`:`أهلاً بيك في أول يوم يا بطل! تمرينتك الأولى (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) جاهزة النهاردة في تبويب «التمرين» مع أوزان وعدات مقترحة كبداية آمنة.`});
  }else if(state.workoutPlan&&!hasTrainedBefore){
-  notes.push({role:'💪 كابتن التدريب',text:`أهلاً بيك في أول يوم يا بطل! خطة تمرينك جاهزة بالكامل في تبويب «التمرين» — تقدر تبدأ أول جلسة ليك النهاردة فوراً، أو في مواعيدك المحددة بدايةً من يوم ${nextScheduled?days[nextScheduled.dayIndex]:'التمرين القادم'}.`});
+  notes.push({role:'💪 كابتن التدريب',text:`أهلاً بيك في أول يوم يا بطل! خطة تمرينك جاهزة بالكامل في تبويب «التمرين» مع أوزان وعدات مقترحة — تقدر تبدأ أول جلسة ليك النهاردة فوراً، أو في مواعيدك بدايةً من يوم ${nextScheduled?days[nextScheduled.dayIndex]:'التمرين القادم'}.`});
  }else if(state.workoutPlan){
   notes.push({role:'💪 كابتن التدريب',text:`النهاردة يوم راحة واستشفاء لعضلاتك بعد مجهود التمرين — خذ كفايتك من النوم والمية${nextScheduled?` استعداداً لتمرينة يوم ${days[nextScheduled.dayIndex]}`:''}.`});
  }
@@ -176,6 +198,32 @@ export async function mountPlanner({root,toast}){
   root.querySelector('#back-onboarding').onclick=onboarding;
   root.querySelector('#readiness-form').onsubmit=e=>{e.preventDefault();const data=formData(e.target);const externalTrainingDays=Object.keys(data).filter(k=>k.startsWith('external:')&&data[k]).map(k=>Number(k.slice(9)));if(needsExternal&&!externalTrainingDays.length){notice('اختار يوم مقاومة واحدًا على الأقل، أو راجع هدفك.',true);return;}send('generate',{...draft,...(needsHealth?{healthConfirmed:data.healthConfirmed}:{}),...(needsExternal?{externalTrainingDays:externalTrainingDays.map(d=>(d+1)%7)}:{})});};
  }
+ function waterHTML(todayStr){
+  const hyd=state.progressSummary?.hydration||{todayCups:0,targetCups:10,todayLiters:0,targetLiters:2.5,isWorkoutDay:false,adherence7d:0};
+  const waterRow=(state.waterLogs||[]).find(w=>w.date===todayStr);
+  const curCups=waterRow?waterRow.cups:(hyd.todayCups||0);
+  const targetCups=hyd.targetCups||10;
+  const curLiters=Math.round(curCups*0.25*100)/100;
+  const targetLiters=hyd.targetLiters||Math.round(targetCups*0.25*10)/10;
+  const pct=Math.min(100,Math.round((curCups/Math.max(1,targetCups))*100));
+  const done=curCups>=targetCups;
+  return `<section id="water-tracker" class="coach-card" style="background:linear-gradient(135deg,#f2f9ff 0%,#e6f3fc 100%);border-color:#b8dcf5">
+   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <h3 style="margin:0;color:#0d47a1">💧 شرب المية النهاردة (${todayStr})</h3>
+    <span style="font-size:12px;padding:4px 10px;border-radius:999px;font-weight:700;background:${done?'#d7f5e2':'#fff'};color:${done?'#1b4332':'#0d47a1'};border:1px solid #b8dcf5">${done?'✅ قفّلت هدف المية اليوم!':`${curCups} / ${targetCups} كوب (${curLiters} من ${targetLiters} لتر)`}</span>
+   </div>
+   <p style="margin:6px 0;font-size:13px;color:#1b3a57">${hyd.isWorkoutDay?'🏋️ لأن النهاردة يوم تمرين، أخصائي التغذية زود هدفك كوبايتين مية (+0.5 لتر) لتعويض العرق ومنع الشد العضلي.':'شرب المية بانتظام بيمنع احتباس السوائل على الميزان وبيحافظ على نشاطك وحرق الدهون.'}</p>
+   <div class="water-progress-track" aria-hidden="true">
+    <div class="water-progress-fill" style="width:${pct}%"></div>
+   </div>
+   <div class="sim-chip-grid" style="margin-top:10px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+    <button type="button" class="sim-chip water-btn" data-water-add="1" data-date="${todayStr}">➕ كوب مية (250 مل)</button>
+    <button type="button" class="sim-chip water-btn" data-water-add="2" data-date="${todayStr}">➕ زجاجة (500 مل)</button>
+    ${!done?`<button type="button" class="sim-chip water-btn" data-water-set="${targetCups}" data-date="${todayStr}">✅ شربت هدفي كله (${targetCups} كوب)</button>`:''}
+    ${curCups>0?`<button type="button" class="sim-chip secondary water-btn" data-water-add="-1" data-date="${todayStr}">➖ تقليل كوب</button>`:''}
+   </div>
+  </section>`;
+ }
  function diaryHTML(){
   const entries=(state.foodEntries||[]).filter(x=>x.date===diaryDate),record=state.foodLogs.find(x=>x.date===diaryDate);
   const total=k=>!entries.length&&record?.source!=='entries'?record?.[k]??null:entries.length&&entries.every(e=>e.snapshot.values[k]!=null)?entries.reduce((s,e)=>s+Number(e.snapshot.values[k]),0):null;
@@ -219,35 +267,84 @@ export async function mountPlanner({root,toast}){
   </article>`;
  }
  function exerciseHTML(e,day){
+  const todayStr=state.serverDate||localDate();
   const adjustment=state.sessionAdjustment&&Date.parse(state.sessionAdjustment.expiresAt)>Date.parse(state.serverNow||new Date().toISOString())?state.sessionAdjustment:null;
-  const sets=effectiveSets(state,e,state.serverDate||localDate(),Date.parse(state.serverNow||new Date().toISOString()));
-  const last=state.workoutLogs.filter(l=>l.exerciseId===e.id&&(e.progressionKey?l.progressionKey===e.progressionKey:l.planId===state.workoutPlan.id)).sort((a,b)=>(a.date||a.at.slice(0,10)).localeCompare(b.date||b.at.slice(0,10))||Date.parse(a.at)-Date.parse(b.at)).at(-1);
+  const sets=effectiveSets(state,e,todayStr,Date.parse(state.serverNow||new Date().toISOString()));
+  const history=state.workoutLogs.filter(l=>l.exerciseId===e.id&&(e.progressionKey?l.progressionKey===e.progressionKey:l.planId===state.workoutPlan.id)).sort((a,b)=>(a.date||a.at.slice(0,10)).localeCompare(b.date||b.at.slice(0,10))||Date.parse(a.at)-Date.parse(b.at));
+  const last=history.at(-1);
+  const loggedToday=last&&(last.date||last.at.slice(0,10))===todayStr;
+  const prevLog=loggedToday?history.at(-2):last;
   const regions=e.regions||[];const blocked=regions.some(r=>['hold','caution'].includes(state.recovery?.muscles?.[r]?.status));
-  const defaultKg=e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?e.suggestedKg:(last?.sets?.[0]?.kg??(e.loadMode==='bodyweight'?0:20));
-  const loggedToday=last&&(last.date||last.at.slice(0,10))===(state.serverDate||localDate());
+  const startKg=defaultStartKg(e,state);
+  const suggestedKg=e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?e.suggestedKg:(prevLog?.sets?.[0]?.kg??startKg);
+  const prevReps=prevLog?.sets?.[0]?.reps;
+  const suggestedReps=e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?e.repMin:(prevReps!=null?Math.min(e.repMax,Math.max(e.repMin,prevReps+(prevLog?.sets?.[0]?.rir>=1&&prevReps<e.repMax?1:0))):Math.round((e.repMin+e.repMax)/2));
+  const activeSetsCount=loggedToday&&last?.sets?.length?last.sets.length:sets;
   const defaultEffort=last?.sets?.[0]?.rir!=null?String(last.sets[0].rir):String(e.rir);
+  const stepKg=suggestedKg>=15?2.5:1;
+  let comparisonNote='';
+  if(loggedToday&&prevLog){
+   const curAvgKg=Math.round((last.sets.reduce((s,x)=>s+(Number(x.kg)||0),0)/last.sets.length)*10)/10;
+   const prevAvgKg=Math.round((prevLog.sets.reduce((s,x)=>s+(Number(x.kg)||0),0)/prevLog.sets.length)*10)/10;
+   const curAvgReps=Math.round(last.sets.reduce((s,x)=>s+(Number(x.reps)||0),0)/last.sets.length);
+   const prevAvgReps=Math.round(prevLog.sets.reduce((s,x)=>s+(Number(x.reps)||0),0)/prevLog.sets.length);
+   if(curAvgKg>prevAvgKg)comparisonNote=`⬆️ عاش يا بطل! زودت الوزن من ${prevAvgKg} إلى ${curAvgKg} كجم (+${Math.round((curAvgKg-prevAvgKg)*10)/10} كجم) — مسجل في متابعة الكابتن.`;
+   else if(curAvgKg<prevAvgKg)comparisonNote=`📉 قللت الوزن من ${prevAvgKg} إلى ${curAvgKg} كجم — الكابتن سجّل ده في المتابعة وهيحافظ على سعراتك واستشفائك.`;
+   else if(curAvgReps>prevAvgReps)comparisonNote=`💪 تطور ممتاز! زودت عداتك من ${prevAvgReps} إلى ${curAvgReps} عدة بنفس الوزن (${curAvgKg} كجم).`;
+  }
   return `<article class="meal-card">
    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
     <h3 dir="auto" style="margin:0">${esc(e.name)}</h3>
     <span style="font-size:12px;background:#e6f2ec;color:#1b4332;padding:4px 8px;border-radius:8px;font-weight:700">${esc(regionNames(regions))}</span>
    </div>
-   <p style="margin:6px 0"><strong>المطلوب:</strong> ${sets} مجموعات × ${e.repMin}–${e.repMax} عدات ${['unilateral','alternating'].includes(e.laterality)?'(لكل جانب)':''} · راحة ${e.restSeconds} ثانية</p>
+   <div class="prescription-box" style="margin:8px 0;padding:10px 12px;background:#f4faf6;border:1px solid #cce3d6;border-radius:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+     <strong style="color:#1b4332;font-size:13px">🎯 اقتراح الكابتن النهاردة ${['unilateral','alternating'].includes(e.laterality)?'(لكل جانب)':''}</strong>
+     <small style="color:#436253;font-weight:700">راحة ${e.restSeconds} ثانية بين الجولات</small>
+    </div>
+    <div class="coach-metrics compact" style="margin:0">
+     <div><strong>${sets}</strong> مجموعات مقترحة</div>
+     <div><strong>${suggestedReps} عدة</strong> <small>(المدى ${e.repMin}–${e.repMax})</small></div>
+     <div><strong>${suggestedKg} كجم</strong> <small>${e.loadMode==='bodyweight'?'(وزن الجسم)':prevLog?'(حسب مستواك)':'(وزن بداية مقترح)'}</small></div>
+    </div>
+    ${prevLog?`<small style="display:block;margin-top:6px;color:#2c523f">📌 آخر أداء مسجل (${prevLog.date||prevLog.at.slice(0,10)}): <strong>${prevLog.sets.map(s=>`${s.kg}كجم×${s.reps}`).join(' ، ')}</strong></small>`:'<small style="display:block;margin-top:6px;color:#2c523f">💡 تقدر تزود أو تقلل الوزن أو العدات أو الجولات من الأزرار بالأسفل حسب إحساسك الفعلي.</small>'}
+   </div>
    ${adjustment?`<small class="coach-notice" style="display:block">💡 كابتن التدريب خفف لك عدد الجولات النهاردة مراعاةً لاستشفائك.</small>`:''}
    ${e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?`<p class="coach-success">⬆️ توصية الكابتن اليوم: ارفع الوزن لـ ${e.suggestedKg} كجم (${esc(e.progressionReason)})</p>`:''}
    ${blocked?'<p class="coach-notice">⚠️ العضلة دي فيها إجهاد؛ اثبت على وزن خفيف النهاردة.</p>':''}
-   ${loggedToday?`<p class="coach-success">✓ تم حفظ تمرينك اليوم (${last.sets.map(s=>`${s.kg}كجم×${s.reps}`).join('، ')})</p>`:''}
-   <form class="workout-log" data-id="${e.id}" data-day="${day.dayIndex}">
-    <input type="hidden" name="date" value="${state.serverDate||localDate()}">
+   ${loggedToday?`<p class="coach-success">✓ تم حفظ تمرينك اليوم (${last.sets.map(s=>`${s.kg}كجم×${s.reps}`).join('، ')})${comparisonNote?`<br><small>${esc(comparisonNote)}</small>`:''}</p>`:''}
+   <form class="workout-log" data-id="${e.id}" data-day="${day.dayIndex}" data-step-kg="${stepKg}" data-default-kg="${suggestedKg}" data-default-reps="${suggestedReps}">
+    <input type="hidden" name="date" value="${todayStr}">
     <input type="hidden" name="effort_rir" value="${esc(defaultEffort)}">
     <div class="set-rows">
-     ${Array.from({length:sets},(_,idx)=>{
-      const prevSet=last?.sets?.[idx]||last?.sets?.[0];
-      return `<div class="set-row" style="grid-template-columns:auto 1fr 1fr">
-       <strong>جولة ${idx+1}</strong>
-       <label>الوزن (كجم)<input type="number" name="set_kg_${idx}" step="0.5" min="0" max="500" value="${prevSet?.kg??defaultKg}" required></label>
-       <label>العدات<input type="number" name="set_reps_${idx}" min="1" max="100" value="${prevSet?.reps??e.repMax}" required></label>
+     ${Array.from({length:activeSetsCount},(_,idx)=>{
+      const curSet=loggedToday?last?.sets?.[idx]:(prevLog?.sets?.[idx]||prevLog?.sets?.[0]);
+      const rowKg=e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked&&!loggedToday?e.suggestedKg:(curSet?.kg??suggestedKg);
+      const rowReps=loggedToday&&curSet?.reps!=null?curSet.reps:suggestedReps;
+      return `<div class="set-row">
+       <strong class="set-label">جولة ${idx+1}</strong>
+       <div class="stepper-field">
+        <span class="stepper-caption">الوزن (كجم)</span>
+        <div class="stepper-control">
+         <button type="button" class="stepper-btn" data-step-target="set_kg_${idx}" data-step="-${stepKg}" aria-label="تقليل الوزن">−</button>
+         <input type="number" name="set_kg_${idx}" step="0.5" min="0" max="500" value="${rowKg}" required>
+         <button type="button" class="stepper-btn" data-step-target="set_kg_${idx}" data-step="${stepKg}" aria-label="زيادة الوزن">+</button>
+        </div>
+       </div>
+       <div class="stepper-field">
+        <span class="stepper-caption">العدات</span>
+        <div class="stepper-control">
+         <button type="button" class="stepper-btn" data-step-target="set_reps_${idx}" data-step="-1" aria-label="تقليل العدات">−</button>
+         <input type="number" name="set_reps_${idx}" min="1" max="100" value="${rowReps}" required>
+         <button type="button" class="stepper-btn" data-step-target="set_reps_${idx}" data-step="1" aria-label="زيادة العدات">+</button>
+        </div>
+       </div>
       </div>`;
      }).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap">
+     <button type="button" class="secondary set-adjust-btn" data-add-set="1" style="padding:6px 12px;font-size:12px">➕ زود جولة</button>
+     <button type="button" class="secondary set-adjust-btn" data-remove-set="1" style="padding:6px 12px;font-size:12px">➖ قلل جولة</button>
     </div>
     <div style="margin:8px 0">
      <small style="display:block;margin-bottom:4px;font-weight:700;color:#1b4332">إحساسك بالوزن في آخر عدة:</small>
@@ -264,7 +361,7 @@ export async function mountPlanner({root,toast}){
     </div>
     <details style="margin-top:8px"><summary>شرح الأداء أو الإبلاغ عن ألم مفصلي</summary>
      <label><input name="pain" type="checkbox"> حسيت بألم أو نغزة في المفصل أثناء التمرين ده</label>
-     <label>أصغر زيادة متاحة للدمبل/البار (كجم) <input name="increment" type="number" min="0.1" step="0.1" value="2.5"></label>
+     <label>أصغر زيادة متاحة للدمبل/البار (كجم) <input name="increment" type="number" min="0.1" step="0.1" value="1"></label>
      <p dir="ltr" class="exercise-description">${esc(e.description)}</p>
     </details>
    </form>
@@ -425,6 +522,7 @@ export async function mountPlanner({root,toast}){
      ${otherPlanDays.map(d=>`<details style="margin:10px 0;padding:8px;border:1px solid #e2ece6;border-radius:12px"><summary>${d.date} · ${round(d.summary.values.energy)} سعر</summary>${d.meals.map(m=>mealHTML(m,d.date)).join('')}</details>`).join('')}
     </details>`:''}
     ${plan.days.at(-1).date<todayStr?'<button id="renew-plan">🔄 استلام جدول أكل الأسبوع الجديد</button>':''}`:'<p class="coach-card">مسارك الحالي للتمارين فقط؛ وتقدر تسجل وجباتك اليومية بالأسفل.</p>'}
+    ${waterHTML(todayStr)}
     ${diaryHTML()}
    </section>
 
@@ -438,18 +536,22 @@ export async function mountPlanner({root,toast}){
 
    <section class="coach-card" id="coach-review" ${activeTab==='review'?'':'hidden'}>
     <h2>👨‍⚕️ تقرير فريق المتابعة (التغذية والتدريب)</h2>
-    <p>فريق التغذية والتدريب بيراجع متوسط وزنك لآخر أسبوعين (بحد أدنى 3 أوزان في كل أسبوع) والتزامك بوجباتك (10 أيام من 14) مع تطور أوزانك في التمرين علشان يقرر هل نكمّل زي ما إحنا ولا نعدّل الخطة.</p>
+    <p>فريق التغذية والتدريب بيراجع متوسط وزنك لآخر أسبوعين (بحد أدنى 3 أوزان في كل أسبوع)، التزامك بوجباتك وشرب المية، وكل تعديل بتعمله في أوزان وعدات ومجموعات التمرين علشان يقرر هل نكمّل زي ما إحنا ولا نعدّل الخطة.</p>
     ${state.progressSummary?`<div class="coach-tags" style="margin-bottom:10px">
      <span>⚖️ ميزان الأسبوع السابق: ${state.progressSummary.weightTrend.previous7dCount}/3 (${state.progressSummary.weightTrend.previous7dAvgKg??'—'} كجم)</span>
      <span>⚖️ ميزان الأسبوع الحالي: ${state.progressSummary.weightTrend.current7dCount}/3 (${state.progressSummary.weightTrend.current7dAvgKg??'—'} كجم)</span>
      <span>🥗 أيام الالتزام بالأكل: ${state.progressSummary.foodCompleteness.completeDays14d}/10</span>
+     <span>💧 المية اليوم: ${state.progressSummary.hydration?.todayCups||0}/${state.progressSummary.hydration?.targetCups||10} كوب</span>
      <span>🏋️ تمرينات مكتملة: ${state.progressSummary.workoutSummary.completed14d}</span>
-    </div>`:''}
+    </div>
+    ${state.progressSummary.workoutSummary?.insights?.summaryText?`<p class="coach-notice" style="margin-bottom:10px">📈 <strong>متابعة الأوزان والعدات:</strong> ${esc(state.progressSummary.workoutSummary.insights.summaryText)}</p>`:''}`:''}
     <button id="review-coach">🔍 اطلب مراجعة فريق المتابعة الآن</button>
     ${state.lastReview?`<div class="coach-notice" style="margin-top:14px">
      <strong>📋 خلاصة مراجعة الفريق: ${esc(state.lastReview.message)}</strong>
      <p>🥗 <strong>أخصائي التغذية:</strong> ${esc(state.lastReview.nutrition.reason)}</p>
-     ${state.lastReview.volume?`<p>💪 <strong>كابتن التدريب:</strong> ${esc(state.lastReview.volume.reason)}</p>`:''}
+     ${state.lastReview.hydration?`<p>💧 <strong>متابعة شرب المية والترطيب:</strong> ${esc(state.lastReview.hydration.reason)}</p>`:''}
+     ${state.lastReview.volume?`<p>💪 <strong>كابتن التدريب (حجم التمرين):</strong> ${esc(state.lastReview.volume.reason)}</p>`:''}
+     ${state.lastReview.workoutInsights?`<p>📈 <strong>تحليل تطور الأوزان والعدات:</strong> ${esc(state.lastReview.workoutInsights.summaryText)}</p>`:''}
      <p>🏋️ <strong>التزامك بالتمرين (آخر أسبوعين):</strong> ${state.lastReview.workout.completed} تمرينات مكتملة · ${state.lastReview.workout.partial||0} جزئية · ${state.lastReview.workout.missed} فائتة</p>
     </div>`:''}
     ${pendingAdaptations.map(a=>`<article class="meal-card" style="margin-top:12px">
@@ -493,6 +595,8 @@ export async function mountPlanner({root,toast}){
   };
   const diaryInput=root.querySelector('#diary-date');
   if(diaryInput)diaryInput.onchange=e=>{diaryDate=e.target.value;render();};
+  root.querySelectorAll('[data-water-add]').forEach(btn=>btn.onclick=()=>send('water',{date:btn.dataset.date||(state.serverDate||localDate()),addCups:Number(btn.dataset.waterAdd)}));
+  root.querySelectorAll('[data-water-set]').forEach(btn=>btn.onclick=()=>send('water',{date:btn.dataset.date||(state.serverDate||localDate()),cups:Number(btn.dataset.waterSet)}));
   root.querySelector('#switch-diary-mode')?.addEventListener('click',()=>send('food_switch_to_entries',{date:diaryDate,confirm:true}));
   const toggleBtn=root.querySelector('#toggle-complete');
   if(toggleBtn)toggleBtn.onclick=()=>send('food_complete',{date:diaryDate,complete:!state.foodLogs.find(x=>x.date===diaryDate)?.complete});
@@ -514,6 +618,61 @@ export async function mountPlanner({root,toast}){
   root.querySelectorAll('[data-meal-alt]').forEach(b=>b.onclick=async()=>{const version=viewVersion,request=++alternativeRequest;try{const result=await api('meal-alternatives?mealId='+encodeURIComponent(b.dataset.mealAlt));if(version!==viewVersion||request!==alternativeRequest)return;showDialog('<h2>بدائل مقترحة من أخصائي التغذية</h2>'+result.items.map(a=>`<article class="meal-card" style="margin:10px 0"><h3>${esc(displayMealName(a.snapshot))}</h3><p><strong>${macroLine(a.snapshot)}</strong></p><ul>${(a.snapshot.ingredients||[]).map(ingredientLine).join('')}</ul><p><small>فرق السعرات ${a.energy_delta} · فرق البروتين ${a.protein_delta} جرام</small></p><button data-replace-meal="${esc(a.snapshot.template_id)}">اختيار هذه الوجبة</button></article>`).join('')+(result.items.length?'':'<p>مفيش بديل متاح يحقق نفس اختياراتك وحدود النظام.</p>'));root.querySelectorAll('[data-replace-meal]').forEach(choice=>choice.onclick=()=>send('replace_meal',{mealId:b.dataset.mealAlt,templateId:choice.dataset.replaceMeal}));}catch(e){notice(e.message,true);}});
   root.querySelectorAll('[data-exercise-alt]').forEach(b=>b.onclick=async()=>{const version=viewVersion,request=++alternativeRequest;try{const result=await api('exercise-alternatives?exerciseId='+encodeURIComponent(b.dataset.exerciseAlt)+'&dayIndex='+b.dataset.day);if(version!==viewVersion||request!==alternativeRequest)return;showDialog('<h2>بدائل مقترحة من كابتن التدريب</h2>'+result.items.map(a=>`<article><h3 dir="auto">${esc(a.name)}</h3><p dir="ltr">${a.equipment.map(q=>esc(q.equipment_id)).join(', ')}</p><button data-replace-exercise="${a.id}">اختيار هذا التمرين</button></article>`).join('')+(result.items.length?'':'<p>مفيش بديل مناسب متاح بالمعدات دي.</p>'));root.querySelectorAll('[data-replace-exercise]').forEach(choice=>choice.onclick=()=>send('replace_exercise',{dayIndex:Number(b.dataset.day),exerciseId:b.dataset.exerciseAlt,alternativeId:choice.dataset.replaceExercise}));}catch(e){notice(e.message,true);}});
 
+  function bindSteppers(scope=root){
+   scope.querySelectorAll('[data-step-target]').forEach(btn=>btn.onclick=()=>{
+    const form=btn.closest('form');if(!form)return;
+    const input=form.elements.namedItem(btn.dataset.stepTarget);if(!input)return;
+    const delta=Number(btn.dataset.step)||0;
+    const min=input.min!==''?Number(input.min):0;
+    const max=input.max!==''?Number(input.max):500;
+    const cur=Number(input.value)||0;
+    const next=Math.min(max,Math.max(min,Math.round((cur+delta)*10)/10));
+    input.value=String(next);
+   });
+  }
+  bindSteppers(root);
+
+  root.querySelectorAll('[data-add-set]').forEach(btn=>btn.onclick=()=>{
+   const form=btn.closest('form');if(!form)return;
+   const container=form.querySelector('.set-rows');if(!container)return;
+   const rows=container.querySelectorAll('.set-row');
+   if(rows.length>=8)return;
+   const idx=rows.length;
+   const lastRow=rows[rows.length-1];
+   const defKg=lastRow?.querySelector(`input[name^="set_kg_"]`)?.value??form.dataset.defaultKg??15;
+   const defReps=lastRow?.querySelector(`input[name^="set_reps_"]`)?.value??form.dataset.defaultReps??10;
+   const stepKg=form.dataset.stepKg||2.5;
+   const div=document.createElement('div');
+   div.className='set-row';
+   div.innerHTML=`<strong class="set-label">جولة ${idx+1}</strong>
+    <div class="stepper-field">
+     <span class="stepper-caption">الوزن (كجم)</span>
+     <div class="stepper-control">
+      <button type="button" class="stepper-btn" data-step-target="set_kg_${idx}" data-step="-${stepKg}" aria-label="تقليل الوزن">−</button>
+      <input type="number" name="set_kg_${idx}" step="0.5" min="0" max="500" value="${esc(defKg)}" required>
+      <button type="button" class="stepper-btn" data-step-target="set_kg_${idx}" data-step="${stepKg}" aria-label="زيادة الوزن">+</button>
+     </div>
+    </div>
+    <div class="stepper-field">
+     <span class="stepper-caption">العدات</span>
+     <div class="stepper-control">
+      <button type="button" class="stepper-btn" data-step-target="set_reps_${idx}" data-step="-1" aria-label="تقليل العدات">−</button>
+      <input type="number" name="set_reps_${idx}" min="1" max="100" value="${esc(defReps)}" required>
+      <button type="button" class="stepper-btn" data-step-target="set_reps_${idx}" data-step="1" aria-label="زيادة العدات">+</button>
+     </div>
+    </div>`;
+   container.appendChild(div);
+   bindSteppers(div);
+  });
+
+  root.querySelectorAll('[data-remove-set]').forEach(btn=>btn.onclick=()=>{
+   const form=btn.closest('form');if(!form)return;
+   const container=form.querySelector('.set-rows');if(!container)return;
+   const rows=container.querySelectorAll('.set-row');
+   if(rows.length<=1)return;
+   rows[rows.length-1].remove();
+  });
+
   root.querySelectorAll('.effort-chip').forEach(btn=>btn.onclick=()=>{
    const form=btn.closest('form');if(!form)return;
    form.querySelector('[name=effort_rir]').value=btn.dataset.effort;
@@ -527,7 +686,10 @@ export async function mountPlanner({root,toast}){
    for(let idx=0;fd.has(`set_kg_${idx}`);idx++){
     sets.push({kg:fd.get(`set_kg_${idx}`),reps:fd.get(`set_reps_${idx}`),rir,pain:fd.has('pain')});
    }
-   send('workout',{exerciseId:form.dataset.id,dayIndex:Number(form.dataset.day),date:fd.get('date'),sets,bothSides:fd.has('bothSides'),increment:fd.get('increment'),autoSession:true});
+   const maxKg=Math.max(0,...sets.map(s=>Number(s.kg)||0));
+   const rawInc=Number(fd.get('increment'))||1;
+   const safeInc=maxKg>0?Math.min(rawInc,Math.max(0.5,Number((maxKg*0.05).toFixed(2)))):rawInc;
+   send('workout',{exerciseId:form.dataset.id,dayIndex:Number(form.dataset.day),date:fd.get('date'),sets,bothSides:fd.has('bothSides'),increment:safeInc,autoSession:true});
   });
   root.querySelectorAll('.session-log').forEach(form=>form.onsubmit=e=>{e.preventDefault();send('session',{...formData(form),dayIndex:Number(form.dataset.day)});});
   root.querySelectorAll('.reschedule-form').forEach(form=>form.onsubmit=e=>{e.preventDefault();send('reschedule',{...formData(form),dayIndex:Number(form.dataset.day)});});

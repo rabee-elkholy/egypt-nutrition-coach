@@ -261,3 +261,88 @@ test('SPEC-HOUSEHOLD-PORTIONS: all 86 ingredients have rounded household labels 
   // 1.35 of a medium tomato (~166g vs 123g) rounds cleanly to 1.5 ("حبة ونص متوسطة")
   assert.equal(householdQuantity({ ...library.ingredients.tomato, grams: '166' }).label, 'حبة ونص متوسطة');
 });
+
+test('SPEC-WATER-AND-WORKOUT-PROGRESSION: water tracking and workout weight/rep increases and decreases feed into follow-up review', () => {
+  let s = command(empty(), 'generate', {
+    name: 'رامي',
+    sex: 'male',
+    age: 29,
+    height: 175,
+    weight: 80,
+    activity: 'moderate',
+    goal: 'lose',
+    pace: 'medium',
+    budget: 'medium',
+    serviceTrack: 'nutrition_and_workouts',
+    workoutDays: 3,
+    trainingDays: [6, 1, 3],
+    weekdayConvention: 'saturday_0',
+    location: 'gym',
+    level: 'beginner',
+    duration: 45,
+    equipment: ['dumbbell', 'barbell', 'bench'],
+    healthy: true,
+    injuryFree: true
+  });
+
+  // 1. Water logging increments and sets cups accurately
+  s = command(s, 'water', { date: today(), addCups: 2 });
+  assert.equal(s.waterLogs.find(w => w.date === today())?.cups, 2);
+  s = command(s, 'water', { date: today(), addCups: 1 });
+  assert.equal(s.waterLogs.find(w => w.date === today())?.cups, 3);
+  const ps1 = progressSummary(s);
+  assert.equal(ps1.hydration.todayCups, 3);
+  assert.ok(ps1.hydration.targetCups >= 10);
+
+  // 2. Workout weight increase and weight decrease are both tracked in workoutInsights & review
+  const wDay = s.workoutPlan.days[0];
+  const ex1 = wDay.exercises[0];
+  const ex2 = wDay.exercises[1];
+
+  // Previous session (3 days ago)
+  s = command(s, 'workout', {
+    dayIndex: wDay.dayIndex,
+    exerciseId: ex1.id,
+    date: dateOffset(today(), -3),
+    sets: Array.from({ length: ex1.sets }, () => ({ kg: 20, reps: ex1.repMax, rir: ex1.rir, pain: false })),
+    bothSides: true,
+    increment: 1
+  });
+  s = command(s, 'workout', {
+    dayIndex: wDay.dayIndex,
+    exerciseId: ex2.id,
+    date: dateOffset(today(), -3),
+    sets: Array.from({ length: ex2.sets }, () => ({ kg: 25, reps: ex2.repMax, rir: ex2.rir, pain: false })),
+    bothSides: true,
+    increment: 1
+  });
+
+  // Today's session: ex1 increased weight (20 -> 22.5kg), ex2 decreased weight (25 -> 20kg)
+  s = command(s, 'workout', {
+    dayIndex: wDay.dayIndex,
+    exerciseId: ex1.id,
+    date: today(),
+    sets: Array.from({ length: ex1.sets }, () => ({ kg: 22.5, reps: ex1.repMax, rir: ex1.rir, pain: false })),
+    bothSides: true,
+    increment: 1
+  });
+  s = command(s, 'workout', {
+    dayIndex: wDay.dayIndex,
+    exerciseId: ex2.id,
+    date: today(),
+    sets: Array.from({ length: ex2.sets }, () => ({ kg: 20, reps: ex2.repMax, rir: 2, pain: false })),
+    bothSides: true,
+    increment: 1
+  });
+
+  const ps2 = progressSummary(s);
+  assert.equal(ps2.workoutSummary.insights.loadIncreases.length, 1);
+  assert.equal(ps2.workoutSummary.insights.loadIncreases[0].toKg, 22.5);
+  assert.equal(ps2.workoutSummary.insights.loadDecreases.length, 1);
+  assert.equal(ps2.workoutSummary.insights.loadDecreases[0].toKg, 20);
+
+  s = command(s, 'review', {});
+  assert.ok(s.lastReview.hydration?.reason);
+  assert.ok(s.lastReview.workoutInsights?.summaryText.includes('زودت أوزانك'));
+  assert.ok(s.lastReview.workoutInsights?.summaryText.includes('خففت الوزن'));
+});

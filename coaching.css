@@ -295,7 +295,22 @@
   padding: 12px 0;
 }
 
-/* Mobile-friendly set logging grid */
+/* Mobile-friendly set logging grid & steppers */
+.water-progress-track {
+  width: 100%;
+  height: 10px;
+  background: #d7ecfb;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.water-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1976d2 0%, #00acc1 100%);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
 .set-rows {
   display: flex;
   flex-direction: column;
@@ -309,10 +324,11 @@
   align-items: center;
   background: #f5f9f6;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid #dce8e1;
 }
-.set-row strong {
+.set-row strong,
+.set-row .set-label {
   font-size: 13px;
   color: #286044;
 }
@@ -322,10 +338,54 @@
   color: #496559;
 }
 .set-row input {
-  padding: 8px !important;
-  margin-top: 2px !important;
+  padding: 6px 4px !important;
+  margin: 0 !important;
   text-align: center;
   font-weight: 700;
+  min-width: 0;
+}
+.stepper-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.stepper-caption {
+  font-size: 11px;
+  font-weight: 700;
+  color: #496559;
+  text-align: center;
+}
+.stepper-control {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  gap: 4px;
+  align-items: center;
+}
+.coach-app button.stepper-btn,
+#planner-view .coach-app button.stepper-btn {
+  padding: 0 !important;
+  margin: 0 !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  width: 32px !important;
+  border-radius: 8px !important;
+  background: #e6f2ec !important;
+  color: #145335 !important;
+  border: 1px solid #b5d4c2 !important;
+  font-size: 17px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.coach-app button.set-adjust-btn,
+#planner-view .coach-app button.set-adjust-btn {
+  min-height: 34px !important;
+  padding: 6px 12px !important;
+  font-size: 12.5px !important;
+  margin: 0 !important;
 }
 
 .meal-card {

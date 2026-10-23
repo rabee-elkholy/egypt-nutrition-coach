@@ -1,4 +1,4 @@
-import {empty,generate,command} from './coaching.mjs';
+import {empty,generate,command,dailyWaterTarget} from './coaching.mjs';
 import {activePlan,dayTotals} from './food.mjs';
 import {scheduledSessions,eachSide} from './workouts.mjs';
 import {recovery} from './recovery.mjs';
@@ -48,6 +48,8 @@ export function simulationCommand(input,action,p,source){
  const goal=s.profile.goal,direction=goal==='lose'?-1:['gain','muscle_gain'].includes(goal)&&!s.profile.recomposition?1:0;
  const change=p.scenario==='plateau'?0:direction*(s.simulation.day-1)*.04;
  command(s,'weight',{date,kg:Math.round(Math.max(35,Math.min(250,s.profile.weight+change))*10)/10});
+ const wTarget=dailyWaterTarget(s,date);
+ command(s,'water',{date,cups:p.scenario==='low_adherence'?Math.max(3,Math.round(wTarget.targetCups*0.5)):wTarget.targetCups});
  const plan=activePlan(s),day=plan?.days.find(d=>d.date===date);
  if(plan&&!day)throw Error('جدّد خطة الأكل أو راجع بيانات المحاكاة قبل تعبئة اليوم.');
  for(const meal of day?.meals||[])command(s,'food_entry',{date,source:'planned',mealId:meal.id,slot:meal.slot,quantity:p.scenario==='low_adherence'?.6:1});

@@ -2,7 +2,7 @@ import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {makeWeek,scaleSnapshot,sumSnapshots,assessDay,validatePreferences,nutritionQualityIssues} from '../planner-core.mjs';
 import {FIXED_DIET_MEALS,assertDietDay} from '../diet-patterns.mjs';
 import {workoutPlan,exerciseAlternatives,muscleRegions,weeklySetTotals,scheduledSessions,estimatedSessionMinutes,eachSide} from './workouts.mjs';
-import {recovery,calorieReview,progression,hasPerformanceDrop} from './recovery.mjs';
+import {recovery,calorieReview,progression,hasPerformanceDrop,workoutProgressionSummary} from './recovery.mjs';
 import {library,activePlan,foodCommand,replaceMeal,plannedEnergyForDate} from './food.mjs';
 import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reconcileSessions} from './training-state.mjs';
 import {volumeReview} from './training-review.mjs';
@@ -11,9 +11,20 @@ const dateForLog=date=>validateLogDate(date,clockNow());
 export {number};export const today=clockDate;
 export const SUPPORTED_WELLNESS_CONDITIONS=new Set(['hypertension','insulin_resistance','pcos','ibs','cholesterol','gout','anemia','vitamin_d_deficiency','lactose_intolerance','favism','fatty_liver']);
 export const SUPPORTED_MILD_INJURIES=new Set(['knee_pain','lower_back_pain','shoulder_pain','wrist_pain','ankle_pain','neck_pain','hip_pain','diastasis_recti']);
-export const empty=()=>({schemaVersion:3,revision:0,profile:null,preferences:null,onboarding:null,plans:[],planRefs:[],workoutPlan:null,foodLogs:[],foodEntries:[],weights:[],workoutLogs:[],sessions:[],checkins:[],adaptations:[],history:[]});
+export const empty=()=>({schemaVersion:3,revision:0,profile:null,preferences:null,onboarding:null,plans:[],planRefs:[],workoutPlan:null,foodLogs:[],foodEntries:[],waterLogs:[],weights:[],workoutLogs:[],sessions:[],checkins:[],adaptations:[],history:[]});
 const clean=a=>a==null?[]:stringList(a,'قائمة الاختيارات').filter(x=>x!=='none');
-export function normalize(s){for(const key of ['workoutPlanRefs','planRefs','foodEntries','sessions','foodLogs','weights','workoutLogs','checkins','adaptations','history'])s[key]||=[];s.schemaVersion=3;ensureTrainingState(s);reconcileSessions(s);return s;}
+export function normalize(s){for(const key of ['workoutPlanRefs','planRefs','foodEntries','waterLogs','sessions','foodLogs','weights','workoutLogs','checkins','adaptations','history'])s[key]||=[];s.schemaVersion=3;ensureTrainingState(s);reconcileSessions(s);return s;}
+export function dailyWaterTarget(s,date=today()){
+ const w=Number(s?.profile?.weight)||75;
+ let ml=w*35;
+ if(s?.profile?.activity==='moderate')ml+=350;
+ else if(s?.profile?.activity==='active')ml+=500;
+ const isWorkoutDay=scheduledSessions(s,date,1).some(x=>x.date===date)||(s?.sessions||[]).some(x=>x.date===date&&x.status!=='missed');
+ if(isWorkoutDay)ml+=500;
+ const liters=Math.max(1.8,Math.min(5.0,Math.round((ml/1000)*10)/10));
+ const targetCups=Math.round((liters*1000)/250);
+ return {liters,targetCups,isWorkoutDay};
+}
 function discardPending(s){for(const a of s.adaptations)if(a.status==='pending')a.status='superseded';}
 export function generate(s,d,seed=crypto.randomUUID()){
  d=normalizeWeekdayDraft(d);
@@ -78,7 +89,16 @@ export function review(s){
  discardPending(s);
  for(const p of proposals)s.adaptations.push({...p,id:crypto.randomUUID(),baseRevision:s.revision+1,status:'pending',at:isoNow()});
  const sessions=s.sessions.filter(x=>x.date>=dateOffset(today(),-13));
- s.lastReview={at:isoNow(),recovery:ready.status,nutrition,volume,workout:{partial:sessions.filter(x=>x.status==='partial').length,completed:sessions.filter(x=>x.status==='completed').length,missed:sessions.filter(x=>x.status==='missed').length},message:proposals.length?'فريق المتابعة جهّز لك توصية جديدة بانتظار موافقتك.':'فريق المتابعة راجع تقدمك: خطتك الحالية ماشية بشكل ممتاز ومش محتاجة تعديل النهاردة.'};
+ const workoutInsights=workoutProgressionSummary(s.workoutPlan,s.workoutLogs,clockNow());
+ const wTarget=dailyWaterTarget(s,today());
+ const recentWater=(s.waterLogs||[]).filter(x=>x.date>=dateOffset(today(),-13)&&x.date<=today());
+ const avgCups=recentWater.length?Math.round(recentWater.reduce((sum,x)=>sum+Number(x.cups||0),0)/recentWater.length*10)/10:null;
+ const hydrationReason=!recentWater.length
+  ?`سجّل شرب المية يومياً (هدفك ${wTarget.targetCups} كوب ≈ ${wTarget.liters} لتر) علشان أخصائي التغذية يربطه بتغيرات الميزان واحتباس السوائل.`
+  :avgCups<wTarget.targetCups*0.7
+  ?`متوسط شربك للمية (${avgCups} من ${wTarget.targetCups} كوب) أقل من احتياجك؛ قلة المية بتسبب احتباس سوائل وهمي على الميزان وتقلل طاقة التمرين.`
+  :`التزام ممتاز بشرب المية (متوسط ${avgCups} كوب يومياً) — ده بيساعد جسمك يتخلص من السوائل الزيادة ويدعم الحرق والاستشفاء العضلي.`;
+ s.lastReview={at:isoNow(),recovery:ready.status,nutrition,volume,hydration:{avgCups,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,loggedDays:recentWater.length,reason:hydrationReason},workoutInsights,workout:{partial:sessions.filter(x=>x.status==='partial').length,completed:sessions.filter(x=>x.status==='completed').length,missed:sessions.filter(x=>x.status==='missed').length},message:proposals.length?'فريق المتابعة جهّز لك توصية جديدة بانتظار موافقتك.':'فريق المتابعة راجع تقدمك: خطتك الحالية ماشية بشكل ممتاز ومش محتاجة تعديل النهاردة.'};
  return s;
 }
 export function retargetPlan(plan,energy,prefs,effective){
@@ -137,6 +157,12 @@ export function command(input,action,p){
   s.plans.push(next);s.active_plan_id=next.id;
  }else if(action==='weight'){
   const date=dateForLog(p.date||today()),kg=number(p.kg,35,250,'الوزن');s.weights=s.weights.filter(x=>x.date!==date);s.weights.push({date,kg});
+ }else if(action==='water'){
+  const date=dateForLog(p.date||today()),target=dailyWaterTarget(s,date);
+  const existing=(s.waterLogs||[]).find(x=>x.date===date);
+  const cups=p.addCups!=null?Math.max(0,Math.min(30,(existing?.cups||0)+integer(p.addCups,-10,20,'تعديل الأكواب'))):integer(p.cups,0,30,'أكواب المية');
+  s.waterLogs=(s.waterLogs||[]).filter(x=>x.date!==date);
+  s.waterLogs.push({date,cups,liters:Math.round(cups*0.25*100)/100,targetCups:target.targetCups,targetLiters:target.liters,at:isoNow()});
  }else if(action==='food'){
   const date=dateForLog(p.date),plan=activePlan(s);if(s.foodEntries.some(e=>e.date===date))throw Error('اليوم فيه وجبات تفصيلية؛ استخدم إغلاق اليوم.');
   const energy=number(p.energy,0,10000,'السعرات الفعلية'),complete=boolean(p.complete,'اكتمال اليوم'),plannedEnergy=plannedEnergyForDate(s,date);
@@ -277,11 +303,17 @@ export function progressSummary(s){
  const completeFood14=[...new Map((s.foodLogs||[]).filter(x=>x.complete&&x.energy>0&&x.date>=start14&&x.date<=end).map(x=>[x.date,x])).values()].length;
  const sessions14=(s.sessions||[]).filter(x=>x.date>=start14&&x.date<=end);
  const perfDrop=hasPerformanceDrop(s.workoutLogs||[],clockNow());
+ const workoutInsights=workoutProgressionSummary(s.workoutPlan,s.workoutLogs||[],clockNow());
+ const wTarget=dailyWaterTarget(s,end);
+ const water14=(s.waterLogs||[]).filter(x=>x.date>=start14&&x.date<=end);
+ const todayWater=(s.waterLogs||[]).find(x=>x.date===end);
  return {
   windowStart:start14,
   windowEnd:end,
   weightTrend:{measurements14d:w14.length,previous7dCount:prev7.length,current7dCount:curr7.length,previous7dAvgKg:prevAvg,current7dAvgKg:currAvg,weeklyChangePct,note:'فريق التغذية بيعتمد على متوسط الأسبوعين مش تذبذب الميزان اليومي.'},
   foodCompleteness:{completeDays14d:completeFood14,requiredDays14d:10,sufficientForCalorieReview:completeFood14>=10&&prev7.length>=3&&curr7.length>=3},
-  workoutSummary:{completed14d:sessions14.filter(x=>x.status==='completed').length,partial14d:sessions14.filter(x=>x.status==='partial').length,missed14d:sessions14.filter(x=>x.status==='missed').length,performanceDrop:perfDrop}
+  hydration:{todayCups:todayWater?.cups||0,targetCups:wTarget.targetCups,todayLiters:Math.round((todayWater?.cups||0)*0.25*100)/100,targetLiters:wTarget.liters,isWorkoutDay:wTarget.isWorkoutDay,loggedDays14d:water14.length,adherentDays14d:water14.filter(x=>x.cups>=Math.ceil((x.targetCups||wTarget.targetCups)*0.8)).length},
+  hydrationSummary:{todayCups:todayWater?.cups||0,targetCups:wTarget.targetCups,todayLiters:Math.round((todayWater?.cups||0)*0.25*100)/100,targetLiters:wTarget.liters,isWorkoutDay:wTarget.isWorkoutDay,loggedDays14d:water14.length,adherentDays14d:water14.filter(x=>x.cups>=Math.ceil((x.targetCups||wTarget.targetCups)*0.8)).length},
+  workoutSummary:{completed14d:sessions14.filter(x=>x.status==='completed').length,partial14d:sessions14.filter(x=>x.status==='partial').length,missed14d:sessions14.filter(x=>x.status==='missed').length,performanceDrop:perfDrop,insights:workoutInsights}
  };
 }
