@@ -194,7 +194,7 @@ test('SPEC-WELLNESS-BRIDGE: supported wellness conditions and mild joint discomf
   assert.ok(state.workoutPlan.goalNote.includes('حماية العضلات'));
 });
 
-test('SPEC-AUTO-COMPLETION: logging all planned meals auto-completes food day and autoSession completes workout session behind the scenes', () => {
+test('SPEC-AUTO-COMPLETION: logging planned meals requires explicit day confirmation and autoSession completes workout session behind the scenes', () => {
   let s = generate(empty(), {
     name: 'كريم',
     age: 29,
@@ -221,7 +221,7 @@ test('SPEC-AUTO-COMPLETION: logging all planned meals auto-completes food day an
     if (i < todayDay.meals.length - 1) {
       assert.equal(log.complete, false);
     } else {
-      assert.equal(log.complete, true, 'day auto-completes once all planned meals are logged');
+      assert.equal(log.complete, false, 'planned meals do not establish complete intake');
     }
   }
 

@@ -162,7 +162,7 @@ export function assertDietDay(snapshots,diet,targets=null){
   if(['vegetarian','vegan','mediterranean','dash','keto'].includes(diet) && snapshots.some(s=>s.ingredients.some(i=>!i.key || !dietIngredientAllowed({...i,values:i.values_per_100g},diet))))throw Error('البديل لا يطابق قواعد النظام أو مكوناته غير موثقة؛ اختار بديلًا مناسبًا.');
   if(diet==='high_protein'&&targets&&snapshots.reduce((s,x)=>s+Number(x.values.protein),0)<targets.protein*.8)throw Error('الوجبات لا تحقق الحد المطلوب لهدف البروتين؛ زوّد مصادر البروتين المتاحة.');
   if(diet==='dash'){
-    const getSodium=s=>s.values.sodium!=null?Number(s.values.sodium):(s.estimated_values?.sodium!=null?Number(s.estimated_values.sodium):null);
+    const getSodium=s=>s.values.sodium!=null&&Number.isFinite(Number(s.values.sodium))&&Number(s.values.sodium)>=0?Number(s.values.sodium):null;
     if(snapshots.some(s=>getSodium(s)==null)||snapshots.reduce((s,x)=>s+getSodium(x),0)>2300)throw Error('الخطة لا تحقق حد الصوديوم في داش قبل الملح المضاف. غيّر الاختيارات.');
   }
   if(!['keto','low_carb'].includes(diet))return;

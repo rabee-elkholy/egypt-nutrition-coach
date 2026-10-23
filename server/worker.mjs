@@ -1,8 +1,9 @@
 import {clockNow,clockDate,isoNow,withClock,simulationTime} from './clock.mjs';
 import {simulationCommand,simulationSummary} from './simulation.mjs';
+import {assertDietDay} from '../diet-patterns.mjs';
 import {nutritionQualityIssues} from '../planner-core.mjs';
 import {command,evaluateEligibility,progressSummary} from './coaching.mjs';
-import {catalog,exerciseAlternatives,regionForMuscle,scheduledSessions} from './workouts.mjs';
+import {catalog,workoutSafetyIssues,exerciseAlternatives,regionForMuscle,scheduledSessions} from './workouts.mjs';
 import {recovery} from './recovery.mjs';
 import {loadAccount,saveAccount} from './store.mjs';
 import {library,mealAlternatives,dayTotals} from './food.mjs';
@@ -10,7 +11,10 @@ import {localDate,integer,validDate,needsHealthConfirmation,needsScheduleConfirm
 const json=(data,status=200,headers={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 const present=s=>withClock(simulationTime(s),()=>{
  const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=recovery(s.checkins,clockNow(),s.workoutLogs),needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
- return {...s,serverNow:isoNow(),simulationToday:s.simulation?simulationSummary(s):null,eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},planQuality:plan?.days.flatMap(d=>nutritionQualityIssues(d.summary,d.targets||plan.targets).map(message=>({date:d.date,message})))||[],scheduledSessions:scheduledSessions(s),progressSummary:progressSummary(s),serverDate:clockDate(),recovery:{...ready,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule}};
+ const safety=workoutSafetyIssues(s),dietIssues=[];
+ if(plan)for(const day of plan.days){try{assertDietDay(day.meals.map(m=>m.snapshot),s.preferences.diet,day.targets||plan.targets);}catch(e){dietIssues.push({date:day.date,message:e.message});}}
+ if(safety.length){ready.progressionAllowed=false;if(ready.status!=='stop'){ready.status='hold';ready.reasons=['الخطة القديمة تحتوي تمارين مستبعدة حسب إصابتك. استبدلها أو أعد إنشاء الخطة وراجع مختصًا.'];}}
+ return {...s,workoutSafetyIssues:safety,dietVerificationIssues:dietIssues,serverNow:isoNow(),simulationToday:s.simulation?simulationSummary(s):null,eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},planQuality:plan?.days.flatMap(d=>nutritionQualityIssues(d.summary,d.targets||plan.targets).map(message=>({date:d.date,message})))||[],scheduledSessions:scheduledSessions(s),progressSummary:progressSummary(s),serverDate:clockDate(),recovery:{...ready,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule}};
 });
 async function requestJson(request){
  const reader=request.body?.getReader();if(!reader)throw Error('محتوى JSON مطلوب.');const chunks=[];let size=0;
@@ -22,8 +26,8 @@ function cursor(value,label){return value==null?0:integer(value,0,Number.MAX_SAF
 export default {async fetch(request,env){
  const url=new URL(request.url);if(!url.pathname.startsWith('/v1/'))return env.ASSETS.fetch(request);
  if(url.pathname==='/v1/health'&&request.method!=='GET')return json({error:'GET فقط.'},405,{Allow:'GET'});
- if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.10.0'});
- if(url.pathname==='/v1/capabilities'&&request.method==='GET')return json({apiVersion:'1',schemaVersion:3,engineVersion:'0.10.0',catalogVersion:catalog.manifest.version,serverTime:isoNow(),features:['adaptive_nutrition','adaptive_workouts','recovery_readiness','simulation_90d','eligibility_screening','progress_summary']});
+ if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.11.0'});
+ if(url.pathname==='/v1/capabilities'&&request.method==='GET')return json({apiVersion:'1',schemaVersion:3,engineVersion:'0.11.0',catalogVersion:catalog.manifest.version,serverTime:isoNow(),features:['adaptive_nutrition','adaptive_workouts','recovery_readiness','simulation_90d','eligibility_screening','progress_summary']});
  const identity=request.headers.get('oai-authenticated-user-id');if(!identity)return json({error:'سجّل الدخول لحفظ ومتابعة خطتك.'},401);
  try{
  const simulation=url.searchParams.get('simulation');if(simulation!==null&&simulation!=='1')throw Error('وضع المحاكاة غير صالح.');

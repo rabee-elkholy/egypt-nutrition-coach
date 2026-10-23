@@ -1,7 +1,7 @@
 import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {makeWeek,scaleSnapshot,sumSnapshots,assessDay,validatePreferences,nutritionQualityIssues} from '../planner-core.mjs';
 import {FIXED_DIET_MEALS,assertDietDay} from '../diet-patterns.mjs';
-import {workoutPlan,exerciseAlternatives,muscleRegions,weeklySetTotals,scheduledSessions,estimatedSessionMinutes,eachSide} from './workouts.mjs';
+import {workoutPlan,workoutSafetyIssues,exerciseAlternatives,muscleRegions,weeklySetTotals,scheduledSessions,estimatedSessionMinutes,eachSide} from './workouts.mjs';
 import {recovery,calorieReview,progression,hasPerformanceDrop,workoutProgressionSummary} from './recovery.mjs';
 import {library,activePlan,foodCommand,replaceMeal,plannedEnergyForDate} from './food.mjs';
 import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reconcileSessions} from './training-state.mjs';
@@ -13,7 +13,13 @@ export const SUPPORTED_WELLNESS_CONDITIONS=new Set(['hypertension','insulin_resi
 export const SUPPORTED_MILD_INJURIES=new Set(['knee_pain','lower_back_pain','shoulder_pain','wrist_pain','ankle_pain','neck_pain','hip_pain','diastasis_recti']);
 export const empty=()=>({schemaVersion:3,revision:0,profile:null,preferences:null,onboarding:null,plans:[],planRefs:[],workoutPlan:null,foodLogs:[],foodEntries:[],waterLogs:[],weights:[],workoutLogs:[],sessions:[],checkins:[],adaptations:[],history:[]});
 const clean=a=>a==null?[]:stringList(a,'قائمة الاختيارات').filter(x=>x!=='none');
-export function normalize(s){for(const key of ['workoutPlanRefs','planRefs','foodEntries','waterLogs','sessions','foodLogs','weights','workoutLogs','checkins','adaptations','history'])s[key]||=[];s.schemaVersion=3;ensureTrainingState(s);reconcileSessions(s);return s;}
+export function normalize(s){for(const key of ['workoutPlanRefs','planRefs','foodEntries','waterLogs','sessions','foodLogs','weights','workoutLogs','checkins','adaptations','history'])s[key]||=[];s.schemaVersion=3;
+ let reopened=false;
+ for(const log of s.foodLogs)if(log.source==='entries'&&log.completionPolicy!==1){log.legacyCompletion=!!log.complete;log.complete=false;log.completionPolicy=1;log.confirmedAt=null;reopened=true;}
+ if(reopened){for(const a of s.adaptations)if(a.status==='pending')a.status='superseded';s.lastReview=null;}
+ s.workoutSafetyIssues=workoutSafetyIssues(s);
+ if(s.workoutSafetyIssues.length){for(const a of s.adaptations)if(a.status==='pending')a.status='superseded';for(const day of s.workoutPlan.days)for(const exercise of day.exercises){delete exercise.suggestedKg;delete exercise.progressionReason;}}
+ ensureTrainingState(s);reconcileSessions(s);return s;}
 export function dailyWaterTarget(s,date=today()){
  const w=Number(s?.profile?.weight)||75;
  let ml=w*35;
@@ -63,6 +69,11 @@ export function review(s){
  if(needsHealthConfirmation(s)){discardPending(s);s.lastReview={at:isoNow(),recovery:'unknown',nutrition:{action:'hold',reason:'فريق المتابعة ينتظر تأكيد حالتك الصحية أولًا للاطمئنان عليك.'},volume:{action:'hold',reason:'نحتاج تأكيد الجاهزية الصحية.'},workout:{completed:0,partial:0,missed:0},message:'مراجعة الخطة تحتاج تأكيد الحالة الصحية.'};return s;}
  reconcileSessions(s);
  const ready=recovery(s.checkins,clockNow(),s.workoutLogs),plan=activePlan(s),proposals=[];
+ if(workoutSafetyIssues(s).length){discardPending(s);s.lastReview={at:isoNow(),recovery:ready.status==='stop'?'stop':'hold',nutrition:{action:'hold',reason:'راجع التمارين المستبعدة في خطتك القديمة واستبدلها أو أعد إنشاء الخطة.'},message:ready.status==='stop'?ready.reasons.join(' '):'الخطة القديمة تحتوي حركات مستبعدة حسب إصابتك؛ لا تؤدّها. استبدلها أو راجع مختصًا.'};return s;}
+ if(plan&&s.preferences?.diet==='dash'){
+  try{for(const d of plan.days.filter(d=>d.date>=today()))assertDietDay(d.meals.map(m=>m.snapshot),'dash',d.targets||plan.targets);}
+  catch(e){discardPending(s);s.lastReview={at:isoNow(),recovery:ready.status,nutrition:{action:'hold',reason:'لا يمكن اعتماد الصوديوم في الخطة القديمة؛ أعد إنشاء الخطة.'},message:e.message};return s;}
+ }
  let nutrition={action:'hold',reason:plan?'أخصائي التغذية ينصح باستقرار النوم والاستشفاء أولاً قبل أي تعديل في سعراتك.':'مسارك الحالي للتمارين فقط بدون خطة أكل.'};
  if(['caution','high'].includes(ready.status)&&s.workoutPlan)proposals.push({kind:'recovery',setFactor:ready.setFactor,regions:Object.entries(ready.muscles).filter(([,m])=>m.status==='caution').map(([r])=>r),reason:`توصية من كابتن التدريب: لأن ${ready.reasons.join(' و')}، نقترح تخفيف جولة واحدة من تمرين النهاردة لحماية عضلاتك ومفاصلك.`,expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
  const profileChange=s.history.filter(h=>h.kind==='profile').at(-1)?.at;
@@ -166,7 +177,7 @@ export function command(input,action,p){
  }else if(action==='food'){
   const date=dateForLog(p.date),plan=activePlan(s);if(s.foodEntries.some(e=>e.date===date))throw Error('اليوم فيه وجبات تفصيلية؛ استخدم إغلاق اليوم.');
   const energy=number(p.energy,0,10000,'السعرات الفعلية'),complete=boolean(p.complete,'اكتمال اليوم'),plannedEnergy=plannedEnergyForDate(s,date);
-  s.foodLogs=s.foodLogs.filter(x=>x.date!==date);s.foodLogs.push({date,complete,adherence:plannedEnergy?Math.max(0,Math.round(100-Math.abs(energy-plannedEnergy)/plannedEnergy*100)):null,energy,plannedEnergy,planId:plan?.id,source:'daily_total'});
+  s.foodLogs=s.foodLogs.filter(x=>x.date!==date);s.foodLogs.push({date,complete,adherence:plannedEnergy?Math.max(0,Math.round(100-Math.abs(energy-plannedEnergy)/plannedEnergy*100)):null,energy,plannedEnergy,planId:plan?.id,source:'daily_total',completionPolicy:1,confirmedAt:complete?isoNow():null});
  }else if(action==='recovery'){
   for(const key of ['pain','illness','redFlags'])if(typeof p[key]!=='boolean')throw Error('أجب على أسئلة الألم والمرض.');
   const sorenessByRegion={};for(const [key,v]of Object.entries(p.sorenessByRegion==null?{}:plainRecord(p.sorenessByRegion,'تقييم العضلات'))){if(!Object.hasOwn(MUSCLE_REGIONS,key))throw Error('منطقة عضلية غير صالحة.');sorenessByRegion[key]=number(v,0,10,'ألم العضلات');}
@@ -191,6 +202,7 @@ export function command(input,action,p){
    s.sessions.push(autoSess);
   }
   reconcileSessions(s);
+  if(workoutSafetyIssues(s).length){delete exercise.suggestedKg;delete exercise.progressionReason;return s;}
   const ready=recovery(s.checkins,clockNow(),s.workoutLogs);const localBlocked=muscleRegions(exercise).some(r=>['caution','hold'].includes(ready.muscles[r]?.status));
   const next=progression({...exercise,planId:s.workoutPlan.id},s.workoutLogs,{...ready,progressionAllowed:ready.progressionAllowed&&!needsHealthConfirmation(s)&&!needsScheduleConfirmation(s)&&!localBlocked&&date===today()});
   delete exercise.suggestedKg;delete exercise.progressionReason;
@@ -225,6 +237,7 @@ export function command(input,action,p){
   if(a.baseRevision!==s.revision)throw Object.assign(Error('بياناتك اتغيرت؛ اطلب مراجعة جديدة.'),{status:409});
   if(a.expiresAt&&Date.parse(a.expiresAt)<clockNow())throw Error('الاقتراح انتهت صلاحيته؛ اطلب مراجعة جديدة.');
   if((needsHealthConfirmation(s)||needsScheduleConfirmation(s))&&a.kind!=='schedule')throw Error('أكد الجاهزية الصحية واطلب مراجعة جديدة.');
+  if(workoutSafetyIssues(s).length)throw Error('راجع التمارين المستبعدة في الخطة قبل قبول تعديلات.');
   const currentRecovery=recovery(s.checkins,clockNow(),s.workoutLogs);
   if(a.kind==='recovery'&&!['caution','high'].includes(currentRecovery.status))throw Error('بيانات الاستشفاء اتغيرت أو انتهت؛ اطلب مراجعة جديدة.');
   if(['weekly_volume','calories','maintenance'].includes(a.kind)&&currentRecovery.status!=='ready')throw Error('نحتاج متابعة استشفاء حديثة ومناسبة؛ اطلب مراجعة جديدة.');

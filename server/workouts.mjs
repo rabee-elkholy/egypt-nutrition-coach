@@ -9,22 +9,30 @@ export function regionForMuscle(id){const group=byMuscle.get(id)?.group_id||id;r
 export function primaryRegions(exercise){return [...new Set(exercise.muscles.filter(m=>m.role==='primary').map(m=>regionForMuscle(m.muscle_id)))];}
 export function muscleRegions(exercise){return [...new Set(exercise.muscles.map(m=>regionForMuscle(m.muscle_id)))];}
 const schemes={full_body:['squat','horizontal_push','horizontal_pull','hinge','anti_extension','vertical_pull'],upper:['horizontal_push','horizontal_pull','vertical_push','vertical_pull','elbow_flexion','elbow_extension'],lower:['squat','hinge','lunge','knee_flexion','plantar_flexion','anti_extension'],push:['horizontal_push','vertical_push','shoulder_abduction','elbow_extension'],pull:['horizontal_pull','vertical_pull','elbow_flexion','scapular_elevation'],legs:['squat','hinge','lunge','knee_flexion','plantar_flexion'],chest:['horizontal_push','horizontal_push','elbow_extension'],back:['horizontal_pull','vertical_pull','scapular_elevation'],shoulders:['vertical_push','shoulder_abduction','horizontal_pull'],arms:['elbow_flexion','elbow_extension','elbow_flexion'],core:['squat','hinge','anti_extension']};
-const INJURY_AVOID_REGEX={
- knee_pain:/\b(jump|plyo|pistol|sissy|lunge|split squat|box jump)\b/i,
- lower_back_pain:/\b(good morning|conventional deadlift|stiff-leg|barbell back squat|sit-up|sit up)\b/i,
- shoulder_pain:/\b(upright row|behind the neck|dip|overhead)\b/i,
- wrist_pain:/\b(barbell curl|close-grip bench|handstand)\b/i,
- ankle_pain:/\b(jump|hop|sprint|plyo|calf raise)\b/i,
- neck_pain:/\b(neck|shrug|behind the neck)\b/i,
- hip_pain:/\b(sumo|wide-stance|split squat|lunge)\b/i,
- diastasis_recti:/\b(crunch|sit-up|sit up|v-up|leg raise)\b/i
+// Conservative exclusion policy, not a clinical clearance or rehabilitation prescription.
+export const INJURY_POLICY_VERSION=1;
+const INJURY_PATTERNS={
+ knee_pain:['squat','lunge','knee_extension'], lower_back_pain:['hinge'],
+ shoulder_pain:['vertical_push','shoulder_abduction'], wrist_pain:['elbow_flexion'],
+ ankle_pain:['plantar_flexion','lunge'], neck_pain:['scapular_elevation'],
+ hip_pain:['squat','lunge','hinge'], diastasis_recti:['spinal_flexion','hip_flexion']
 };
-function isFriendlyForInjuries(e,injuries=[]){
- for(const inj of injuries){
-  const rx=INJURY_AVOID_REGEX[inj];
-  if(rx&&rx.test(e.name))return false;
- }
- return true;
+const INJURY_NAMES={
+ knee_pain:/jump|plyo|pistol|sissy|lunge|split squat/i,
+ lower_back_pain:/good morning|deadlift|back squat|sit.?up/i,
+ shoulder_pain:/upright row|behind.*neck|dip|overhead/i,
+ wrist_pain:/barbell curl|close.grip bench|handstand|push.?up/i,
+ ankle_pain:/jump|hop|sprint|plyo|calf raise/i,
+ neck_pain:/neck|shrug/i, hip_pain:/sumo|wide.stance|split squat|lunge/i,
+ diastasis_recti:/crunch|sit.?up|v.?up|leg raise/i
+};
+export function isFriendlyForInjuries(e,injuries=[]){
+ return injuries.filter(x=>x!=='none').every(injury=>Object.hasOwn(INJURY_PATTERNS,injury)&&
+ !INJURY_PATTERNS[injury].includes(e.pattern)&&!INJURY_NAMES[injury].test(e.name));
+}
+export function workoutSafetyIssues(s){
+ const injuries=s.onboarding?.workoutPrefs?.injuries||[];
+ return (s.workoutPlan?.days||[]).flatMap(d=>d.exercises.filter(e=>!isFriendlyForInjuries(e,injuries)).map(e=>({dayIndex:d.dayIndex,exerciseId:e.id,name:e.name})));
 }
 export function equipmentAllowed(exercise,prefs,location){
  if(!exercise.equipment.length||exercise.equipment.some(e=>e.equipment_id==='other'))return false;
@@ -38,7 +46,7 @@ function candidates(pattern,prefs,location,exclude=[]){
  const injuries=Array.isArray(prefs.injuries)?prefs.injuries.filter(x=>x&&x!=='none'):[];
  if(!injuries.length)return base;
  const friendly=base.filter(e=>isFriendlyForInjuries(e,injuries));
- return friendly.length?friendly:base;
+ return friendly;
 }
 export const eachSide=e=>['unilateral','alternating'].includes(e.laterality);
 export const repetitionSeconds=e=>e.repMax*3*(eachSide(e)?2:1);
@@ -63,6 +71,7 @@ export function workoutPlan(draft){
  let split=draft.workoutSplitPreference==='auto'||!draft.workoutSplitPreference?(days.length<=3?'full_body':'upper_lower'):draft.workoutSplitPreference;
  if(!['full_body','upper_lower','ppl','bro_split'].includes(split))throw Error('تقسيمة التمرين غير صالحة.');
  const warnings=[];
+ if(injuries.length)warnings.push('استبعدنا حركات احترازيًا حسب الإصابة؛ الاختيارات المتبقية ليست تصريحًا طبيًا. أوقف الحركة المؤلمة وراجع مختصًا.');
  if(split==='upper_lower'&&days.length<2){warnings.push('تقسيمة علوي/سفلي تحتاج يومين؛ استخدمنا الجسم كله لتغطية العضلات.');split='full_body';}
  if(split==='bro_split'&&days.length<5){warnings.push('تقسيمة العضلة الواحدة تحتاج 5 أيام؛ استخدمنا الجسم كله لتغطية العضلات في الأيام المتاحة.');split='full_body';}
  if(split==='ppl'&&days.length<3){warnings.push('الدفع والسحب والأرجل يحتاجوا 3 أيام على الأقل؛ استخدمنا الجسم كله.');split='full_body';}
@@ -96,7 +105,7 @@ export function workoutPlan(draft){
  if(sessions.some(s=>s.exercises.length===0))warnings.push('في يوم لا يحتوي على تمرين مناسب؛ راجع المعدات أو مستوى التمرين قبل البدء.');
  if(split==='full_body'&&days.some((d,i)=>days.length>1&&(days[(i+1)%days.length]-d+7)%7===1))warnings.push('في أيام تمرين متتالية؛ راقب الاستشفاء ويفضل يوم راحة بين جلسات الجسم كله.');
  const weeklySets=weeklySetTotals(sessions);
- return {id:crypto.randomUUID(),version:1,split,goalNote,days:sessions,warnings,weeklySets,sourceVersion:catalog.manifest.version};
+ return {injuryPolicyVersion:INJURY_POLICY_VERSION,id:crypto.randomUUID(),version:1,split,goalNote,days:sessions,warnings,weeklySets,sourceVersion:catalog.manifest.version};
 }
 export function exerciseAlternatives(s,dayIndex,exerciseId){
  const index=integer(dayIndex,0,6,'يوم التمرين');

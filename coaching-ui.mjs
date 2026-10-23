@@ -204,7 +204,7 @@ export async function mountPlanner({root,toast}){
   return `<section id="food-diary" class="coach-card">
    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
     <h3 style="margin:0">🍽️ اللي أكلته النهاردة (${diaryDate})</h3>
-    <span style="font-size:12px;padding:4px 10px;border-radius:999px;font-weight:700;background:${record?.complete?'#e6f4ea':'#f0f5f2'};color:#1b4332">${record?.complete?'✅ يومك مكتمل ومحسوب في المتابعة':'⏳ بيتقفل تلقائياً مع تسجيل وجباتك'}</span>
+    <span style="font-size:12px;padding:4px 10px;border-radius:999px;font-weight:700;background:${record?.complete?'#e6f4ea':'#f0f5f2'};color:#1b4332">${record?.complete?'✅ تسجيل اليوم مؤكد — الالتزام بيتحسب بشكل منفصل':'⏳ محتاج تأكيد إنك سجلت كل أكلك'}</span>
    </div>
    <div class="coach-metrics compact" style="margin-top:10px">
     <div><strong>${round(total('energy'))}</strong> سعر مسجل</div>
@@ -224,8 +224,8 @@ export async function mountPlanner({root,toast}){
      <label>البروتين بالجرام (اختياري) <input name="protein" type="number" step="0.1" min="0" max="2000"></label>
      <button>إضافة لسجل اليوم</button>
     </form>
-    ${entries.length?`<div style="margin-top:10px"><button type="button" id="toggle-complete" class="secondary">${record?.complete?'إعادة فتح اليوم للتعديل':'✅ قفل اليوم يدوياً (لو اكتفيت بأكل النهاردة)'}</button></div>`:''}
    </details>
+    ${entries.length?`<div style="margin-top:10px"><button type="button" id="toggle-complete" class="secondary">${record?.complete?'إعادة فتح اليوم للتعديل':'✅ أؤكد إني سجلت كل أكلي النهارده'}</button></div>`:''}
   </section>`;
  }
  function mealHTML(m,date){
@@ -614,6 +614,8 @@ export async function mountPlanner({root,toast}){
     </div>`).join('')}
    </section>`:''}
 
+   ${(state.workoutSafetyIssues||[]).length?`<aside role="alert" class="coach-card">⚠️ خطتك القديمة فيها حركات مستبعدة حسب إصابتك: ${state.workoutSafetyIssues.map(x=>esc(x.name)).join('، ')}. لا تؤدّها؛ استبدلها أو أعد إنشاء الخطة وراجع مختصًا.</aside>`:''}
+   ${(state.dietVerificationIssues||[]).some(x=>x.date>=todayStr)?'<aside role="alert" class="coach-card">⚠️ لا يمكن اعتماد القيود الغذائية لبعض أيام خطتك الحالية. أعد إنشاء الخطة؛ القيم المجهولة لا تعني صفرًا.</aside>':''}
    <nav class="coach-tabs" aria-label="أقسام المتابعة">
     <button type="button" class="tab-btn ${activeTab==='nutrition'?'active':''}" data-tab="nutrition"><span class="tab-icon">🥗</span><span>الأكل</span></button>
     <button type="button" class="tab-btn ${activeTab==='workout'?'active':''}" data-tab="workout"><span class="tab-icon">💪</span><span>التمرين</span></button>
@@ -625,7 +627,7 @@ export async function mountPlanner({root,toast}){
    <section id="nutrition-coach" ${activeTab==='nutrition'?'':'hidden'}>
     <header class="coach-heading">
      <div>
-      <small>فريق التغذية والتدريب معاك خطوة بخطوة</small>
+      <small>متابعة آلية للأكل والتمرين — ليست مراجعة من مختص بشري</small>
       <h2>أهلًا يا ${esc(state.profile.name)} 👋</h2>
       <p>${esc(status[ready.status])}</p>
      </div>
@@ -681,15 +683,6 @@ export async function mountPlanner({root,toast}){
   wire();wireSimulation();restoreDrafts();
  }
  function showDialog(html){const dialog=root.querySelector('#coach-dialog');dialog.querySelector('#dialog-body').innerHTML=html;dialog.showModal();}
- function shouldAutoCompleteFood(date,addedEnergy=0){
-  const plan=state.plans.find(p=>p.id===state.active_plan_id);
-  const day=plan?.days.find(d=>d.date===date);
-  const target=day?.targets?.energy||plan?.targets?.energy||0;
-  const currentEntries=(state.foodEntries||[]).filter(e=>e.date===date);
-  const currentEnergy=currentEntries.reduce((s,e)=>s+(Number(e.snapshot?.values?.energy)||0),0);
-  if(target>0&&(currentEnergy+addedEnergy)>=target*0.8)return true;
-  return false;
- }
  function wire(){
   root.querySelectorAll('[data-tab]').forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;render();window.scrollTo({top:0,behavior:'instant'});});
   root.querySelector('#edit-profile').onclick=()=>{if(uncertainWrite){notice('أكد العملية المعلقة الأول.',true);retryUncertain();}else onboarding();};
@@ -707,17 +700,17 @@ export async function mountPlanner({root,toast}){
   root.querySelectorAll('[data-delete-food]').forEach(b=>b.onclick=()=>send('food_delete',{id:b.dataset.deleteFood}));
   root.querySelectorAll('.planned-food').forEach(form=>form.onsubmit=e=>{
    e.preventDefault();diaryDate=form.dataset.date;
-   const fd=formData(form),qty=Number(fd.quantity||1),mealEnergy=(Number(form.dataset.energy)||0)*qty;
-   send('food_entry',{...fd,date:form.dataset.date,slot:form.dataset.slot,mealId:form.dataset.meal,source:'planned',autoComplete:shouldAutoCompleteFood(form.dataset.date,mealEnergy)});
+   const fd=formData(form);
+   send('food_entry',{...fd,date:form.dataset.date,slot:form.dataset.slot,mealId:form.dataset.meal,source:'planned'});
   });
   const manualForm=root.querySelector('#manual-food');
   if(manualForm)manualForm.onsubmit=e=>{
    e.preventDefault();const fd=formData(e.target);
-   send('food_entry',{...fd,date:diaryDate,source:'manual',autoComplete:shouldAutoCompleteFood(diaryDate,Number(fd.energy)||0)});
+   send('food_entry',{...fd,date:diaryDate,source:'manual'});
   };
   const foodSearchForm=root.querySelector('#food-search');
   if(foodSearchForm)foodSearchForm.onsubmit=async e=>{
-   e.preventDefault();const version=viewVersion,request=++foodRequest;try{const result=await api('foods?q='+encodeURIComponent(new FormData(e.target).get('q')));if(version!==viewVersion||request!==foodRequest)return;root.querySelector('#food-search-results').innerHTML=result.items.map(i=>{const u=displayPortion(i);return `<form class="ingredient-log" data-diary-date="${diaryDate}" data-key="${esc(i.key)}" data-kcal100="${Number(i.values.energy)||0}"><h4>${esc(displayIngredientName(i))}</h4><p>${round(i.values.energy)} سعر/100 جرام · ${esc(stateLabels[i.state]||i.state)}${u?` · <strong>الوحدة: ${esc(u.label)} ≈ ${round(u.grams)} جم</strong>`:''}</p><label>الكمية بالجرام <input name="grams" type="number" min="1" max="2000" value="${u?round(u.grams):100}" required></label><label>الوجبة<select name="slot">${Object.entries(SLOTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><button>إضافة الصنف</button></form>`;}).join('')||'<p>مفيش نتيجة في مكتبة الأصناف الحالية؛ استخدم الإضافة اليدوية.</p>';restoreDrafts(root.querySelector('#food-search-results'));root.querySelectorAll('.ingredient-log').forEach(form=>form.onsubmit=e=>{e.preventDefault();const fd=formData(form);const added=(Number(form.dataset.kcal100)||0)*(Number(fd.grams)||0)/100;send('food_entry',{...fd,source:'ingredient',key:form.dataset.key,date:diaryDate,autoComplete:shouldAutoCompleteFood(diaryDate,added)});});}catch(e){notice(e.message,true);}
+   e.preventDefault();const version=viewVersion,request=++foodRequest;try{const result=await api('foods?q='+encodeURIComponent(new FormData(e.target).get('q')));if(version!==viewVersion||request!==foodRequest)return;root.querySelector('#food-search-results').innerHTML=result.items.map(i=>{const u=displayPortion(i);return `<form class="ingredient-log" data-diary-date="${diaryDate}" data-key="${esc(i.key)}" data-kcal100="${Number(i.values.energy)||0}"><h4>${esc(displayIngredientName(i))}</h4><p>${round(i.values.energy)} سعر/100 جرام · ${esc(stateLabels[i.state]||i.state)}${u?` · <strong>الوحدة: ${esc(u.label)} ≈ ${round(u.grams)} جم</strong>`:''}</p><label>الكمية بالجرام <input name="grams" type="number" min="1" max="2000" value="${u?round(u.grams):100}" required></label><label>الوجبة<select name="slot">${Object.entries(SLOTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><button>إضافة الصنف</button></form>`;}).join('')||'<p>مفيش نتيجة في مكتبة الأصناف الحالية؛ استخدم الإضافة اليدوية.</p>';restoreDrafts(root.querySelector('#food-search-results'));root.querySelectorAll('.ingredient-log').forEach(form=>form.onsubmit=e=>{e.preventDefault();const fd=formData(form);send('food_entry',{...fd,source:'ingredient',key:form.dataset.key,date:diaryDate});});}catch(e){notice(e.message,true);}
   };
   root.querySelectorAll('[data-meal-alt]').forEach(b=>b.onclick=async()=>{const version=viewVersion,request=++alternativeRequest;try{const result=await api('meal-alternatives?mealId='+encodeURIComponent(b.dataset.mealAlt));if(version!==viewVersion||request!==alternativeRequest)return;showDialog('<h2>بدائل مقترحة من أخصائي التغذية</h2>'+result.items.map(a=>`<article class="meal-card" style="margin:10px 0"><h3>${esc(displayMealName(a.snapshot))}</h3><p><strong>${macroLine(a.snapshot)}</strong></p><ul>${(a.snapshot.ingredients||[]).map(ingredientLine).join('')}</ul><p><small>فرق السعرات ${a.energy_delta} · فرق البروتين ${a.protein_delta} جرام</small></p><button data-replace-meal="${esc(a.snapshot.template_id)}">اختيار هذه الوجبة</button></article>`).join('')+(result.items.length?'':'<p>مفيش بديل متاح يحقق نفس اختياراتك وحدود النظام.</p>'));root.querySelectorAll('[data-replace-meal]').forEach(choice=>choice.onclick=()=>send('replace_meal',{mealId:b.dataset.mealAlt,templateId:choice.dataset.replaceMeal}));}catch(e){notice(e.message,true);}});
   root.querySelectorAll('[data-exercise-alt]').forEach(b=>b.onclick=async()=>{const version=viewVersion,request=++alternativeRequest;try{const result=await api('exercise-alternatives?exerciseId='+encodeURIComponent(b.dataset.exerciseAlt)+'&dayIndex='+b.dataset.day);if(version!==viewVersion||request!==alternativeRequest)return;showDialog('<h2>بدائل مقترحة من كابتن التدريب</h2>'+result.items.map(a=>`<article><h3 dir="auto">${esc(a.name)}</h3><p dir="ltr">${a.equipment.map(q=>esc(q.equipment_id)).join(', ')}</p><button data-replace-exercise="${a.id}">اختيار هذا التمرين</button></article>`).join('')+(result.items.length?'':'<p>مفيش بديل مناسب متاح بالمعدات دي.</p>'));root.querySelectorAll('[data-replace-exercise]').forEach(choice=>choice.onclick=()=>send('replace_exercise',{dayIndex:Number(b.dataset.day),exerciseId:b.dataset.exerciseAlt,alternativeId:choice.dataset.replaceExercise}));}catch(e){notice(e.message,true);}});

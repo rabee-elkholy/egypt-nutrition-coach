@@ -7,7 +7,7 @@ import { EXCLUSIONS, expandedKeys } from "./planner-exclusions.mjs";
 import { egyptianMenus, regionalMenus } from './egyptian-menu.mjs';
 import { EGYPTIAN_POLICY_VERSION, egyptianBreadChoice, egyptianSlotPool,
   egyptianMealFamily, egyptianMealName } from "./egyptian-meals.mjs";
-export const ENGINE_VERSION = "weekly-planner-0.10.0";
+export const ENGINE_VERSION = "weekly-planner-0.11.0";
 export const REGIONS = {
   egypt: "مصر",
   levant: "بلاد الشام",
@@ -469,10 +469,10 @@ function totalsForParts(parts, lib) {
       grams: p.grams,
       values: {
         ...i.values,
-        fiber: i.values.fiber ?? fb.fiber ?? "0",
-        saturated: i.values.saturated ?? fb.saturated ?? "0",
-        sodium: i.values.sodium ?? fb.sodium ?? "0",
-        sugars: i.values.sugars ?? fb.sugars ?? "0",
+        fiber: i.values.fiber ?? fb.fiber ?? null,
+        saturated: i.values.saturated ?? fb.saturated ?? null,
+        sodium: i.values.sodium ?? fb.sodium ?? null,
+        sugars: i.values.sugars ?? fb.sugars ?? null,
       },
       factors: Object.fromEntries(METRICS.map((k) => [k, "1"])),
     };
@@ -862,7 +862,7 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
         })
         .filter(a=>{
           if (p.diet === 'dash') {
-            const sod = a.snapshot.values.sodium ?? a.snapshot.estimated_values?.sodium;
+            const sod = a.snapshot.values.sodium;
             return sod != null && Number(sod) <= 2300 * slot.share;
           }
           if (p.diet === 'keto' || p.diet === 'low_carb') {
@@ -916,7 +916,7 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
           const next=fitMeal(template, nextE, nextP, lib);
           const currentTotal=Number(sumSnapshots(meals.map(x=>x.snapshot)).values.energy);
           const nextTotal=currentTotal-Number(m.snapshot.values.energy)+Number(next.values.energy);
-          const dashOk = p.diet!=='dash' || Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium ?? 0)<=2300;
+          const dashOk = p.diet!=='dash' || (sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium != null && Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium)<=2300);
           const carbOk = !['keto','low_carb'].includes(p.diet) || Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.carbs ?? 0)<=(p.diet==='keto'?50:130);
           const currentSummary=sumSnapshots(meals.map(x=>x.snapshot));
           const nextSummary=sumSnapshots(meals.map(x=>x===m?next:x.snapshot));
