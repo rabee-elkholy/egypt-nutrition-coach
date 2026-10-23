@@ -3,7 +3,7 @@
 async function mountPlanner(opts){
   let hasBackend=false;
   try{const r=await fetch('/v1/state',{headers:{Accept:'application/json'}});hasBackend=(r.headers.get('content-type')||'').includes('application/json');}catch{hasBackend=false;}
-  const mod=hasBackend?await import('./coaching-ui.mjs'):await import('./planner-ui.mjs');
+  const mod=hasBackend?await import('./coaching-ui.mjs?v=sim2'):await import('./planner-ui.mjs?v=sim2');
   return mod.mountPlanner(opts);
 }
 import {planningFilter,SLOTS,BUDGETS} from './planning-tags.mjs';

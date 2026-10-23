@@ -1,22 +1,157 @@
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const status={ready:'استشفاء مناسب',unknown:'محتاج متابعة',hold:'توقّف وقيّم الألم أو المرض',stop:'توقّف واطلب تقييمًا',caution:'خفّف المجهود',high:'استشفاء ضعيف'};
-const number=n=>n==null?'—':Math.round(n*10)/10;
-export function simulationPanel(state,enabled,{compact=false}={}){
- if(!enabled)return `<aside class="simulation-entry"><div><strong>جرّب رحلة التطبيق يوم بيوم</strong><p>سجّل يومك، انتقل لليوم التالي، وشوف المتابعة وتغيير الخطة مع الوقت.</p></div><button id="enter-simulation">افتح وضع المحاكاة</button></aside>`;
- const sim=state.simulation;
- const exit='<button type="button" id="leave-simulation" class="secondary">العودة لبياناتي الفعلية</button>';
- if(compact)return `<aside class="simulation-entry"><strong>أنت تعدّل شخصية المحاكاة · اليوم ${sim?.day||1}</strong>${exit}</aside>`;
- if(!sim)return `<section class="simulation-hero" id="simulation-welcome"><span class="simulation-badge">مساحة تجربة مستقلة</span><h2>عيش رحلة المستخدم، يوم بيوم</h2><p>ابدأ ببياناتك الحالية أو بشخصية جاهزة. سجّل الأكل والتمرين والاستشفاء، ثم قدّم اليوم علشان تشوف المحركين بيتابعوا التغيّر عبر الأسابيع.</p><div class="simulation-actions"><button id="simulation-start-current">ابدأ بنسخة من بياناتي</button><button id="simulation-start-sample">ابدأ بشخصية تجريبية جاهزة</button>${exit}</div><p class="simulation-caption">الشخصية الجاهزة: 30 سنة، 80 كجم، هدف خسارة وزن تدريجية، وتمرين 3 أيام في الأسبوع. تقدر تعدّل بياناتها من نفس الأونبوردينج.</p></section>`;
- const day=state.simulationToday,date=new Intl.DateTimeFormat('ar-EG',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(state.serverDate+'T12:00:00Z'));
- const tasks=[{name:'الأكل',href:'#food-diary',done:!state.active_plan_id||day.foodComplete,text:!state.active_plan_id?'غير مطلوب في مسارك':day.foodComplete?`${number(day.energy)} سعر · اليوم مكتمل`:'سجّل أكلك الفعلي واقفل اليوم'},
- {name:'التمرين',href:'#workout-coach',done:!day.scheduled.length||day.sessions.some(s=>s.status==='completed'),text:!day.scheduled.length?'يوم راحة من المقاومة':day.sessions.some(s=>s.status==='completed')?'الجلسة مكتملة':day.sessions.some(s=>s.status==='partial')?'جلسة جزئية مسجلة':day.sessions.some(s=>s.status==='missed')?'الجلسة فائتة ومسجلة':'سجّل مجموعات جلسة النهارده'},
- {name:'الاستشفاء',href:'#recovery-coach',done:day.recoveryLogged,text:day.recoveryLogged?status[day.recovery]:'نومك، إجهادك وإحساس عضلاتك'},
- {name:'الوزن',href:'#weight-log',done:day.weight!=null,text:day.weight==null?'قياس اختياري لبناء اتجاه الوزن':`${number(day.weight)} كجم مسجلة`}];
- return `<section class="simulation-hero" id="simulation-panel" aria-label="محاكاة رحلة المستخدم"><div class="simulation-heading"><div><span class="simulation-badge">محاكاة · بيانات تجربة</span><h2>اليوم ${sim.day} <small>من رحلتك</small></h2><p>${date} · <span dir="ltr">${state.serverDate}</span></p></div><div class="simulation-actions">${exit}<button id="simulation-reset" class="secondary">ابدأ الجولة من جديد</button></div></div>
- <div class="simulation-progress" aria-label="تقدم أول أسبوعين"><span style="width:${Math.min(100,sim.day/14*100)}%"></span></div><p class="simulation-caption">${sim.day<8?'الأسبوع الأول: المحرك بيجمع خط أساس عنك.':sim.day<15?'الأسبوع الثاني: اختبر اتجاه الوزن والالتزام والاستشفاء.':'عندك سجل متابعة متراكم؛ جرّب تغيير الأداء وشوف سبب القرار.'} مرور الأيام وحده مش كفاية لتعديل الخطة؛ القرار حسب البيانات.</p>
- <div class="simulation-tasks">${tasks.map(t=>`<a href="${t.href}" class="${t.done?'done':''}"><span>${t.done?'✓':'○'} ${t.name}</span><small>${esc(t.text)}</small></a>`).join('')}</div>
- ${sim.renewalError?`<p class="coach-notice" role="alert">تعذّر تجديد أسبوع الأكل: ${esc(sim.renewalError)} جرّب التجديد أو راجع بيانات المحاكاة.</p>`:''}
- <div class="simulation-next"><div><strong>كل يوم خطوة في التجربة</strong><p>احفظ ما كتبته قبل الانتقال. اليوم الناقص يفضل ناقصًا، وتقدر تراجع سجلاته.</p></div><button id="simulation-review">راجع يومي</button><button id="simulation-next" ${sim.day>=90?'disabled':''}>انتقل لليوم التالي ←</button></div>
- <details class="simulation-tools"><summary>تعبئة يوم تجريبي بسرعة — اختيارية</summary><p>سجّل يدويًا أو جرّب سيناريو جاهز. التعبئة تضيف بيانات افتراضية لليوم الفارغ فقط، ثم تشغّل مراجعة المحرك الفعلية.</p><form id="simulation-fill"><label>سيناريو اليوم<select name="scenario"><option value="consistent">التزام جيد وتغيّر وزن تدريجي</option><option value="plateau">ملتزم لكن وزني ثابت</option><option value="poor_recovery">نوم قليل وإجهاد مرتفع</option><option value="missed_workout">ملتزم بالأكل لكن فوّتّ التمرين</option><option value="low_adherence">أكلت أقل من الخطة</option><option value="pain">ظهر ألم أثناء الحركة</option></select></label><button>سجّل هذه البيانات التجريبية</button></form></details>
- <details class="simulation-history"><summary>سجل الرحلة · ${sim.history.length} أيام سابقة</summary>${sim.history.length?sim.history.slice().reverse().map(h=>`<article><strong>اليوم ${h.day} · ${h.date}</strong><p>${number(h.energy)} سعر ${h.foodComplete?'· الأكل مكتمل':'· الأكل غير مكتمل'} · الوزن ${number(h.weight)} كجم · ${esc(status[h.recovery])}</p><p>${h.scheduled.length?`جلسات مسجلة: ${h.sessions.length}، منها ${h.sessions.filter(s=>s.status==='completed').length} مكتملة`:'يوم راحة من المقاومة'}</p><small>${esc(h.review||h.changes?.join('؛ ')||'لم تُحفظ مراجعة نهائية لليوم.')}</small></article>`).join(''):'<p>بعد ما تنتقل لليوم التالي، ملخص اليوم الحالي هيظهر هنا.</p>'}</details></section>`;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const status = {
+  ready: 'استشفاء ممتاز',
+  unknown: 'لم يُسجل بعد',
+  hold: 'توقّف (ألم/مرض)',
+  stop: 'أوقف التمرين فوراً',
+  caution: 'خفّف المجهود',
+  high: 'إجهاد عالٍ'
+};
+const number = n => n == null ? '—' : Math.round(n * 10) / 10;
+
+export function simulationPanel(state, enabled, { compact = false } = {}) {
+  if (!enabled) {
+    return `<aside class="simulation-entry">
+      <div>
+        <strong>🧪 جرّب رحلة الـ 90 يوم في دقائق (وضع المحاكاة)</strong>
+        <p>سجّل يومك أو اختبر سيناريوهات جاهزة بضغطة واحدة وشوف قرارات المحرك يوم بيوم.</p>
+      </div>
+      <button id="enter-simulation">افتح وضع المحاكاة</button>
+    </aside>`;
+  }
+
+  const sim = state.simulation;
+  const exit = '<button type="button" id="leave-simulation" class="secondary">العودة لبياناتي الفعلية</button>';
+
+  if (compact) {
+    return `<aside class="simulation-entry">
+      <strong>🧪 تعديل بيانات المحاكاة · اليوم ${sim?.day || 1}</strong>
+      ${exit}
+    </aside>`;
+  }
+
+  if (!sim) {
+    return `<section class="simulation-hero" id="simulation-welcome">
+      <span class="simulation-badge">🧪 مساحة تجربة مستقلة (لا تؤثر على حسابك)</span>
+      <h2>اختبر ذكاء المحرك يوم بيوم</h2>
+      <p class="simulation-caption">ابدأ بشخصية جاهزة بضغطة واحدة أو بنسخة من بياناتك الحالية، وقدّم الأيام لتختبر تعديل السعرات وحجم التمرين والاستشفاء.</p>
+      <div class="simulation-actions">
+        <button id="simulation-start-sample">🚀 ابدأ بشخصية تجريبية جاهزة</button>
+        <button id="simulation-start-current" class="secondary">ابدأ بنسخة من بياناتي</button>
+        ${exit}
+      </div>
+      <p class="simulation-caption">الشخصية الجاهزة: 30 سنة، 80 كجم، هدف خسارة وزن تدريجية، وتمرين 3 أيام أسبوعياً.</p>
+    </section>`;
+  }
+
+  const day = state.simulationToday;
+  const date = new Intl.DateTimeFormat('ar-EG', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC'
+  }).format(new Date(state.serverDate + 'T12:00:00Z'));
+
+  const tasks = [
+    {
+      name: '🥗 الأكل',
+      tab: 'nutrition',
+      target: '#food-diary',
+      done: !state.active_plan_id || day.foodComplete,
+      text: !state.active_plan_id ? 'غير مطلوب' : day.foodComplete ? `${number(day.energy)} سعر ✓` : 'اضغط لتسجيل الأكل'
+    },
+    {
+      name: '💪 التمرين',
+      tab: 'workout',
+      target: '#workout-coach',
+      done: !day.scheduled.length || day.sessions.some(s => s.status === 'completed'),
+      text: !day.scheduled.length
+        ? 'يوم راحة ✓'
+        : day.sessions.some(s => s.status === 'completed')
+        ? 'مكتمل ✓'
+        : day.sessions.some(s => s.status === 'partial')
+        ? 'جزئي'
+        : day.sessions.some(s => s.status === 'missed')
+        ? 'فائت'
+        : 'اضغط لتسجيل الجلسة'
+    },
+    {
+      name: '😴 الاستشفاء',
+      tab: 'recovery',
+      target: '#recovery-log',
+      done: day.recoveryLogged,
+      text: day.recoveryLogged ? status[day.recovery] : 'اضغط لتسجيل النوم'
+    },
+    {
+      name: '⚖️ الوزن',
+      tab: 'recovery',
+      target: '#weight-log',
+      done: day.weight != null,
+      text: day.weight == null ? 'اضغط لتسجيل الوزن' : `${number(day.weight)} كجم ✓`
+    }
+  ];
+
+  const dayEmpty = !day.foodComplete && !day.recoveryLogged && day.weight == null && !day.sessions.length;
+
+  return `<section class="simulation-hero" id="simulation-panel" aria-label="محاكاة رحلة المستخدم">
+    <div class="simulation-heading">
+      <div>
+        <span class="simulation-badge">🧪 محاكاة · اليوم ${sim.day} من 90</span>
+        <h2>اليوم ${sim.day} <small>· ${date} (<span dir="ltr">${state.serverDate}</span>)</small></h2>
+      </div>
+      <div class="simulation-actions">
+        <button id="simulation-reset" class="secondary">🔄 إعادة من البداية</button>
+        ${exit}
+      </div>
+    </div>
+
+    <div class="simulation-progress" aria-label="تقدم أول أسبوعين">
+      <span style="width:${Math.min(100, (sim.day / 14) * 100)}%"></span>
+    </div>
+    <p class="simulation-caption">
+      ${sim.day < 8
+        ? '📌 <strong>الأسبوع 1 (بناء خط الأساس):</strong> سجل بياناتك أو استخدم الأزرار السريعة بالأسفل.'
+        : sim.day < 15
+        ? '📌 <strong>الأسبوع 2 (مراقبة الاتجاه):</strong> عند اليوم 14 يقترح المحرك تعديل السعرات أو المجموعات إذا لزم.'
+        : '✅ <strong>بيانات الأسبوعين مكتملة:</strong> راجع قرار المحرك في تبويب «المراجعة» أو غيّر السيناريو.'}
+    </p>
+
+    <div class="simulation-tasks">
+      ${tasks.map(t => `<button type="button" class="sim-task-pill ${t.done ? 'done' : ''}" data-sim-tab="${t.tab}" data-sim-scroll="${t.target}">
+        <span>${t.done ? '✅' : '⭕'} ${t.name}</span>
+        <small>${esc(t.text)}</small>
+      </button>`).join('')}
+    </div>
+
+    ${sim.renewalError ? `<p class="coach-notice" role="alert">تعذّر تجديد أسبوع الأكل: ${esc(sim.renewalError)}</p>` : ''}
+
+    <div class="sim-quick-box">
+      <span class="sim-quick-title">⚡ تعبئة سريعة لليوم الحالي بضغطة واحدة ${dayEmpty ? '' : '(متاحة فقط قبل التسجيل اليدوي)'}:</span>
+      <div class="sim-chip-grid">
+        <button type="button" class="sim-chip" data-quick-scenario="consistent" ${!dayEmpty ? 'disabled' : ''}>✅ يوم ملتزم بالكامل</button>
+        <button type="button" class="sim-chip" data-quick-scenario="plateau" ${!dayEmpty ? 'disabled' : ''}>⚖️ ملتزم ووزن ثابت</button>
+        <button type="button" class="sim-chip" data-quick-scenario="poor_recovery" ${!dayEmpty ? 'disabled' : ''}>😴 نوم قليل وإجهاد</button>
+        <button type="button" class="sim-chip" data-quick-scenario="missed_workout" ${!dayEmpty ? 'disabled' : ''}>⏭️ ملتزم أكل وفوّت تمرين</button>
+        <button type="button" class="sim-chip" data-quick-scenario="low_adherence" ${!dayEmpty ? 'disabled' : ''}>📉 أكل أقل من الخطة</button>
+        <button type="button" class="sim-chip" data-quick-scenario="pain" ${!dayEmpty ? 'disabled' : ''}>⚠️ ألم أثناء الحركة</button>
+      </div>
+    </div>
+
+    <div class="simulation-next">
+      ${dayEmpty && sim.day < 90 ? `<button type="button" id="simulation-fast-day">⚡ سجّل يوم ملتزم + انتقل لليوم ${sim.day + 1} ←</button>` : ''}
+      <button type="button" id="simulation-next" ${sim.day >= 90 ? 'disabled' : ''}>انتقل لليوم التالي (${Math.min(90, sim.day + 1)}) ←</button>
+      <button type="button" id="simulation-review" class="secondary">📊 راجع القرار</button>
+    </div>
+
+    <details class="simulation-history">
+      <summary>📜 سجل الأيام السابقة (${sim.history.length} يوم)</summary>
+      ${sim.history.length
+        ? sim.history.slice().reverse().map(h => `<article>
+            <strong>اليوم ${h.day} · ${h.date}</strong>
+            <p>${number(h.energy)} سعر ${h.foodComplete ? '· الأكل مكتمل' : '· الأكل غير مكتمل'} · الوزن ${number(h.weight)} كجم · ${esc(status[h.recovery])}</p>
+            <small>${esc(h.review || h.changes?.join('؛ ') || 'تم حفظ اليوم.')}</small>
+          </article>`).join('')
+        : '<p>بعد الانتقال لليوم التالي يظهر ملخص الأيام هنا.</p>'}
+    </details>
+  </section>`;
 }

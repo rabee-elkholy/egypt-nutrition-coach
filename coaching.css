@@ -1,3 +1,604 @@
-.coach-app{max-width:1120px;margin:auto;padding:12px;color:var(--text,#182c28)}.coach-heading{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.coach-heading>div{flex:1;min-width:230px}.coach-heading h2{font-size:32px}.coach-tabs{display:flex;gap:12px;flex-wrap:wrap;padding:18px 0;position:sticky;top:0;background:var(--bg,#fff);z-index:2}.coach-tabs a{padding:10px 20px;border-radius:30px;background:#e3f2e9;color:#235943;text-decoration:none}.coach-card,.coach-notice{background:var(--card,#fff);border:1px solid #dce8e1;border-radius:18px;padding:20px;margin:16px 0}.coach-notice{background:#edf5f0;border-inline-start:5px solid #438b65}.coach-grid,.coach-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}.coach-metrics>div{background:#edf5f0;padding:18px;border-radius:14px}.coach-metrics strong{font-size:26px;display:block;color:#286044}.coach-app h2{margin-top:28px}.coach-app article{border-bottom:1px solid #dce8e1;padding:16px 0}.coach-app label{display:block;margin:12px 0}.coach-app input:not([type=checkbox]),.coach-app textarea{display:block;width:100%;max-width:400px;padding:10px;border:1px solid #a9beb2;border-radius:8px;background:var(--card,#fff);color:inherit;font:inherit}.coach-app button{background:#286044;color:white;border:0;border-radius:10px;padding:11px 18px;cursor:pointer;font:inherit;margin:6px 0}.coach-app summary{font-weight:700;cursor:pointer;padding:8px}.exercise-description{white-space:pre-line;text-align:left;line-height:1.7}.coach-app[aria-busy=true]{opacity:.7;pointer-events:none}.coach-app li{margin:8px 0}@media(max-width:600px){.coach-grid,.coach-metrics{grid-template-columns:1fr}.coach-heading h2{font-size:26px}.coach-card{padding:14px}.coach-tabs a{padding:8px 12px}}
-.coach-app button.secondary{background:transparent;color:#286044;border:1px solid #9db6a8}.coach-app button:disabled{opacity:.45;cursor:default}.coach-app select{display:block;width:100%;max-width:400px;padding:10px;border:1px solid #a9beb2;border-radius:8px;background:var(--card,#fff);color:inherit;font:inherit}.coach-app .coach-tags{display:flex;flex-wrap:wrap;gap:8px;padding:12px 0}.coach-tags>span{padding:7px 12px;background:#edf5f0;border-radius:20px}.coach-success{color:#286044;font-weight:700}.diary-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.coach-app .compact strong{font-size:22px}.ingredient-log{border-bottom:1px solid #dce8e1;padding:12px 0}.coach-app dialog{border:1px solid #a9beb2;border-radius:18px;padding:24px;width:min(90vw,650px);max-height:85vh;overflow:auto;background:var(--card,#fff);color:inherit}.coach-app dialog::backdrop{background:#122b2470}#planner-view[aria-busy=true]{opacity:.7;pointer-events:none}.coach-app [type=checkbox]{accent-color:#286044}.coach-app section{scroll-margin-top:90px}.coach-app input,.coach-app textarea,.coach-app select{box-sizing:border-box}@media(prefers-color-scheme:dark){.coach-metrics>div,.coach-tags>span,.coach-notice{background:#243b31;color:#e3f2e9}.coach-app button.secondary,.coach-success,.coach-metrics strong{color:#82c69d}.coach-tabs a{background:#243b31;color:#c6ead4}}
-.simulation-entry{display:flex;justify-content:space-between;align-items:center;gap:20px;border:1px solid #b6cdbf;background:#f0f6ee;padding:18px 22px;border-radius:18px;margin:12px 0 24px}.simulation-entry p{margin:6px 0 0}.simulation-entry button{flex-shrink:0}.simulation-hero{padding:28px;border:1px solid #bdcfbd;border-radius:24px;background:linear-gradient(135deg,#eef6ec,#fbf6e8);margin:12px 0 28px}.simulation-heading,.simulation-next{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}.simulation-heading h2{font-size:38px;margin:14px 0 4px}.simulation-heading h2 small{font-size:17px;font-weight:400}.simulation-badge{display:inline-block;padding:6px 12px;background:#dcebdc;color:#21543b;border-radius:30px;font-size:14px;font-weight:700}.simulation-actions{display:flex;gap:10px;flex-wrap:wrap}.simulation-progress{height:7px;background:#dce5d8;border-radius:12px;margin:22px 0 12px;overflow:hidden}.simulation-progress>span{display:block;height:100%;background:#418760;border-radius:12px}.simulation-caption{font-size:14px;line-height:1.7}.simulation-tasks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:22px 0}.simulation-tasks a{display:flex;flex-direction:column;gap:8px;text-decoration:none;color:inherit;background:#ffffffc7;border:1px solid #d5e0d2;border-radius:14px;padding:16px}.simulation-tasks a span{font-weight:700}.simulation-tasks a small{line-height:1.65}.simulation-tasks a.done{border-color:#77a284;background:#e3efdf}.simulation-next{border-top:1px solid #ceddca;padding-top:18px}.simulation-next>div{flex:1;min-width:220px}.simulation-next p{font-size:13px;line-height:1.6}.simulation-tools,.simulation-history{border-top:1px solid #ceddca;margin-top:16px;padding-top:12px}.simulation-tools form{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.simulation-tools label{flex:1;min-width:200px}.simulation-tools form button{margin-bottom:12px}.simulation-history article{font-size:14px}.simulation-history small{line-height:1.7}.simulation-tasks a:focus-visible,.simulation-hero button:focus-visible{outline:3px solid #bb882f;outline-offset:3px}@media(max-width:650px){.simulation-entry{align-items:stretch;flex-direction:column;padding:16px}.simulation-hero{padding:18px 14px;border-radius:18px}.simulation-tasks{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.simulation-tasks a{padding:12px}.simulation-heading h2{font-size:30px}.simulation-next>button{flex:1}.simulation-actions{width:100%}.simulation-actions button{flex:1;font-size:14px}.simulation-next>div{min-width:100%}}@media(prefers-color-scheme:dark){.simulation-entry{background:#24382d;border-color:#48604e}.simulation-hero{background:linear-gradient(135deg,#23392d,#373627);border-color:#52614a}.simulation-tasks a{background:#243b31;border-color:#516851}.simulation-tasks a.done{background:#304f36;border-color:#79aa83}.simulation-badge{background:#37563a;color:#dcf2d8}.simulation-progress{background:#44523d}.simulation-next,.simulation-tools,.simulation-history{border-color:#52614a}}
+.coach-app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 12px 12px 90px;
+  color: #182c28;
+  font-family: inherit;
+}
+
+.coach-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #ffffff;
+  border: 1px solid #dce8e1;
+  border-radius: 18px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(24, 44, 40, 0.04);
+}
+.coach-heading > div {
+  flex: 1;
+  min-width: 200px;
+}
+.coach-heading h2 {
+  font-size: 22px;
+  margin: 2px 0 4px;
+  color: #163a2c;
+}
+.coach-heading p {
+  margin: 0;
+  font-size: 13.5px;
+  color: #4c675b;
+}
+.coach-heading-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Sticky Mobile-Friendly Segmented Tabs */
+.coach-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  position: sticky;
+  top: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  border: 1px solid #cfe0d6;
+  border-radius: 16px;
+  z-index: 20;
+  margin: 14px 0;
+  box-shadow: 0 4px 14px rgba(24, 44, 40, 0.07);
+}
+.coach-tabs button.tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 9px 4px;
+  border-radius: 12px;
+  background: transparent;
+  color: #355849;
+  border: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  margin: 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+  line-height: 1.25;
+}
+.coach-tabs button.tab-btn .tab-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+.coach-tabs button.tab-btn.active {
+  background: #1f5c3f;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(31, 92, 63, 0.25);
+}
+.coach-tabs button.tab-btn .tab-badge {
+  display: inline-block;
+  background: #d97706;
+  color: #fff;
+  border-radius: 99px;
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+/* Cards & Notices - Always High-Contrast Light Surface */
+.coach-card,
+.coach-notice {
+  background: #ffffff;
+  color: #182c28;
+  border: 1px solid #dce8e1;
+  border-radius: 18px;
+  padding: 16px;
+  margin: 12px 0;
+  box-shadow: 0 2px 6px rgba(24, 44, 40, 0.03);
+}
+.coach-notice {
+  background: #eef7f2;
+  color: #163a2c;
+  border-color: #bdd8c8;
+  border-inline-start: 5px solid #286044;
+}
+.coach-notice.proposal-banner {
+  background: #fffbeb;
+  color: #78350f;
+  border-color: #fde68a;
+  border-inline-start: 5px solid #d97706;
+}
+
+.coach-grid,
+.coach-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.coach-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 12px 0;
+}
+.coach-metrics > div {
+  background: #f2f8f4;
+  color: #182c28;
+  border: 1px solid #d9e8df;
+  padding: 12px 10px;
+  border-radius: 14px;
+  text-align: center;
+}
+.coach-metrics strong {
+  font-size: 21px;
+  display: block;
+  color: #1f5c3f;
+}
+.coach-app .compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.coach-app .compact strong {
+  font-size: 18px;
+}
+
+.coach-app h2 {
+  font-size: 20px;
+  margin: 8px 0 10px;
+  color: #163a2c;
+}
+.coach-app h3 {
+  font-size: 16.5px;
+  margin: 6px 0;
+  color: #182c28;
+}
+.coach-app article {
+  border-bottom: 1px solid #e6efe9;
+  padding: 14px 0;
+}
+.coach-app article:last-child {
+  border-bottom: 0;
+}
+
+.coach-app label {
+  display: block;
+  margin: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #234236;
+}
+.coach-app input:not([type="checkbox"]),
+.coach-app textarea,
+.coach-app select {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  margin-top: 5px;
+  border: 1px solid #b5cabe;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #182c28;
+  font: inherit;
+  font-size: 15px;
+  box-sizing: border-box;
+}
+.coach-app button {
+  background: #1f5c3f;
+  color: #ffffff;
+  border: 0;
+  border-radius: 11px;
+  padding: 11px 16px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  margin: 4px 0;
+  min-height: 44px;
+}
+.coach-app button.secondary {
+  background: #f4f8f5;
+  color: #1f5c3f;
+  border: 1px solid #b2cabd;
+}
+.coach-app button.accent {
+  background: #d97706;
+  color: #ffffff;
+}
+.coach-app button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.coach-app summary {
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 4px;
+  color: #163a2c;
+}
+.exercise-description {
+  white-space: pre-line;
+  text-align: left;
+  line-height: 1.65;
+  font-size: 13.5px;
+  background: #f7faf8;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.coach-app[aria-busy="true"],
+#planner-view[aria-busy="true"] {
+  opacity: 0.7;
+  pointer-events: none;
+}
+.coach-app li {
+  margin: 5px 0;
+  font-size: 14px;
+}
+.coach-app .coach-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+}
+.coach-tags > span,
+.coach-tags > label {
+  padding: 6px 12px;
+  background: #edf5f0;
+  color: #1b4332;
+  border-radius: 20px;
+  font-size: 13px;
+  margin: 0;
+}
+.coach-success {
+  color: #1f5c3f;
+  font-weight: 700;
+  background: #e6f4ec;
+  padding: 8px 12px;
+  border-radius: 10px;
+  display: inline-block;
+}
+.diary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ingredient-log {
+  border-bottom: 1px solid #dce8e1;
+  padding: 12px 0;
+}
+
+/* Mobile-friendly set logging grid */
+.set-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+.set-row {
+  display: grid;
+  grid-template-columns: 54px 1fr 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  background: #f5f9f6;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #dce8e1;
+}
+.set-row strong {
+  font-size: 13px;
+  color: #286044;
+}
+.set-row label {
+  margin: 0;
+  font-size: 11.5px;
+  color: #496559;
+}
+.set-row input {
+  padding: 8px !important;
+  margin-top: 2px !important;
+  text-align: center;
+  font-weight: 700;
+}
+
+.meal-card {
+  background: #f9fcfa;
+  border: 1px solid #dde9e2;
+  border-radius: 14px;
+  padding: 14px !important;
+  margin-bottom: 10px;
+}
+.meal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.coach-app dialog {
+  border: 1px solid #a9beb2;
+  border-radius: 18px;
+  padding: 20px;
+  width: min(92vw, 600px);
+  max-height: 85vh;
+  overflow: auto;
+  background: #ffffff;
+  color: #182c28;
+}
+.coach-app dialog::backdrop {
+  background: rgba(18, 43, 36, 0.5);
+}
+.coach-app [type="checkbox"] {
+  accent-color: #1f5c3f;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+
+/* Simulation Card - Always Bright, Clean, and Mobile-First */
+.simulation-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #b6cdbf;
+  background: #eef6f0;
+  color: #182c28;
+  padding: 14px 18px;
+  border-radius: 16px;
+  margin: 8px 0 16px;
+}
+.simulation-entry p {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: #3b594c;
+}
+.simulation-entry button {
+  flex-shrink: 0;
+}
+
+.simulation-hero {
+  padding: 18px;
+  border: 2px solid #8ab89d;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #f2f9f4 0%, #fffdf7 100%);
+  color: #163026;
+  margin: 8px 0 18px;
+  box-shadow: 0 6px 20px rgba(31, 92, 63, 0.08);
+}
+.simulation-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.simulation-heading h2 {
+  font-size: 26px;
+  margin: 6px 0 2px;
+  color: #143628;
+}
+.simulation-heading h2 small {
+  font-size: 14px;
+  font-weight: 500;
+  color: #466658;
+}
+.simulation-date {
+  margin: 0;
+  font-size: 13px;
+  color: #466658;
+}
+.simulation-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  background: #d5ecde;
+  color: #174932;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.simulation-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.simulation-actions button {
+  padding: 7px 12px;
+  min-height: 36px;
+  font-size: 12.5px;
+}
+
+.simulation-progress {
+  height: 8px;
+  background: #dce8e0;
+  border-radius: 12px;
+  margin: 12px 0 8px;
+  overflow: hidden;
+}
+.simulation-progress > span {
+  display: block;
+  height: 100%;
+  background: #1f5c3f;
+  border-radius: 12px;
+  transition: width 0.25s ease;
+}
+.simulation-caption {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #385749;
+  margin: 6px 0 12px;
+}
+
+.simulation-tasks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.simulation-tasks button.sim-task-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: right;
+  background: #ffffff;
+  color: #182c28;
+  border: 1px solid #c9dcd0;
+  border-radius: 12px;
+  padding: 10px;
+  margin: 0;
+  font-weight: 600;
+  min-height: 64px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+.simulation-tasks button.sim-task-pill span {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #163a2c;
+}
+.simulation-tasks button.sim-task-pill small {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: #4c695c;
+  line-height: 1.35;
+}
+.simulation-tasks button.sim-task-pill.done {
+  border-color: #5ca379;
+  background: #e6f5ec;
+}
+.simulation-tasks button.sim-task-pill.done span {
+  color: #145335;
+}
+
+/* Quick One-Tap Scenario Chips for Mobile */
+.sim-quick-box {
+  background: #ffffff;
+  border: 1px solid #d5e5dc;
+  border-radius: 14px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.sim-quick-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #163a2c;
+  margin: 0 0 8px;
+  display: block;
+}
+.sim-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.sim-chip-grid button.sim-chip {
+  background: #f3f9f5;
+  color: #183e2e;
+  border: 1px solid #bdd6c7;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  margin: 0;
+  min-height: 40px;
+  text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sim-chip-grid button.sim-chip:hover,
+.sim-chip-grid button.sim-chip:active {
+  background: #dff0e6;
+  border-color: #7ab392;
+}
+
+.simulation-next {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  border-top: 1px solid #d5e5dc;
+  padding-top: 12px;
+  margin-top: 10px;
+}
+.simulation-next button#simulation-next {
+  flex: 2;
+  min-width: 170px;
+  background: #1f5c3f;
+  color: #ffffff;
+  font-size: 15px;
+}
+.simulation-next button#simulation-fast-day {
+  flex: 2;
+  min-width: 170px;
+  background: #0f766e;
+  color: #ffffff;
+  font-size: 14px;
+}
+.simulation-next button#simulation-review {
+  flex: 1;
+  min-width: 110px;
+}
+
+.simulation-tools,
+.simulation-history {
+  border-top: 1px solid #d5e5dc;
+  margin-top: 10px;
+  padding-top: 8px;
+  font-size: 13px;
+}
+
+@media (max-width: 650px) {
+  .coach-app {
+    padding: 8px 8px 96px;
+  }
+  .coach-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .coach-app .compact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .simulation-hero {
+    padding: 14px 12px;
+    border-radius: 16px;
+  }
+  .simulation-tasks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .simulation-heading h2 {
+    font-size: 22px;
+  }
+  .simulation-actions {
+    width: 100%;
+  }
+  .simulation-actions button {
+    flex: 1;
+  }
+  .coach-tabs {
+    position: fixed;
+    bottom: 0;
+    top: auto;
+    left: 0;
+    right: 0;
+    margin: 0;
+    border-radius: 18px 18px 0 0;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 16px rgba(24, 44, 40, 0.12);
+    z-index: 50;
+  }
+  .coach-tabs button.tab-btn {
+    font-size: 11px;
+    padding: 7px 2px;
+  }
+  .set-row {
+    grid-template-columns: 44px 1fr 1fr 1fr;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+}
