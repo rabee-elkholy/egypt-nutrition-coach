@@ -5,7 +5,7 @@ if (typeof location !== 'undefined' && location.hostname === 'rabee-elkholy.gith
 async function mountPlanner(opts){
   let hasBackend=false;
   try{const r=await fetch('/v1/state',{headers:{Accept:'application/json'}});hasBackend=(r.headers.get('content-type')||'').includes('application/json');}catch{hasBackend=false;}
-  const mod=hasBackend?await import('./coaching-ui.mjs?v=sim6'):await import('./planner-ui.mjs?v=sim6');
+  const mod=hasBackend?await import('./coaching-ui.mjs?v=sim7'):await import('./planner-ui.mjs?v=sim7');
   return mod.mountPlanner(opts);
 }
 import {planningFilter,SLOTS,BUDGETS} from './planning-tags.mjs';

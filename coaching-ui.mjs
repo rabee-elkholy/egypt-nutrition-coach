@@ -1,4 +1,4 @@
-import {simulationPanel} from './simulation-ui.mjs?v=sim6';
+import {simulationPanel} from './simulation-ui.mjs?v=sim7';
 import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
 import {householdQuantity,displayPortion} from './planner-household.mjs';
@@ -124,6 +124,10 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
 export async function mountPlanner({root,toast}){
  let state,busy=false,diaryDate=localDate(),activeTab='nutrition',catalogQuery='',catalogOffset=0,viewVersion=0,catalogRequest=0,foodRequest=0,alternativeRequest=0,submittedForm=null,uncertainWrite=null;
  let simulationMode=new URL(location.href).searchParams.get('simulation')==='1';
+ const syncPlannerClass=()=>document.body?.classList.toggle('planner-active',!root.hidden);
+ syncPlannerClass();
+ window.addEventListener('hashchange',syncPlannerClass);
+ window.addEventListener('planner-leave',()=>document.body?.classList.remove('planner-active'));
  const drafts=new Map();
  const formKey=form=>(form.id||[form.classList[0],form.dataset.day||'',form.dataset.id||form.dataset.meal||form.dataset.key||''].join('|'))+(form.dataset.diaryDate?'|'+form.dataset.diaryDate:'')+(simulationMode?'|sim-day:'+state?.simulation?.day:'');
  function captureDrafts(excluded){for(const form of root.querySelectorAll('form'))if(!form.closest('#coach-onboarding-section')&&formKey(form)!==excluded)drafts.set(formKey(form),formData(form));if(excluded)drafts.delete(excluded);}
@@ -472,22 +476,9 @@ export async function mountPlanner({root,toast}){
 
   root.innerHTML=`<div class="coach-app" dir="rtl">
    <div id="coach-feedback" role="status" class="coach-notice" hidden></div>
-   ${simulationPanel(state,simulationMode)}
-   <header class="coach-heading">
-    <div>
-     <small>فريق التغذية والتدريب معاك خطوة بخطوة</small>
-     <h2>أهلًا يا ${esc(state.profile.name)} 👋</h2>
-     <p>${esc(status[ready.status])}</p>
-    </div>
-    <div class="coach-heading-actions">
-     <button id="edit-profile" class="secondary">⚙️ بياناتي</button>
-     <button id="export-coach" class="secondary">📥 ملخصي</button>
-    </div>
-   </header>
+   ${simulationPanel(state,simulationMode,{activeTab})}
 
-   ${buildSpecialistBrief(state,todayStr,todayPlanDay)}
-
-   ${pendingAdaptations.length?`<section class="coach-notice proposal-banner" role="alert">
+   ${pendingAdaptations.length&&activeTab!=='review'?`<section class="coach-notice proposal-banner" role="alert">
     <strong>🔔 توصية جديدة من فريق المتابعة جاهزة لموافقتك:</strong>
     ${pendingAdaptations.map(a=>`<div style="margin-top:8px">
      <p style="margin:0 0 8px"><strong>${esc(a.reason)}</strong> ${a.delta?`(${a.delta>0?'+'+a.delta:a.delta} سعر/يوم بداية من الغد)`:''}</p>
@@ -505,6 +496,18 @@ export async function mountPlanner({root,toast}){
    </nav>
 
    <section id="nutrition-coach" ${activeTab==='nutrition'?'':'hidden'}>
+    <header class="coach-heading">
+     <div>
+      <small>فريق التغذية والتدريب معاك خطوة بخطوة</small>
+      <h2>أهلًا يا ${esc(state.profile.name)} 👋</h2>
+      <p>${esc(status[ready.status])}</p>
+     </div>
+     <div class="coach-heading-actions">
+      <button id="edit-profile" class="secondary">⚙️ بياناتي</button>
+      <button id="export-coach" class="secondary">📥 ملخصي</button>
+     </div>
+    </header>
+    ${buildSpecialistBrief(state,todayStr,todayPlanDay)}
     ${plan?`<div class="coach-metrics">
      <div><strong>${round(plan.targets.energy)}</strong> سعر/يوم</div>
      <div><strong>${round(plan.targets.protein)}</strong> جم بروتين</div>
@@ -587,7 +590,7 @@ export async function mountPlanner({root,toast}){
   return false;
  }
  function wire(){
-  root.querySelectorAll('[data-tab]').forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;render();});
+  root.querySelectorAll('[data-tab]').forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;render();window.scrollTo({top:0,behavior:'instant'});});
   root.querySelector('#edit-profile').onclick=()=>{if(uncertainWrite){notice('أكد العملية المعلقة الأول.',true);retryUncertain();}else onboarding();};
   root.querySelector('#close-dialog').onclick=()=>root.querySelector('#coach-dialog').close();
   root.querySelector('#export-coach').onclick=async()=>{

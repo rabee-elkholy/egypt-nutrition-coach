@@ -9,8 +9,9 @@ const status = {
 };
 const number = n => n == null ? '—' : Math.round(n * 10) / 10;
 
-export function simulationPanel(state, enabled, { compact = false } = {}) {
+export function simulationPanel(state, enabled, { compact = false, activeTab = 'nutrition' } = {}) {
   if (!enabled) {
+    if (activeTab !== 'nutrition') return '';
     return `<aside class="simulation-entry">
       <div>
         <strong>🧪 جرّب رحلة الـ 90 يوم في دقائق (وضع المحاكاة)</strong>
@@ -42,6 +43,17 @@ export function simulationPanel(state, enabled, { compact = false } = {}) {
       </div>
       <p class="simulation-caption">الشخصية الجاهزة: 30 سنة، 80 كجم، هدف خسارة وزن تدريجية، وتمرين 3 أيام أسبوعياً.</p>
     </section>`;
+  }
+
+  if (activeTab !== 'nutrition') {
+    return `<aside class="simulation-entry" id="simulation-panel" style="padding:10px 14px;margin:4px 0 10px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <strong style="font-size:13.5px;color:#145335">🧪 محاكاة · اليوم ${sim.day} من 90 (<span dir="ltr">${state.serverDate}</span>)</strong>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" id="simulation-next" style="padding:6px 12px;min-height:34px;font-size:12.5px;margin:0" ${sim.day >= 90 ? 'disabled' : ''}>اليوم التالي (${Math.min(90, sim.day + 1)}) ←</button>
+      </div>
+    </aside>`;
   }
 
   const day = state.simulationToday;

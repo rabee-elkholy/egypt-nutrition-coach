@@ -640,9 +640,30 @@
   font-size: 13px;
 }
 
-@media (max-width: 650px) {
+@media (max-width: 760px) {
+  body.planner-active .sidebar nav,
+  body:has(#planner-view:not([hidden])) .sidebar nav {
+    display: none !important;
+  }
+  body.planner-active .topbar,
+  body:has(#planner-view:not([hidden])) .topbar {
+    display: none !important;
+  }
+  body.planner-active .sidebar,
+  body:has(#planner-view:not([hidden])) .sidebar {
+    padding: 10px 16px !important;
+  }
+  body.planner-active .brand,
+  body:has(#planner-view:not([hidden])) .brand {
+    font-size: 18px !important;
+  }
+  body.planner-active .brand-mark,
+  body:has(#planner-view:not([hidden])) .brand-mark {
+    width: 34px !important;
+    height: 36px !important;
+  }
   .coach-app {
-    padding: 8px 8px 96px;
+    padding: 8px 4px 96px;
   }
   .coach-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
