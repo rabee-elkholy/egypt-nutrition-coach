@@ -1,40 +1,64 @@
-export function recovery(checkins, now = Date.now()) {
-  const fresh = checkins.filter(c => now - Date.parse(c.at) >= 0 && now - Date.parse(c.at) <= 86400000).at(-1);
-  if (!fresh) return {status:'unknown',reasons:['سجّل النوم والإجهاد والألم قبل التمرين؛ غياب البيانات مش معناه استشفاء كامل.'],setFactor:1,progressionAllowed:false};
-  if (fresh.redFlags) return {status:'stop',reasons:['أوقف التمرين واطلب تقييمًا طبيًا عاجلًا مع ألم الصدر أو الدوخة الشديدة.'],setFactor:0,progressionAllowed:false};
-  if (fresh.pain || fresh.illness) return {status:'hold',reasons:['في ألم جديد أو مرض: أوقف الحركة المؤلمة ولا تزود الحمل؛ اطلب تقييمًا متخصصًا إذا استمر.'],setFactor:1,progressionAllowed:false};
-  const reasons=[];
-  if(fresh.sleepHours<6 || fresh.sleepQuality<=2) reasons.push('النوم أقل من المعتاد أو جودته ضعيفة');
-  if(fresh.fatigue>=4) reasons.push('الإجهاد مرتفع');
-  if(fresh.stress>=4) reasons.push('الضغط النفسي مرتفع');
-  if(fresh.soreness>=7) reasons.push('ألم العضلات بعد التمرين مرتفع');
-  const status=reasons.length>=3?'high':reasons.length>=2?'caution':'ready';
-  const coverage=checkins.filter(c=> now-Date.parse(c.at)<14*86400000).length;
-  return {status,reasons:reasons.length?reasons:['البيانات الحالية تسمح بتمرينك المعتاد؛ راقب إحساسك أثناء الحركة.'],setFactor:status==='high'?.6:status==='caution'?.8:1,progressionAllowed:status==='ready',confidence:coverage>=7?'medium':'low',baselineReady:coverage>=7};
+import {localDate,dateOffset,MUSCLE_REGIONS} from '../coaching-shared.mjs';
+const DAY=86400000;
+const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:null;
+const validReports=(reports,now,days)=>[...new Map(reports.filter(c=>Number.isFinite(Date.parse(c.at))&&Date.parse(c.at)<=now&&Date.parse(c.at)>=now-days*DAY&&!c.illness&&!c.redFlags).map(c=>[c.date||localDate(Date.parse(c.at)),c])).values()];
+export function recovery(checkins, now=Date.now(),workoutLogs=[]){
+ const fresh=checkins.filter(c=>Date.parse(c.at)<=now&&now-Date.parse(c.at)<=DAY).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).at(-1);
+ const coverage=validReports(checkins,now,14);const baselineReports=validReports(checkins.filter(c=>c!==fresh),now,28);
+ const baselineReady=baselineReports.length>=7;
+ const baseline=baselineReady?{sleepHours:mean(baselineReports.map(c=>c.sleepHours)),fatigue:mean(baselineReports.map(c=>c.fatigue)),reports:baselineReports.length}:null;
+ const base={confidence:coverage.length>=14?'high':baselineReady?'medium':'low',baselineReady,baseline,coverage:coverage.length,muscles:{},setFactor:1,progressionAllowed:false};
+ if(!fresh)return {...base,status:'unknown',reasons:['سجّل النوم والإجهاد والألم قبل التمرين؛ غياب البيانات مش معناه استشفاء كامل.']};
+ const domains=[];const reasons=[];
+ if(fresh.sleepHours<6||fresh.sleepQuality<=2||(baseline?.sleepHours&&fresh.sleepHours<baseline.sleepHours-1.5)){domains.push('sleep');reasons.push('النوم قليل أو جودته ضعيفة مقارنة باحتياجك المعتاد');}
+ if(fresh.fatigue>=4||(baseline?.fatigue&&fresh.fatigue>=baseline.fatigue+1.5)){domains.push('fatigue');reasons.push('الإجهاد أعلى من المعتاد');}
+ if(fresh.stress>=4){domains.push('stress');reasons.push('الضغط النفسي مرتفع');}
+ const regional=Object.entries(fresh.sorenessByRegion||{});
+ if(fresh.soreness>=7||regional.some(([,v])=>v>=7)){domains.push('soreness');reasons.push('في عضلات ألمها بعد التمرين مرتفع');}
+ const pains=new Set(fresh.painRegions||[]);
+ for(const key of Object.keys(MUSCLE_REGIONS)){
+  const score=fresh.sorenessByRegion?.[key];base.muscles[key]={soreness:score??null,status:pains.has(key)?'hold':score==null?'unknown':score>=7?'caution':'ready'};
+ }
+ if(fresh.redFlags)return {...base,status:'stop',reasons:['أوقف التمرين واطلب تقييمًا طبيًا عاجلًا مع ألم الصدر أو الدوخة الشديدة.'],setFactor:0};
+ if(fresh.pain||fresh.illness)return {...base,status:'hold',reasons:[fresh.illness?'أعراض المرض تستدعي تأجيل التمرين حتى تتحسن.':'في ألم جديد: أوقف الحركة المؤلمة واطلب تقييمًا متخصصًا إذا استمر.']};
+ const recent=validReports(checkins,now,7);const difficult=recent.filter(c=>[c.sleepHours<6||c.sleepQuality<=2,c.fatigue>=4,c.stress>=4,c.soreness>=7||Object.values(c.sorenessByRegion||{}).some(v=>v>=7)].filter(Boolean).length>=2).length;
+ const performanceDrop=hasPerformanceDrop(workoutLogs);
+ const status=domains.length>=3||(difficult>=3&&performanceDrop)?'high':domains.length>=2||difficult>=3?'caution':'ready';
+ if(difficult>=3)reasons.push('تكرار ضعف الاستشفاء 3 أيام خلال الأسبوع');
+ if(performanceDrop&&difficult>=3)reasons.push('مع انخفاض أداء في جلسات قابلة للمقارنة');
+ return {...base,status,reasons:reasons.length?reasons:['البيانات الحالية تسمح بتمرينك المعتاد؛ راقب إحساسك أثناء الحركة.'],setFactor:status==='high'?.6:status==='caution'?.8:1,progressionAllowed:status==='ready',domains,asOf:fresh.at};
+}
+export function hasPerformanceDrop(logs){
+ const grouped=new Map();for(const l of logs){if(!l.sets?.length||l.sets.some(s=>s.pain))continue;const k=l.exerciseId+'|'+l.loadMode+'|'+l.planId;const a=grouped.get(k)||[];a.push(l);grouped.set(k,a);}
+ for(const records of grouped.values()){
+  const byDate=[...new Map(records.sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).map(l=>[l.date||localDate(Date.parse(l.at)),l])).values()].slice(-2);if(byDate.length<2)continue;
+  const [a,b]=byDate;if(a.sets.length!==b.sets.length||a.sets.some((s,i)=>s.kg!==b.sets[i].kg))continue;
+  const sum=x=>x.sets.reduce((v,s)=>v+s.reps,0);if(sum(b)<sum(a)*.9)return true;
+ }
+ return false;
 }
 export function calorieReview(weights,foodDays,goal,energy,now=Date.now(),lastChange=0){
- const since=now-14*86400000;
- if(now-lastChange<14*86400000) return {action:'hold',reason:'نحتاج 14 يومًا بعد آخر تعديل.'};
- const recent=weights.filter(x=>Date.parse(x.date)>=since&&Date.parse(x.date)<=now);
- const week=n=>recent.filter(x=>Date.parse(x.date)>=since+n*7*86400000&&Date.parse(x.date)<since+(n+1)*7*86400000);
- const a=week(0),b=week(1);
- if(a.length<3||b.length<3||foodDays.filter(x=>x.complete&&x.adherence>=80&&Date.parse(x.date)>=since&&Date.parse(x.date)<=now).length<10)return {action:'hold',reason:'نحتاج 3 قياسات وزن في كل أسبوع و10 أيام أكل مكتملة على الأقل خلال أسبوعين.'};
- const avg=x=>x.reduce((s,v)=>s+v.kg,0)/x.length;
- const rate=(avg(b)-avg(a))/avg(a)*100;
- let delta=0;
- if(goal==='lose'&&rate>-.25)delta=-1;
- if(goal==='lose'&&rate< -1)delta=1;
- if(['gain','muscle_gain'].includes(goal)&&rate<.1)delta=1;
- if(['gain','muscle_gain'].includes(goal)&&rate>.5)delta=-1;
- if(!delta)return {action:'hold',reason:'اتجاه الوزن مناسب أو الهدف لا يحتاج تعديلًا تلقائيًا.',rate};
- return {action:'propose',delta:delta*Math.min(150,Math.round(energy*.05)),rate,reason:'اقتراح بناءً على متوسطات الوزن وسجل الأكل لمدة أسبوعين؛ يحتاج موافقتك.'};
+ const end=localDate(now),start=dateOffset(end,-13),middle=dateOffset(end,-6);
+ if(lastChange&&now-lastChange<14*DAY)return {action:'hold',reason:'نحتاج 14 يومًا بعد آخر تعديل.'};
+ const recent=[...new Map(weights.filter(x=>x.date>=start&&x.date<=end&&Number.isFinite(x.kg)).map(x=>[x.date,x])).values()];
+ const a=recent.filter(x=>x.date<middle),b=recent.filter(x=>x.date>=middle);
+ const completed=[...new Map(foodDays.filter(x=>x.complete&&x.energy>0&&x.adherence>=80&&x.date>=start&&x.date<=end).map(x=>[x.date,x])).values()];
+ const coverage={previousWeights:a.length,currentWeights:b.length,completeFoodDays:completed.length};
+ if(a.length<3||b.length<3||completed.length<10)return {action:'hold',reason:'نحتاج 3 قياسات وزن في كل أسبوع و10 أيام أكل مكتملة قريبة من الخطة خلال أسبوعين.',coverage};
+ const rate=(mean(b.map(x=>x.kg))-mean(a.map(x=>x.kg)))/mean(a.map(x=>x.kg))*100;
+ let delta=0;if(goal==='lose')delta=rate>-.25?-1:rate< -1?1:0;
+ if(['gain','muscle_gain'].includes(goal))delta=rate<.1?1:rate>.5?-1:0;
+ if(!delta)return {action:'hold',reason:'اتجاه الوزن مناسب؛ مفيش تعديل سعرات مطلوب دلوقتي.',rate,coverage};
+ return {action:'propose',delta:delta*Math.min(150,Math.floor(energy*.05)),rate,coverage,reason:`متوسط الوزن اتغير ${rate.toFixed(2)}% في الأسبوع مع بيانات كافية؛ نقترح تعديلًا صغيرًا بموافقتك.`};
 }
 export function progression(exercise,logs,readiness){
- const unique=new Map();for(const l of logs.filter(l=>l.exerciseId===exercise.id&&l.loadMode===exercise.loadMode))unique.set(l.at?.slice(0,10),l);const last=[...unique.values()].slice(-2);
+ const unique=new Map();for(const l of logs.filter(l=>l.exerciseId===exercise.id&&l.loadMode===exercise.loadMode&&(!exercise.planId||l.planId===exercise.planId)).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)))unique.set(l.date||l.at?.slice(0,10),l);
+ const last=[...unique.values()].slice(-2);
  if(!readiness.progressionAllowed||last.length<2)return {action:'hold'};
  if(!last.every(l=>l.sets.length===exercise.sets&&l.sets.every(s=>!s.pain&&s.reps>=exercise.repMax&&s.rir!=null&&s.rir>=exercise.rir)))return {action:'hold'};
- if(last[0].sets[0].kg!==last[1].sets[0].kg)return {action:'hold'};
- const kg=last[1].sets[0].kg,increment=last[1].increment;
+ const kg=last[1].sets[0].kg;
+ if(!last.every(l=>l.sets.every(s=>s.kg===kg)))return {action:'hold',reason:'المجموعات مش بنفس الحمل؛ نحتاج جلستين قابلتين للمقارنة.'};
+ const increment=last[1].increment;
  if(!increment||!kg||increment>kg*.05||exercise.loadMode==='bodyweight')return {action:'hold',reason:'أكد أصغر زيادة متاحة؛ لا نفترض وزنًا للمعدات.'};
  return {action:'increase',kg:Math.max(0,kg+(exercise.loadMode==='assisted'?-increment:increment)),reason:'أتممت الحد الأعلى للتكرارات مرتين مع احتياطي تكرارات مناسب وبدون ألم.'};
 }

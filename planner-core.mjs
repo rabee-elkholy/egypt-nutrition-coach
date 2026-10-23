@@ -115,17 +115,13 @@ export function estimateNeeds(input) {
     exercise = sportsEnergy(input, weight, baseline),
     tdee = baseline + exercise.daily_extra;
 
+  const pace = input.goalPace || 'moderate';
+  if(!['slow','moderate','fast'].includes(pace))throw Error('سرعة الهدف غير صالحة');
   let change = 0;
-  if (input.goal === "lose") {
-    change = -Math.min(tdee * 0.15, 500);
-    if (input.sex === "female" && tdee < 1750 && tdee + change > tdee - 250) {
-      change = -Math.min(350, Math.max(250, tdee * 0.18));
-    }
-  } else if (input.goal === "muscle_gain") {
-    change = Math.min(tdee * 0.08, 250);
-  } else if (input.goal === "gain") {
-    change = bmi < 18.5 ? Math.min(500, Math.max(350, tdee * 0.16)) : Math.min(tdee * 0.14, 400);
-  }
+  if(input.goal === 'lose')change=-Math.min(tdee*{slow:.1,moderate:.15,fast:.2}[pace],500);
+  else if(input.goal === 'muscle_gain')change=Math.min(tdee*{slow:.05,moderate:.08,fast:.1}[pace],250);
+  else if(input.goal === 'gain')change=Math.min(tdee*{slow:.08,moderate:.12,fast:.15}[pace],400);
+  notes.push('سرعة الهدف تحدد عجزًا أو فائضًا مبدئيًا محدودًا؛ معدل تغير الوزن الفعلي بيتراجع من قياساتك، ومش ضمان لتاريخ وصول.');
 
   // Maternal adjustments
   if (maternalStatus === "pregnant_t1") {
@@ -147,7 +143,7 @@ export function estimateNeeds(input) {
   if (energy < minEnergyFloor) {
     energy = minEnergyFloor;
     notes.push(
-      `رُفع الهدف إلى الحد الأدنى الآمن (${minEnergyFloor} kcal) لضمان كفاية العناصر الغذائية.`,
+      `رُفع الهدف إلى الحد الأدنى للتخطيط الآلي (${minEnergyFloor} kcal) وقد تحتاج مراجعة فردية لتقييم كفاية العناصر الغذائية.`,
     );
   }
   if (energy > 4200)

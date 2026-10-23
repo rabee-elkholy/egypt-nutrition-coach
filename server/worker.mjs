@@ -1,40 +1,61 @@
-import {empty,command} from './coaching.mjs';
-import {catalog} from './workouts.mjs';
+import {command} from './coaching.mjs';
+import {catalog,exerciseAlternatives,regionForMuscle,scheduledSessions} from './workouts.mjs';
 import {recovery} from './recovery.mjs';
-const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+import {loadAccount,saveAccount} from './store.mjs';
+import {library,mealAlternatives,dayTotals} from './food.mjs';
+import {localDate} from '../coaching-shared.mjs';
+const json=(data,status=200,headers={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
+const present=s=>({...s,scheduledSessions:scheduledSessions(s),serverDate:localDate(),recovery:recovery(s.checkins,Date.now(),s.workoutLogs)});
 export default {async fetch(request,env){
  const url=new URL(request.url);if(!url.pathname.startsWith('/v1/'))return env.ASSETS.fetch(request);
- if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.7.0'});
+ if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.8.0'});
  const user=request.headers.get('oai-authenticated-user-id');if(!user)return json({error:'سجّل الدخول لحفظ ومتابعة خطتك.'},401);
  try{
  if(!env.DB)return json({error:'قاعدة البيانات غير متاحة.'},503);
  if(request.method==='GET'&&url.pathname==='/v1/catalog/manifest')return json(catalog.manifest);
+ if(request.method==='GET'&&url.pathname==='/v1/catalog/muscles')return json({items:catalog.muscles,translations:catalog.muscleTranslations});
  if(request.method==='GET'&&url.pathname==='/v1/exercises'){
- const q=(url.searchParams.get('q')||'').toLowerCase().slice(0,100),muscle=url.searchParams.get('muscle');const offset=Math.max(0,Number(url.searchParams.get('offset'))||0);
- const found=catalog.exercises.filter(e=>(!q||e.name.toLowerCase().includes(q))&&(!muscle||e.muscles.some(m=>m.muscle_id===muscle)));
- return json({total:found.length,items:found.slice(offset,offset+30),nextOffset:offset+30<found.length?offset+30:null});
+  const q=(url.searchParams.get('q')||'').toLowerCase().slice(0,100),muscle=url.searchParams.get('muscle'),equipment=url.searchParams.get('equipment');const offset=Math.max(0,Math.floor(Number(url.searchParams.get('offset'))||0));
+  const found=catalog.exercises.filter(e=>(!q||e.name.toLowerCase().includes(q))&&(!muscle||e.muscles.some(m=>m.muscle_id===muscle||regionForMuscle(m.muscle_id)===muscle))&&(!equipment||e.equipment.some(x=>x.equipment_id===equipment)));
+  return json({total:found.length,items:found.slice(offset,offset+30),nextOffset:offset+30<found.length?offset+30:null});
  }
- const row=await env.DB.prepare('SELECT revision, body FROM coaching_accounts WHERE user_id = ?').bind(user).first();
- const s=row?JSON.parse(row.body):empty();
- if(request.method==='GET'&&url.pathname==='/v1/state')return json({...s,recovery:recovery(s.checkins)});
+ if(request.method==='GET'&&url.pathname.startsWith('/v1/exercises/')){const e=catalog.exercises.find(e=>e.id===decodeURIComponent(url.pathname.slice(14)));return e?json(e):json({error:'التمرين غير موجود.'},404);}
+ if(request.method==='GET'&&url.pathname==='/v1/foods'){
+  const q=(url.searchParams.get('q')||'').trim().toLowerCase().slice(0,100);return json({items:Object.values(library.ingredients).filter(i=>!q||[i.label,...(i.aliases||[])].some(x=>x.toLowerCase().includes(q))).slice(0,40).map(i=>({key:i.key,name:i.label,state:i.state,values:i.values,source:i.source}))});
+ }
+ const s=await loadAccount(env.DB,user);
+ if(request.method==='GET'){
+  if(url.pathname==='/v1/state')return json(present(s));
+  if(url.pathname==='/v1/food-diary')return json(dayTotals(s,url.searchParams.get('date')||localDate()));
+  if(url.pathname==='/v1/meal-alternatives')return json({items:mealAlternatives(s,url.searchParams.get('mealId'))});
+  if(url.pathname==='/v1/exercise-alternatives')return json({items:exerciseAlternatives(s,url.searchParams.get('dayIndex'),url.searchParams.get('exerciseId'))});
+  if(url.pathname==='/v1/plans')return json({items:s.planRefs||[]});
+  if(url.pathname.startsWith('/v1/plans/')){
+   const id=decodeURIComponent(url.pathname.slice(10));const current=s.plans.find(p=>p.id===id);if(current)return json(current);
+   const row=await env.DB.prepare('SELECT body FROM coaching_plans WHERE user_id=? AND plan_id=?').bind(user,id).first();return row?json(JSON.parse(row.body)):json({error:'الخطة غير موجودة.'},404);
+  }
+  if(url.pathname==='/v1/workout-plans')return json({items:s.workoutPlanRefs||[]});
+  if(url.pathname.startsWith('/v1/workout-plans/')){
+   const id=decodeURIComponent(url.pathname.slice(18));if(s.workoutPlan?.id===id)return json(s.workoutPlan);
+   const row=await env.DB.prepare('SELECT body FROM coaching_workout_plans WHERE user_id=? AND plan_id=?').bind(user,id).first();return row?json(JSON.parse(row.body)):json({error:'الخطة غير موجودة.'},404);
+  }
+  if(url.pathname==='/v1/sync/changes'){
+   const after=Math.max(0,Math.floor(Number(url.searchParams.get('after'))||0));const rows=await env.DB.prepare('SELECT revision,action,at FROM coaching_changes WHERE user_id=? AND revision>? ORDER BY revision LIMIT 100').bind(user,after).all();return json({items:rows.results,currentRevision:s.revision,nextCursor:rows.results.at(-1)?.revision||after,hasMore:rows.results.length===100});
+  }
+ }
  if(request.method!=='POST'||url.pathname!=='/v1/commands')return json({error:'المسار غير موجود.'},404);
  if(request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)return json({error:'Origin غير مسموح.'},403);
  if(!request.headers.get('Content-Type')?.includes('application/json'))return json({error:'JSON مطلوب.'},415);
- const raw=await request.text();if(raw.length>40000)return json({error:'الطلب أكبر من المسموح.'},413);
+ const raw=await request.text();if(new TextEncoder().encode(raw).length>40000)return json({error:'الطلب أكبر من المسموح.'},413);
  const body=JSON.parse(raw),key=request.headers.get('Idempotency-Key');
+ if(!body||Array.isArray(body)||typeof body.action!=='string'||!Number.isInteger(body.revision)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload))return json({error:'صيغة العملية غير صالحة.'},400);
  if(!key||key.length>100)return json({error:'Idempotency-Key مطلوب.'},400);
  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)))).map(x=>x.toString(16).padStart(2,'0')).join('');
- const previous=await env.DB.prepare('SELECT digest, response FROM coaching_requests WHERE user_id=? AND request_key=?').bind(user,key).first();
- if(previous)return previous.digest===digest?json(JSON.parse(previous.response)):json({error:'مفتاح الطلب مستخدم لمحتوى مختلف.'},409);
+ const previous=await env.DB.prepare('SELECT digest,response FROM coaching_requests WHERE user_id=? AND request_key=?').bind(user,key).first();
+ if(previous){if(previous.digest!==digest)return json({error:'مفتاح الطلب مستخدم لمحتوى مختلف.'},409);return json({...present(s),commandReceipt:{revision:JSON.parse(previous.response).revision,replayed:true}},200,{'Idempotency-Replayed':'true'});}
  if(body.revision!==s.revision)return json({error:'تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.'},409);
- const next=command(structuredClone(s),body.action,body.payload||{});next.revision=s.revision+1;
- const encoded=JSON.stringify(next);if(encoded.length>1500000)return json({error:'وصلت لسعة النسخة التجريبية؛ صدّر بياناتك.'},413);
- // Compare-and-swap, then record the response only if the account contains our exact write.
- const result=await env.DB.batch([
- env.DB.prepare('INSERT INTO coaching_accounts(user_id,revision,body) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision,body=excluded.body WHERE coaching_accounts.revision=?').bind(user,next.revision,encoded,s.revision),
- env.DB.prepare('INSERT OR IGNORE INTO coaching_requests(user_id,request_key,digest,response) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(user,key,digest,encoded,user,next.revision,encoded)
- ]);
- if(!result[0].meta.changes)return json({error:'تعارض تحديث؛ حدّث البيانات.'},409);
- return json({...next,recovery:recovery(next.checkins)});
- }catch(error){return json({error:error.status===409?error.message:error instanceof SyntaxError?'JSON غير صالح.':error.message||'تعذر تنفيذ الطلب.'},error.status||400);}
+ const next=command(structuredClone(s),body.action,body.payload);next.revision=s.revision+1;
+ await saveAccount(env.DB,user,next,s.revision,{key,digest,action:body.action});
+ return json(present({...next,plans:next.plans.filter(p=>p.id===next.active_plan_id)}));
+ }catch(error){if(/D1_ERROR|SQLITE|no such table/i.test(error.message||'')){console.error('Database operation failed',url.pathname,new Date().toISOString());return json({error:'تعذر حفظ البيانات حاليًا؛ حاول تاني بعد لحظات.'},503);}const status=error.status||400;return json({error:error instanceof SyntaxError?'JSON غير صالح.':error.message||'تعذر تنفيذ الطلب.'},status);}
 }};
