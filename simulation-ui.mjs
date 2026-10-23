@@ -64,9 +64,9 @@ export function simulationPanel(state, enabled, { compact = false } = {}) {
       name: '💪 التمرين',
       tab: 'workout',
       target: '#workout-coach',
-      done: !day.scheduled.length || day.sessions.some(s => s.status === 'completed'),
+      done: (!day.scheduled.length && ((state.workoutLogs || []).length > 0 || sim.day > 1)) || day.sessions.some(s => s.status === 'completed'),
       text: !day.scheduled.length
-        ? 'يوم راحة ✓'
+        ? ((state.workoutLogs || []).length > 0 || sim.day > 1 ? 'يوم راحة ✓' : 'ابدأ من تبويب التمرين')
         : day.sessions.some(s => s.status === 'completed')
         ? 'مكتمل ✓'
         : day.sessions.some(s => s.status === 'partial')

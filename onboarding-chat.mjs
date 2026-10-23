@@ -248,6 +248,13 @@ export function computeSmartOnboardingInsights(draft) {
   };
 }
 
+function defaultTrainingDaysIncludingToday(count = 3) {
+  const base = getTrainingDayIndices(count);
+  const todaySat0 = (new Date().getDay() + 1) % 7;
+  if (base.includes(todaySat0)) return base;
+  return [...new Set(base.map(d => (d + todaySat0) % 7))].sort((a, b) => a - b);
+}
+
 export function createInitialOnboardingDraft(savedState = null) {
   const detectedRegion = savedState?.preferences?.region || detectUserRegion();
   const p = savedState?.profile || {};
@@ -259,7 +266,7 @@ export function createInitialOnboardingDraft(savedState = null) {
       ? [...new Set(wp.selectedWorkoutDays.map(Number).filter(n => n >= 0 && n <= 6))].sort((a, b) => a - b)
       : Array.isArray(p.workoutDays) && p.workoutDays.length
         ? [...new Set(p.workoutDays.map(Number).filter(n => n >= 0 && n <= 6))].sort((a, b) => a - b)
-        : getTrainingDayIndices(initialCount);
+        : defaultTrainingDaysIncludingToday(initialCount);
   return {
     // US-MOB-01 Account & Auth State
     accountCheck: savedState?.onboarding?.accountCheck || 'no',
@@ -1261,12 +1268,14 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       case 'workout_days': {
         const selectedDays = Array.isArray(draft.selectedWorkoutDays) && draft.selectedWorkoutDays.length
           ? draft.selectedWorkoutDays
-          : getTrainingDayIndices(draft.workoutDaysCount);
+          : defaultTrainingDaysIncludingToday(draft.workoutDaysCount);
         draft.selectedWorkoutDays = selectedDays;
         draft.workoutDaysCount = selectedDays.length;
         const selectedNames = selectedDays.map(i => WEEKDAYS_AR[Number(i)]?.name).filter(Boolean).join('، ');
+        const startToday3 = defaultTrainingDaysIncludingToday(3);
         const presets = [
-          { label: '3 أيام (سبت·اثنين·أربعاء) ⭐', days: [0, 2, 4] },
+          ...(startToday3.join(',') !== '0,2,4' ? [{ label: '⚡ 3 أيام (نبدأ النهاردة) ⭐', days: startToday3 }] : []),
+          { label: '3 أيام (سبت·اثنين·أربعاء)', days: [0, 2, 4] },
           { label: '4 أيام (سبت·أحد·ثلاثاء·أربعاء)', days: [0, 1, 3, 4] },
           { label: '5 أيام (سبت–أربعاء)', days: [0, 1, 2, 3, 4] }
         ];

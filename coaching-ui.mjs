@@ -1,4 +1,4 @@
-import {simulationPanel} from './simulation-ui.mjs?v=sim4';
+import {simulationPanel} from './simulation-ui.mjs?v=sim5';
 import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
 import {householdQuantity,displayPortion} from './planner-household.mjs';
@@ -68,6 +68,8 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
  const upgradedEx=state.workoutPlan?.days?.flatMap(d=>d.exercises||[]).find(e=>e.suggestedKg!=null);
  const todayScheduled=(state.scheduledSessions||[]).find(s=>s.date===todayStr);
  const todaySession=(state.sessions||[]).find(s=>s.date===todayStr&&s.planId===state.workoutPlan?.id);
+ const nextScheduled=(state.scheduledSessions||[])[0];
+ const hasTrainedBefore=(state.workoutLogs||[]).length>0||(state.sessions||[]).some(s=>s.status==='completed'||s.status==='partial');
  if(ready.status==='stop'||ready.status==='hold'){
   notes.push({role:'💪 كابتن التدريب',text:ready.reasons?.[0]||'سلامتك أولاً — ريّح جسمك النهاردة لحد ما تطمنّا عليك.'});
  }else if(adjustment||['caution','high'].includes(ready.status)){
@@ -75,11 +77,13 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
  }else if(todaySession?.status==='completed'){
   notes.push({role:'💪 كابتن التدريب',text:`عاش يا بطل! 💪 قفّلت تمرينة النهاردة بالكامل، اهتم بشرب المية ووجبة بعد التمرين للاستشفاء.`});
  }else if(upgradedEx&&ready.progressionAllowed){
-  notes.push({role:'💪 كابتن التدريب',text:`تطوّر ممتاز! لأن أوزانك وعداتك في آخر تمرينتين كانت قوية وثابتة، الكابتن رفع لك الوزن المستهدف النهاردة في (${upgradedEx.name}) לـ ${upgradedEx.suggestedKg} كجم.`});
+  notes.push({role:'💪 كابتن التدريب',text:`تطوّر ممتاز! لأن أوزانك وعداتك في آخر تمرينتين كانت قوية وثابتة، الكابتن رفع لك الوزن المستهدف النهاردة في (${upgradedEx.name}) لـ ${upgradedEx.suggestedKg} كجم.`});
  }else if(todayScheduled){
-  notes.push({role:'💪 كابتن التدريب',text:`عندك النهاردة تمرينة (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) — سجّل أوزانك وعداتك في كل تمرين وهنحسب لك الجلسة تلقائياً.`});
+  notes.push({role:'💪 كابتن التدريب',text:hasTrainedBefore?`عندك النهاردة تمرينة (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) — سجّل أوزانك وعداتك في كل تمرين وهنحسب لك الجلسة تلقائياً.`:`أهلاً بيك في أول يوم يا بطل! تمرينتك الأولى (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) جاهزة النهاردة في تبويب «التمرين» — ابدأ بأوزان مريحة وسجّل أداءك.`});
+ }else if(state.workoutPlan&&!hasTrainedBefore){
+  notes.push({role:'💪 كابتن التدريب',text:`أهلاً بيك في أول يوم يا بطل! خطة تمرينك جاهزة بالكامل في تبويب «التمرين» — تقدر تبدأ أول جلسة ليك النهاردة فوراً، أو في مواعيدك المحددة بدايةً من يوم ${nextScheduled?days[nextScheduled.dayIndex]:'التمرين القادم'}.`});
  }else if(state.workoutPlan){
-  notes.push({role:'💪 كابتن التدريب',text:`النهاردة يوم راحة واستشفاء لعضلاتك — خذ كفايتك من النوم والمية عشان ترجع أقوى الجلسة الجاية.`});
+  notes.push({role:'💪 كابتن التدريب',text:`النهاردة يوم راحة واستشفاء لعضلاتك بعد مجهود التمرين — خذ كفايتك من النوم والمية${nextScheduled?` استعداداً لتمرينة يوم ${days[nextScheduled.dayIndex]}`:''}.`});
  }
 
  const diseases=(state.profile?.diseases||[]).filter(x=>x&&x!=='none').map(x=>DISEASE_LABELS[x]||x);
@@ -362,7 +366,8 @@ export async function mountPlanner({root,toast}){
   if(simulationMode&&!state.simulation){root.innerHTML='<div class="coach-app" dir="rtl"><div id="coach-feedback" role="alert" class="coach-notice" hidden></div>'+simulationPanel(state,true)+'</div>';wireSimulation();return;}
   if(!state.profile)return onboarding();
   const plan=state.plans.find(p=>p.id===state.active_plan_id),ready=state.recovery||{status:'unknown',reasons:[]};
-  const status={unknown:'فريق المتابعة في انتظار تسجيل حالتك اليومية',ready:'جاهزيتك ممتازة للتمرين النهاردة ✓',caution:'كابتن التدريب ينصح بتمرين خفيف اليوم',high:'الأولوية النهاردة للاستشفاء والراحة',hold:'توصية الكابتن: ريّح المنطقة المؤلمة اليوم',stop:'تنبيه طبي: أوقف التمرين واطمئن طبياً'};
+  const isFirstDay=!state.checkins?.length&&!(state.workoutLogs||[]).length&&!(state.foodEntries||[]).length;
+  const status={unknown:isFirstDay?'أول يوم في خطتك — وجباتك وتمارينك جاهزة للبداية! 🚀':'فريق المتابعة في انتظار تسجيل حالتك اليومية',ready:'جاهزيتك ممتازة للتمرين النهاردة ✓',caution:'كابتن التدريب ينصح بتمرين خفيف اليوم',high:'الأولوية النهاردة للاستشفاء والراحة',hold:'توصية الكابتن: ريّح المنطقة المؤلمة اليوم',stop:'تنبيه طبي: أوقف التمرين واطمئن طبياً'};
   const pendingAdaptations=state.adaptations.filter(a=>a.status==='pending');
   const todayStr=state.serverDate||localDate();
   const todayPlanDay=plan?.days.find(d=>d.date===todayStr)||plan?.days[0];
@@ -397,8 +402,8 @@ export async function mountPlanner({root,toast}){
    <nav class="coach-tabs" aria-label="أقسام المتابعة">
     <button type="button" class="tab-btn ${activeTab==='nutrition'?'active':''}" data-tab="nutrition"><span class="tab-icon">🥗</span><span>الأكل</span></button>
     <button type="button" class="tab-btn ${activeTab==='workout'?'active':''}" data-tab="workout"><span class="tab-icon">💪</span><span>التمرين</span></button>
-    <button type="button" class="tab-btn ${activeTab==='recovery'?'active':''}" data-tab="recovery"><span class="tab-icon">😴</span><span>الميزان والنوم</span></button>
-    <button type="button" class="tab-btn ${activeTab==='review'?'active':''}" data-tab="review"><span class="tab-icon">👨‍⚕️</span><span>تقرير الفريق ${pendingAdaptations.length?`<b class="tab-badge">${pendingAdaptations.length}</b>`:''}</span></button>
+    <button type="button" class="tab-btn ${activeTab==='recovery'?'active':''}" data-tab="recovery"><span class="tab-icon">⚖️</span><span>حالتي</span></button>
+    <button type="button" class="tab-btn ${activeTab==='review'?'active':''}" data-tab="review"><span class="tab-icon">👨‍⚕️</span><span>المتابعة${pendingAdaptations.length?` <b class="tab-badge">${pendingAdaptations.length}</b>`:''}</span></button>
     <button type="button" class="tab-btn ${activeTab==='catalog'?'active':''}" data-tab="catalog"><span class="tab-icon">📚</span><span>المكتبة</span></button>
    </nav>
 
