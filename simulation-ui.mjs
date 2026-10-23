@@ -46,14 +46,7 @@ export function simulationPanel(state, enabled, { compact = false, activeTab = '
   }
 
   if (activeTab !== 'nutrition') {
-    return `<aside class="simulation-entry" id="simulation-panel" style="padding:10px 14px;margin:4px 0 10px">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <strong style="font-size:13.5px;color:#145335">🧪 محاكاة · اليوم ${sim.day} من 90 (<span dir="ltr">${state.serverDate}</span>)</strong>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button type="button" id="simulation-next" style="padding:6px 12px;min-height:34px;font-size:12.5px;margin:0" ${sim.day >= 90 ? 'disabled' : ''}>اليوم التالي (${Math.min(90, sim.day + 1)}) ←</button>
-      </div>
-    </aside>`;
+    return '';
   }
 
   const day = state.simulationToday;

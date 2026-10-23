@@ -1,4 +1,4 @@
-import {simulationPanel} from './simulation-ui.mjs?v=sim7';
+import {simulationPanel} from './simulation-ui.mjs?v=sim8';
 import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
 import {householdQuantity,displayPortion} from './planner-household.mjs';
@@ -371,6 +371,35 @@ export async function mountPlanner({root,toast}){
    </form>
   </article>`;
  }
+ function singleWorkoutDayCard(d,todayStr,plan,isTodayScheduled=true){
+  const loggedCount=d.exercises.filter(e=>state.workoutLogs.some(l=>l.date===todayStr&&l.dayIndex===d.dayIndex&&l.exerciseId===e.id&&l.planId===plan.id)).length;
+  const todaySess=state.sessions.find(s=>s.date===todayStr&&s.dayIndex===d.dayIndex&&s.planId===plan.id);
+  const targetRegions=[...new Set(d.exercises.flatMap(e=>e.regions||[]))];
+  return `<section class="coach-card" data-day="${d.dayIndex}">
+   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+    <h3 style="margin:0;color:#163a2c">🏋️ تمرينة اليوم (${days[new Date(todayStr+'T12:00:00Z').getUTCDay()]} ${todayStr}) · ${esc(FOCUS_LABELS[d.focus]||d.focus)}</h3>
+    <span style="font-size:12px;background:#e6f4ec;color:#145335;padding:4px 10px;border-radius:999px;font-weight:700">${d.location==='home'?'🏠 البيت':'🏋️ الجيم'} · ${d.estimatedMinutes||d.duration} د ${loggedCount?`· ✓ ${loggedCount}/${d.exercises.length}`:''}</span>
+   </div>
+   ${targetRegions.length?`<p style="margin:4px 0 8px;font-size:13px;color:#2c523f">🎯 <strong>العضلات المستهدفة النهاردة:</strong> ${esc(regionNames(targetRegions))} <small>(طبيعي تحس بشد خفيف فيها بكرة كدليل على البناء العضلي)</small></p>`:''}
+   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+    <span style="font-size:13px;font-weight:700;color:#1b4332">${todaySess?.status==='completed'?'🎉 عاش يا بطل! قفّلت تمرينة اليوم بالكامل ✓':loggedCount?`⏳ سجّلت ${loggedCount} من ${d.exercises.length} تمارين (الجلسة بتتقفل تلقائياً مع حفظ التمارين)`:'سجّل أوزانك وعداتك في تمارين النهاردة بالأسفل:'}</span>
+   </div>
+   ${d.exercises.map(e=>exerciseHTML(e,d)).join('')}
+   ${isTodayScheduled?`<details style="margin-top:8px"><summary>📅 مقدرتش أتمرن النهاردة؟ (تأجيل الجلسة ليوم تاني)</summary>
+    <form class="reschedule-form" data-day="${d.dayIndex}" style="margin-top:8px">
+     <label>اختار يوم بديل للتمرين خلال الأسبوعين الجايين <input name="toDate" type="date" min="${todayStr}" max="${dateOffset(todayStr,13)}" required></label>
+     <button class="secondary">نقل موعد التمرينة</button>
+    </form>
+    <form class="session-log" data-day="${d.dayIndex}" style="margin-top:8px">
+     <input type="hidden" name="date" value="${todayStr}">
+     <input type="hidden" name="status" value="missed">
+     <input type="hidden" name="duration" value="${d.estimatedMinutes||d.duration}">
+     <input type="hidden" name="rpe" value="7">
+     <button class="secondary">تسجيل إن الجلسة فاتتني هذا الأسبوع</button>
+    </form>
+   </details>`:''}
+  </section>`;
+ }
  function workoutHTML(){
   const plan=state.workoutPlan;
   if(state.eligibility?.status==='needs_health_confirmation')return `<form id="confirm-existing-health" class="coach-card"><h3>تأكيد الجاهزية الصحية مع الكابتن</h3><p>أكد عدم وجود موانع صحية حادة قبل متابعة التمارين.</p><label><input name="healthy" type="checkbox" required> لا توجد حالة صحية حادة تمنع التمرين.</label><label><input name="injuryFree" type="checkbox" required> لا توجد إصابة حادة حالية.</label><button>تأكيد ومتابعة خطتي</button></form>`;
@@ -378,32 +407,157 @@ export async function mountPlanner({root,toast}){
   if(!plan)return '<div class="coach-card"><p>مسارك الحالي للأكل فقط بدون جدول تمارين.</p></div>';
   const todayStr=state.serverDate||localDate();
   const todayDayIndex=new Date(todayStr+'T12:00:00Z').getUTCDay();
-  return `${state.scheduledSessions?.[0]?`<p class="coach-notice">📅 تمرينتك الجاية: <strong>${state.scheduledSessions[0].date}</strong> · ${esc(FOCUS_LABELS[state.scheduledSessions[0].focus]||state.scheduledSessions[0].focus)}</p>`:''}
-   ${plan.goalNote?`<p class="coach-notice">🎯 <strong>خطة كابتن التدريب:</strong> ${esc(plan.goalNote)}</p>`:''}
+  const todaySched=(state.scheduledSessions||[]).find(s=>s.date===todayStr);
+  const hasTrainedBefore=(state.workoutLogs||[]).length>0||(state.sessions||[]).some(s=>s.status==='completed'||s.status==='partial');
+  const todayWorkoutDay=todaySched?plan.days.find(d=>d.dayIndex===todaySched.dayIndex):(plan.days.find(d=>d.dayIndex===todayDayIndex)||(!hasTrainedBefore?plan.days[0]:null));
+  const nextSched=(state.scheduledSessions||[])[0];
+  const fallbackDay=nextSched?plan.days.find(d=>d.dayIndex===nextSched.dayIndex)||plan.days[0]:plan.days[0];
+  return `${plan.goalNote?`<p class="coach-notice">🎯 <strong>خطة كابتن التدريب:</strong> ${esc(plan.goalNote)}</p>`:''}
    ${plan.warnings.map(w=>`<p class="coach-notice">${esc(w)}</p>`).join('')}
-   ${plan.days.map((d,idx)=>{
-    const loggedCount=d.exercises.filter(e=>state.workoutLogs.some(l=>l.date===todayStr&&l.dayIndex===d.dayIndex&&l.exerciseId===e.id&&l.planId===plan.id)).length;
-    const todaySess=state.sessions.find(s=>s.date===todayStr&&s.dayIndex===d.dayIndex&&s.planId===plan.id);
-    return `<details class="coach-card" data-day="${d.dayIndex}" ${(d.dayIndex===todayDayIndex||idx===0)?'open':''}>
-    <summary>${days[d.dayIndex]} · ${esc(FOCUS_LABELS[d.focus]||d.focus)} · ${d.location==='home'?'🏠 البيت':'🏋️ الجيم'} (${d.estimatedMinutes||d.duration} د) ${loggedCount?`· ✓ ${loggedCount}/${d.exercises.length} تمارين`:''}</summary>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-     <span style="font-size:13px;font-weight:700;color:#1b4332">${todaySess?.status==='completed'?'🎉 قفّلت تمرينة اليوم بالكامل ✓':loggedCount?`⏳ سجّلت ${loggedCount} من ${d.exercises.length} تمارين (الجلسة بتتقفل تلقائياً مع حفظ التمارين)`:'سجّل أوزانك وعداتك في التمارين بالأسفل:'}</span>
+   ${todayWorkoutDay
+    ?singleWorkoutDayCard(todayWorkoutDay,todayStr,plan,true)
+    :`<section class="coach-card" style="background:linear-gradient(135deg,#f4faf6 0%,#e9f5ee 100%);border-color:#b7dec9">
+      <h3 style="margin:0 0 6px;color:#1b4332">🌿 النهاردة (${days[todayDayIndex]} ${todayStr}) يوم استشفاء وبناء عضلي</h3>
+      <p style="margin:0 0 8px;font-size:14px;color:#1e3a2f">عضلاتك بتكبر وتقوى في يوم الراحة لما بتاخد احتياجك من البروتين والمية والنوم. ${nextSched?`تمرينتك الجاية يوم <strong>${days[nextSched.dayIndex]} (${nextSched.date}) · ${esc(FOCUS_LABELS[nextSched.focus]||nextSched.focus)}</strong>.`:''}</p>
+      ${fallbackDay?`<details style="margin-top:8px"><summary>💪 عايز تتمرن النهاردة بدل يوم الراحة؟ افتح تمرينة اليوم</summary>${singleWorkoutDayCard(fallbackDay,todayStr,plan,false)}</details>`:''}
+     </section>`}`;
+ }
+ function reviewHTML(todayStr,plan,todayPlanDay,pendingAdaptations){
+  const todayDayIndex=new Date(todayStr+'T12:00:00Z').getUTCDay();
+  const sim=state.simulation;
+  const simDayEmpty=sim&&state.simulationToday&&!state.simulationToday.foodComplete&&!state.simulationToday.recoveryLogged&&state.simulationToday.weight==null&&!state.simulationToday.sessions.length;
+  // 1. Identify muscles worked in latest session or today's workout
+  const wPlan=state.workoutPlan;
+  const recentLogs=(state.workoutLogs||[]).slice().sort((a,b)=>(a.date||a.at.slice(0,10)).localeCompare(b.date||b.at.slice(0,10))||Date.parse(a.at)-Date.parse(b.at));
+  const lastLogDate=recentLogs.at(-1)?.date||recentLogs.at(-1)?.at?.slice(0,10);
+  const lastDayLogs=lastLogDate?recentLogs.filter(l=>(l.date||l.at.slice(0,10))===lastLogDate):[];
+  const todaySched=(state.scheduledSessions||[]).find(s=>s.date===todayStr);
+  const activeWorkoutDay=todaySched&&wPlan?wPlan.days.find(d=>d.dayIndex===todaySched.dayIndex):(wPlan?.days.find(d=>d.dayIndex===todayDayIndex)||wPlan?.days?.[0]);
+  const allPlanEx=wPlan?.days?.flatMap(d=>d.exercises||[])||[];
+  const workedExercises=lastDayLogs.length
+   ?[...new Map(lastDayLogs.map(l=>{const ex=allPlanEx.find(e=>e.id===l.exerciseId)||{id:l.exerciseId,name:l.exerciseId,regions:l.regions||[]};return [ex.id,{ex,log:l}];})).values()]
+   :(activeWorkoutDay?.exercises||[]).map(ex=>({ex,log:null}));
+  const muscleMap=new Map();
+  let hardSetsCount=0,totalLoggedSets=0;
+  for(const {ex,log} of workedExercises){
+   for(const r of ex.regions||[]){
+    const label=MUSCLE_REGIONS[r]||r;
+    if(!muscleMap.has(label))muscleMap.set(label,[]);
+    if(!muscleMap.get(label).includes(ex.name))muscleMap.get(label).push(ex.name);
+   }
+   if(log?.sets?.length){
+    for(const s of log.sets){
+     totalLoggedSets++;
+     if(s.rir!=null&&Number(s.rir)<=2)hardSetsCount++;
+    }
+   }
+  }
+  const muscleEntries=[...muscleMap.entries()];
+  const muscleNamesList=muscleEntries.map(([m])=>m).join('، ')||'عضلات الجسم الأساسية';
+
+  // 2. Nutrition, Hydration, Weight & Recovery personalized numbers
+  const entriesToday=(state.foodEntries||[]).filter(x=>x.date===todayStr);
+  const foodRec=state.foodLogs.find(x=>x.date===todayStr);
+  const loggedEnergy=entriesToday.length?Math.round(entriesToday.reduce((s,e)=>s+(Number(e.snapshot?.values?.energy)||0),0)):(foodRec?.energy?Math.round(foodRec.energy):0);
+  const loggedProtein=entriesToday.length?Math.round(entriesToday.reduce((s,e)=>s+(Number(e.snapshot?.values?.protein)||0),0)):(foodRec?.protein?Math.round(foodRec.protein):0);
+  const targetEnergy=round(todayPlanDay?.targets?.energy||plan?.targets?.energy||2000);
+  const targetProtein=round(todayPlanDay?.targets?.protein||plan?.targets?.protein||120);
+  const hyd=state.progressSummary?.hydration||{todayCups:0,targetCups:10,todayLiters:0,targetLiters:2.5};
+  const wt=state.progressSummary?.weightTrend||{};
+  const lastW=state.weights?.at(-1)?.kg??state.profile?.weight??'—';
+  const targetW=plan?.targets?.forecast?.target_weight_kg??state.profile?.targetWeight;
+  const remKg=targetW&&Number.isFinite(Number(lastW))?Math.abs(Math.round((Number(lastW)-Number(targetW))*10)/10):null;
+  const insights=state.progressSummary?.workoutSummary?.insights;
+  const latestCheckin=state.checkins?.find(c=>c.date===todayStr)||state.checkins?.at(-1);
+
+  return `
+   <div class="coach-card" style="background:linear-gradient(135deg,#eef7f2 0%,#e2f2e9 100%);border-color:#9fd0b5;margin-top:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+     <div>
+      <small style="color:#1f5c3f;font-weight:700">📅 متابعة اليوم الحالي: ${days[todayDayIndex]} ${todayStr}${sim?` · اليوم ${sim.day} من 90`:''}</small>
+      <h2 style="margin:2px 0 4px">👨‍⚕️ خلاصة متابعة الفريق لحالتك</h2>
+     </div>
+     <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${simulationMode&&sim?`
+       ${simDayEmpty&&sim.day<90?`<button type="button" id="review-fast-day" style="background:#0f766e;margin:0">⚡ قفّل اليوم ملتزم + اليوم التالي (${sim.day+1}) ←</button>`:''}
+       <button type="button" id="review-next-day" style="margin:0" ${sim.day>=90?'disabled':''}>⏭️ اليوم التالي (${Math.min(90,sim.day+1)}) ←</button>
+      `:`<button type="button" id="review-enter-sim" class="secondary" style="margin:0">⏭️ تجربة اليوم التالي (محاكاة)</button>`}
+      <button type="button" id="review-coach" class="secondary" style="margin:0">🔍 تحديث قرار الفريق</button>
+     </div>
     </div>
-    ${d.exercises.map(e=>exerciseHTML(e,d)).join('')}
-    <details style="margin-top:8px"><summary>📅 مقدرتش أتمرن النهاردة؟ (تأجيل الجلسة ليوم تاني)</summary>
-     <form class="reschedule-form" data-day="${d.dayIndex}" style="margin-top:8px">
-      <label>اختار يوم بديل للتمرين خلال الأسبوعين الجايين <input name="toDate" type="date" min="${todayStr}" max="${dateOffset(todayStr,13)}" required></label>
-      <button class="secondary">نقل موعد التمرينة</button>
-     </form>
-     <form class="session-log" data-day="${d.dayIndex}" style="margin-top:8px">
-      <input type="hidden" name="date" value="${todayStr}">
-      <input type="hidden" name="status" value="missed">
-      <input type="hidden" name="duration" value="${d.estimatedMinutes||d.duration}">
-      <input type="hidden" name="rpe" value="7">
-      <button class="secondary">تسجيل إن الجلسة فاتتني هذا الأسبوع</button>
-     </form>
-    </details>
-   </details>`;}).join('')}`;
+   </div>
+
+   ${wPlan?`<section class="coach-card" style="border-color:#cce3d6;background:#fbfdfc">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+     <h3 style="margin:0;color:#145335">🔥 العضلات اللي شغالة في البناء والاستشفاء دلوقتي</h3>
+     <span style="font-size:12px;background:#e6f4ec;color:#145335;padding:4px 10px;border-radius:999px;font-weight:700">${lastDayLogs.length?`بناءً على تمرينة ${lastLogDate}`:'بناءً على تمرينة النهاردة'}</span>
+    </div>
+    <p style="margin:4px 0 10px;font-size:13.5px;color:#234236">العضلات اللي طبيعي جداً تحس فيها بشد أو وجع عضلي خفيف خلال 24–48 ساعة بعد التمرين:</p>
+    <div class="coach-tags" style="padding:0 0 8px">
+     ${muscleEntries.map(([m,exList])=>`<span style="background:#eef7f2;border:1px solid #b7dec9;color:#145335;font-weight:700">💪 ${esc(m)} <small style="font-weight:400;color:#436253">(${esc(exList.slice(0,2).join('، '))})</small></span>`).join('')}
+    </div>
+    <div class="coach-notice" style="margin:8px 0 0;background:#f2faf5">
+     <strong>✅ تطمين كابتن التدريب (ليه الإحساس ده طبيعي ومطلوب؟):</strong>
+     <p style="margin:4px 0;font-size:13.5px;line-height:1.6">
+      ${totalLoggedSets>0
+       ?`إنت سجلت <strong>${totalLoggedSets} جولات</strong>${hardSetsCount?` منها <strong>${hardSetsCount} جولات قوية قرب الفشل العضلي</strong>`:''} على (${esc(muscleNamesList)}). الإحساس بشد أو ثِقَل في بطن العضلات دي تاني يوم دليل إن التمرين صح وإنك وصلت لتحفيز حقيقي للألياف العضلية؛ الألياف دي بتتبني وتقوى دلوقتي وإنت بتاخد البروتين وبتنام.`
+       :`لما تخلص تمرينة (${esc(muscleNamesList)}) وتوصل في آخر عدتين لقرب الفشل العضلي (بحيث تحس بتحدي قوي مع ثبات الأداء)، طبيعي تحس تاني يوم بشد خفيف داخل العضلة — ده علامة صحية إن العضلة استجابت وبدأت رحلة البناء.`}
+     </p>
+     <small style="display:block;color:#355849;margin-top:4px">💡 <strong>الفرق في ثانية:</strong> الشد داخل بطن العضلة اللي بيفك مع المشي والمية = <strong>بناء عضلي طبيعي ✓</strong> | أما النغزة الحادة جوّه المفصل نفسه = <strong>ألم مفصلي</strong> (علّم عليه في التمرين لو حسيت بيه علشان نبدله فوراً).</small>
+    </div>
+   </section>`:''}
+
+   <section class="coach-card">
+    <h3 style="margin:0 0 10px;color:#163a2c">📊 متابعة الفريق لأرقامك واستجابة جسمك</h3>
+    <div class="coach-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+     <div style="background:#f5f9f6;border:1px solid #dce8e1;border-radius:12px;padding:12px">
+      <strong style="color:#1b4332;font-size:14px">🥗 أخصائي التغذية وبناء العضلات</strong>
+      <p style="margin:6px 0 0;font-size:13.5px;color:#234236">
+       سعرات اليوم: <strong>${loggedEnergy} / ${targetEnergy} سعر</strong><br>
+       بروتين اليوم: <strong>${loggedProtein} / ${targetProtein} جم</strong><br>
+       <small style="color:#496559">${loggedProtein>=Number(targetProtein)*0.8?'✅ كمية البروتين ممتازة النهاردة لإصلاح الألياف العضلية ومنع الهدم.':'💡 كمّل وجبات البروتين النهاردة علشان تغذي العضلات اللي اتمرنت وتسرّع الاستشفاء.'}</small>
+      </p>
+     </div>
+     <div style="background:#f2f9ff;border:1px solid #b8dcf5;border-radius:12px;padding:12px">
+      <strong style="color:#0d47a1;font-size:14px">💧 الترطيب وتوازن السوائل</strong>
+      <p style="margin:6px 0 0;font-size:13.5px;color:#1b3a57">
+       شرب المية اليوم: <strong>${hyd.todayCups||0} / ${hyd.targetCups||10} كوب (${hyd.todayLiters||0} من ${hyd.targetLiters||2.5} لتر)</strong><br>
+       <small style="color:#32567a">${(hyd.todayCups||0)>=(hyd.targetCups||10)*0.8?'✅ ترطيب جسمك ممتاز؛ ده بيقلل الشد العضلي وبيمنع احتباس السوائل على الميزان.':'💡 قلة المية بتخلي الجسم يحبس سوائل على الميزان وبتزود الإحساس بالشد العضلي بعد التمرين.'}</small>
+      </p>
+     </div>
+     <div style="background:#f5f9f6;border:1px solid #dce8e1;border-radius:12px;padding:12px">
+      <strong style="color:#1b4332;font-size:14px">📈 تطور الأوزان والعدات (آخر أسبوعين)</strong>
+      <p style="margin:6px 0 0;font-size:13.5px;color:#234236">
+       الجلسات المكتملة: <strong>${state.progressSummary?.workoutSummary?.completed14d||0} تمرينات</strong><br>
+       <small style="color:#496559">${esc(insights?.summaryText||'سجّل أوزانك وعداتك في التمرين علشان الكابتن يقارن تطور قوتك جلسة بجلسة.')}</small>
+      </p>
+     </div>
+     <div style="background:#f5f9f6;border:1px solid #dce8e1;border-radius:12px;padding:12px">
+      <strong style="color:#1b4332;font-size:14px">⚖️ اتجاه الميزان والاستشفاء</strong>
+      <p style="margin:6px 0 0;font-size:13.5px;color:#234236">
+       آخر وزن: <strong>${lastW} كجم</strong> ${remKg!=null?`<small>(باقي ${remKg} كجم للوصول لـ ${targetW} كجم)</small>`:''}<br>
+       متوسط الأسبوع: <strong>${wt.current7dAvgKg??'—'} كجم</strong> (السابق: ${wt.previous7dAvgKg??'—'} كجم)<br>
+       <small style="color:#496559">${latestCheckin?`النوم المسجل: ${latestCheckin.sleepHours} ساعات · حالة الاستشفاء محسوبة في التمرين.`:'سجّل وزنك ونومك في تبويب «حالتي» لمتابعة أدق.'}</small>
+      </p>
+     </div>
+    </div>
+   </section>
+
+   ${state.lastReview?`<section class="coach-notice" style="margin-top:12px">
+    <strong>📋 قرار المراجعة الدورية للفريق: ${esc(state.lastReview.message)}</strong>
+    <p>🥗 <strong>أخصائي التغذية:</strong> ${esc(state.lastReview.nutrition.reason)}</p>
+    ${state.lastReview.hydration?`<p>💧 <strong>متابعة المية:</strong> ${esc(state.lastReview.hydration.reason)}</p>`:''}
+    ${state.lastReview.volume?`<p>💪 <strong>كابتن التدريب:</strong> ${esc(state.lastReview.volume.reason)}</p>`:''}
+    ${state.lastReview.workoutInsights?`<p>📈 <strong>ملخص الأوزان والعدات:</strong> ${esc(state.lastReview.workoutInsights.summaryText)}</p>`:''}
+   </section>`:''}
+
+   ${pendingAdaptations.map(a=>`<article class="meal-card" style="margin-top:12px;border-color:#f59e0b;background:#fffbeb">
+    <p style="margin:0 0 6px"><strong>🔔 توصية جاهزة لموافقتك: ${esc(a.reason)}</strong></p>
+    ${a.delta?`<p style="margin:0 0 8px">التعديل المقترح: ${a.delta>0?'+'+a.delta:a.delta} سعر/يوم بداية من الغد.</p>`:''}
+    <button data-adapt="${a.id}" data-accept="true">✅ موافق على توصية الفريق</button>
+    <button class="secondary" data-adapt="${a.id}" data-accept="false">أكمل على خطتي الحالية</button>
+   </article>`).join('')}
+  `;
  }
  function recoveryHTML(){
   const todayStr=state.serverDate||localDate();
@@ -521,9 +675,6 @@ export async function mountPlanner({root,toast}){
      <p><small>اضغط «✓ أكلت الوجبة» جنب كل وجبة تخلصها، أو بدّلها بأكلة تانية على ذوقك:</small></p>
      ${todayPlanDay.meals.map(m=>mealHTML(m,todayPlanDay.date)).join('')}
     </div>`:''}
-    ${otherPlanDays.length?`<details class="coach-card"><summary>🗓️ وجبات باقي أيام الأسبوع (${otherPlanDays.length} أيام)</summary>
-     ${otherPlanDays.map(d=>`<details style="margin:10px 0;padding:8px;border:1px solid #e2ece6;border-radius:12px"><summary>${d.date} · ${round(d.summary.values.energy)} سعر</summary>${d.meals.map(m=>mealHTML(m,d.date)).join('')}</details>`).join('')}
-    </details>`:''}
     ${plan.days.at(-1).date<todayStr?'<button id="renew-plan">🔄 استلام جدول أكل الأسبوع الجديد</button>':''}`:'<p class="coach-card">مسارك الحالي للتمارين فقط؛ وتقدر تسجل وجباتك اليومية بالأسفل.</p>'}
     ${waterHTML(todayStr)}
     ${diaryHTML()}
@@ -537,32 +688,8 @@ export async function mountPlanner({root,toast}){
     ${recoveryHTML()}
    </section>
 
-   <section class="coach-card" id="coach-review" ${activeTab==='review'?'':'hidden'}>
-    <h2>👨‍⚕️ تقرير فريق المتابعة (التغذية والتدريب)</h2>
-    <p>فريق التغذية والتدريب بيراجع متوسط وزنك لآخر أسبوعين (بحد أدنى 3 أوزان في كل أسبوع)، التزامك بوجباتك وشرب المية، وكل تعديل بتعمله في أوزان وعدات ومجموعات التمرين علشان يقرر هل نكمّل زي ما إحنا ولا نعدّل الخطة.</p>
-    ${state.progressSummary?`<div class="coach-tags" style="margin-bottom:10px">
-     <span>⚖️ ميزان الأسبوع السابق: ${state.progressSummary.weightTrend.previous7dCount}/3 (${state.progressSummary.weightTrend.previous7dAvgKg??'—'} كجم)</span>
-     <span>⚖️ ميزان الأسبوع الحالي: ${state.progressSummary.weightTrend.current7dCount}/3 (${state.progressSummary.weightTrend.current7dAvgKg??'—'} كجم)</span>
-     <span>🥗 أيام الالتزام بالأكل: ${state.progressSummary.foodCompleteness.completeDays14d}/10</span>
-     <span>💧 المية اليوم: ${state.progressSummary.hydration?.todayCups||0}/${state.progressSummary.hydration?.targetCups||10} كوب</span>
-     <span>🏋️ تمرينات مكتملة: ${state.progressSummary.workoutSummary.completed14d}</span>
-    </div>
-    ${state.progressSummary.workoutSummary?.insights?.summaryText?`<p class="coach-notice" style="margin-bottom:10px">📈 <strong>متابعة الأوزان والعدات:</strong> ${esc(state.progressSummary.workoutSummary.insights.summaryText)}</p>`:''}`:''}
-    <button id="review-coach">🔍 اطلب مراجعة فريق المتابعة الآن</button>
-    ${state.lastReview?`<div class="coach-notice" style="margin-top:14px">
-     <strong>📋 خلاصة مراجعة الفريق: ${esc(state.lastReview.message)}</strong>
-     <p>🥗 <strong>أخصائي التغذية:</strong> ${esc(state.lastReview.nutrition.reason)}</p>
-     ${state.lastReview.hydration?`<p>💧 <strong>متابعة شرب المية والترطيب:</strong> ${esc(state.lastReview.hydration.reason)}</p>`:''}
-     ${state.lastReview.volume?`<p>💪 <strong>كابتن التدريب (حجم التمرين):</strong> ${esc(state.lastReview.volume.reason)}</p>`:''}
-     ${state.lastReview.workoutInsights?`<p>📈 <strong>تحليل تطور الأوزان والعدات:</strong> ${esc(state.lastReview.workoutInsights.summaryText)}</p>`:''}
-     <p>🏋️ <strong>التزامك بالتمرين (آخر أسبوعين):</strong> ${state.lastReview.workout.completed} تمرينات مكتملة · ${state.lastReview.workout.partial||0} جزئية · ${state.lastReview.workout.missed} فائتة</p>
-    </div>`:''}
-    ${pendingAdaptations.map(a=>`<article class="meal-card" style="margin-top:12px">
-     <p><strong>${esc(a.reason)}</strong></p>
-     ${a.delta?`<p>التعديل المقترح: ${a.delta>0?'+'+a.delta:a.delta} سعر/يوم بداية من الغد.</p>`:''}
-     <button data-adapt="${a.id}" data-accept="true">✅ موافق على توصية الفريق</button>
-     <button class="secondary" data-adapt="${a.id}" data-accept="false">أكمل على خطتي الحالية</button>
-    </article>`).join('')}
+   <section id="coach-review" ${activeTab==='review'?'':'hidden'}>
+    ${reviewHTML(todayStr,plan,todayPlanDay,pendingAdaptations)}
    </section>
 
    <section id="catalog-coach" class="coach-card" ${activeTab==='catalog'?'':'hidden'}>
@@ -720,6 +847,16 @@ export async function mountPlanner({root,toast}){
   root.querySelector('#confirm-existing-health')?.addEventListener('submit',e=>{e.preventDefault();send('confirm_health',formData(e.target));});
   const reviewBtn=root.querySelector('#review-coach');
   if(reviewBtn)reviewBtn.onclick=()=>send('review',{});
+  root.querySelector('#review-next-day')?.addEventListener('click',async()=>{if(await send('simulation_next',{}))window.scrollTo({top:0,behavior:'smooth'});});
+  root.querySelector('#review-fast-day')?.addEventListener('click',async()=>{
+   if(await send('simulation_fill',{scenario:'consistent'})){
+    if(!state.adaptations?.some(a=>a.status==='pending')&&state.simulation?.day<90){
+     await send('simulation_next',{});
+    }
+    window.scrollTo({top:0,behavior:'smooth'});
+   }
+  });
+  root.querySelector('#review-enter-sim')?.addEventListener('click',()=>switchSimulation(true));
   root.querySelectorAll('[data-adapt]').forEach(b=>b.onclick=()=>send('adaptation',{id:b.dataset.adapt,accept:b.dataset.accept==='true'}));
   root.querySelector('#renew-plan')?.addEventListener('click',()=>send('renew_plan',{}));
   const search=async(offset=0)=>{
