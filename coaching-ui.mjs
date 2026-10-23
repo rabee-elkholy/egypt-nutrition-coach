@@ -3,7 +3,8 @@ import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
 import {householdQuantity,displayPortion} from './planner-household.mjs';
 import {displayMealName,displayIngredientName} from './meal-presentation.mjs';
-import {say,NUTRITION,TRAINING,MOTIVATION,SORENESS,SORENESS_PRE,dailyTips} from './coach-messages.mjs?v=msg1';
+import {say,NUTRITION,TRAINING,MOTIVATION,SORENESS,SORENESS_PRE,dailyTips} from './coach-messages.mjs?v=msg2';
+import {splitReview} from './split-review.mjs';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const round=n=>n==null?'—':Math.round(Number(n)||0);
 const days=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
@@ -120,6 +121,8 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
  const motivation=streak>=3?say(MOTIVATION.streak,S('st'),{n:streak}):comeback?say(MOTIVATION.comeback,S('cb')):say(MOTIVATION.general,S('gm'));
  notes.push({role:'💚 فريق المتابعة',text:motivation});
 
+ const splitAdvice=splitReview(state,todayStr);
+ if(splitAdvice)notes.push({role:'🗓️ مراجعة تقسيمة التمرين',text:splitAdvice.text});
  const diseases=(state.profile?.diseases||[]).filter(x=>x&&x!=='none').map(x=>DISEASE_LABELS[x]||x);
  const injuries=(state.onboarding?.workoutPrefs?.injuries||[]).filter(x=>x&&x!=='none').map(x=>INJURY_LABELS[x]||x);
  const tags=[...diseases,...injuries];
@@ -143,6 +146,7 @@ export async function mountPlanner({root,toast}){
     <button type="button" id="tips-more" class="secondary" style="min-height:34px;padding:4px 12px;font-size:12.5px;margin:0">🔄 معلومات تانية</button>
    </div>
    ${tips.map(t=>`<p style="margin:6px 0;font-size:13.5px;line-height:1.65;color:#3d3415"><span style="display:inline-block;min-width:68px;font-weight:700;color:#6b5a1c">${t.icon} ${t.label}:</span> ${esc(t.text)}</p>`).join('')}
+   <small>معلومات عامة؛ أهداف خطتك وتعليمات مختصك مقدّمة عليها. <a href="https://pubmed.ncbi.nlm.nih.gov/38595233/" target="_blank" rel="noopener noreferrer">دليل تقسيمات التدريب</a></small>
   </section>`;
  };
  let state,busy=false,diaryDate=localDate(),activeTab='nutrition',catalogQuery='',catalogOffset=0,viewVersion=0,catalogRequest=0,foodRequest=0,alternativeRequest=0,submittedForm=null,uncertainWrite=null;
