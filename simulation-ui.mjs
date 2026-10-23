@@ -14,7 +14,7 @@ export function simulationPanel(state, enabled, { compact = false } = {}) {
     return `<aside class="simulation-entry">
       <div>
         <strong>🧪 جرّب رحلة الـ 90 يوم في دقائق (وضع المحاكاة)</strong>
-        <p>سجّل يومك أو اختبر سيناريوهات جاهزة بضغطة واحدة وشوف قرارات المحرك يوم بيوم.</p>
+        <p>سجّل يومك أو اختبر سيناريوهات جاهزة بضغطة واحدة وشوف متابعة وتوصيات الفريق يوم بيوم.</p>
       </div>
       <button id="enter-simulation">افتح وضع المحاكاة</button>
     </aside>`;
@@ -33,8 +33,8 @@ export function simulationPanel(state, enabled, { compact = false } = {}) {
   if (!sim) {
     return `<section class="simulation-hero" id="simulation-welcome">
       <span class="simulation-badge">🧪 مساحة تجربة مستقلة (لا تؤثر على حسابك)</span>
-      <h2>اختبر ذكاء المحرك يوم بيوم</h2>
-      <p class="simulation-caption">ابدأ بشخصية جاهزة بضغطة واحدة أو بنسخة من بياناتك الحالية، وقدّم الأيام لتختبر تعديل السعرات وحجم التمرين والاستشفاء.</p>
+      <h2>اختبر متابعة الفريق يوم بيوم</h2>
+      <p class="simulation-caption">ابدأ بشخصية جاهزة بضغطة واحدة أو بنسخة من بياناتك الحالية، وقدّم الأيام لتختبر توصيات أخصائي التغذية وكابتن التدريب.</p>
       <div class="simulation-actions">
         <button id="simulation-start-sample">🚀 ابدأ بشخصية تجريبية جاهزة</button>
         <button id="simulation-start-current" class="secondary">ابدأ بنسخة من بياناتي</button>
@@ -110,10 +110,10 @@ export function simulationPanel(state, enabled, { compact = false } = {}) {
     </div>
     <p class="simulation-caption">
       ${sim.day < 8
-        ? '📌 <strong>الأسبوع 1 (بناء خط الأساس):</strong> سجل بياناتك أو استخدم الأزرار السريعة بالأسفل.'
+        ? '📌 <strong>الأسبوع الأول (فهم طبيعة جسمك):</strong> سجل يومك أو استخدم الأزرار السريعة بالأسفل.'
         : sim.day < 15
-        ? '📌 <strong>الأسبوع 2 (مراقبة الاتجاه):</strong> عند اليوم 14 يقترح المحرك تعديل السعرات أو المجموعات إذا لزم.'
-        : '✅ <strong>بيانات الأسبوعين مكتملة:</strong> راجع قرار المحرك في تبويب «المراجعة» أو غيّر السيناريو.'}
+        ? '📌 <strong>الأسبوع الثاني (تقييم الاستجابة):</strong> عند اليوم 14 يراجع الفريق أوزانك والتزامك ليقترح أي تعديل.'
+        : '✅ <strong>تقرير الأسبوعين جاهز:</strong> راجع توصية الفريق في تبويب «تقرير الفريق» أو غيّر السيناريو.'}
     </p>
 
     <div class="simulation-tasks">

@@ -1,4 +1,4 @@
-import {simulationPanel} from './simulation-ui.mjs?v=sim2';
+import {simulationPanel} from './simulation-ui.mjs?v=sim3';
 import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -8,6 +8,84 @@ const stateLabels={cooked:'مطبوخ',raw:'نيّ',as_sold:'كما يباع'};
 const regionNames=regions=>(regions||[]).map(r=>MUSCLE_REGIONS[r]||r).join('، ');
 const macroLine=s=>`${round(s.values.energy)} سعر · ${round(s.values.protein)} جرام بروتين`;
 const formData=form=>{const p=Object.fromEntries(new FormData(form));for(const x of form.querySelectorAll('[type=checkbox]'))p[x.name]=x.checked;return p;};
+
+const DISEASE_LABELS={
+ hypertension:'الضغط المرتفع (ملح منخفض)',
+ insulin_resistance:'مقاومة الإنسولين (مؤشر جلايسيمي هادئ)',
+ pcos:'تكيس المبايض (توازن الإنسولين)',
+ ibs:'القولون العصبي (خفيف على الهضم)',
+ cholesterol:'الكوليسترول (دهون صحية)',
+ gout:'النقرس (تقليل البيورين وضبط البروتين)',
+ anemia:'الأنيميا (غني بالحديد)',
+ vitamin_d_deficiency:'دعم فيتامين د والكالسيوم',
+ lactose_intolerance:'حساسية اللاكتوز',
+ favism:'أنيميا الفول (استبعاد الفول)',
+ fatty_liver:'دهون الكبد (تقليل السكريات والدهون المشبعة)'
+};
+const INJURY_LABELS={
+ knee_pain:'حماية الركبة',
+ lower_back_pain:'حماية أسفل الظهر',
+ shoulder_pain:'حماية الكتف',
+ wrist_pain:'حماية الرسغ',
+ ankle_pain:'حماية الكاحل',
+ neck_pain:'حماية الرقبة',
+ hip_pain:'حماية الحوض',
+ diastasis_recti:'حماية جدار البطن'
+};
+
+function buildSpecialistBrief(state,todayStr,todayPlanDay){
+ const plan=state.plans.find(p=>p.id===state.active_plan_id);
+ const ready=state.recovery||{status:'unknown',reasons:[]};
+ const notes=[];
+ // 1. Nutrition Specialist Note
+ const weights=(state.weights||[]).slice().sort((a,b)=>a.date.localeCompare(b.date));
+ const lastW=weights.at(-1),prevW=weights.at(-2);
+ const todayFood=state.foodLogs.find(x=>x.date===todayStr);
+ const yesterdayFood=state.foodLogs.find(x=>x.date===dateOffset(todayStr,-1));
+ if(lastW&&prevW&&lastW.date===todayStr&&(lastW.kg-prevW.kg)>=0.4&&state.profile.goal==='lose'){
+  const diff=Math.round((lastW.kg-prevW.kg)*10)/10;
+  notes.push({role:'🥗 أخصائي التغذية',text:`زيادة الميزان النهاردة (+${diff} كجم) طبيعية جداً ومش دهون خالص؛ دي غالباً احتباس سوائل مؤقت بسبب الأملاح أو مجهود التمرين. مكملين على خطتنا بنفس الهدوء!`});
+ }else if(lastW&&prevW&&lastW.date===todayStr&&(prevW.kg-lastW.kg)>=0.3&&state.profile.goal==='lose'){
+  notes.push({role:'🥗 أخصائي التغذية',text:`نزول هايل في الميزان (${lastW.kg} كجم)! جسمك بيستجيب للخطة بشكل صحي ومنتظم من غير ما نفقد كتلة عضلية.`});
+ }else if(todayFood?.complete){
+  notes.push({role:'🥗 أخصائي التغذية',text:`برافو يا بطل! قفّلت وجبات النهاردة بالتزام ممتاز — جسمك كدة واخد احتياجه المظبوط من البروتين والطاقة.`});
+ }else if(yesterdayFood?.complete&&(yesterdayFood.adherence??100)>=80){
+  notes.push({role:'🥗 أخصائي التغذية',text:`التزامك بوجبات إمبارح كان ممتاز (${yesterdayFood.adherence||100}%)! كمل النهاردة بنفس الهدوء والبساطة.`});
+ }else if(plan){
+  notes.push({role:'🥗 أخصائي التغذية',text:`وجبات يومك جاهزة على مقاس هدفك (${round(plan.targets.energy)} سعر و${round(plan.targets.protein)} جم بروتين) — علّم على كل وجبة تخلصها بلمسة واحدة وهنقفل لك اليوم تلقائياً.`});
+ }
+
+ // 2. Training Captain Note
+ const adjustment=state.sessionAdjustment&&Date.parse(state.sessionAdjustment.expiresAt)>Date.parse(state.serverNow||new Date().toISOString())?state.sessionAdjustment:null;
+ const upgradedEx=state.workoutPlan?.days?.flatMap(d=>d.exercises||[]).find(e=>e.suggestedKg!=null);
+ const todayScheduled=(state.scheduledSessions||[]).find(s=>s.date===todayStr);
+ const todaySession=(state.sessions||[]).find(s=>s.date===todayStr&&s.planId===state.workoutPlan?.id);
+ if(ready.status==='stop'||ready.status==='hold'){
+  notes.push({role:'💪 كابتن التدريب',text:ready.reasons?.[0]||'سلامتك أولاً — ريّح جسمك النهاردة لحد ما تطمنّا عليك.'});
+ }else if(adjustment||['caution','high'].includes(ready.status)){
+  notes.push({role:'💪 كابتن التدريب',text:`لأن نومك كان قليل أو حاسس بإجهاد، خففنا لك حمل التمرين النهاردة علشان تحافظ على نشاطك وتحمي مفاصلك من غير إرهاق.`});
+ }else if(todaySession?.status==='completed'){
+  notes.push({role:'💪 كابتن التدريب',text:`عاش يا بطل! 💪 قفّلت تمرينة النهاردة بالكامل، اهتم بشرب المية ووجبة بعد التمرين للاستشفاء.`});
+ }else if(upgradedEx&&ready.progressionAllowed){
+  notes.push({role:'💪 كابتن التدريب',text:`تطوّر ممتاز! لأن أوزانك وعداتك في آخر تمرينتين كانت قوية وثابتة، الكابتن رفع لك الوزن المستهدف النهاردة في (${upgradedEx.name}) לـ ${upgradedEx.suggestedKg} كجم.`});
+ }else if(todayScheduled){
+  notes.push({role:'💪 كابتن التدريب',text:`عندك النهاردة تمرينة (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) — سجّل أوزانك وعداتك في كل تمرين وهنحسب لك الجلسة تلقائياً.`});
+ }else if(state.workoutPlan){
+  notes.push({role:'💪 كابتن التدريب',text:`النهاردة يوم راحة واستشفاء لعضلاتك — خذ كفايتك من النوم والمية عشان ترجع أقوى الجلسة الجاية.`});
+ }
+
+ const diseases=(state.profile?.diseases||[]).filter(x=>x&&x!=='none').map(x=>DISEASE_LABELS[x]||x);
+ const injuries=(state.onboarding?.workoutPrefs?.injuries||[]).filter(x=>x&&x!=='none').map(x=>INJURY_LABELS[x]||x);
+ const tags=[...diseases,...injuries];
+ return `<section class="coach-card specialist-brief" style="background:linear-gradient(135deg,#f1f8f5 0%,#e6f4ed 100%);border-color:#b7dec9">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+   <strong style="color:#1b4332;font-size:15px">💬 متابعة فريق المتخصصين ليك النهاردة</strong>
+   <span style="font-size:12px;background:#fff;color:#1b4332;padding:3px 10px;border-radius:999px;border:1px solid #cce3d6;font-weight:700">${todayStr}</span>
+  </div>
+  ${notes.map(n=>`<p style="margin:6px 0;font-size:14px;color:#163024;line-height:1.6"><strong>${esc(n.role)}:</strong> ${esc(n.text)}</p>`).join('')}
+  ${tags.length?`<div class="coach-tags" style="margin-top:8px">${tags.map(t=>`<span style="background:#fff;border-color:#b7dec9;color:#1b4332">🩺 مراعاة: ${esc(t)}</span>`).join('')}</div>`:''}
+ </section>`;
+}
 
 export async function mountPlanner({root,toast}){
  let state,busy=false,diaryDate=localDate(),activeTab='nutrition',catalogQuery='',catalogOffset=0,viewVersion=0,catalogRequest=0,foodRequest=0,alternativeRequest=0,submittedForm=null,uncertainWrite=null;
@@ -34,7 +112,7 @@ export async function mountPlanner({root,toast}){
    if(['simulation_reset','simulation_next'].includes(action))diaryDate=state.serverDate;
    if(action==='review'||(action==='simulation_fill'&&state.adaptations?.some(a=>a.status==='pending')))activeTab='review';
    render();for(const id of openDays)root.querySelector(`details[data-day="${id}"]`)?.setAttribute('open','');
-   notice(action==='simulation_next'?`بدأ اليوم ${state.simulation?.day||''} في المحاكاة.`:action==='simulation_fill'?'تم تسجيل سيناريو اليوم ومراجعة الخطة.':action==='review'?state.lastReview?.message||'تمت المراجعة.':'تم الحفظ بنجاح ✓');return true;
+   notice(action==='simulation_next'?`بدأ اليوم ${state.simulation?.day||''} في المحاكاة.`:action==='simulation_fill'?'تم تسجيل سيناريو اليوم ومراجعة الخطة.':action==='review'?state.lastReview?.message||'تمت مراجعة فريق المتابعة.':'تم الحفظ بنجاح ✓');return true;
   }catch(e){
    if(!confirmed&&(!e.status||e.status>=500)){uncertainWrite={key,body,fingerprint,action,payload,submitted,submittedData:uncertainWrite?.submittedData||rejectedDraft};notice('الاتصال انقطع أو الحفظ لم يتأكد. أعد المحاولة بنفس العملية علشان ما تتسجلش مرتين.',true);retryUncertain();}
    else{uncertainWrite=null;if(submitted&&rejectedDraft)drafts.set(submitted,rejectedDraft);if(e.status===409){try{state=await api('state');render();}catch{}}notice(confirmed?'بياناتك اتحفظت؛ حدّث الصفحة لإعادة عرضها.':e.message,true);}return false;
@@ -82,7 +160,7 @@ export async function mountPlanner({root,toast}){
   const needsHealth=draft.serviceTrack==='workouts_only';
   const needsExternal=draft.serviceTrack==='nutrition_only'&&draft.goal==='muscle_gain';
   if(!needsHealth&&!needsExternal)return send('generate',draft);
-  root.innerHTML=`<div id="coach-feedback" role="alert" class="coach-notice" hidden></div><section class="coach-app"><h2>مراجعة جاهزية خطتك</h2><form id="readiness-form" class="coach-card">${needsHealth?'<p>مسار التمرين فقط لم يسألك عن الأمراض. الخطة الآلية الحالية للبالغين الأصحاء بدون إصابة أو موانع صحية للتمرين.</p><label><input name="healthConfirmed" type="checkbox" required> أؤكد عدم وجود حالة صحية أو إصابة حالية تحتاج خطة متخصص.</label>':''}${needsExternal?`<p>لأنك اخترت الأكل فقط مع زيادة العضلات، حدّد أيام تمارين المقاومة اللي بتعملها خارج التطبيق.</p><div class="coach-tags">${days.map((name,index)=>`<label><input type="checkbox" name="external:${index}"> ${name}</label>`).join('')}</div>`:''}<button>إنشاء الخطة</button><button type="button" id="back-onboarding" class="secondary">الرجوع لبياناتي</button></form></section>`;
+  root.innerHTML=`<div id="coach-feedback" role="alert" class="coach-notice" hidden></div><section class="coach-app"><h2>مراجعة جاهزية خطتك مع الفريق</h2><form id="readiness-form" class="coach-card">${needsHealth?'<p>لأنك اخترت مسار التمرين فقط، نستاذنك تؤكد عدم وجود موانع طبية حادة للتمرين.</p><label><input name="healthConfirmed" type="checkbox" required> أؤكد عدم وجود حالة طبية حرجة تمنع التمرين.</label>':''}${needsExternal?`<p>لأنك اخترت الأكل فقط مع هدف بناء العضلات، حدّد أيام تمارين المقاومة اللي بتعملها في الجيم أو البيت علشان نظبط لك البروتين والكارب عليها:</p><div class="coach-tags">${days.map((name,index)=>`<label><input type="checkbox" name="external:${index}"> ${name}</label>`).join('')}</div>`:''}<button>استلام خطتي الآن</button><button type="button" id="back-onboarding" class="secondary">الرجوع لبياناتي</button></form></section>`;
   root.querySelector('#back-onboarding').onclick=onboarding;
   root.querySelector('#readiness-form').onsubmit=e=>{e.preventDefault();const data=formData(e.target);const externalTrainingDays=Object.keys(data).filter(k=>k.startsWith('external:')&&data[k]).map(k=>Number(k.slice(9)));if(needsExternal&&!externalTrainingDays.length){notice('اختار يوم مقاومة واحدًا على الأقل، أو راجع هدفك.',true);return;}send('generate',{...draft,...(needsHealth?{healthConfirmed:data.healthConfirmed}:{}),...(needsExternal?{externalTrainingDays:externalTrainingDays.map(d=>(d+1)%7)}:{})});};
  }
@@ -90,29 +168,29 @@ export async function mountPlanner({root,toast}){
   const entries=(state.foodEntries||[]).filter(x=>x.date===diaryDate),record=state.foodLogs.find(x=>x.date===diaryDate);
   const total=k=>!entries.length&&record?.source!=='entries'?record?.[k]??null:entries.length&&entries.every(e=>e.snapshot.values[k]!=null)?entries.reduce((s,e)=>s+Number(e.snapshot.values[k]),0):null;
   return `<section id="food-diary" class="coach-card">
-   <h3>🍽️ سجل أكلك الفعلي (${diaryDate})</h3>
-   <div class="coach-metrics compact">
+   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <h3 style="margin:0">🍽️ اللي أكلته النهاردة (${diaryDate})</h3>
+    <span style="font-size:12px;padding:4px 10px;border-radius:999px;font-weight:700;background:${record?.complete?'#e6f4ea':'#f0f5f2'};color:#1b4332">${record?.complete?'✅ يومك مكتمل ومحسوب في المتابعة':'⏳ بيتقفل تلقائياً مع تسجيل وجباتك'}</span>
+   </div>
+   <div class="coach-metrics compact" style="margin-top:10px">
     <div><strong>${round(total('energy'))}</strong> سعر مسجل</div>
     <div><strong>${round(total('protein'))}</strong> جم بروتين</div>
-    <div><strong>${record?.complete?'مكتمل ✓':'مفتوح'}</strong> حالة اليوم</div>
    </div>
-   ${record&&record.source!=='entries'?`<p class="coach-notice">اليوم محفوظ كإجمالي ${round(record.energy)} سعر.</p><button id="switch-diary-mode" class="secondary">حوّل اليوم لتسجيل الوجبات</button>`:''}
-   ${entries.map(e=>`<article class="diary-row"><div><strong>${esc(e.snapshot.name)}</strong><p>${SLOTS[e.slot]} · ${macroLine(e.snapshot)}${e.snapshot.is_approximate?' · تقدير يدوي':''}</p></div><button class="secondary" data-delete-food="${e.id}" aria-label="حذف ${esc(e.snapshot.name)}">حذف</button></article>`).join('')||'<p>لسه مفيش وجبات مسجلة لليوم ده. اضغط «✓ أكلت الوجبة» من وجبات اليوم فوق أو ضيف وجبة يدوية.</p>'}
-   <div class="meal-actions">
-    <button id="toggle-complete" ${!entries.length?'disabled':''}>${record?.complete?'إعادة فتح اليوم للتعديل':'✅ قفل اليوم (سجلت كل أكلي)'}</button>
-   </div>
-   <details><summary>➕ إضافة صنف بالجرام أو وجبة خارجية</summary>
-    <label>تاريخ التسجيل <input id="diary-date" type="date" min="${dateOffset(state.serverDate||localDate(),-90)}" max="${state.serverDate||localDate()}" value="${diaryDate}"></label>
-    <form id="food-search"><input name="q" aria-label="اسم الصنف" placeholder="ابحث عن صنف: فول، فراخ، أرز…"><button>بحث عن صنف</button></form>
+   ${record&&record.source!=='entries'?`<button id="switch-diary-mode" class="secondary">تعديل وجبات اليوم بالتفصيل</button>`:''}
+   ${entries.map(e=>`<article class="diary-row"><div><strong>${esc(e.snapshot.name)}</strong><p>${SLOTS[e.slot]} · ${macroLine(e.snapshot)}</p></div><button class="secondary" data-delete-food="${e.id}" aria-label="حذف ${esc(e.snapshot.name)}">حذف</button></article>`).join('')||'<p style="margin:6px 0"><small>علّم على وجباتك من فوق بضغطة على «✓ أكلت الوجبة» وهتتحسب هنا تلقائياً.</small></p>'}
+   <details style="margin-top:8px"><summary>➕ أكلت صنف إضافي أو وجبة من بره الخطة؟</summary>
+    <label>تاريخ اليوم <input id="diary-date" type="date" min="${dateOffset(state.serverDate||localDate(),-90)}" max="${state.serverDate||localDate()}" value="${diaryDate}"></label>
+    <form id="food-search"><input name="q" aria-label="اسم الصنف" placeholder="ابحث عن صنف: فول، بيض، فراخ، أرز…"><button>بحث</button></form>
     <div id="food-search-results"></div>
     <hr style="border:0;border-top:1px solid #e2ece6;margin:12px 0">
     <form id="manual-food" data-diary-date="${diaryDate}" class="coach-grid">
-     <label>اسم الوجبة اليدوية <input name="name" maxlength="120" required></label>
+     <label>اسم الأكلة أو المشروب <input name="name" maxlength="120" placeholder="مثال: قهوة بالحليب / سناك" required></label>
      <label>الوجبة <select name="slot">${Object.entries(SLOTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>
-     <label>السعرات <input name="energy" type="number" min="1" max="10000" required></label>
+     <label>السعرات التقريبية <input name="energy" type="number" min="1" max="10000" required></label>
      <label>البروتين بالجرام (اختياري) <input name="protein" type="number" step="0.1" min="0" max="2000"></label>
-     <button>إضافة الوجبة</button>
+     <button>إضافة لسجل اليوم</button>
     </form>
+    ${entries.length?`<div style="margin-top:10px"><button type="button" id="toggle-complete" class="secondary">${record?.complete?'إعادة فتح اليوم للتعديل':'✅ قفل اليوم يدوياً (لو اكتفيت بأكل النهاردة)'}</button></div>`:''}
    </details>
   </section>`;
  }
@@ -123,8 +201,8 @@ export async function mountPlanner({root,toast}){
    <p><strong>${macroLine(m.snapshot)}</strong></p>
    <ul>${m.snapshot.ingredients.map(x=>`<li>${esc(x.name)}: ${round(x.grams)} جرام <small>(${esc(stateLabels[x.state]||x.state)})</small></li>`).join('')}</ul>
    <div class="meal-actions">
-    ${recorded?'<span class="coach-success">✓ متسجلة في يومك</span>':canLog?`<form class="planned-food" data-meal="${m.id}" data-date="${date}" data-slot="${m.slot}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%"><select name="quantity" aria-label="الكمية" style="flex:1;min-width:120px;margin:0"><option value="1">الحصة كاملة (100%)</option><option value="0.5">نصف الحصة (50%)</option><option value="0.75">ثلاثة أرباع (75%)</option><option value="1.5">حصة ونصف (150%)</option></select><button style="margin:0">✓ أكلت الوجبة</button></form>`:'<small>متاح في يومه</small>'}
-    ${!recorded&&date>=(state.serverDate||localDate())?`<button class="secondary" data-meal-alt="${m.id}">🔄 تبديل الوجبة</button>`:''}
+    ${recorded?'<span class="coach-success">✓ متسجلة في يومك</span>':canLog?`<form class="planned-food" data-meal="${m.id}" data-date="${date}" data-slot="${m.slot}" data-energy="${Number(m.snapshot.values.energy)||0}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%"><select name="quantity" aria-label="الكمية" style="flex:1;min-width:120px;margin:0"><option value="1">أكلت الوجبة كاملة (100%)</option><option value="0.75">ثلاثة أرباع الوجبة (75%)</option><option value="0.5">نصف الوجبة (50%)</option><option value="1.5">حصة ونصف (150%)</option></select><button style="margin:0">✓ أكلت الوجبة</button></form>`:'<small>متاح في يومه</small>'}
+    ${!recorded&&date>=(state.serverDate||localDate())?`<button class="secondary" data-meal-alt="${m.id}">🔄 تبديل بأكلة تانية</button>`:''}
    </div>
   </article>`;
  }
@@ -135,37 +213,46 @@ export async function mountPlanner({root,toast}){
   const regions=e.regions||[];const blocked=regions.some(r=>['hold','caution'].includes(state.recovery?.muscles?.[r]?.status));
   const defaultKg=e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?e.suggestedKg:(last?.sets?.[0]?.kg??(e.loadMode==='bodyweight'?0:20));
   const loggedToday=last&&(last.date||last.at.slice(0,10))===(state.serverDate||localDate());
+  const defaultEffort=last?.sets?.[0]?.rir!=null?String(last.sets[0].rir):String(e.rir);
   return `<article class="meal-card">
    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
     <h3 dir="auto" style="margin:0">${esc(e.name)}</h3>
     <span style="font-size:12px;background:#e6f2ec;color:#1b4332;padding:4px 8px;border-radius:8px;font-weight:700">${esc(regionNames(regions))}</span>
    </div>
-   <p style="margin:6px 0"><strong>المطلوب:</strong> ${sets} مجموعات × ${e.repMin}–${e.repMax} عدات ${['unilateral','alternating'].includes(e.laterality)?'(لكل جانب)':''} · راحة ${e.restSeconds}ث · احتياط RIR ${e.rir}</p>
-   ${adjustment?`<small class="coach-notice" style="display:block">تخفيف مؤقت للاستشفاء (الخطة الأساسية ${e.sets} مجموعات).</small>`:''}
-   ${e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?`<p class="coach-success">⬆️ الحمل المقترح اليوم: ${e.suggestedKg} كجم (${esc(e.progressionReason)})</p>`:''}
-   ${blocked?'<p class="coach-notice">⚠️ العضلات المستهدفة مجهدة؛ ثبت الوزن أو خففه اليوم.</p>':''}
-   ${loggedToday?`<p class="coach-success">✓ تم تسجيل التمرين اليوم (${last.sets.map(s=>`${s.kg}كجم×${s.reps}`).join('، ')})</p>`:''}
+   <p style="margin:6px 0"><strong>المطلوب:</strong> ${sets} مجموعات × ${e.repMin}–${e.repMax} عدات ${['unilateral','alternating'].includes(e.laterality)?'(لكل جانب)':''} · راحة ${e.restSeconds} ثانية</p>
+   ${adjustment?`<small class="coach-notice" style="display:block">💡 كابتن التدريب خفف لك عدد الجولات النهاردة مراعاةً لاستشفائك.</small>`:''}
+   ${e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?`<p class="coach-success">⬆️ توصية الكابتن اليوم: ارفع الوزن لـ ${e.suggestedKg} كجم (${esc(e.progressionReason)})</p>`:''}
+   ${blocked?'<p class="coach-notice">⚠️ العضلة دي فيها إجهاد؛ اثبت على وزن خفيف النهاردة.</p>':''}
+   ${loggedToday?`<p class="coach-success">✓ تم حفظ تمرينك اليوم (${last.sets.map(s=>`${s.kg}كجم×${s.reps}`).join('، ')})</p>`:''}
    <form class="workout-log" data-id="${e.id}" data-day="${day.dayIndex}">
     <input type="hidden" name="date" value="${state.serverDate||localDate()}">
+    <input type="hidden" name="effort_rir" value="${esc(defaultEffort)}">
     <div class="set-rows">
      ${Array.from({length:sets},(_,idx)=>{
       const prevSet=last?.sets?.[idx]||last?.sets?.[0];
-      return `<div class="set-row">
-       <strong>مجموعة ${idx+1}</strong>
+      return `<div class="set-row" style="grid-template-columns:auto 1fr 1fr">
+       <strong>جولة ${idx+1}</strong>
        <label>الوزن (كجم)<input type="number" name="set_kg_${idx}" step="0.5" min="0" max="500" value="${prevSet?.kg??defaultKg}" required></label>
-       <label>العدات<input type="number" name="set_reps_${idx}" min="1" max="100" value="${e.repMax}" required></label>
-       <label>الاحتياط RIR<input type="number" name="set_rir_${idx}" min="0" max="10" value="${e.rir}" required></label>
+       <label>العدات<input type="number" name="set_reps_${idx}" min="1" max="100" value="${prevSet?.reps??e.repMax}" required></label>
       </div>`;
      }).join('')}
     </div>
-    ${['unilateral','alternating'].includes(e.laterality)?'<label><input name="bothSides" type="checkbox" checked> كملت مجموعات الجانبين بنفس الوزن</label>':''}
+    <div style="margin:8px 0">
+     <small style="display:block;margin-bottom:4px;font-weight:700;color:#1b4332">إحساسك بالوزن في آخر عدة:</small>
+     <div class="sim-chip-grid" style="grid-template-columns:repeat(3,1fr)">
+      <button type="button" class="sim-chip effort-chip ${Number(defaultEffort)>=3?'active-chip':''}" data-effort="3">😊 كان خفيف</button>
+      <button type="button" class="sim-chip effort-chip ${Number(defaultEffort)===2?'active-chip':''}" data-effort="${e.rir}">👌 مظبوط وقوي</button>
+      <button type="button" class="sim-chip effort-chip ${Number(defaultEffort)<=1?'active-chip':''}" data-effort="0">🥵 جبت آخري</button>
+     </div>
+    </div>
+    ${['unilateral','alternating'].includes(e.laterality)?'<label><input name="bothSides" type="checkbox" checked> لعبت الجانبين اليمين والشمال بنفس الأداء</label>':''}
     <div class="meal-actions">
      <button type="submit">✓ حفظ أداء التمرين</button>
      <button type="button" class="secondary" data-exercise-alt="${e.id}" data-day="${day.dayIndex}">🔄 تبديل التمرين</button>
     </div>
-    <details style="margin-top:8px"><summary>خيارات متقدمة وشرح التمرين</summary>
-     <label>أصغر زيادة متاحة في الجيم (كجم) <input name="increment" type="number" min="0.1" step="0.1" value="2.5"></label>
-     <label><input name="pain" type="checkbox"> حسيت بألم مفصلي أثناء الحركة</label>
+    <details style="margin-top:8px"><summary>شرح الأداء أو الإبلاغ عن ألم مفصلي</summary>
+     <label><input name="pain" type="checkbox"> حسيت بألم أو نغزة في المفصل أثناء التمرين ده</label>
+     <label>أصغر زيادة متاحة للدمبل/البار (كجم) <input name="increment" type="number" min="0.1" step="0.1" value="2.5"></label>
      <p dir="ltr" class="exercise-description">${esc(e.description)}</p>
     </details>
    </form>
@@ -173,62 +260,93 @@ export async function mountPlanner({root,toast}){
  }
  function workoutHTML(){
   const plan=state.workoutPlan;
-  if(state.eligibility?.status==='needs_health_confirmation')return `<form id="confirm-existing-health" class="coach-card"><h3>تأكيد الجاهزية الصحية</h3><p>نسختك السابقة للتمرين فقط لم تسأل عن الأمراض. أكّد حالتك قبل اقتراح تدريب جديد.</p><label><input name="healthy" type="checkbox" required> لا توجد حالة صحية أو موانع تحتاج خطة متخصص.</label><label><input name="injuryFree" type="checkbox" required> لا توجد إصابة حالية تحتاج خطة علاجية.</label><button>تأكيد ومتابعة خطتي</button></form>`;
-  if(state.eligibility?.needsScheduleConfirmation&&plan)return `<form id="confirm-schedule" class="coach-card"><h3>تأكيد أيام الجلسات المحفوظة</h3><p>اختار اليوم المقصود لكل جلسة:</p>${plan.days.map(d=>`<label>${esc(FOCUS_LABELS[d.focus]||d.focus)} (${d.exercises[0]?esc(d.exercises[0].name):'جلسة'})<select name="day:${d.dayIndex}" required><option value="">اختار اليوم المقصود</option>${days.map((name,index)=>`<option value="${index}">${name}</option>`).join('')}</select></label>`).join('')}<button>تأكيد الأيام</button></form>`;
+  if(state.eligibility?.status==='needs_health_confirmation')return `<form id="confirm-existing-health" class="coach-card"><h3>تأكيد الجاهزية الصحية مع الكابتن</h3><p>أكد عدم وجود موانع صحية حادة قبل متابعة التمارين.</p><label><input name="healthy" type="checkbox" required> لا توجد حالة صحية حادة تمنع التمرين.</label><label><input name="injuryFree" type="checkbox" required> لا توجد إصابة حادة حالية.</label><button>تأكيد ومتابعة خطتي</button></form>`;
+  if(state.eligibility?.needsScheduleConfirmation&&plan)return `<form id="confirm-schedule" class="coach-card"><h3>تأكيد أيام تمرينك في الأسبوع</h3><p>اختار اليوم المقصود لكل جلسة:</p>${plan.days.map(d=>`<label>${esc(FOCUS_LABELS[d.focus]||d.focus)} (${d.exercises[0]?esc(d.exercises[0].name):'جلسة'})<select name="day:${d.dayIndex}" required><option value="">اختار اليوم المقصود</option>${days.map((name,index)=>`<option value="${index}">${name}</option>`).join('')}</select></label>`).join('')}<button>تأكيد الأيام</button></form>`;
   if(!plan)return '<div class="coach-card"><p>مسارك الحالي للأكل فقط بدون جدول تمارين.</p></div>';
-  const todayDayIndex=new Date((state.serverDate||localDate())+'T12:00:00Z').getUTCDay();
-  return `${state.scheduledSessions?.[0]?`<p class="coach-notice">📅 الجلسة القادمة: <strong>${state.scheduledSessions[0].date}</strong> · ${esc(FOCUS_LABELS[state.scheduledSessions[0].focus]||state.scheduledSessions[0].focus)}</p>`:''}
+  const todayStr=state.serverDate||localDate();
+  const todayDayIndex=new Date(todayStr+'T12:00:00Z').getUTCDay();
+  return `${state.scheduledSessions?.[0]?`<p class="coach-notice">📅 تمرينتك الجاية: <strong>${state.scheduledSessions[0].date}</strong> · ${esc(FOCUS_LABELS[state.scheduledSessions[0].focus]||state.scheduledSessions[0].focus)}</p>`:''}
+   ${plan.goalNote?`<p class="coach-notice">🎯 <strong>خطة كابتن التدريب:</strong> ${esc(plan.goalNote)}</p>`:''}
    ${plan.warnings.map(w=>`<p class="coach-notice">${esc(w)}</p>`).join('')}
-   ${plan.days.map((d,idx)=>`<details class="coach-card" data-day="${d.dayIndex}" ${(d.dayIndex===todayDayIndex||idx===0)?'open':''}>
-    <summary>${days[d.dayIndex]} · ${esc(FOCUS_LABELS[d.focus]||d.focus)} · ${d.location==='home'?'🏠 البيت':'🏋️ الجيم'} (${d.estimatedMinutes||d.duration} د)</summary>
+   ${plan.days.map((d,idx)=>{
+    const loggedCount=d.exercises.filter(e=>state.workoutLogs.some(l=>l.date===todayStr&&l.dayIndex===d.dayIndex&&l.exerciseId===e.id&&l.planId===plan.id)).length;
+    const todaySess=state.sessions.find(s=>s.date===todayStr&&s.dayIndex===d.dayIndex&&s.planId===plan.id);
+    return `<details class="coach-card" data-day="${d.dayIndex}" ${(d.dayIndex===todayDayIndex||idx===0)?'open':''}>
+    <summary>${days[d.dayIndex]} · ${esc(FOCUS_LABELS[d.focus]||d.focus)} · ${d.location==='home'?'🏠 البيت':'🏋️ الجيم'} (${d.estimatedMinutes||d.duration} د) ${loggedCount?`· ✓ ${loggedCount}/${d.exercises.length} تمارين`:''}</summary>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+     <span style="font-size:13px;font-weight:700;color:#1b4332">${todaySess?.status==='completed'?'🎉 قفّلت تمرينة اليوم بالكامل ✓':loggedCount?`⏳ سجّلت ${loggedCount} من ${d.exercises.length} تمارين (الجلسة بتتقفل تلقائياً مع حفظ التمارين)`:'سجّل أوزانك وعداتك في التمارين بالأسفل:'}</span>
+    </div>
     ${d.exercises.map(e=>exerciseHTML(e,d)).join('')}
-    <form class="session-log meal-card" data-day="${d.dayIndex}" style="margin-top:12px">
-     <h3>✅ إنهاء الجلسة بالكامل</h3>
-     <input type="hidden" name="date" value="${state.serverDate||localDate()}">
-     <div class="coach-grid">
-      <label>حالة الجلسة <select name="status"><option value="completed">كملت الجلسة ✓</option><option value="partial">كملت جزء منها</option><option value="missed">فاتتني الجلسة</option></select></label>
-      <label>المدة الفعلية (دقائق) <input name="duration" type="number" min="1" max="240" value="${d.estimatedMinutes||d.duration}"></label>
-      <label>صعوبة الجلسة (RPE من 10) <input name="rpe" type="number" min="0" max="10" step="0.5" value="7.5"></label>
-     </div>
-     <button>حفظ إنهاء الجلسة</button>
-    </form>
-    <details style="margin-top:8px"><summary>📅 تأجيل أو نقل موعد الجلسة ليوم آخر</summary>
-     <form class="reschedule-form" data-day="${d.dayIndex}">
-      <label>الموعد البديل <input name="toDate" type="date" min="${state.serverDate||localDate()}" max="${dateOffset(state.serverDate||localDate(),13)}" required></label>
-      <button class="secondary">نقل الجلسة</button>
+    <details style="margin-top:8px"><summary>📅 مقدرتش أتمرن النهاردة؟ (تأجيل الجلسة ليوم تاني)</summary>
+     <form class="reschedule-form" data-day="${d.dayIndex}" style="margin-top:8px">
+      <label>اختار يوم بديل للتمرين خلال الأسبوعين الجايين <input name="toDate" type="date" min="${todayStr}" max="${dateOffset(todayStr,13)}" required></label>
+      <button class="secondary">نقل موعد التمرينة</button>
+     </form>
+     <form class="session-log" data-day="${d.dayIndex}" style="margin-top:8px">
+      <input type="hidden" name="date" value="${todayStr}">
+      <input type="hidden" name="status" value="missed">
+      <input type="hidden" name="duration" value="${d.estimatedMinutes||d.duration}">
+      <input type="hidden" name="rpe" value="7">
+      <button class="secondary">تسجيل إن الجلسة فاتتني هذا الأسبوع</button>
      </form>
     </details>
-   </details>`).join('')}
-   <details class="coach-card"><summary>📊 إجمالي المجموعات الأسبوعية لكل عضلة</summary>
-    <div class="coach-tags">${Object.entries(plan.weeklySets||{}).map(([r,n])=>`<span>${esc(MUSCLE_REGIONS[r]||r)}: ${n} مجموعات</span>`).join('')}</div>
-   </details>`;
+   </details>`;}).join('')}`;
  }
  function recoveryHTML(){
-  const latest=state.checkins.at(-1),muscles=state.recovery?.muscles||{};
+  const todayStr=state.serverDate||localDate();
+  const latest=state.checkins.find(c=>c.date===todayStr)||state.checkins.at(-1);
   const lastWeight=state.weights.at(-1)?.kg??state.profile?.weight??80;
+  const curSleep=latest?.date===todayStr?latest.sleepHours:7.5;
+  const curQual=latest?.date===todayStr?latest.sleepQuality:4;
+  const curFatigue=latest?.date===todayStr?latest.fatigue:2;
+  const curStress=latest?.date===todayStr?(latest.stress??2):2;
+  const hasPainOrSore=latest?.date===todayStr&&(latest.pain||(latest.soreness??0)>=7||Object.values(latest.sorenessByRegion||{}).some(v=>v>=7));
   return `<form id="weight-log" class="coach-card">
-   <h3>⚖️ تسجيل وزن اليوم (${state.serverDate||localDate()})</h3>
-   <input type="hidden" name="date" value="${state.serverDate||localDate()}">
+   <h3>⚖️ ميزان النهاردة (${todayStr})</h3>
+   <p><small>فريق التغذية بيعتمد على متوسط الميزان خلال الأسبوعين مش تغير يوم واحد:</small></p>
+   <input type="hidden" name="date" value="${todayStr}">
    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-    <label style="flex:1;min-width:160px;margin:0">الوزن بالكيلوجرام <input name="kg" type="number" step="0.1" min="35" max="250" value="${lastWeight}" required></label>
-    <button style="margin:0">✓ حفظ الوزن</button>
+    <label style="flex:1;min-width:160px;margin:0">وزنك بالكيلوجرام <input name="kg" type="number" step="0.1" min="35" max="250" value="${lastWeight}" required></label>
+    <button style="margin:0">✓ حفظ الميزان</button>
    </div>
-   ${state.weights.length?`<div class="coach-tags" style="margin-top:10px">${state.weights.slice(-7).reverse().map(w=>`<span>${w.date}: <strong>${w.kg} كجم</strong></span>`).join('')}</div>`:'<p><small>لم تسجل أوزان بعد في هذه الجولة.</small></p>'}
+   ${state.weights.length?`<div class="coach-tags" style="margin-top:10px">${state.weights.slice(-7).reverse().map(w=>`<span>${w.date}: <strong>${w.kg} كجم</strong></span>`).join('')}</div>`:''}
   </form>
   <form id="recovery-log" class="coach-card">
-   <h3>😴 متابعة الاستشفاء والنوم اليومية</h3>
-   <p><small>القيم جاهزة افتراضياً ليوم طبيعي لتسهيل التجربة على الموبايل — عدّلها أو اضغط حفظ مباشرة:</small></p>
-   <div class="coach-grid">
-    ${[['sleepHours','ساعات النوم',0,24,.5,7.5],['sleepQuality','جودة النوم (1 ضعيف — 5 ممتاز)',1,5,1,4],['fatigue','الإجهاد العام (1 قليل — 5 شديد)',1,5,1,2],['stress','الضغط النفسي (1 قليل — 5 شديد)',1,5,1,2]].map(([k,l,min,max,step,def])=>`<label>${l}<input name="${k}" type="number" min="${min}" max="${max}" step="${step}" ${k==='stress'?'':'required'} value="${latest?.date===(state.serverDate||localDate())?esc(latest[k]??def):def}"></label>`).join('')}
+   <h3>😴 طمّن فريق المتابعة على نومك وطاقتك اليوم</h3>
+   <p><small>اختار بلمسة واحدة علشان كابتن التدريب يظبط لك حمل التمرين:</small></p>
+   <input type="hidden" name="sleepHours" value="${curSleep}">
+   <input type="hidden" name="sleepQuality" value="${curQual}">
+   <input type="hidden" name="fatigue" value="${curFatigue}">
+   <input type="hidden" name="stress" value="${curStress}">
+
+   <div style="margin:10px 0">
+    <strong style="font-size:14px;display:block;margin-bottom:6px">1. نمت كام ساعة إمبارح؟</strong>
+    <div class="sim-chip-grid">
+     <button type="button" class="sim-chip sleep-preset ${curSleep<6?'active-chip':''}" data-sleep="5" data-qual="2">😴 أقل من 6 ساعات</button>
+     <button type="button" class="sim-chip sleep-preset ${curSleep>=6&&curSleep<7?'active-chip':''}" data-sleep="6.5" data-qual="3">🙂 6 إلى 7 ساعات</button>
+     <button type="button" class="sim-chip sleep-preset ${curSleep>=7&&curSleep<=8?'active-chip':''}" data-sleep="7.5" data-qual="4">😌 7.5–8 ساعات ✓</button>
+     <button type="button" class="sim-chip sleep-preset ${curSleep>8?'active-chip':''}" data-sleep="8.5" data-qual="5">🌟 أكتر من 8 ساعات</button>
+    </div>
    </div>
-   <details style="margin:10px 0"><summary>تحديد شدة وجع العضلات (DOMS) أو ألم الحركة (اختياري)</summary>
-    <div class="coach-grid">${Object.entries(MUSCLE_REGIONS).map(([key,name])=>`<label>${name} (0-10)<input name="sore:${key}" type="number" min="0" max="10" placeholder="0"><small>${muscles[key]?.soreness==null?'':`آخر متابعة: ${muscles[key].soreness}/10`}</small></label>`).join('')}</div>
-    <label><input type="checkbox" name="pain"> عندي ألم حاد أو ألم مفصلي أثناء الحركة</label>
-    <div class="coach-tags">${Object.entries(MUSCLE_REGIONS).map(([key,name])=>`<label><input type="checkbox" name="pain:${key}"> ${name}</label>`).join('')}</div>
+
+   <div style="margin:12px 0">
+    <strong style="font-size:14px;display:block;margin-bottom:6px">2. طاقتك وإحساس جسمك النهاردة؟</strong>
+    <div class="sim-chip-grid" style="grid-template-columns:repeat(3,1fr)">
+     <button type="button" class="sim-chip energy-preset ${curFatigue<=1?'active-chip':''}" data-fatigue="1" data-stress="1">🔥 فايق ومستعد</button>
+     <button type="button" class="sim-chip energy-preset ${curFatigue>=2&&curFatigue<=3?'active-chip':''}" data-fatigue="2" data-stress="2">👌 يوم عادي</button>
+     <button type="button" class="sim-chip energy-preset ${curFatigue>=4?'active-chip':''}" data-fatigue="4" data-stress="4">😮‍💨 مرهق شوية</button>
+    </div>
+   </div>
+
+   <details style="margin:10px 0" ${hasPainOrSore?'open':''}><summary>🩺 حاسس بشد عضلي قوي أو ألم مفصلي أو دور برد؟ (اضغط للتحديد)</summary>
+    <p style="margin:6px 0"><small>لو في عضلة معينة مرهقة جداً أو بتوجعك، علم عليها علشان الكابتن يخفف حملها اليوم:</small></p>
+    <div class="coach-tags">${Object.entries(MUSCLE_REGIONS).map(([key,name])=>`<label><input type="checkbox" name="pain:${key}"> ألم مفصلي: ${name}</label>`).join('')}</div>
+    <div class="coach-grid" style="margin-top:8px">${Object.entries(MUSCLE_REGIONS).slice(0,6).map(([key,name])=>`<label>شد عضلي ${name} (0-10)<input name="sore:${key}" type="number" min="0" max="10" placeholder="0"></label>`).join('')}</div>
+    <label><input type="checkbox" name="pain"> عندي ألم يمنعني من بعض التمارين اليوم</label>
     <label><input type="checkbox" name="illness"> عندي أعراض برد أو سخونية اليوم</label>
-    <label><input type="checkbox" name="redFlags"> ألم صدر أو دوخة شديدة</label>
+    <label><input type="checkbox" name="redFlags"> أشعر بدوخة شديدة أو ألم بالصدر</label>
    </details>
-   <button>✓ حفظ متابعة الاستشفاء</button>
+   <button>✓ حفظ حالتي اليوم</button>
   </form>`;
  }
  function render(){
@@ -236,7 +354,7 @@ export async function mountPlanner({root,toast}){
   if(simulationMode&&!state.simulation){root.innerHTML='<div class="coach-app" dir="rtl"><div id="coach-feedback" role="alert" class="coach-notice" hidden></div>'+simulationPanel(state,true)+'</div>';wireSimulation();return;}
   if(!state.profile)return onboarding();
   const plan=state.plans.find(p=>p.id===state.active_plan_id),ready=state.recovery||{status:'unknown',reasons:[]};
-  const status={unknown:'في انتظار تسجيل متابعة اليوم',ready:'جاهز للتمرين بحمل كامل ✓',caution:'ينصح بتخفيف المجهود اليوم',high:'إجهاد مرتفع — الأولوية للاستشفاء',hold:'وقّف الحركة المؤلمة فوراً',stop:'أوقف التمرين واطلب تقييم طبي'};
+  const status={unknown:'فريق المتابعة في انتظار تسجيل حالتك اليومية',ready:'جاهزيتك ممتازة للتمرين النهاردة ✓',caution:'كابتن التدريب ينصح بتمرين خفيف اليوم',high:'الأولوية النهاردة للاستشفاء والراحة',hold:'توصية الكابتن: ريّح المنطقة المؤلمة اليوم',stop:'تنبيه طبي: أوقف التمرين واطمئن طبياً'};
   const pendingAdaptations=state.adaptations.filter(a=>a.status==='pending');
   const todayStr=state.serverDate||localDate();
   const todayPlanDay=plan?.days.find(d=>d.date===todayStr)||plan?.days[0];
@@ -247,30 +365,32 @@ export async function mountPlanner({root,toast}){
    ${simulationPanel(state,simulationMode)}
    <header class="coach-heading">
     <div>
-     <small>خطتك الذكية ومتابعتك اليومية</small>
-     <h2>أهلًا ${esc(state.profile.name)} 👋</h2>
-     <p>${esc(status[ready.status])} ${ready.reasons?.length?'· '+ready.reasons.map(esc).join('، '):''}</p>
+     <small>فريق التغذية والتدريب معاك خطوة بخطوة</small>
+     <h2>أهلًا يا ${esc(state.profile.name)} 👋</h2>
+     <p>${esc(status[ready.status])}</p>
     </div>
     <div class="coach-heading-actions">
      <button id="edit-profile" class="secondary">⚙️ بياناتي</button>
-     <button id="export-coach" class="secondary">📥 تصدير</button>
+     <button id="export-coach" class="secondary">📥 ملخصي</button>
     </div>
    </header>
 
+   ${buildSpecialistBrief(state,todayStr,todayPlanDay)}
+
    ${pendingAdaptations.length?`<section class="coach-notice proposal-banner" role="alert">
-    <strong>🔔 اقتراح جديد من المحرك جاهز لموافقتك:</strong>
+    <strong>🔔 توصية جديدة من فريق المتابعة جاهزة لموافقتك:</strong>
     ${pendingAdaptations.map(a=>`<div style="margin-top:8px">
      <p style="margin:0 0 8px"><strong>${esc(a.reason)}</strong> ${a.delta?`(${a.delta>0?'+'+a.delta:a.delta} سعر/يوم بداية من الغد)`:''}</p>
-     <button data-adapt="${a.id}" data-accept="true">✅ موافق على التعديل</button>
-     <button class="secondary" data-adapt="${a.id}" data-accept="false">احتفظ بخطتي الحالية</button>
+     <button data-adapt="${a.id}" data-accept="true">✅ موافق على توصية الفريق</button>
+     <button class="secondary" data-adapt="${a.id}" data-accept="false">أكمل على خطتي الحالية</button>
     </div>`).join('')}
    </section>`:''}
 
    <nav class="coach-tabs" aria-label="أقسام المتابعة">
     <button type="button" class="tab-btn ${activeTab==='nutrition'?'active':''}" data-tab="nutrition"><span class="tab-icon">🥗</span><span>الأكل</span></button>
     <button type="button" class="tab-btn ${activeTab==='workout'?'active':''}" data-tab="workout"><span class="tab-icon">💪</span><span>التمرين</span></button>
-    <button type="button" class="tab-btn ${activeTab==='recovery'?'active':''}" data-tab="recovery"><span class="tab-icon">😴</span><span>الوزن والنوم</span></button>
-    <button type="button" class="tab-btn ${activeTab==='review'?'active':''}" data-tab="review"><span class="tab-icon">📊</span><span>المراجعة ${pendingAdaptations.length?`<b class="tab-badge">${pendingAdaptations.length}</b>`:''}</span></button>
+    <button type="button" class="tab-btn ${activeTab==='recovery'?'active':''}" data-tab="recovery"><span class="tab-icon">😴</span><span>الميزان والنوم</span></button>
+    <button type="button" class="tab-btn ${activeTab==='review'?'active':''}" data-tab="review"><span class="tab-icon">👨‍⚕️</span><span>تقرير الفريق ${pendingAdaptations.length?`<b class="tab-badge">${pendingAdaptations.length}</b>`:''}</span></button>
     <button type="button" class="tab-btn ${activeTab==='catalog'?'active':''}" data-tab="catalog"><span class="tab-icon">📚</span><span>المكتبة</span></button>
    </nav>
 
@@ -281,17 +401,17 @@ export async function mountPlanner({root,toast}){
      <div><strong>${round(plan.targets.carbs)}</strong> جم كارب</div>
      <div><strong>${round(plan.targets.fat)}</strong> جم دهون</div>
     </div>
-    ${plan.effective_from&&(plan.effective_from>todayStr)?`<p class="coach-notice">الأهداف الجديدة تبدأ يوم ${plan.effective_from}. سجل الأيام السابقة محفوظ.</p>`:''}
-    ${plan.targets.forecast?`<p class="coach-notice">🎯 <strong>هدف الوزن: ${plan.targets.forecast.target_weight_kg} كجم</strong> (${plan.targets.forecast.target_delta_kg>0?'+':''}${plan.targets.forecast.target_delta_kg} كجم) · المدى التقديري: <strong>${plan.targets.forecast.estimated_weeks_min}–${plan.targets.forecast.estimated_weeks_max} أسبوع</strong> (${esc(plan.targets.forecast.basis)})</p>`:''}
+    ${plan.effective_from&&(plan.effective_from>todayStr)?`<p class="coach-notice">✨ تعديل أخصائي التغذية الجديد يبدأ من بكرة (${plan.effective_from}).</p>`:''}
+    ${plan.targets.forecast?`<p class="coach-notice">🎯 <strong>خطة الوصول لهدفك (${plan.targets.forecast.target_weight_kg} كجم):</strong> متوقع خلال <strong>${plan.targets.forecast.estimated_weeks_min}–${plan.targets.forecast.estimated_weeks_max} أسبوع</strong> بمعدل صحي ومستدام.</p>`:''}
     ${todayPlanDay?`<div class="coach-card">
-     <h3>📅 وجبات يومك المقترحة (${todayPlanDay.date} · ${round(todayPlanDay.summary.values.energy)} سعر)</h3>
-     <p><small>اضغط «✓ أكلت الوجبة» لتسجيلها في يومك الفعلي بضغطة واحدة:</small></p>
+     <h3>📅 وجبات النهاردة (${todayPlanDay.date} · ${round(todayPlanDay.summary.values.energy)} سعر)</h3>
+     <p><small>اضغط «✓ أكلت الوجبة» جنب كل وجبة تخلصها، أو بدّلها بأكلة تانية على ذوقك:</small></p>
      ${todayPlanDay.meals.map(m=>mealHTML(m,todayPlanDay.date)).join('')}
     </div>`:''}
-    ${otherPlanDays.length?`<details class="coach-card"><summary>🗓️ عرض باقي أيام الأسبوع (${otherPlanDays.length} أيام)</summary>
+    ${otherPlanDays.length?`<details class="coach-card"><summary>🗓️ وجبات باقي أيام الأسبوع (${otherPlanDays.length} أيام)</summary>
      ${otherPlanDays.map(d=>`<details style="margin:10px 0;padding:8px;border:1px solid #e2ece6;border-radius:12px"><summary>${d.date} · ${round(d.summary.values.energy)} سعر</summary>${d.meals.map(m=>mealHTML(m,d.date)).join('')}</details>`).join('')}
     </details>`:''}
-    ${plan.days.at(-1).date<todayStr?'<button id="renew-plan">🔄 جهز أسبوع جديد بنفس اختياراتي</button>':''}`:'<p class="coach-card">مسارك الحالي للتمارين فقط؛ وتقدر تسجل أكلك الفعلي بالأسفل.</p>'}
+    ${plan.days.at(-1).date<todayStr?'<button id="renew-plan">🔄 استلام جدول أكل الأسبوع الجديد</button>':''}`:'<p class="coach-card">مسارك الحالي للتمارين فقط؛ وتقدر تسجل وجباتك اليومية بالأسفل.</p>'}
     ${diaryHTML()}
    </section>
 
@@ -304,35 +424,27 @@ export async function mountPlanner({root,toast}){
    </section>
 
    <section class="coach-card" id="coach-review" ${activeTab==='review'?'':'hidden'}>
-    <h2>📊 مراجعة الأداء والقرارات الذكية</h2>
-    <p>المحرك بيراجع اتجاه الوزن لآخر أسبوعين (مطلوب 3 أوزان على الأقل في كل أسبوع)، واكتمال تسجيل الأكل (10 أيام من 14)، وأداء التمارين والاستشفاء.</p>
+    <h2>👨‍⚕️ تقرير فريق المتابعة (التغذية والتدريب)</h2>
+    <p>فريق التغذية والتدريب بيراجع متوسط وزنك لآخر أسبوعين (بحد أدنى 3 أوزان في كل أسبوع) والتزامك بوجباتك (10 أيام من 14) مع تطور أوزانك في التمرين علشان يقرر هل نكمّل زي ما إحنا ولا نعدّل الخطة.</p>
     ${state.progressSummary?`<div class="coach-tags" style="margin-bottom:10px">
-     <span>⚖️ أوزان الأسبوع السابق: ${state.progressSummary.weightTrend.previous7dCount}/3 (${state.progressSummary.weightTrend.previous7dAvgKg??'—'} كجم)</span>
-     <span>⚖️ أوزان الأسبوع الحالي: ${state.progressSummary.weightTrend.current7dCount}/3 (${state.progressSummary.weightTrend.current7dAvgKg??'—'} كجم)</span>
-     <span>🥗 أيام الأكل المكتملة: ${state.progressSummary.foodCompleteness.completeDays14d}/10</span>
-     <span>🏋️ جلسات مكتملة: ${state.progressSummary.workoutSummary.completed14d}</span>
+     <span>⚖️ ميزان الأسبوع السابق: ${state.progressSummary.weightTrend.previous7dCount}/3 (${state.progressSummary.weightTrend.previous7dAvgKg??'—'} كجم)</span>
+     <span>⚖️ ميزان الأسبوع الحالي: ${state.progressSummary.weightTrend.current7dCount}/3 (${state.progressSummary.weightTrend.current7dAvgKg??'—'} كجم)</span>
+     <span>🥗 أيام الالتزام بالأكل: ${state.progressSummary.foodCompleteness.completeDays14d}/10</span>
+     <span>🏋️ تمرينات مكتملة: ${state.progressSummary.workoutSummary.completed14d}</span>
     </div>`:''}
-    <button id="review-coach">🔍 شغّل مراجعة الأداء الآن</button>
+    <button id="review-coach">🔍 اطلب مراجعة فريق المتابعة الآن</button>
     ${state.lastReview?`<div class="coach-notice" style="margin-top:14px">
-     <strong>النتيجة: ${esc(state.lastReview.message)}</strong>
-     <p>🥗 <strong>التغذية:</strong> ${esc(state.lastReview.nutrition.reason)}</p>
-     ${state.lastReview.nutrition.coverage?`<div class="coach-tags">
-      <span>أوزان الأسبوع السابق: ${state.lastReview.nutrition.coverage.previousWeights}/3</span>
-      <span>أوزان الأسبوع الحالي: ${state.lastReview.nutrition.coverage.currentWeights}/3</span>
-      <span>أيام الأكل المكتملة: ${state.lastReview.nutrition.coverage.completeFoodDays}/10</span>
-     </div>`:''}
-     ${state.lastReview.volume?`<p>💪 <strong>حجم التمرين:</strong> ${esc(state.lastReview.volume.reason)}</p>`:''}
-     <p>🏋️ <strong>ملخص الجلسات (آخر 14 يوم):</strong> ${state.lastReview.workout.completed} مكتملة · ${state.lastReview.workout.partial||0} جزئية · ${state.lastReview.workout.missed} فائتة</p>
+     <strong>📋 خلاصة مراجعة الفريق: ${esc(state.lastReview.message)}</strong>
+     <p>🥗 <strong>أخصائي التغذية:</strong> ${esc(state.lastReview.nutrition.reason)}</p>
+     ${state.lastReview.volume?`<p>💪 <strong>كابتن التدريب:</strong> ${esc(state.lastReview.volume.reason)}</p>`:''}
+     <p>🏋️ <strong>التزامك بالتمرين (آخر أسبوعين):</strong> ${state.lastReview.workout.completed} تمرينات مكتملة · ${state.lastReview.workout.partial||0} جزئية · ${state.lastReview.workout.missed} فائتة</p>
     </div>`:''}
     ${pendingAdaptations.map(a=>`<article class="meal-card" style="margin-top:12px">
      <p><strong>${esc(a.reason)}</strong></p>
-     ${a.delta?`<p>التعديل المقترح: ${a.delta} سعر/يوم (يبدأ من الغد بعد موافقتك).</p>`:''}
-     <button data-adapt="${a.id}" data-accept="true">✅ موافق على التعديل</button>
-     <button class="secondary" data-adapt="${a.id}" data-accept="false">احتفظ بخطتي</button>
+     ${a.delta?`<p>التعديل المقترح: ${a.delta>0?'+'+a.delta:a.delta} سعر/يوم بداية من الغد.</p>`:''}
+     <button data-adapt="${a.id}" data-accept="true">✅ موافق على توصية الفريق</button>
+     <button class="secondary" data-adapt="${a.id}" data-accept="false">أكمل على خطتي الحالية</button>
     </article>`).join('')}
-    <details style="margin-top:16px"><summary>📜 نسخ خطط الأكل السابقة (${state.planRefs?.length||0})</summary>
-     ${(state.planRefs||[]).slice().reverse().map(p=>`<p>${p.start_date} · ${round(p.energy)} سعر · ${esc(p.reason)} <button class="secondary" data-view-plan="${p.id}">عرض</button></p>`).join('')}
-    </details>
    </section>
 
    <section id="catalog-coach" class="coach-card" ${activeTab==='catalog'?'':'hidden'}>
@@ -350,6 +462,15 @@ export async function mountPlanner({root,toast}){
   wire();wireSimulation();restoreDrafts();
  }
  function showDialog(html){const dialog=root.querySelector('#coach-dialog');dialog.querySelector('#dialog-body').innerHTML=html;dialog.showModal();}
+ function shouldAutoCompleteFood(date,addedEnergy=0){
+  const plan=state.plans.find(p=>p.id===state.active_plan_id);
+  const day=plan?.days.find(d=>d.date===date);
+  const target=day?.targets?.energy||plan?.targets?.energy||0;
+  const currentEntries=(state.foodEntries||[]).filter(e=>e.date===date);
+  const currentEnergy=currentEntries.reduce((s,e)=>s+(Number(e.snapshot?.values?.energy)||0),0);
+  if(target>0&&(currentEnergy+addedEnergy)>=target*0.8)return true;
+  return false;
+ }
  function wire(){
   root.querySelectorAll('[data-tab]').forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;render();});
   root.querySelector('#edit-profile').onclick=()=>{if(uncertainWrite){notice('أكد العملية المعلقة الأول.',true);retryUncertain();}else onboarding();};
@@ -363,27 +484,56 @@ export async function mountPlanner({root,toast}){
   const toggleBtn=root.querySelector('#toggle-complete');
   if(toggleBtn)toggleBtn.onclick=()=>send('food_complete',{date:diaryDate,complete:!state.foodLogs.find(x=>x.date===diaryDate)?.complete});
   root.querySelectorAll('[data-delete-food]').forEach(b=>b.onclick=()=>send('food_delete',{id:b.dataset.deleteFood}));
-  root.querySelectorAll('.planned-food').forEach(form=>form.onsubmit=e=>{e.preventDefault();diaryDate=form.dataset.date;send('food_entry',{...formData(form),date:form.dataset.date,slot:form.dataset.slot,mealId:form.dataset.meal,source:'planned'});});
+  root.querySelectorAll('.planned-food').forEach(form=>form.onsubmit=e=>{
+   e.preventDefault();diaryDate=form.dataset.date;
+   const fd=formData(form),qty=Number(fd.quantity||1),mealEnergy=(Number(form.dataset.energy)||0)*qty;
+   send('food_entry',{...fd,date:form.dataset.date,slot:form.dataset.slot,mealId:form.dataset.meal,source:'planned',autoComplete:shouldAutoCompleteFood(form.dataset.date,mealEnergy)});
+  });
   const manualForm=root.querySelector('#manual-food');
-  if(manualForm)manualForm.onsubmit=e=>{e.preventDefault();send('food_entry',{...formData(e.target),date:diaryDate,source:'manual'});};
+  if(manualForm)manualForm.onsubmit=e=>{
+   e.preventDefault();const fd=formData(e.target);
+   send('food_entry',{...fd,date:diaryDate,source:'manual',autoComplete:shouldAutoCompleteFood(diaryDate,Number(fd.energy)||0)});
+  };
   const foodSearchForm=root.querySelector('#food-search');
   if(foodSearchForm)foodSearchForm.onsubmit=async e=>{
-   e.preventDefault();const version=viewVersion,request=++foodRequest;try{const result=await api('foods?q='+encodeURIComponent(new FormData(e.target).get('q')));if(version!==viewVersion||request!==foodRequest)return;root.querySelector('#food-search-results').innerHTML=result.items.map(i=>`<form class="ingredient-log" data-diary-date="${diaryDate}" data-key="${esc(i.key)}"><h4>${esc(i.name)}</h4><p>${round(i.values.energy)} سعر/100 جرام · ${esc(stateLabels[i.state]||i.state)}</p><label>الكمية بالجرام <input name="grams" type="number" min="1" max="2000" required></label><label>الوجبة<select name="slot">${Object.entries(SLOTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><button>إضافة الصنف</button></form>`).join('')||'<p>مفيش نتيجة في مكتبة الأصناف الحالية؛ استخدم الإضافة اليدوية.</p>';restoreDrafts(root.querySelector('#food-search-results'));root.querySelectorAll('.ingredient-log').forEach(form=>form.onsubmit=e=>{e.preventDefault();send('food_entry',{...formData(form),source:'ingredient',key:form.dataset.key,date:diaryDate});});}catch(e){notice(e.message,true);}
+   e.preventDefault();const version=viewVersion,request=++foodRequest;try{const result=await api('foods?q='+encodeURIComponent(new FormData(e.target).get('q')));if(version!==viewVersion||request!==foodRequest)return;root.querySelector('#food-search-results').innerHTML=result.items.map(i=>`<form class="ingredient-log" data-diary-date="${diaryDate}" data-key="${esc(i.key)}" data-kcal100="${Number(i.values.energy)||0}"><h4>${esc(i.name)}</h4><p>${round(i.values.energy)} سعر/100 جرام · ${esc(stateLabels[i.state]||i.state)}</p><label>الكمية بالجرام <input name="grams" type="number" min="1" max="2000" required></label><label>الوجبة<select name="slot">${Object.entries(SLOTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><button>إضافة الصنف</button></form>`).join('')||'<p>مفيش نتيجة في مكتبة الأصناف الحالية؛ استخدم الإضافة اليدوية.</p>';restoreDrafts(root.querySelector('#food-search-results'));root.querySelectorAll('.ingredient-log').forEach(form=>form.onsubmit=e=>{e.preventDefault();const fd=formData(form);const added=(Number(form.dataset.kcal100)||0)*(Number(fd.grams)||0)/100;send('food_entry',{...fd,source:'ingredient',key:form.dataset.key,date:diaryDate,autoComplete:shouldAutoCompleteFood(diaryDate,added)});});}catch(e){notice(e.message,true);}
   };
-  root.querySelectorAll('[data-meal-alt]').forEach(b=>b.onclick=async()=>{const version=viewVersion,request=++alternativeRequest;try{const result=await api('meal-alternatives?mealId='+encodeURIComponent(b.dataset.mealAlt));if(version!==viewVersion||request!==alternativeRequest)return;showDialog('<h2>بدائل بنفس القيود الغذائية</h2>'+result.items.map(a=>`<article><h3>${esc(a.snapshot.name)}</h3><p>${macroLine(a.snapshot)}</p><p>فرق السعرات ${a.energy_delta} · فرق البروتين ${a.protein_delta} جرام</p><button data-replace-meal="${esc(a.snapshot.template_id)}">اختيار البديل</button></article>`).join('')+(result.items.length?'':'<p>مفيش بديل متاح يحقق نفس اختياراتك وحدود النظام.</p>'));root.querySelectorAll('[data-replace-meal]').forEach(choice=>choice.onclick=()=>send('replace_meal',{mealId:b.dataset.mealAlt,templateId:choice.dataset.replaceMeal}));}catch(e){notice(e.message,true);}});
-  root.querySelectorAll('[data-exercise-alt]').forEach(b=>b.onclick=async()=>{const version=viewVersion,request=++alternativeRequest;try{const result=await api('exercise-alternatives?exerciseId='+encodeURIComponent(b.dataset.exerciseAlt)+'&dayIndex='+b.dataset.day);if(version!==viewVersion||request!==alternativeRequest)return;showDialog('<h2>بدائل لنفس الحركة والمعدات</h2>'+result.items.map(a=>`<article><h3 dir="auto">${esc(a.name)}</h3><p dir="ltr">${a.equipment.map(q=>esc(q.equipment_id)).join(', ')}</p><button data-replace-exercise="${a.id}">اختيار التمرين</button></article>`).join('')+(result.items.length?'':'<p>مفيش بديل مناسب متاح بالمعدات دي.</p>'));root.querySelectorAll('[data-replace-exercise]').forEach(choice=>choice.onclick=()=>send('replace_exercise',{dayIndex:Number(b.dataset.day),exerciseId:b.dataset.exerciseAlt,alternativeId:choice.dataset.replaceExercise}));}catch(e){notice(e.message,true);}});
+  root.querySelectorAll('[data-meal-alt]').forEach(b=>b.onclick=async()=>{const version=viewVersion,request=++alternativeRequest;try{const result=await api('meal-alternatives?mealId='+encodeURIComponent(b.dataset.mealAlt));if(version!==viewVersion||request!==alternativeRequest)return;showDialog('<h2>بدائل مقترحة من أخصائي التغذية</h2>'+result.items.map(a=>`<article><h3>${esc(a.snapshot.name)}</h3><p>${macroLine(a.snapshot)}</p><p>فرق السعرات ${a.energy_delta} · فرق البروتين ${a.protein_delta} جرام</p><button data-replace-meal="${esc(a.snapshot.template_id)}">اختيار هذه الوجبة</button></article>`).join('')+(result.items.length?'':'<p>مفيش بديل متاح يحقق نفس اختياراتك وحدود النظام.</p>'));root.querySelectorAll('[data-replace-meal]').forEach(choice=>choice.onclick=()=>send('replace_meal',{mealId:b.dataset.mealAlt,templateId:choice.dataset.replaceMeal}));}catch(e){notice(e.message,true);}});
+  root.querySelectorAll('[data-exercise-alt]').forEach(b=>b.onclick=async()=>{const version=viewVersion,request=++alternativeRequest;try{const result=await api('exercise-alternatives?exerciseId='+encodeURIComponent(b.dataset.exerciseAlt)+'&dayIndex='+b.dataset.day);if(version!==viewVersion||request!==alternativeRequest)return;showDialog('<h2>بدائل مقترحة من كابتن التدريب</h2>'+result.items.map(a=>`<article><h3 dir="auto">${esc(a.name)}</h3><p dir="ltr">${a.equipment.map(q=>esc(q.equipment_id)).join(', ')}</p><button data-replace-exercise="${a.id}">اختيار هذا التمرين</button></article>`).join('')+(result.items.length?'':'<p>مفيش بديل مناسب متاح بالمعدات دي.</p>'));root.querySelectorAll('[data-replace-exercise]').forEach(choice=>choice.onclick=()=>send('replace_exercise',{dayIndex:Number(b.dataset.day),exerciseId:b.dataset.exerciseAlt,alternativeId:choice.dataset.replaceExercise}));}catch(e){notice(e.message,true);}});
+
+  root.querySelectorAll('.effort-chip').forEach(btn=>btn.onclick=()=>{
+   const form=btn.closest('form');if(!form)return;
+   form.querySelector('[name=effort_rir]').value=btn.dataset.effort;
+   form.querySelectorAll('.effort-chip').forEach(c=>c.classList.toggle('active-chip',c===btn));
+  });
+
   root.querySelectorAll('.workout-log').forEach(form=>form.onsubmit=e=>{
    e.preventDefault();const fd=new FormData(form);
+   const rir=fd.get('effort_rir')??2;
    const sets=[];
    for(let idx=0;fd.has(`set_kg_${idx}`);idx++){
-    sets.push({kg:fd.get(`set_kg_${idx}`),reps:fd.get(`set_reps_${idx}`),rir:fd.get(`set_rir_${idx}`)||null,pain:fd.has('pain')});
+    sets.push({kg:fd.get(`set_kg_${idx}`),reps:fd.get(`set_reps_${idx}`),rir,pain:fd.has('pain')});
    }
-   send('workout',{exerciseId:form.dataset.id,dayIndex:Number(form.dataset.day),date:fd.get('date'),sets,bothSides:fd.has('bothSides'),increment:fd.get('increment')});
+   send('workout',{exerciseId:form.dataset.id,dayIndex:Number(form.dataset.day),date:fd.get('date'),sets,bothSides:fd.has('bothSides'),increment:fd.get('increment'),autoSession:true});
   });
   root.querySelectorAll('.session-log').forEach(form=>form.onsubmit=e=>{e.preventDefault();send('session',{...formData(form),dayIndex:Number(form.dataset.day)});});
   root.querySelectorAll('.reschedule-form').forEach(form=>form.onsubmit=e=>{e.preventDefault();send('reschedule',{...formData(form),dayIndex:Number(form.dataset.day)});});
   const weightForm=root.querySelector('#weight-log');
   if(weightForm)weightForm.onsubmit=e=>{e.preventDefault();send('weight',formData(e.target));};
+
+  root.querySelectorAll('.sleep-preset').forEach(btn=>btn.onclick=()=>{
+   const form=btn.closest('form');if(!form)return;
+   form.querySelector('[name=sleepHours]').value=btn.dataset.sleep;
+   form.querySelector('[name=sleepQuality]').value=btn.dataset.qual;
+   form.querySelectorAll('.sleep-preset').forEach(c=>c.classList.toggle('active-chip',c===btn));
+  });
+  root.querySelectorAll('.energy-preset').forEach(btn=>btn.onclick=()=>{
+   const form=btn.closest('form');if(!form)return;
+   form.querySelector('[name=fatigue]').value=btn.dataset.fatigue;
+   form.querySelector('[name=stress]').value=btn.dataset.stress;
+   form.querySelectorAll('.energy-preset').forEach(c=>c.classList.toggle('active-chip',c===btn));
+  });
+
   const recoveryForm=root.querySelector('#recovery-log');
   if(recoveryForm)recoveryForm.onsubmit=e=>{
    e.preventDefault();const p=formData(e.target);p.sorenessByRegion={};p.painRegions=[];for(const key of Object.keys(p)){if(key.startsWith('sore:')){if(p[key]!=='')p.sorenessByRegion[key.slice(5)]=Number(p[key]);delete p[key];}else if(key.startsWith('pain:')){if(p[key])p.painRegions.push(key.slice(5));delete p[key];}}send('recovery',p);
@@ -394,7 +544,6 @@ export async function mountPlanner({root,toast}){
   if(reviewBtn)reviewBtn.onclick=()=>send('review',{});
   root.querySelectorAll('[data-adapt]').forEach(b=>b.onclick=()=>send('adaptation',{id:b.dataset.adapt,accept:b.dataset.accept==='true'}));
   root.querySelector('#renew-plan')?.addEventListener('click',()=>send('renew_plan',{}));
-  root.querySelectorAll('[data-view-plan]').forEach(b=>b.onclick=async()=>{try{const p=await api('plans/'+encodeURIComponent(b.dataset.viewPlan));showDialog(`<h2>نسخة ${esc(p.created_at.slice(0,10))}</h2><p>${round(p.targets.energy)} سعر · ${esc(p.changeReason||'الخطة الأصلية')}</p>`+p.days.map(d=>`<h3>${d.date}</h3>${d.meals.map(m=>`<p>${esc(m.snapshot.name)} · ${macroLine(m.snapshot)}</p>`).join('')}`).join(''));}catch(e){notice(e.message,true);}});
   const search=async(offset=0)=>{
    const form=root.querySelector('#catalog-search'),fd=new FormData(form);catalogQuery=String(fd.get('q'));catalogOffset=offset;const version=viewVersion,request=++catalogRequest;
    try{const d=await api('exercises?q='+encodeURIComponent(catalogQuery)+'&muscle='+encodeURIComponent(fd.get('muscle'))+'&offset='+offset);if(version!==viewVersion||request!==catalogRequest)return;root.querySelector('#catalog-results').innerHTML=`<p>${d.total} نتيجة · ${Math.min(offset+1,d.total)}–${Math.min(offset+30,d.total)}</p>`+d.items.map(x=>`<details><summary>${esc(x.name)}</summary><p>أساسية: ${x.muscles.filter(m=>m.role==='primary').map(m=>esc(m.muscle_id)).join(', ')}</p><p>ثانوية: ${x.muscles.filter(m=>m.role==='secondary').map(m=>esc(m.muscle_id)).join(', ')||'غير مسجلة'}</p><p dir="ltr" class="exercise-description">${esc(x.description)}</p><p dir="ltr">${x.equipment.map(q=>esc(q.equipment_id)).join(', ')}</p><small>${esc(x.source)} · ${esc(x.author)} · ${esc(x.license)}</small></details>`).join('')+`<div>${offset?'<button id="catalog-prev" class="secondary">السابق</button>':''}${d.nextOffset!=null?'<button id="catalog-next">التالي</button>':''}</div>`;root.querySelector('#catalog-prev')?.addEventListener('click',()=>search(Math.max(0,catalogOffset-30)));root.querySelector('#catalog-next')?.addEventListener('click',()=>search(d.nextOffset));}catch(e){notice(e.message,true);}

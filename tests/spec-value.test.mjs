@@ -158,3 +158,87 @@ test('SPEC-ELIGIBILITY-AND-PROGRESS: evaluateEligibility and progressSummary ret
   assert.equal(summary.foodCompleteness.requiredDays14d, 10);
   assert.equal(typeof summary.weightTrend.note, 'string');
 });
+
+test('SPEC-WELLNESS-BRIDGE: supported wellness conditions and mild joint discomforts generate tailored plans while clinical diabetes still requires review', () => {
+  const elig = evaluateEligibility({
+    age: 32,
+    weight: 85,
+    height: 170,
+    sex: 'female',
+    goal: 'lose',
+    serviceTrack: 'nutrition_and_workouts',
+    diseases: ['insulin_resistance', 'pcos', 'ibs', 'favism'],
+    injuries: ['knee_pain', 'lower_back_pain']
+  });
+  assert.equal(elig.status, 'eligible');
+  assert.deepEqual(elig.supportedAdaptations.diseases, ['insulin_resistance', 'pcos', 'ibs', 'favism']);
+  assert.deepEqual(elig.supportedAdaptations.injuries, ['knee_pain', 'lower_back_pain']);
+
+  const state = generate(empty(), {
+    name: 'سارة',
+    age: 32,
+    weight: 85,
+    height: 170,
+    sex: 'female',
+    goal: 'lose',
+    serviceTrack: 'nutrition_and_workouts',
+    dietType: 'balanced',
+    diseases: ['insulin_resistance', 'pcos', 'ibs', 'favism'],
+    injuries: ['knee_pain', 'lower_back_pain'],
+    selectedWorkoutDays: [1, 3, 5]
+  }, 'wellness-bridge');
+
+  assert.deepEqual(state.profile.diseases, ['insulin_resistance', 'pcos', 'ibs', 'favism']);
+  assert.ok(state.preferences.excludedGroups.includes('fava'));
+  assert.deepEqual(state.onboarding.workoutPrefs.injuries, ['knee_pain', 'lower_back_pain']);
+  assert.ok(state.workoutPlan.goalNote.includes('حماية العضلات'));
+});
+
+test('SPEC-AUTO-COMPLETION: logging all planned meals auto-completes food day and autoSession completes workout session behind the scenes', () => {
+  let s = generate(empty(), {
+    name: 'كريم',
+    age: 29,
+    weight: 82,
+    height: 178,
+    sex: 'male',
+    goal: 'lose',
+    serviceTrack: 'nutrition_and_workouts',
+    dietType: 'balanced',
+    selectedWorkoutDays: [1, 3, 5]
+  }, 'auto-complete');
+
+  const todayDay = s.plans[0].days.find(d => d.date === today()) || s.plans[0].days[0];
+  for (let i = 0; i < todayDay.meals.length; i++) {
+    const meal = todayDay.meals[i];
+    s = command(s, 'food_entry', {
+      date: todayDay.date,
+      source: 'planned',
+      mealId: meal.id,
+      slot: meal.slot,
+      quantity: 1
+    });
+    const log = s.foodLogs.find(d => d.date === todayDay.date);
+    if (i < todayDay.meals.length - 1) {
+      assert.equal(log.complete, false);
+    } else {
+      assert.equal(log.complete, true, 'day auto-completes once all planned meals are logged');
+    }
+  }
+
+  const wDay = s.workoutPlan.days[0];
+  for (let i = 0; i < wDay.exercises.length; i++) {
+    const ex = wDay.exercises[i];
+    s = command(s, 'workout', {
+      dayIndex: wDay.dayIndex,
+      exerciseId: ex.id,
+      date: today(),
+      sets: Array.from({ length: ex.sets }, () => ({ kg: 20, reps: ex.repMax, rir: ex.rir, pain: false })),
+      bothSides: true,
+      increment: 2.5,
+      autoSession: true
+    });
+  }
+  const sess = s.sessions.find(x => x.date === today() && x.dayIndex === wDay.dayIndex);
+  assert.ok(sess, 'session is auto-created behind the scenes');
+  assert.equal(sess.status, 'completed');
+});

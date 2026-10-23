@@ -15,11 +15,11 @@ export function plannedEnergyForDate(s,date){
 export function plannedMeal(s,id){const plan=activePlan(s);const day=plan?.days.find(d=>d.meals.some(m=>m.id===id));const meal=day?.meals.find(m=>m.id===id);if(!meal)throw Error('الوجبة غير موجودة في الخطة الحالية.');return {plan,day,meal};}
 function freezeSnapshot(snapshot){return {name:snapshot.name,values:structuredClone(snapshot.values),estimated_values:snapshot.estimated_values,template_id:snapshot.template_id,ingredients:(snapshot.ingredients||[]).map(i=>({key:i.key,name:i.name,grams:i.grams,state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values_per_100g})),is_approximate:!!snapshot.is_approximate};}
 export function dayTotals(s,date){
- const entries=(s.foodEntries||[]).filter(e=>e.date===date);
- const totals=Object.fromEntries(metrics.map(k=>[k,entries.length&&entries.every(e=>e.snapshot.values[k]!=null)?Math.round(entries.reduce((sum,e)=>sum+Number(e.snapshot.values[k]),0)*100)/100:null]));
+ const dayEntries=(s.foodEntries||[]).filter(e=>e.date===date);
+ const totals=Object.fromEntries(metrics.map(k=>[k,dayEntries.length&&dayEntries.every(e=>e.snapshot.values[k]!=null)?Math.round(dayEntries.reduce((sum,e)=>sum+Number(e.snapshot.values[k]),0)*100)/100:null]));
  const day=s.foodLogs.find(d=>d.date===date);
- if(!entries.length&&day&&day.source!=='entries')for(const key of metrics)totals[key]=day[key]??null;
- return {date,entries,totals,complete:!!day?.complete,planEnergy:day?.plannedEnergy??plannedEnergyForDate(s,date)};
+ if(!dayEntries.length&&day&&day.source!=='entries')for(const key of metrics)totals[key]=day[key]??null;
+ return {date,entries:dayEntries,totals,complete:!!day?.complete,planEnergy:day?.plannedEnergy??plannedEnergyForDate(s,date)};
 }
 function refreshDay(s,date){
  const day=s.foodLogs.find(d=>d.date===date)||{date,complete:false};
@@ -33,11 +33,11 @@ export function foodCommand(s,action,p){
   const date=dateForLog(p.date||clockDate());if(!['planned','ingredient','manual'].includes(p.source))throw Error('مصدر الوجبة غير صالح.');
   if(!['breakfast','lunch','dinner','snack'].includes(p.slot))throw Error('حدد الوجبة.');
   const previous=s.foodLogs.find(d=>d.date===date);if(previous&&previous.source!=='entries')throw Error('اليوم مسجل كإجمالي؛ حوّله صراحةً إلى السجل التفصيلي قبل إضافة وجبات.');
-  let snapshot,mealId=null,planId=null,quantity;
+  let snapshot,mealId=null,planId=null,quantity,plannedDay=null;
   if(p.source==='planned'){
    const {plan,day,meal}=plannedMeal(s,p.mealId);if(day.date!==date)throw Error('التاريخ لا يطابق الوجبة المخططة.');if(p.slot!==meal.slot)throw Error('نوع الوجبة لا يطابق الخطة.');
    if(s.foodEntries.some(e=>e.date===date&&e.mealId===meal.id))throw Error('الوجبة دي متسجلة بالفعل؛ احذف التسجيل قبل تصحيح الكمية.');
-   quantity=number(p.quantity,.1,4,'نسبة الحصة');snapshot=scaleSnapshot(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;
+   quantity=number(p.quantity,.1,4,'نسبة الحصة');snapshot=scaleSnapshot(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;plannedDay=day;
   }else if(p.source==='ingredient'){
    const i=typeof p.key==='string'&&Object.hasOwn(library.ingredients,p.key)?library.ingredients[p.key]:null;if(!i)throw Error('الصنف غير موجود.');quantity=number(p.grams,1,2000,'الكمية بالجرام');
    snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
@@ -47,7 +47,9 @@ export function foodCommand(s,action,p){
    if(snapshot.values.energy==null||Number(snapshot.values.energy)<=0)throw Error('السعرات الفعلية مطلوبة للوجبة اليدوية.');
   }
   s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,source:p.source,mealId,planId,quantity,at:isoNow(),snapshot:freezeSnapshot(snapshot)});
-  refreshDay(s,date);s.foodLogs.find(d=>d.date===date).complete=false;
+  refreshDay(s,date);
+  const allPlannedLogged=plannedDay&&plannedDay.meals.length>0&&plannedDay.meals.every(m=>s.foodEntries.some(e=>e.date===date&&e.mealId===m.id));
+  s.foodLogs.find(d=>d.date===date).complete=Boolean(p.autoComplete===true||allPlannedLogged);
  }else if(action==='food_switch_to_entries'){
   const date=dateForLog(p.date),previous=s.foodLogs.find(d=>d.date===date);
   if(p.confirm!==true||!previous||previous.source==='entries')throw Error('تأكيد تحويل إجمالي اليوم إلى تسجيل تفصيلي مطلوب.');
@@ -55,7 +57,6 @@ export function foodCommand(s,action,p){
   s.foodLogs=s.foodLogs.filter(d=>d.date!==date);refreshDay(s,date);
  }else if(action==='food_delete'){
   const entry=s.foodEntries.find(e=>e.id===p.id);if(!entry)throw Error('التسجيل غير موجود.');s.foodEntries=s.foodEntries.filter(e=>e.id!==p.id);refreshDay(s,entry.date);
-  // A changed diary must be reviewed before being called complete again.
   s.foodLogs.find(d=>d.date===entry.date).complete=false;
  }else if(action==='food_complete'){
   const date=dateForLog(p.date);if(typeof p.complete!=='boolean')throw Error('حدد اكتمال اليوم.');

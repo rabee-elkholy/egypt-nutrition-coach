@@ -281,7 +281,7 @@
 }
 .set-row {
   display: grid;
-  grid-template-columns: 54px 1fr 1fr 1fr;
+  grid-template-columns: 54px 1fr 1fr;
   gap: 8px;
   align-items: center;
   background: #f5f9f6;
@@ -515,6 +515,11 @@
   background: #dff0e6;
   border-color: #7ab392;
 }
+.sim-chip-grid button.sim-chip.active-chip {
+  background: #1f5c3f;
+  color: #ffffff;
+  border-color: #1f5c3f;
+}
 
 .simulation-next {
   display: flex;
@@ -597,7 +602,7 @@
     padding: 7px 2px;
   }
   .set-row {
-    grid-template-columns: 44px 1fr 1fr 1fr;
+    grid-template-columns: 44px 1fr 1fr;
     gap: 6px;
     padding: 6px 8px;
   }
