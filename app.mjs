@@ -1,4 +1,11 @@
-import {mountPlanner} from './coaching-ui.mjs';
+// Adaptive coaching UI needs the Worker /v1 API (D1). On static hosting (GitHub Pages)
+// that API does not exist, so fall back to the local-storage planner.
+async function mountPlanner(opts){
+  let hasBackend=false;
+  try{const r=await fetch('/v1/state',{headers:{Accept:'application/json'}});hasBackend=(r.headers.get('content-type')||'').includes('application/json');}catch{hasBackend=false;}
+  const mod=hasBackend?await import('./coaching-ui.mjs'):await import('./planner-ui.mjs');
+  return mod.mountPlanner(opts);
+}
 import {planningFilter,SLOTS,BUDGETS} from './planning-tags.mjs';
 import {portionInfo,sourceVolume,volumeGrams} from './portions.mjs';
 import {
