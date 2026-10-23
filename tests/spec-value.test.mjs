@@ -242,3 +242,22 @@ test('SPEC-AUTO-COMPLETION: logging all planned meals auto-completes food day an
   assert.ok(sess, 'session is auto-created behind the scenes');
   assert.equal(sess.status, 'completed');
 });
+
+test('SPEC-HOUSEHOLD-PORTIONS: all 86 ingredients have rounded household labels and 1.2x snaps cleanly without decimals', async () => {
+  const { householdQuantity, displayPortion } = await import('../planner-household.mjs');
+  for (const [key, item] of Object.entries(library.ingredients)) {
+    const unit = displayPortion(item);
+    assert.ok(unit, `ingredient ${key} has a displayPortion`);
+    const sampleGrams = String(Math.round(Number(unit.grams) * 1.2));
+    const h = householdQuantity({ ...item, grams: sampleGrams });
+    assert.ok(h && h.label, `ingredient ${key} produces a household label`);
+    assert.ok(!/\d+\.\d+/.test(h.label), `label for ${key} (${h.label}) has no decimal numbers`);
+    // Also works when portions array is omitted (e.g. frozen diary entry)
+    const fallbackH = householdQuantity({ key, grams: sampleGrams });
+    assert.equal(fallbackH?.label, h.label);
+  }
+  // 1.2 of a medium tomato (~148g vs 123g) rounds cleanly to 1 medium tomato ("حبة متوسطة")
+  assert.equal(householdQuantity({ ...library.ingredients.tomato, grams: '148' }).label, 'حبة متوسطة');
+  // 1.35 of a medium tomato (~166g vs 123g) rounds cleanly to 1.5 ("حبة ونص متوسطة")
+  assert.equal(householdQuantity({ ...library.ingredients.tomato, grams: '166' }).label, 'حبة ونص متوسطة');
+});
