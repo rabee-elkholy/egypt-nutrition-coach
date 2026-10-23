@@ -3,6 +3,7 @@ import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
 import {householdQuantity,displayPortion} from './planner-household.mjs';
 import {displayMealName,displayIngredientName} from './meal-presentation.mjs';
+import {say,NUTRITION,TRAINING,MOTIVATION,SORENESS,SORENESS_PRE,dailyTips} from './coach-messages.mjs?v=msg1';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const round=n=>n==null?'—':Math.round(Number(n)||0);
 const days=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
@@ -62,17 +63,18 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
  const lastW=weights.at(-1),prevW=weights.at(-2);
  const todayFood=state.foodLogs.find(x=>x.date===todayStr);
  const yesterdayFood=state.foodLogs.find(x=>x.date===dateOffset(todayStr,-1));
+ const S=k=>todayStr+':'+k;
+ const W={cups:hyd?.todayCups||0,target:hyd?.targetCups||10,liters:hyd?.targetLiters||2.5,waterLow};
  if(lastW&&prevW&&lastW.date===todayStr&&(lastW.kg-prevW.kg)>=0.4&&state.profile.goal==='lose'){
-  const diff=Math.round((lastW.kg-prevW.kg)*10)/10;
-  notes.push({role:'🥗 أخصائي التغذية',text:`زيادة الميزان النهاردة (+${diff} كجم) طبيعية جداً ومش دهون خالص؛ دي غالباً احتباس سوائل مؤقت${waterLow?` (خصوصاً إن شرب المية اليوم لسه ${hyd.todayCups}/${hyd.targetCups} كوب)`:' بسبب الأملاح أو مجهود التمرين'}. اشرب ميتك كاملة ومكملين على خطتنا بنفس الهدوء!`});
+  notes.push({role:'🥗 أخصائي التغذية',text:say(NUTRITION.weightUp,S('wu'),{...W,diff:Math.round((lastW.kg-prevW.kg)*10)/10})});
  }else if(lastW&&prevW&&lastW.date===todayStr&&(prevW.kg-lastW.kg)>=0.3&&state.profile.goal==='lose'){
-  notes.push({role:'🥗 أخصائي التغذية',text:`نزول هايل في الميزان (${lastW.kg} كجم)! جسمك بيستجيب للخطة بشكل صحي ومنتظم من غير ما نفقد كتلة عضلية.`});
+  notes.push({role:'🥗 أخصائي التغذية',text:say(NUTRITION.weightDown,S('wd'),{...W,kg:lastW.kg})});
  }else if(todayFood?.complete){
-  notes.push({role:'🥗 أخصائي التغذية',text:hyd&&hyd.todayCups>=hyd.targetCups?`برافو يا بطل! قفّلت وجبات النهاردة وهدف شرب المية (${hyd.targetCups} أكواب) بالتزام ممتاز — جسمك كدة في أفضل حالة حرق واستشفاء.`:`برافو يا بطل! قفّلت وجبات النهاردة بالتزام ممتاز — باقي تكمل هدف شرب المية (${hyd?.todayCups||0} من ${hyd?.targetCups||10} كوب) علشان الهضم والاستشفاء.`});
+  notes.push({role:'🥗 أخصائي التغذية',text:say(W.cups>=W.target?NUTRITION.foodCompleteWaterDone:NUTRITION.foodComplete,S('fc'),W)});
  }else if(yesterdayFood?.complete&&(yesterdayFood.adherence??100)>=80){
-  notes.push({role:'🥗 أخصائي التغذية',text:`التزامك بوجبات إمبارح كان ممتاز (${yesterdayFood.adherence||100}%)! كمل النهاردة بنفس الهدوء وما تنساش تسجل أكواب المية (${hyd?.targetLiters||2.5} لتر اليوم).`});
+  notes.push({role:'🥗 أخصائي التغذية',text:say(NUTRITION.yesterdayGood,S('yg'),{...W,adh:yesterdayFood.adherence||100})});
  }else if(plan){
-  notes.push({role:'🥗 أخصائي التغذية',text:`وجبات يومك جاهزة على مقاس هدفك (${round(plan.targets.energy)} سعر و${round(plan.targets.protein)} جم بروتين) مع هدف مية ${hyd?.targetCups||10} أكواب (${hyd?.targetLiters||2.5} لتر) — علّم على كل وجبة وكوب مية بلمسة واحدة.`});
+  notes.push({role:'🥗 أخصائي التغذية',text:say(NUTRITION.planReady,S('pr'),{...W,kcal:round(plan.targets.energy),protein:round(plan.targets.protein)})});
  }
 
  // 2. Training Captain Note
@@ -81,32 +83,42 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
  const insights=state.progressSummary?.workoutSummary?.insights;
  const todayScheduled=(state.scheduledSessions||[]).find(s=>s.date===todayStr);
  const todaySession=(state.sessions||[]).find(s=>s.date===todayStr&&s.planId===state.workoutPlan?.id);
- const nextScheduled=(state.scheduledSessions||[])[0];
+ const nextScheduled=(state.scheduledSessions||[]).find(s=>s.date>todayStr)||(state.scheduledSessions||[])[0];
+ const nextName=nextScheduled?days[nextScheduled.dayIndex]:'';
  const hasTrainedBefore=(state.workoutLogs||[]).length>0||(state.sessions||[]).some(s=>s.status==='completed'||s.status==='partial');
+ const focus=todayScheduled?(FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus):'';
  if(ready.status==='stop'||ready.status==='hold'){
   notes.push({role:'💪 كابتن التدريب',text:ready.reasons?.[0]||'سلامتك أولاً — ريّح جسمك النهاردة لحد ما تطمنّا عليك.'});
  }else if(adjustment||['caution','high'].includes(ready.status)){
-  notes.push({role:'💪 كابتن التدريب',text:`لأن نومك كان قليل أو حاسس بإجهاد، خففنا لك حمل التمرين النهاردة علشان تحافظ على نشاطك وتحمي مفاصلك من غير إرهاق.`});
+  notes.push({role:'💪 كابتن التدريب',text:say(TRAINING.caution,S('ca'))});
  }else if(insights?.loadDecreases?.length&&todaySession){
-  const dec=insights.loadDecreases[0];
-  notes.push({role:'💪 كابتن التدريب',text:`لاحظنا إنك قللت الوزن في (${dec.name}) من ${dec.fromKg} إلى ${dec.toKg} كجم — خطوة صح لحماية مفاصلك وإتقان الأداء، وفريق المتابعة هيحافظ على سعراتك كاملة لدعم استشفائك.`});
+  const d=insights.loadDecreases[0];
+  notes.push({role:'💪 كابتن التدريب',text:say(TRAINING.loadDecrease,S('ld'),{name:d.name,from:d.fromKg,to:d.toKg})});
  }else if(insights?.loadIncreases?.length&&todaySession){
-  const inc=insights.loadIncreases[0];
-  notes.push({role:'💪 كابتن التدريب',text:`عاش يا بطل! 💪 رفعت وزنك في (${inc.name}) من ${inc.fromKg} إلى ${inc.toKg} كجم (+${inc.deltaKg} كجم) — التطور ده متسجل في ملفك وبيدعم الحفاظ على العضلات.`});
+  const d=insights.loadIncreases[0];
+  notes.push({role:'💪 كابتن التدريب',text:say(TRAINING.loadIncrease,S('li'),{name:d.name,from:d.fromKg,to:d.toKg,delta:d.deltaKg})});
  }else if(insights?.repIncreases?.length&&todaySession){
-  const rep=insights.repIncreases[0];
-  notes.push({role:'💪 كابتن التدريب',text:`تطور ممتاز في القوة والتحمل! زودت عداتك في (${rep.name}) من ${rep.fromReps} إلى ${rep.toReps} عدة عند وزن ${rep.kg} كجم.`});
+  const d=insights.repIncreases[0];
+  notes.push({role:'💪 كابتن التدريب',text:say(TRAINING.repIncrease,S('ri'),{name:d.name,from:d.fromReps,to:d.toReps,kg:d.kg})});
  }else if(todaySession?.status==='completed'){
-  notes.push({role:'💪 كابتن التدريب',text:`عاش يا بطل! 💪 قفّلت تمرينة النهاردة بالكامل، اهتم بشرب المية (${hyd?.targetCups||10} أكواب) ووجبة بعد التمرين للاستشفاء.`});
+  notes.push({role:'💪 كابتن التدريب',text:say(TRAINING.sessionDone,S('sd'),W)});
  }else if(upgradedEx&&ready.progressionAllowed){
-  notes.push({role:'💪 كابتن التدريب',text:`تطوّر ممتاز! لأن أوزانك وعداتك في آخر تمرينتين كانت قوية وثابتة، الكابتن رفع لك الوزن المستهدف النهاردة في (${upgradedEx.name}) لـ ${upgradedEx.suggestedKg} كجم.`});
+  notes.push({role:'💪 كابتن التدريب',text:say(TRAINING.upgrade,S('up'),{name:upgradedEx.name,kg:upgradedEx.suggestedKg})});
  }else if(todayScheduled){
-  notes.push({role:'💪 كابتن التدريب',text:hasTrainedBefore?`عندك النهاردة تمرينة (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) — هتلاقي اقتراح الأوزان والعدات والمجموعات جاهز لكل تمرين وتقدر تزود أو تقلل بلمسة واحدة.`:`أهلاً بيك في أول يوم يا بطل! تمرينتك الأولى (${FOCUS_LABELS[todayScheduled.focus]||todayScheduled.focus}) جاهزة النهاردة في تبويب «التمرين» مع أوزان وعدات مقترحة كبداية آمنة.`});
+  notes.push({role:'💪 كابتن التدريب',text:say(hasTrainedBefore?TRAINING.scheduled:TRAINING.firstScheduled,S('sc'),{focus})});
  }else if(state.workoutPlan&&!hasTrainedBefore){
-  notes.push({role:'💪 كابتن التدريب',text:`أهلاً بيك في أول يوم يا بطل! خطة تمرينك جاهزة بالكامل في تبويب «التمرين» مع أوزان وعدات مقترحة — تقدر تبدأ أول جلسة ليك النهاردة فوراً، أو في مواعيدك بدايةً من يوم ${nextScheduled?days[nextScheduled.dayIndex]:'التمرين القادم'}.`});
+  notes.push({role:'💪 كابتن التدريب',text:say(TRAINING.firstNoSchedule,S('fn'),{next:nextName||'التمرين القادم'})});
  }else if(state.workoutPlan){
-  notes.push({role:'💪 كابتن التدريب',text:`النهاردة يوم راحة واستشفاء لعضلاتك بعد مجهود التمرين — خذ كفايتك من النوم والمية${nextScheduled?` استعداداً لتمرينة يوم ${days[nextScheduled.dayIndex]}`:''}.`});
+  notes.push({role:'💪 كابتن التدريب',text:say(TRAINING.rest,S('rs'),{next:nextName})});
  }
+
+ // 3. Team encouragement (streak / comeback / general)
+ const completeDates=new Set((state.foodLogs||[]).filter(x=>x.complete).map(x=>x.date));
+ let streak=0;for(let d=completeDates.has(todayStr)?todayStr:dateOffset(todayStr,-1);completeDates.has(d);d=dateOffset(d,-1))streak++;
+ const lastActivity=[...(state.foodLogs||[]).map(x=>x.date),...(state.weights||[]).map(x=>x.date),...(state.checkins||[]).map(x=>x.date)].filter(d=>d<todayStr).sort().at(-1);
+ const comeback=lastActivity&&lastActivity<dateOffset(todayStr,-2);
+ const motivation=streak>=3?say(MOTIVATION.streak,S('st'),{n:streak}):comeback?say(MOTIVATION.comeback,S('cb')):say(MOTIVATION.general,S('gm'));
+ notes.push({role:'💚 فريق المتابعة',text:motivation});
 
  const diseases=(state.profile?.diseases||[]).filter(x=>x&&x!=='none').map(x=>DISEASE_LABELS[x]||x);
  const injuries=(state.onboarding?.workoutPrefs?.injuries||[]).filter(x=>x&&x!=='none').map(x=>INJURY_LABELS[x]||x);
@@ -122,6 +134,17 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
 }
 
 export async function mountPlanner({root,toast}){
+ let tipOffset=0;
+ const tipsHTML=(todayStr)=>{
+  const tips=dailyTips(todayStr,{hasWorkout:!!state.workoutPlan,offset:tipOffset});
+  return `<section class="coach-card tips-card" id="tips-card" style="background:#fffdf6;border-color:#eadfb8">
+   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+    <strong style="color:#5b4a14;font-size:15px">📚 معلومة النهاردة من الفريق</strong>
+    <button type="button" id="tips-more" class="secondary" style="min-height:34px;padding:4px 12px;font-size:12.5px;margin:0">🔄 معلومات تانية</button>
+   </div>
+   ${tips.map(t=>`<p style="margin:6px 0;font-size:13.5px;line-height:1.65;color:#3d3415"><span style="display:inline-block;min-width:68px;font-weight:700;color:#6b5a1c">${t.icon} ${t.label}:</span> ${esc(t.text)}</p>`).join('')}
+  </section>`;
+ };
  let state,busy=false,diaryDate=localDate(),activeTab='nutrition',catalogQuery='',catalogOffset=0,viewVersion=0,catalogRequest=0,foodRequest=0,alternativeRequest=0,submittedForm=null,uncertainWrite=null;
  let simulationMode=new URL(location.href).searchParams.get('simulation')==='1';
  const syncPlannerClass=()=>document.body?.classList.toggle('planner-active',!root.hidden);
@@ -500,8 +523,8 @@ export async function mountPlanner({root,toast}){
      <strong>✅ تطمين كابتن التدريب (ليه الإحساس ده طبيعي ومطلوب؟):</strong>
      <p style="margin:4px 0;font-size:13.5px;line-height:1.6">
       ${totalLoggedSets>0
-       ?`إنت سجلت <strong>${totalLoggedSets} جولات</strong>${hardSetsCount?` منها <strong>${hardSetsCount} جولات قوية قرب الفشل العضلي</strong>`:''} على (${esc(muscleNamesList)}). الإحساس بشد أو ثِقَل في بطن العضلات دي تاني يوم دليل إن التمرين صح وإنك وصلت لتحفيز حقيقي للألياف العضلية؛ الألياف دي بتتبني وتقوى دلوقتي وإنت بتاخد البروتين وبتنام.`
-       :`لما تخلص تمرينة (${esc(muscleNamesList)}) وتوصل في آخر عدتين لقرب الفشل العضلي (بحيث تحس بتحدي قوي مع ثبات الأداء)، طبيعي تحس تاني يوم بشد خفيف داخل العضلة — ده علامة صحية إن العضلة استجابت وبدأت رحلة البناء.`}
+       ?esc(say(SORENESS,todayStr+':sore',{sets:totalLoggedSets,hard:hardSetsCount,muscles:muscleNamesList}))
+       :esc(say(SORENESS_PRE,todayStr+':sorepre',{muscles:muscleNamesList}))}
      </p>
      <small style="display:block;color:#355849;margin-top:4px">💡 <strong>الفرق في ثانية:</strong> الشد داخل بطن العضلة اللي بيفك مع المشي والمية = <strong>بناء عضلي طبيعي ✓</strong> | أما النغزة الحادة جوّه المفصل نفسه = <strong>ألم مفصلي</strong> (علّم عليه في التمرين لو حسيت بيه علشان نبدله فوراً).</small>
     </div>
@@ -677,6 +700,7 @@ export async function mountPlanner({root,toast}){
     </div>`:''}
     ${plan.days.at(-1).date<todayStr?'<button id="renew-plan">🔄 استلام جدول أكل الأسبوع الجديد</button>':''}`:'<p class="coach-card">مسارك الحالي للتمارين فقط؛ وتقدر تسجل وجباتك اليومية بالأسفل.</p>'}
     ${waterHTML(todayStr)}
+    ${tipsHTML(todayStr)}
     ${diaryHTML()}
    </section>
 
@@ -857,6 +881,13 @@ export async function mountPlanner({root,toast}){
    }
   });
   root.querySelector('#review-enter-sim')?.addEventListener('click',()=>switchSimulation(true));
+  const moreTips=()=>{
+   tipOffset++;
+   const card=root.querySelector('#tips-card');if(!card)return;
+   card.outerHTML=tipsHTML(state.serverDate||localDate());
+   root.querySelector('#tips-more')?.addEventListener('click',moreTips);
+  };
+  root.querySelector('#tips-more')?.addEventListener('click',moreTips);
   root.querySelectorAll('[data-adapt]').forEach(b=>b.onclick=()=>send('adaptation',{id:b.dataset.adapt,accept:b.dataset.accept==='true'}));
   root.querySelector('#renew-plan')?.addEventListener('click',()=>send('renew_plan',{}));
   const search=async(offset=0)=>{
