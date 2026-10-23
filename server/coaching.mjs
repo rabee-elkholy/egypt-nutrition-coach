@@ -94,11 +94,11 @@ export function review(s){
  const recentWater=(s.waterLogs||[]).filter(x=>x.date>=dateOffset(today(),-13)&&x.date<=today());
  const avgCups=recentWater.length?Math.round(recentWater.reduce((sum,x)=>sum+Number(x.cups||0),0)/recentWater.length*10)/10:null;
  const hydrationReason=!recentWater.length
-  ?`سجّل شرب المية يومياً (هدفك ${wTarget.targetCups} كوب ≈ ${wTarget.liters} لتر) علشان أخصائي التغذية يربطه بتغيرات الميزان واحتباس السوائل.`
+  ?`سجّل شرب المية يومياً (هدفك ${wTarget.targetCups} كوب ≈ ${wTarget.liters} لتر) علشان نتابع التسجيل مقارنة بهدف خطتك.`
   :avgCups<wTarget.targetCups*0.7
-  ?`متوسط شربك للمية (${avgCups} من ${wTarget.targetCups} كوب) أقل من احتياجك؛ قلة المية بتسبب احتباس سوائل وهمي على الميزان وتقلل طاقة التمرين.`
-  :`التزام ممتاز بشرب المية (متوسط ${avgCups} كوب يومياً) — ده بيساعد جسمك يتخلص من السوائل الزيادة ويدعم الحرق والاستشفاء العضلي.`;
- s.lastReview={at:isoNow(),recovery:ready.status,nutrition,volume,hydration:{avgCups,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,loggedDays:recentWater.length,reason:hydrationReason},workoutInsights,workout:{partial:sessions.filter(x=>x.status==='partial').length,completed:sessions.filter(x=>x.status==='completed').length,missed:sessions.filter(x=>x.status==='missed').length},message:proposals.length?'فريق المتابعة جهّز لك توصية جديدة بانتظار موافقتك.':'فريق المتابعة راجع تقدمك: خطتك الحالية ماشية بشكل ممتاز ومش محتاجة تعديل النهاردة.'};
+  ?`متوسط شربك للمية (${avgCups} من ${wTarget.targetCups} كوب) أقل من هدف اليوم الحالي؛ المقارنة تقريبية لأن الأهداف قد تختلف بين الأيام، والتسجيل مش قياسًا مباشرًا للجفاف.`
+  :`متوسط المية المسجلة ${avgCups} كوب في ${recentWater.length} أيام مسجلة؛ ده ملخص التسجيل ومش تشخيصًا لترطيب الجسم.`;
+ s.lastReview={at:isoNow(),recovery:ready.status,nutrition,volume,hydration:{avgCups,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,loggedDays:recentWater.length,reason:hydrationReason},workoutInsights,workout:{partial:sessions.filter(x=>x.status==='partial').length,completed:sessions.filter(x=>x.status==='completed').length,missed:sessions.filter(x=>x.status==='missed').length},message:proposals.length?'فريق المتابعة جهّز لك توصية جديدة بانتظار موافقتك.':'مفيش تعديل جديد مقترح بناءً على البيانات المتاحة؛ راجع أسباب القرار وتغطية التسجيل أدناه.'};
  return s;
 }
 export function retargetPlan(plan,energy,prefs,effective){

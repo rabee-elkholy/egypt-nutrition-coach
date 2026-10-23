@@ -159,7 +159,7 @@ export function getGoalPaceDetails(draft) {
         durationText: formatDuration(rates.moderate),
         title: `⚡ متوازن ومثالي ⭐ (~${rates.moderate} كجم/أسبوع)`,
         desc: isGain
-          ? `⏱️ توصل في ${formatDuration(rates.moderate)} · زيادة صافية بدون دهون`
+          ? `⏱️ توصل في ${formatDuration(rates.moderate)} · زيادة تدريجية مع متابعة الوزن والأداء`
           : `⏱️ توصل في ${formatDuration(rates.moderate)} · أفضل توازن لحرق الدهون وحفظ العضل`
       },
       {
@@ -615,7 +615,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         };
       case 'sex':
         return {
-          bot: `${Number(draft.age) > 70 ? 'ربنا يديك الصحة! هنراعي تمارين آمنة للمفاصل. ' : ''}نوعك إيه يا ${esc(userName)}؟`,
+          bot: `${Number(draft.age) > 70 ? 'ربنا يديك الصحة! هنراعي اختيار التمارين حسب قدرتك وحالتك. ' : ''}نوعك إيه يا ${esc(userName)}؟`,
           answer: draft.sex === 'female' ? '👩 أنثى' : '👨 ذكر'
         };
       case 'maternal':
@@ -1795,7 +1795,7 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
         return;
       }
       if (draft.goal === 'muscle_gain' && val < currentW) {
-        errorMsg = `بناء العضلات بيعتمد على فائض سعرات، فاختار وزن مستهدف مساوي أو أعلى من وزنك الحالي (${currentW} كجم) — ولو هدفك تنزيل الوزن مع الحفاظ على العضل، اضغط على هدفك فوق واختار «خسارة دهون وتخسيس»!`;
+        errorMsg = `مسار زيادة العضلات هنا بيستخدم هدف وزن ثابت أو أعلى، فاختار وزن مستهدف مساوي أو أعلى من وزنك الحالي (${currentW} كجم) — ولو هدفك تنزيل الوزن مع الحفاظ على العضل، اضغط على هدفك فوق واختار «خسارة دهون وتخسيس»!`;
         render();
         return;
       }
