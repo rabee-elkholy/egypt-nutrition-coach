@@ -1,6 +1,6 @@
 import {chromium} from '@playwright/test';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({headless:true}),origin='http://127.0.0.1:8787';
+const browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'msedge'}),origin='http://127.0.0.1:8787';
 try{
  const context=await browser.newContext({viewport:{width:390,height:844},extraHTTPHeaders:{'oai-authenticated-user-id':'browser-smoke-'+Date.now()}}),page=await context.newPage(),errors=[];
  page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);
@@ -19,7 +19,7 @@ try{
  assert.equal((await read()).recovery.status,'high');
  await page.locator('[data-tab=review]').click();await page.locator('#review-coach').click();await settled();await page.locator('[data-accept=true]').first().click();await settled();assert.ok((await read()).sessionAdjustment);
  await page.locator('[data-tab=workout]').click();
- const fillWorkout=async index=>{const form=page.locator('.workout-log').nth(index);const count=await form.locator('[name^=set_kg_]').count();for(let i=0;i<count;i++){await form.locator(`[name=set_kg_${i}]`).fill('20');await form.locator(`[name=set_reps_${i}]`).fill('10');}await form.locator('button[type=submit]').click();await settled();};
+ const fillWorkout=async index=>{const form=page.locator('.workout-log').nth(index);const count=await form.locator('[name^=set_reps_]').count();for(let i=0;i<count;i++){await form.locator(`[name=set_reps_${i}]`).fill('10');}await form.locator('button[type=submit]').click();await settled();};
  await fillWorkout(0);account=await read();assert.equal(account.workoutLogs.length,1);assert.equal(account.sessions[0].status,'partial');assert.equal(account.sessions[0].rpe,null);assert.equal(account.sessions[0].duration,null);
  const remaining=await page.locator('.workout-log').count();for(let i=1;i<remaining;i++)await fillWorkout(i);
  account=await read();assert.equal(account.sessions[0].status,'completed');assert.ok(account.sessions[0].completionRatio>=.8);

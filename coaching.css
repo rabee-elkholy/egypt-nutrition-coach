@@ -724,3 +724,16 @@
 }
 
 .personal-note{padding:14px 0;border-bottom:1px solid #cce3d6;overflow-wrap:anywhere}.personal-note:last-of-type{border-bottom:0}.personal-note p{margin:6px 0;line-height:1.75;font-size:14px}.personal-note .personal-action{color:#24583d;font-weight:600}.brief-context{display:block;margin:4px 0 8px;color:#52665a}.brief-details{margin-top:12px;overflow-wrap:anywhere}.brief-details>summary{cursor:pointer;min-height:44px;display:list-item;align-content:center;font-weight:600}.brief-details p{line-height:1.75}.personal-note[role=alert]{border-inline-start:3px solid #a13434;padding-inline-start:12px}
+
+.coach-app .set-row.reps-only{grid-template-columns:54px minmax(0,1fr)}
+
+@media(max-width:520px){
+ .coach-app .set-row:not(.reps-only){grid-template-columns:repeat(2,minmax(0,1fr))}
+ .coach-app .set-row:not(.reps-only)>.set-label{grid-column:1/-1}
+ .coach-app .set-row input{appearance:textfield;font-size:15px}
+ .coach-app .set-row input::-webkit-inner-spin-button,.coach-app .set-row input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+ .prescription-box .coach-metrics.compact{grid-template-columns:repeat(2,minmax(0,1fr));word-break:normal;overflow-wrap:normal}
+ .prescription-box .coach-metrics.compact>div:last-child{grid-column:1/-1}
+}
+
+.exercise-saved{border-color:#96c8aa;background:#f5fbf7}.exercise-done-summary{display:flex;align-items:center;gap:10px;margin-top:12px}.exercise-done-mark{display:grid;place-items:center;flex:0 0 30px;height:30px;border-radius:50%;color:#fff;background:#236544;font-weight:800}.exercise-done-summary>div{flex:1;min-width:0}.exercise-done-summary p{margin:4px 0;font-size:13px;overflow-wrap:anywhere}.exercise-edit{flex-shrink:0;margin:0!important;min-height:44px}.exercise-editor[hidden]{display:none!important}.exercise-pain{color:#9f2d22}.coach-app .set-adjust-btn{min-width:44px;min-height:44px;font-size:22px!important}.exercise-card .meal-actions>[data-exercise-alt]{font-size:24px;min-width:48px}.exercise-card input[readonly]{cursor:default;appearance:textfield}.exercise-editor{margin-top:10px}

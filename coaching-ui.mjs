@@ -1,3 +1,4 @@
+import {usesKg,loadLabel,setSummary} from './exercise-load.mjs';
 import {simulationPanel} from './simulation-ui.mjs?v=sim8';
 import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
@@ -21,7 +22,7 @@ const ingredientLine=x=>{
 const formData=form=>{const p=Object.fromEntries(new FormData(form));for(const x of form.querySelectorAll('[type=checkbox]'))p[x.name]=x.checked;return p;};
 
 function defaultStartKg(e,state){
- if(e.loadMode==='bodyweight')return 0;
+ if(!usesKg(e))return 0;
  const level=state.onboarding?.workoutPrefs?.level||'beginner';
  const adv=level==='intermediate'||level==='advanced';
  if(['squat','hinge'].includes(e.pattern))return adv?30:20;
@@ -101,9 +102,20 @@ export async function mountPlanner({root,toast}){
  window.addEventListener('hashchange',syncPlannerClass);
  window.addEventListener('planner-leave',()=>document.body?.classList.remove('planner-active'));
  const drafts=new Map();
+ const editingExercises=new Set();
  const formKey=form=>(form.id||[form.classList[0],form.dataset.day||'',form.dataset.id||form.dataset.meal||form.dataset.key||''].join('|'))+(form.dataset.diaryDate?'|'+form.dataset.diaryDate:'')+(simulationMode?'|sim-day:'+state?.simulation?.day:'');
  function captureDrafts(excluded){for(const form of root.querySelectorAll('form'))if(!form.closest('#coach-onboarding-section')&&formKey(form)!==excluded)drafts.set(formKey(form),formData(form));if(excluded)drafts.delete(excluded);}
- function restoreDrafts(scope=root){for(const form of scope.querySelectorAll('form')){const draft=drafts.get(formKey(form));if(!draft)continue;for(const [name,value]of Object.entries(draft)){const field=form.elements.namedItem(name);if(field&&'value'in field){if(field.type==='checkbox')field.checked=!!value;else field.value=String(value);}}}}
+ function restoreDrafts(scope=root){for(const form of scope.querySelectorAll('form')){const draft=drafts.get(formKey(form));if(!draft)continue;
+  if(form.matches('.workout-log')){
+   const count=Object.keys(draft).filter(k=>/^set_reps_\d+$/.test(k)).length;
+   if(count>=1&&count<=10){
+    for(let i=form.querySelectorAll('.set-row').length;i<count;i++)form.querySelector('[data-add-set]')?.click();
+    for(let i=form.querySelectorAll('.set-row').length;i>count;i--)form.querySelector('[data-remove-set]')?.click();
+   }
+  }
+  for(const [name,value]of Object.entries(draft)){const field=form.elements.namedItem(name);if(field&&'value'in field){if(field.type==='checkbox')field.checked=!!value;else field.value=String(value);}}
+  if(form.matches('.workout-log')){const rir=Number(draft.effort_rir);form.querySelectorAll('.effort-chip').forEach(b=>b.classList.toggle('active-chip',Number(b.dataset.effort)===(rir>=3?3:rir<=1?0:2)));}
+ }}
  if(root._coachSubmit)root.removeEventListener('submit',root._coachSubmit,true);
  root._coachSubmit=e=>{if(!e.target.id.includes('search')&&!e.target.closest('#coach-onboarding-section'))submittedForm=formKey(e.target);};root.addEventListener('submit',root._coachSubmit,true);
  const api=async(path,options={})=>{const r=await fetch('/v1/'+path+(simulationMode?(path.includes('?')?'&':'?')+'simulation=1':''),options);const data=await r.json();if(!r.ok)throw Object.assign(Error(data.error||'تعذر الاتصال'),{status:r.status});return data;};
@@ -247,32 +259,38 @@ export async function mountPlanner({root,toast}){
   const adjustment=state.sessionAdjustment&&Date.parse(state.sessionAdjustment.expiresAt)>Date.parse(state.serverNow||new Date().toISOString())?state.sessionAdjustment:null;
   const sets=effectiveSets(state,e,todayStr,Date.parse(state.serverNow||new Date().toISOString()));
   const history=state.workoutLogs.filter(l=>l.exerciseId===e.id&&(e.progressionKey?l.progressionKey===e.progressionKey:l.planId===state.workoutPlan.id)).sort((a,b)=>(a.date||a.at.slice(0,10)).localeCompare(b.date||b.at.slice(0,10))||Date.parse(a.at)-Date.parse(b.at));
-  const last=history.at(-1);
-  const loggedToday=last&&(last.date||last.at.slice(0,10))===todayStr;
-  const prevLog=loggedToday?history.at(-2):last;
+  const todayLog=history.filter(l=>(l.date||l.at.slice(0,10))===todayStr&&l.dayIndex===day.dayIndex).at(-1);
+  const last=todayLog||history.at(-1);
+  const loggedToday=!!todayLog;
+  const prevLog=loggedToday?history.filter(l=>(l.date||l.at.slice(0,10))<todayStr).at(-1):last;
+  const editKey=todayStr+':'+day.dayIndex+':'+e.id;
+  const editorOpen=!loggedToday||editingExercises.has(editKey);
   const regions=e.regions||[];const blocked=regions.some(r=>['hold','caution'].includes(state.recovery?.muscles?.[r]?.status));
+  const weighted=usesKg(e);
   const startKg=defaultStartKg(e,state);
-  const suggestedKg=e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?e.suggestedKg:(prevLog?.sets?.[0]?.kg??startKg);
+  const suggestedKg=!weighted?0:e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?e.suggestedKg:(prevLog?.sets?.[0]?.kg??startKg);
   const prevReps=prevLog?.sets?.[0]?.reps;
   const suggestedReps=e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?e.repMin:(prevReps!=null?Math.min(e.repMax,Math.max(e.repMin,prevReps+(prevLog?.sets?.[0]?.rir>=1&&prevReps<e.repMax?1:0))):Math.round((e.repMin+e.repMax)/2));
   const activeSetsCount=loggedToday&&last?.sets?.length?last.sets.length:sets;
   const defaultEffort=last?.sets?.[0]?.rir!=null?String(last.sets[0].rir):String(e.rir);
-  const stepKg=suggestedKg>=15?2.5:1;
+  const stepKg=2.5;
   let comparisonNote='';
   if(loggedToday&&prevLog){
    const curAvgKg=Math.round((last.sets.reduce((s,x)=>s+(Number(x.kg)||0),0)/last.sets.length)*10)/10;
    const prevAvgKg=Math.round((prevLog.sets.reduce((s,x)=>s+(Number(x.kg)||0),0)/prevLog.sets.length)*10)/10;
    const curAvgReps=Math.round(last.sets.reduce((s,x)=>s+(Number(x.reps)||0),0)/last.sets.length);
    const prevAvgReps=Math.round(prevLog.sets.reduce((s,x)=>s+(Number(x.reps)||0),0)/prevLog.sets.length);
-   if(curAvgKg>prevAvgKg)comparisonNote=`⬆️ عاش يا بطل! زودت الوزن من ${prevAvgKg} إلى ${curAvgKg} كجم (+${Math.round((curAvgKg-prevAvgKg)*10)/10} كجم) — مسجل في متابعة الكابتن.`;
-   else if(curAvgKg<prevAvgKg)comparisonNote=`📉 قللت الوزن من ${prevAvgKg} إلى ${curAvgKg} كجم — الكابتن سجّل ده في المتابعة وهيحافظ على سعراتك واستشفائك.`;
-   else if(curAvgReps>prevAvgReps)comparisonNote=`💪 تطور ممتاز! زودت عداتك من ${prevAvgReps} إلى ${curAvgReps} عدة بنفس الوزن (${curAvgKg} كجم).`;
+   if(weighted&&curAvgKg>prevAvgKg)comparisonNote=`${e.loadMode==='assisted'?'وزن المساعدة':'الحمل'} اتغير من ${prevAvgKg} إلى ${curAvgKg} كجم — قارن التغيير مع العدات وجودة الحركة.`;
+   else if(weighted&&curAvgKg<prevAvgKg)comparisonNote=`${e.loadMode==='assisted'?'وزن المساعدة':'الحمل'} قل من ${prevAvgKg} إلى ${curAvgKg} كجم — سبب التغيير بيتراجع مع العدات والمجهود.`;
+   else if(curAvgReps>prevAvgReps)comparisonNote=`💪 تطور ممتاز! زودت عداتك من ${prevAvgReps} إلى ${curAvgReps} عدة${weighted?` بنفس ${e.loadMode==='assisted'?'وزن المساعدة':'الوزن'} (${curAvgKg} كجم)`:' بوزن الجسم أو المقاومة المعتادة'}.`;
   }
-  return `<article class="meal-card">
+  return `<article class="meal-card exercise-card ${loggedToday?'exercise-saved':''}" data-exercise-card="${e.id}">
    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
     <h3 dir="auto" style="margin:0">${esc(e.name)}</h3>
     <span style="font-size:12px;background:#e6f2ec;color:#1b4332;padding:4px 8px;border-radius:8px;font-weight:700">${esc(regionNames(regions))}</span>
    </div>
+   ${loggedToday?`<div class="exercise-done-summary"><span class="exercise-done-mark" aria-hidden="true">✓</span><div><strong>تم تسجيل التمرين</strong><p>${last.sets.length} مجموعات · ${setSummary(e,last.sets)}</p>${last.sets.some(x=>x.pain)?'<small class="exercise-pain">⚠ ألم مسجل — راجع حالتك قبل تكرار الحركة</small>':''}</div><button type="button" class="secondary exercise-edit" data-edit-exercise="${esc(editKey)}" aria-expanded="${editorOpen}" aria-controls="exercise-editor-${day.dayIndex}-${e.id.replace(/[^a-z0-9]/gi,'-')}"><span aria-hidden="true">✎</span> ${editorOpen?'إغلاق':'تعديل'}</button></div>`:''}
+   <div class="exercise-editor" id="exercise-editor-${day.dayIndex}-${e.id.replace(/[^a-z0-9]/gi,'-')}" ${editorOpen?'':'hidden'}>
    <div class="prescription-box" style="margin:8px 0;padding:10px 12px;background:#f4faf6;border:1px solid #cce3d6;border-radius:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">
      <strong style="color:#1b4332;font-size:13px">🎯 اقتراح الكابتن النهاردة ${['unilateral','alternating'].includes(e.laterality)?'(لكل جانب)':''}</strong>
@@ -281,15 +299,15 @@ export async function mountPlanner({root,toast}){
     <div class="coach-metrics compact" style="margin:0">
      <div><strong>${sets}</strong> مجموعات مقترحة</div>
      <div><strong>${suggestedReps} عدة</strong> <small>(المدى ${e.repMin}–${e.repMax})</small></div>
-     <div><strong>${suggestedKg} كجم</strong> <small>${e.loadMode==='bodyweight'?'(وزن الجسم)':prevLog?'(حسب مستواك)':'(وزن بداية مقترح)'}</small></div>
+     <div><strong>${weighted?`${suggestedKg} كجم`:e.loadMode==='bodyweight'?'وزن الجسم':'مقاومة الاستك'}</strong> <small>${weighted?(e.loadMode==='assisted'?'(وزن المساعدة)':prevLog?'(حسب آخر تسجيل)':'(حمل بداية مقترح)'):'بدون إدخال وزن'}</small></div>
     </div>
-    ${prevLog?`<small style="display:block;margin-top:6px;color:#2c523f">📌 آخر أداء مسجل (${prevLog.date||prevLog.at.slice(0,10)}): <strong>${prevLog.sets.map(s=>`${s.kg}كجم×${s.reps}`).join(' ، ')}</strong></small>`:'<small style="display:block;margin-top:6px;color:#2c523f">💡 تقدر تزود أو تقلل الوزن أو العدات أو الجولات من الأزرار بالأسفل حسب إحساسك الفعلي.</small>'}
+    ${prevLog?`<small style="display:block;margin-top:6px;color:#2c523f">📌 آخر أداء مسجل (${prevLog.date||prevLog.at.slice(0,10)}): <strong>${setSummary(e,prevLog.sets)}</strong></small>`:`<small style="display:block;margin-top:6px;color:#2c523f">💡 تقدر تعدّل ${weighted?'الوزن والعدات':'العدات'} والجولات حسب إحساسك الفعلي.</small>`}
    </div>
    ${adjustment?`<small class="coach-notice" style="display:block">💡 كابتن التدريب خفف لك عدد الجولات النهاردة مراعاةً لاستشفائك.</small>`:''}
-   ${e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?`<p class="coach-success">⬆️ توصية الكابتن اليوم: ارفع الوزن لـ ${e.suggestedKg} كجم (${esc(e.progressionReason)})</p>`:''}
-   ${blocked?'<p class="coach-notice">⚠️ العضلة دي فيها إجهاد؛ اثبت على وزن خفيف النهاردة.</p>':''}
-   ${loggedToday?`<p class="coach-success">✓ تم حفظ تمرينك اليوم (${last.sets.map(s=>`${s.kg}كجم×${s.reps}`).join('، ')})${comparisonNote?`<br><small>${esc(comparisonNote)}</small>`:''}</p>`:''}
-   <form class="workout-log" data-id="${e.id}" data-day="${day.dayIndex}" data-step-kg="${stepKg}" data-default-kg="${suggestedKg}" data-default-reps="${suggestedReps}">
+   ${weighted&&e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?`<p class="coach-success">⬆️ توصية الكابتن اليوم: ${e.loadMode==='assisted'?'وزن المساعدة المقترح':'الحمل المقترح'} ${e.suggestedKg} كجم (${esc(e.progressionReason)})</p>`:''}
+   ${blocked?'<p class="coach-notice">⚠️ في ملاحظة ألم أو إجهاد على المنطقة دي؛ وقف الحركة المؤلمة وراجع حالتك قبل تكمل.</p>':''}
+   ${loggedToday?`<p class="coach-success">✓ تم حفظ تمرينك اليوم (${setSummary(e,last.sets)})${comparisonNote?`<br><small>${esc(comparisonNote)}</small>`:''}</p>`:''}
+   <form class="workout-log" data-id="${e.id}" data-day="${day.dayIndex}" data-uses-kg="${weighted}" data-load-label="${loadLabel(e)}" data-step-kg="${stepKg}" data-default-kg="${suggestedKg}" data-default-reps="${suggestedReps}">
     <input type="hidden" name="date" value="${todayStr}">
     <input type="hidden" name="effort_rir" value="${esc(defaultEffort)}">
     <div class="set-rows">
@@ -297,16 +315,16 @@ export async function mountPlanner({root,toast}){
       const curSet=loggedToday?last?.sets?.[idx]:(prevLog?.sets?.[idx]||prevLog?.sets?.[0]);
       const rowKg=e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked&&!loggedToday?e.suggestedKg:(curSet?.kg??suggestedKg);
       const rowReps=loggedToday&&curSet?.reps!=null?curSet.reps:suggestedReps;
-      return `<div class="set-row">
+      return `<div class="set-row ${weighted?'':'reps-only'}">
        <strong class="set-label">جولة ${idx+1}</strong>
-       <div class="stepper-field">
-        <span class="stepper-caption">الوزن (كجم)</span>
+       ${weighted?`<div class="stepper-field">
+        <span class="stepper-caption">${loadLabel(e)}</span>
         <div class="stepper-control">
          <button type="button" class="stepper-btn" data-step-target="set_kg_${idx}" data-step="-${stepKg}" aria-label="تقليل الوزن">−</button>
-         <input type="number" name="set_kg_${idx}" step="0.5" min="0" max="500" value="${rowKg}" required>
+         <input type="number" name="set_kg_${idx}" step="2.5" min="0" max="500" value="${rowKg}" readonly tabindex="-1" aria-label="${loadLabel(e)}" required>
          <button type="button" class="stepper-btn" data-step-target="set_kg_${idx}" data-step="${stepKg}" aria-label="زيادة الوزن">+</button>
         </div>
-       </div>
+       </div>`:''}
        <div class="stepper-field">
         <span class="stepper-caption">العدات</span>
         <div class="stepper-control">
@@ -319,28 +337,28 @@ export async function mountPlanner({root,toast}){
      }).join('')}
     </div>
     <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap">
-     <button type="button" class="secondary set-adjust-btn" data-add-set="1" style="padding:6px 12px;font-size:12px">➕ زود جولة</button>
-     <button type="button" class="secondary set-adjust-btn" data-remove-set="1" style="padding:6px 12px;font-size:12px">➖ قلل جولة</button>
+     <button type="button" class="secondary set-adjust-btn" data-add-set="1" style="padding:6px 12px;font-size:12px" aria-label="إضافة جولة" title="إضافة جولة"><span aria-hidden="true">＋</span></button>
+     <button type="button" class="secondary set-adjust-btn" data-remove-set="1" style="padding:6px 12px;font-size:12px" aria-label="حذف آخر جولة" title="حذف آخر جولة"><span aria-hidden="true">−</span></button>
     </div>
     <div style="margin:8px 0">
-     <small style="display:block;margin-bottom:4px;font-weight:700;color:#1b4332">إحساسك بالوزن في آخر عدة:</small>
+     <small style="display:block;margin-bottom:4px;font-weight:700;color:#1b4332">إحساسك بالمجهود في آخر عدة:</small>
      <div class="sim-chip-grid" style="grid-template-columns:repeat(3,1fr)">
       <button type="button" class="sim-chip effort-chip ${Number(defaultEffort)>=3?'active-chip':''}" data-effort="3">😊 كان خفيف</button>
-      <button type="button" class="sim-chip effort-chip ${Number(defaultEffort)===2?'active-chip':''}" data-effort="${e.rir}">👌 مظبوط وقوي</button>
+      <button type="button" class="sim-chip effort-chip ${Number(defaultEffort)===2?'active-chip':''}" data-effort="2">👌 مظبوط وقوي</button>
       <button type="button" class="sim-chip effort-chip ${Number(defaultEffort)<=1?'active-chip':''}" data-effort="0">🥵 جبت آخري</button>
      </div>
     </div>
     ${['unilateral','alternating'].includes(e.laterality)?'<label><input name="bothSides" type="checkbox" checked> لعبت الجانبين اليمين والشمال بنفس الأداء</label>':''}
     <div class="meal-actions">
-     <button type="submit">✓ حفظ أداء التمرين</button>
-     <button type="button" class="secondary" data-exercise-alt="${e.id}" data-day="${day.dayIndex}">🔄 تبديل التمرين</button>
+     <button type="submit" aria-label="حفظ أداء التمرين"><span aria-hidden="true">✓</span> حفظ</button>
+     <button type="button" class="secondary" data-exercise-alt="${e.id}" data-day="${day.dayIndex}" aria-label="تبديل التمرين" title="تبديل التمرين"><span aria-hidden="true">⇄</span></button>
     </div>
     <details style="margin-top:8px"><summary>شرح الأداء أو الإبلاغ عن ألم مفصلي</summary>
      <label><input name="pain" type="checkbox"> حسيت بألم أو نغزة في المفصل أثناء التمرين ده</label>
-     <label>أصغر زيادة متاحة للدمبل/البار (كجم) <input name="increment" type="number" min="0.1" step="0.1" value="1"></label>
      <p dir="ltr" class="exercise-description">${esc(e.description)}</p>
     </details>
    </form>
+   </div>
   </article>`;
  }
  function singleWorkoutDayCard(d,todayStr,plan,isTodayScheduled=true){
@@ -352,9 +370,9 @@ export async function mountPlanner({root,toast}){
     <h3 style="margin:0;color:#163a2c">🏋️ تمرينة اليوم (${days[new Date(todayStr+'T12:00:00Z').getUTCDay()]} ${todayStr}) · ${esc(FOCUS_LABELS[d.focus]||d.focus)}</h3>
     <span style="font-size:12px;background:#e6f4ec;color:#145335;padding:4px 10px;border-radius:999px;font-weight:700">${d.location==='home'?'🏠 البيت':'🏋️ الجيم'} · ${d.estimatedMinutes||d.duration} د ${loggedCount?`· ✓ ${loggedCount}/${d.exercises.length}`:''}</span>
    </div>
-   ${targetRegions.length?`<p style="margin:4px 0 8px;font-size:13px;color:#2c523f">🎯 <strong>العضلات المستهدفة النهاردة:</strong> ${esc(regionNames(targetRegions))} <small>(طبيعي تحس بشد خفيف فيها بكرة كدليل على البناء العضلي)</small></p>`:''}
+   ${targetRegions.length?`<p style="margin:4px 0 8px;font-size:13px;color:#2c523f">🎯 <strong>العضلات المستهدفة النهاردة:</strong> ${esc(regionNames(targetRegions))} <small>(الوجع مش شرط ولا دليل على بناء العضلات)</small></p>`:''}
    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-    <span style="font-size:13px;font-weight:700;color:#1b4332">${todaySess?.status==='completed'?'🎉 عاش يا بطل! قفّلت تمرينة اليوم بالكامل ✓':loggedCount?`⏳ سجّلت ${loggedCount} من ${d.exercises.length} تمارين (الجلسة بتتقفل تلقائياً مع حفظ التمارين)`:'سجّل أوزانك وعداتك في تمارين النهاردة بالأسفل:'}</span>
+    <span style="font-size:13px;font-weight:700;color:#1b4332">${todaySess?.status==='completed'?'🎉 عاش يا بطل! قفّلت تمرينة اليوم بالكامل ✓':loggedCount?`⏳ سجّلت ${loggedCount} من ${d.exercises.length} تمارين (الجلسة بتتقفل تلقائياً مع حفظ التمارين)`:'سجّل العدات والمجهود، والوزن في التمارين اللي بتستخدم أوزان:'}</span>
    </div>
    ${d.exercises.map(e=>exerciseHTML(e,d)).join('')}
    ${isTodayScheduled?`<details style="margin-top:8px"><summary>📅 مقدرتش أتمرن النهاردة؟ (تأجيل الجلسة ليوم تاني)</summary>
@@ -686,6 +704,12 @@ export async function mountPlanner({root,toast}){
  }
  function showDialog(html){const dialog=root.querySelector('#coach-dialog');dialog.querySelector('#dialog-body').innerHTML=html;dialog.showModal();}
  function wire(){
+  root.querySelectorAll('[data-edit-exercise]').forEach(btn=>btn.onclick=()=>{
+   const key=btn.dataset.editExercise,editor=root.querySelector('[id="'+btn.getAttribute('aria-controls')+'"]');
+   if(!editor)return;editor.hidden=!editor.hidden;
+   if(editor.hidden)editingExercises.delete(key);else editingExercises.add(key);
+   btn.setAttribute('aria-expanded',String(!editor.hidden));btn.innerHTML='<span aria-hidden="true">✎</span> '+(editor.hidden?'تعديل':'إغلاق');
+  });
   root.querySelectorAll('[data-tab]').forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;render();window.scrollTo({top:0,behavior:'instant'});});
   root.querySelector('#edit-profile').onclick=()=>{if(uncertainWrite){notice('أكد العملية المعلقة الأول.',true);retryUncertain();}else onboarding();};
   root.querySelector('#close-dialog').onclick=()=>root.querySelector('#coach-dialog').close();
@@ -742,16 +766,17 @@ export async function mountPlanner({root,toast}){
    const defReps=lastRow?.querySelector(`input[name^="set_reps_"]`)?.value??form.dataset.defaultReps??10;
    const stepKg=form.dataset.stepKg||2.5;
    const div=document.createElement('div');
-   div.className='set-row';
+   const weighted=form.dataset.usesKg==='true';
+   div.className='set-row'+(weighted?'':' reps-only');
    div.innerHTML=`<strong class="set-label">جولة ${idx+1}</strong>
-    <div class="stepper-field">
-     <span class="stepper-caption">الوزن (كجم)</span>
+    ${weighted?`<div class="stepper-field">
+     <span class="stepper-caption">${esc(form.dataset.loadLabel)}</span>
      <div class="stepper-control">
       <button type="button" class="stepper-btn" data-step-target="set_kg_${idx}" data-step="-${stepKg}" aria-label="تقليل الوزن">−</button>
-      <input type="number" name="set_kg_${idx}" step="0.5" min="0" max="500" value="${esc(defKg)}" required>
+      <input type="number" name="set_kg_${idx}" step="2.5" min="0" max="500" value="${esc(defKg)}" readonly tabindex="-1" aria-label="${esc(form.dataset.loadLabel)}" required>
       <button type="button" class="stepper-btn" data-step-target="set_kg_${idx}" data-step="${stepKg}" aria-label="زيادة الوزن">+</button>
      </div>
-    </div>
+    </div>`:''}
     <div class="stepper-field">
      <span class="stepper-caption">العدات</span>
      <div class="stepper-control">
@@ -782,13 +807,12 @@ export async function mountPlanner({root,toast}){
    e.preventDefault();const fd=new FormData(form);
    const rir=fd.get('effort_rir')??2;
    const sets=[];
-   for(let idx=0;fd.has(`set_kg_${idx}`);idx++){
-    sets.push({kg:fd.get(`set_kg_${idx}`),reps:fd.get(`set_reps_${idx}`),rir,pain:fd.has('pain')});
+   for(let idx=0;fd.has(`set_reps_${idx}`);idx++){
+    sets.push({kg:form.dataset.usesKg==='true'?fd.get(`set_kg_${idx}`):0,reps:fd.get(`set_reps_${idx}`),rir,pain:fd.has('pain')});
    }
-   const maxKg=Math.max(0,...sets.map(s=>Number(s.kg)||0));
-   const rawInc=Number(fd.get('increment'))||1;
-   const safeInc=maxKg>0?Math.min(rawInc,Math.max(0.5,Number((maxKg*0.05).toFixed(2)))):rawInc;
-   send('workout',{exerciseId:form.dataset.id,dayIndex:Number(form.dataset.day),date:fd.get('date'),sets,bothSides:fd.has('bothSides'),increment:safeInc,autoSession:true});
+   const safeInc=2.5;
+   editingExercises.delete(fd.get('date')+':'+form.dataset.day+':'+form.dataset.id);
+   send('workout',{exerciseId:form.dataset.id,dayIndex:Number(form.dataset.day),date:fd.get('date'),sets,bothSides:fd.has('bothSides'),increment:form.dataset.usesKg==='true'?safeInc:null,autoSession:true});
   });
   root.querySelectorAll('.session-log').forEach(form=>form.onsubmit=e=>{e.preventDefault();send('session',{...formData(form),dayIndex:Number(form.dataset.day)});});
   root.querySelectorAll('.reschedule-form').forEach(form=>form.onsubmit=e=>{e.preventDefault();send('reschedule',{...formData(form),dayIndex:Number(form.dataset.day)});});

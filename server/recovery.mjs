@@ -1,3 +1,4 @@
+import {usesKg} from '../exercise-load.mjs';
 import {clockNow,isoNow,clockDate,clockTimeZone} from './clock.mjs';
 import {eachSide} from './workouts.mjs';
 import {localDate,dateOffset,MUSCLE_REGIONS,validDate} from '../coaching-shared.mjs';
@@ -114,8 +115,8 @@ export function progression(exercise,logs,readiness){
  if(!last.every(l=>l.sets.length===exercise.sets&&l.sets.every(s=>!s.pain&&s.reps>=exercise.repMax&&s.rir!=null&&s.rir>=exercise.rir)))return {action:'hold',reasonCode:'REP_OR_RIR_THRESHOLD_NOT_MET'};
  const kg=last[1].sets[0].kg;
  if(!last.every(l=>l.sets.every(s=>s.kg===kg)))return {action:'hold',reasonCode:'UNIFORM_LOAD_REQUIRED',reason:'ثبّت نفس الوزن في كل مجموعات التمرين الأول قبل الزيادة الجاية.'};
- const increment=last[1].increment;
- if(exercise.loadMode==='bodyweight')return {action:'hold',reasonCode:'BODYWEIGHT_PROGRESSION_REPS_ONLY',reason:'تمارين وزن الجسم بنطوّر فيها العدات والتحكم في الأداء.'};
- if(!increment||!kg||increment>kg*.05)return {action:'hold',reasonCode:'VALID_INCREMENT_REQUIRED',reason:'حدّد أصغر زيادة وزن متاحة في الجيم علشان النظام يحسب لك الزيادة الجاية.'};
+ const increment=last[1].increment??2.5;
+ if(!usesKg(exercise))return {action:'hold',reasonCode:'BODYWEIGHT_PROGRESSION_REPS_ONLY',reason:'تمارين وزن الجسم بنطوّر فيها العدات والتحكم في الأداء.'};
+ if(!increment||!kg||increment>kg*.05)return {action:'hold',reasonCode:'VALID_INCREMENT_REQUIRED',reason:'خطوة الحمل الحالية أكبر من الزيادة المحافظة المناسبة؛ كمّل تطوير العدات والتحكم قبل اقتراح حمل أعلى.'};
  return {action:'increase',reasonCode:'DOUBLE_PROGRESSION_READY',kg:Math.max(0,kg+(exercise.loadMode==='assisted'?-increment:increment)),reason:'عاش يا بطل! 💪 لأنك قفّلت العدات المطلوبة مرتين ورا بعض بقوة وثبات، فيه حمل مستهدف جديد مقترح؛ طبقه بس لو الحركة والاستشفاء مناسبين.'};
 }

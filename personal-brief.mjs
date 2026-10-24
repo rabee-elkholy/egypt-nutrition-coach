@@ -1,3 +1,4 @@
+import {usesKg} from './exercise-load.mjs';
 import {dateOffset,FOCUS_LABELS} from './coaching-shared.mjs';
 import {seedPick} from './coach-messages.mjs';
 const finite=n=>typeof n==='number'&&Number.isFinite(n);
@@ -60,7 +61,8 @@ export function personalBrief(state,today){
   else {
    const changes=[...(insight?.loadIncreases||[]).map(x=>({...x,type:'up'})),...(insight?.loadDecreases||[]).map(x=>({...x,type:'down'})),...(insight?.repIncreases||[]).map(x=>({...x,type:'reps'}))].filter(x=>x.date===today);
    const change=seedPick(changes,seed+':exercise');
-   if(change)add('training','performance',change.type==='reps'?`في تسجيل ${change.name} النهاردة: إجمالي العدات من ${change.fromReps} إلى ${change.toReps} بنفس متوسط الحمل ${change.kg} كجم. عدد المجموعات مهم للمقارنة كمان.`:`في تسجيل ${change.name} النهاردة: متوسط الحمل من ${change.fromKg} إلى ${change.toKg} كجم. ${change.type==='up'?'قارن الحمل مع العدات وجودة الحركة.':'اختلاف الحمل لوحده ما يحددش سبب التغيير.'}`,'train');
+   const changedExercise=p.days?.flatMap(d=>d.exercises||[]).find(e=>e.id===change?.exerciseId);
+   if(change)add('training','performance',change.type==='reps'?`في تسجيل ${change.name} النهاردة: إجمالي العدات من ${change.fromReps} إلى ${change.toReps} ${changedExercise&&!usesKg(changedExercise)?'بدون وزن خارجي':`بنفس متوسط الحمل ${change.kg} كجم`}. عدد المجموعات مهم للمقارنة كمان.`:`في تسجيل ${change.name} النهاردة: متوسط الحمل من ${change.fromKg} إلى ${change.toKg} كجم. ${change.type==='up'?'قارن الحمل مع العدات وجودة الحركة.':'اختلاف الحمل لوحده ما يحددش سبب التغيير.'}`,'train');
    else if(scheduled)add('training','scheduled',`جلسة النهاردة ${FOCUS_LABELS[scheduled.focus]||'حسب جدولك'}. ${ready.domains?.length?'في ملاحظات على حالتك رغم إتاحة التمرين؛ راقب إحساسك.':'بيانات الاستشفاء الحالية تسمح بمجهودك المعتاد.'}`,'train');
    else add('training','rest',`مفيش جلسة مقررة النهاردة${next?`؛ الموعد القادم ${next.date} (${FOCUS_LABELS[next.focus]||'حسب الجدول'})`:''}.`,'rest');
   }

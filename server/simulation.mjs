@@ -1,3 +1,4 @@
+import {usesKg} from '../exercise-load.mjs';
 import {empty,generate,command,dailyWaterTarget} from './coaching.mjs';
 import {activePlan,dayTotals} from './food.mjs';
 import {scheduledSessions,eachSide} from './workouts.mjs';
@@ -60,7 +61,7 @@ export function simulationCommand(input,action,p,source){
   const exercises=pain?session.exercises.slice(0,1):session.exercises;
   for(const exercise of exercises){
    const count=pain?1:effectiveSets(s,exercise,date,clockNow());
-   command(s,'workout',{exerciseId:exercise.id,dayIndex:session.dayIndex,date,sets:Array.from({length:count},()=>({kg:exercise.loadMode==='bodyweight'?0:20,reps:exercise.repMax,rir:exercise.rir+1,pain})),bothSides:eachSide(exercise),increment:1});
+   command(s,'workout',{exerciseId:exercise.id,dayIndex:session.dayIndex,date,sets:Array.from({length:count},()=>({kg:usesKg(exercise)?20:0,reps:exercise.repMax,rir:exercise.rir+1,pain})),bothSides:eachSide(exercise),increment:usesKg(exercise)?2.5:null});
   }
   command(s,'session',{dayIndex:session.dayIndex,date,status:pain?'partial':'completed',duration:pain?5:session.estimatedMinutes,rpe:pain?8:6});
  }

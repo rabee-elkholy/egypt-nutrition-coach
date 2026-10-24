@@ -1,6 +1,6 @@
 import {chromium} from '@playwright/test';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({headless:true}),origin='http://127.0.0.1:8787';
+const browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'msedge'}),origin='http://127.0.0.1:8787';
 async function setup(suffix){
  const context=await browser.newContext({viewport:{width:1280,height:900},extraHTTPHeaders:{'oai-authenticated-user-id':'audit-browser-'+suffix+'-'+Date.now()}}),page=await context.newPage();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -12,10 +12,10 @@ try{
  {
   const {page,context,errors,settled}=await setup('drafts');
   await page.locator('#food-diary details > summary').click();await page.locator('#manual-food [name=name]').fill('مسودة محفوظة');await page.locator('#manual-food [name=energy]').fill('80');
-  await page.locator('[data-tab=workout]').click();await page.locator('.workout-log [name=set_kg_0]').first().fill('17.5');
+  await page.locator('[data-tab=workout]').click();const kg=page.locator('.workout-log [name=set_kg_0]').first();const kgBefore=Number(await kg.inputValue());await kg.locator('..').locator('[data-step="2.5"]').click();
   await page.locator('[data-tab=recovery]').click();
   await page.locator('#weight-log [name=kg]').fill('79.5');await page.locator('#weight-log button').click();await settled();
-  assert.equal(await page.locator('#manual-food [name=name]').inputValue(),'مسودة محفوظة');assert.equal(await page.locator('.workout-log [name=set_kg_0]').first().inputValue(),'17.5');
+  assert.equal(await page.locator('#manual-food [name=name]').inputValue(),'مسودة محفوظة');assert.equal(Number(await page.locator('.workout-log [name=set_kg_0]').first().inputValue()),kgBefore+2.5);
   await page.locator('[data-tab=nutrition]').click();await page.locator('#food-diary details > summary').click();
   const today=await page.locator('#diary-date').inputValue(),previous=new Date(today+'T12:00:00Z');previous.setUTCDate(previous.getUTCDate()-1);
   await page.locator('#diary-date').fill(previous.toISOString().slice(0,10));assert.equal(await page.locator('#manual-food [name=name]').inputValue(),'');

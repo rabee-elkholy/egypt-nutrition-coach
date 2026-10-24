@@ -296,8 +296,8 @@ test('SPEC-WATER-AND-WORKOUT-PROGRESSION: water tracking and workout weight/rep 
 
   // 2. Workout weight increase and weight decrease are both tracked in workoutInsights & review
   const wDay = s.workoutPlan.days[0];
-  const ex1 = wDay.exercises[0];
-  const ex2 = wDay.exercises[1];
+  const [ex1, ex2] = wDay.exercises.filter(e => e.loadMode === 'external');
+  assert.ok(ex1 && ex2, 'weight progression needs two exercises with external loads');
 
   // Previous session (3 days ago)
   s = command(s, 'workout', {
