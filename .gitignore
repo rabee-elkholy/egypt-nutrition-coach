@@ -18,6 +18,8 @@ reports/simulation-100-users-90-days/baseline-v1/
 reports/simulation-100-users-90-days/test-speed/
 reports/simulation-100-users-90-days/pilot-*/
 reports/simulation-100-users-90-days/replay-*/
+reports/*.zip
+*.zip
 *-run.log
 baseline-check.log
 final-check.log
