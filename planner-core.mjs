@@ -1014,7 +1014,7 @@ export function assessDay(summary, targets) {
     );
   return out;
 }
-export function alternatives(meal, prefs, lib, limit = 8) {
+export function alternatives(meal, prefs, lib, limit = 8, profile = null) {
   if (
     meal.snapshot.values.energy == null ||
     meal.snapshot.values.protein == null
@@ -1024,7 +1024,7 @@ export function alternatives(meal, prefs, lib, limit = 8) {
     e = Number(meal.snapshot.values.energy),
     protein = Number(meal.snapshot.values.protein);
   const seen = new Set([ingredientIdentity(meal.snapshot)]);
-  return preparePool(lib, p)
+  return preparePool(lib, p, profile)
     .filter(
       (t) =>
         t.meal_slots.includes(meal.slot) && t.id !== meal.snapshot.template_id,

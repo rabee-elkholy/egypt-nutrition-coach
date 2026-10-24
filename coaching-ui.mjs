@@ -37,18 +37,20 @@ const DISEASE_LABELS={
  ibs:'القولون العصبي (خفيف على الهضم)',
  cholesterol:'الكوليسترول (دهون صحية)',
  gout:'النقرس (تقليل البيورين وضبط البروتين)',
- anemia:'الأنيميا (غني بالحديد)',
- vitamin_d_deficiency:'دعم فيتامين د والكالسيوم',
- lactose_intolerance:'حساسية اللاكتوز',
+ anemia:'الأنيميا',
+ vitamin_d_deficiency:'نقص فيتامين د',
+ lactose_intolerance:'عدم تحمّل اللاكتوز',
  favism:'أنيميا الفول (استبعاد الفول)',
- fatty_liver:'دهون الكبد (تقليل السكريات والدهون المشبعة)'
+ fatty_liver:'دهون الكبد'
 };
 const INJURY_LABELS={
  knee_pain:'حماية الركبة',
  lower_back_pain:'حماية أسفل الظهر',
- shoulder_pain:'حماية الكتف',
+ shoulder_pain:'مراعاة ألم الكتف',
+ shoulder_injury:'مراعاة الكتف',
  wrist_pain:'حماية الرسغ',
- ankle_pain:'حماية الكاحل',
+ ankle_pain:'مراعاة ألم الكاحل',
+ ankle_injury:'مراعاة الكاحل',
  neck_pain:'حماية الرقبة',
  hip_pain:'حماية الحوض',
  diastasis_recti:'حماية جدار البطن'

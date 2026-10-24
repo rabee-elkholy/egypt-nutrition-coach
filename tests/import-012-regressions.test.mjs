@@ -4,7 +4,7 @@ import {Miniflare} from 'miniflare';
 import {migrateLocal} from '../scripts/local-migrations.mjs';
 import {signHs256Jwt} from '../server/auth.mjs';
 import {empty,generate,command,today,evaluateEligibility} from '../server/coaching.mjs';
-import {loadAccount,saveAccount} from '../server/store.mjs';
+import {loadAccount,saveAccount,backfillAccountToNormalizedTables,deleteFullAccountData} from '../server/store.mjs';
 import {dateOffset} from '../coaching-shared.mjs';
 import {calorieReview} from '../server/recovery.mjs';
 const config={AUTH_JWT_SECRET:'local-regression-key-with-32-characters-minimum',AUTH_ISSUER:'https://test-issuer.local',AUTH_AUDIENCE:'coach-test',RATE_LIMIT_PER_MINUTE:'10000'};
@@ -21,10 +21,19 @@ test('Imported 0.12 public edge security and durable state transitions',async t=
    const session=await req('auth/session');cookie=session.headers.get('Set-Cookie').split(';')[0];anonId=(await session.json()).userId;
    assert.equal((await post('commands',{revision:0,action:'generate',payload:draft},{Cookie:cookie,'Idempotency-Key':'init'})).status,200);
    const authorization='Bearer '+await token('claim-owner');
-   for(const headers of [{Authorization:authorization},{Authorization:authorization,'x-anonymous-cookie-uid':anonId}]){
+   for(const headers of [{Authorization:authorization},{Authorization:authorization,'x-anonymous-cookie-uid':anonId},{Authorization:authorization,Cookie:'coach_uid='+anonId.slice(5)}]){
     const r=await post('auth/claim-anonymous',{anonymousUserId:anonId,consent:true},headers);assert.equal(r.status,403,await r.text());
    }
    const csrf=await post('account/delete',{confirm:true},{Cookie:cookie,Origin:'https://evil.test'});assert.equal(csrf.status,403);
+  });
+  await t.test('legacy cookie accounts and simulation-only histories keep their identity',async()=>{
+   for(const simulationOnly of [false,true]){
+    const uid=crypto.randomUUID(),legacy='anon:'+uid;
+    const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(legacy));
+    const key=simulationOnly?'__simulation__:'+Array.from(new Uint8Array(bytes)).map(x=>x.toString(16).padStart(2,'0')).join(''):legacy;
+    await db.prepare('INSERT INTO coaching_accounts(user_id,revision,body) VALUES(?,?,?)').bind(key,0,JSON.stringify(empty())).run();
+    const response=await req('auth/session',{headers:{Cookie:'coach_uid='+uid}});assert.equal(response.status,200);assert.equal((await response.json()).userId,legacy);
+   }
   });
   await t.test('two claims are atomic: one owner wins, historical plans survive, anonymous access closes',async()=>{
    const before=await loadAccount(db,anonId);const oldPlan=structuredClone(before.plans[0]);oldPlan.id='archived-owned-plan';
@@ -49,6 +58,25 @@ test('Imported 0.12 public edge security and durable state transitions',async t=
    await saveAccount(db,user,next,1,{key:'delete',digest:'test2',action:'food_delete',payload:{id:'legacy-0'},previousState:loaded});
    loaded=await loadAccount(db,user);assert.equal(loaded.foodEntries.length,159);assert.ok(!loaded.foodEntries.some(x=>x.id==='legacy-0'));
    const deltas=await db.prepare('SELECT entity_type,op FROM coaching_sync_outbox WHERE user_id=? AND revision=2').bind(user).all();assert.ok(deltas.results.some(x=>x.entity_type==='food_entry'&&x.op==='delete'));assert.ok(deltas.results.some(x=>x.entity_type==='food_day'));
+  });
+  await t.test('a delayed backfill cannot replace a newer committed log',async()=>{
+   const user='backfill-race',s=generate(empty(),draft,'backfill-race');s.revision=1;s.waterLogs=[{date:today(),cups:2,liters:.5}];
+   await saveAccount(db,user,s,0,{key:'seed',digest:'seed',action:'generate'});
+   let injected=false;
+   const wrapped={prepare:sql=>db.prepare(sql),batch:async statements=>{
+    if(!injected){injected=true;const before=await loadAccount(db,user),next=command(structuredClone(before),'water',{cups:4});next.revision=2;await saveAccount(db,user,next,1,{key:'newer',digest:'newer',action:'water',previousState:before});}
+    return db.batch(statements);
+   }};
+   await assert.rejects(()=>backfillAccountToNormalizedTables(wrapped,user),e=>e.status===409);
+   assert.equal((await loadAccount(db,user)).waterLogs[0].cups,4);
+  });
+  await t.test('an already authenticated write cannot recreate an account deleted before commit',async()=>{
+   const user='delete-race',s=generate(empty(),draft,'delete-race');s.revision=1;
+   await saveAccount(db,user,s,0,{key:'seed',digest:'seed',action:'generate'});
+   const before=await loadAccount(db,user),next=command(structuredClone(before),'water',{cups:3});next.revision=2;
+   await deleteFullAccountData(db,user);
+   await assert.rejects(()=>saveAccount(db,user,next,1,{key:'late-write',digest:'late',action:'water',previousState:before}),e=>e.status===409);
+   assert.equal(await db.prepare('SELECT body FROM coaching_accounts WHERE user_id=?').bind(user).first(),null);
   });
   await t.test('receipt replay returns original affected entities after later writes; wearable retry commits once',async()=>{
    const headers={Authorization:'Bearer '+await token('receipts')};
@@ -79,4 +107,9 @@ test('legacy onboarding injury IDs and canonical API IDs enforce the same exclus
  }
  assert.equal(evaluateEligibility({...draft,injuries:['elbow_pain']}).status,'requires_review');
  assert.throws(()=>generate(empty(),{...draft,injuries:['elbow_pain']}),/الكوع/);
+});
+
+test('account deletion fails closed before the revocation schema is installed',async()=>{
+ let wrote=false;const db={prepare(){return {async first(){return null;}};},async batch(){wrote=true;return [];}};
+ await assert.rejects(()=>deleteFullAccountData(db,'legacy'),e=>e.status===503);assert.equal(wrote,false);
 });

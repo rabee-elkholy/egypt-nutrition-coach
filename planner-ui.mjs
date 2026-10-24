@@ -993,7 +993,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
           });
     c.anchor=anchor;
     renderPantry();
-    const suggestions = (c.type === "component" ? componentAlternatives(c.meal.snapshot,c.index,active().preferences,library,c.slot) : alternatives(anchor, active().preferences, library,1000)).filter(a=>suitableReplacement(c,a.snapshot)).slice(0,8);
+    const suggestions = (c.type === "component" ? componentAlternatives(c.meal.snapshot,c.index,active().preferences,library,c.slot) : alternatives(anchor, active().preferences, library,1000,active().profile)).filter(a=>suitableReplacement(c,a.snapshot)).slice(0,8);
     $("picker-suggestions").innerHTML =
       suggestions
         .map(

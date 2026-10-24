@@ -165,6 +165,9 @@ function regionAllowsKey(ing, region){
 }
 
 export function assertDietDay(snapshots,diet,targets=null,profile=null){
+  const medicalProfile=profile||{diseases:targets?.medical_conditions||[]};
+  const medicalBlocked=medicalContraindicatedKeys(medicalProfile);
+  if(medicalBlocked.size&&snapshots.some(s=>!s.ingredients?.length||s.ingredients.some(i=>typeof i.key!=='string'||medicalBlocked.has(i.key))))throw Error('الوجبة لا تطابق استبعادات الحالة الصحية المعلنة؛ لم نحفظ التعديل.');
   if(['vegetarian','vegan','mediterranean','dash','keto'].includes(diet) && snapshots.some(s=>s.ingredients.some(i=>!i.key || !dietIngredientAllowed({...i,values:i.values_per_100g},diet))))throw Error('البديل لا يطابق قواعد النظام أو مكوناته غير موثقة؛ اختار بديلًا مناسبًا.');
   if(diet==='high_protein'&&targets&&snapshots.reduce((s,x)=>s+Number(x.values.protein),0)<targets.protein*.8)throw Error('الوجبات لا تحقق الحد المطلوب لهدف البروتين؛ زوّد مصادر البروتين المتاحة.');
   const hasHypertension=Boolean(profile?.diseases?.includes('hypertension')||targets?.medical_conditions?.includes('hypertension'));

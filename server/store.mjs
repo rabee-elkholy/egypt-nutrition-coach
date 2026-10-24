@@ -25,12 +25,14 @@ async function hasNormalizedTables(db){
  try{
   const row=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='coaching_sync_outbox'").first();
   return !!row?.name;
- }catch{return false;}
+ }catch(error){throw Object.assign(Error('تعذر التحقق من مخزن السجلات.'),{status:503,cause:error});}
 }
 
 export async function loadAccount(db,user){
  const row=await db.prepare('SELECT revision,body FROM coaching_accounts WHERE user_id=?').bind(user).first();
  const parsed=row?JSON.parse(row.body):empty();
+ // The transactional revision column is authoritative for legacy/restored bodies.
+ if(Number.isSafeInteger(row?.revision))parsed.revision=row.revision;
  // Hydrate normalized tables if present and if aggregate trimmed old historical logs
  if(row&&await hasNormalizedTables(db)){
   try{
@@ -161,8 +163,9 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
  const receipt=JSON.stringify({revision:state.revision,at:nowIso,action,affected:deltas});
 
  const sourceGuard=claimSource?" WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM coaching_auth_sessions WHERE user_id=? AND session_id='__claimed__')":" WHERE 1";
- const accountSql='INSERT INTO coaching_accounts(user_id,revision,body) SELECT ?,?,?'+sourceGuard+' ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision,body=excluded.body WHERE coaching_accounts.revision=?';
- const accountArgs=[user,state.revision,body,...(claimSource?[claimSource.userId,claimSource.revision,claimSource.userId]:[]),previousRevision];
+ const closedGuard=normalizedReady?" AND NOT EXISTS(SELECT 1 FROM coaching_auth_sessions WHERE user_id=? AND session_id IN ('__deleted__','__claimed__') AND revoked_at IS NOT NULL)":'';
+ const accountSql='INSERT INTO coaching_accounts(user_id,revision,body) SELECT ?,?,?'+sourceGuard+closedGuard+' ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision,body=excluded.body WHERE coaching_accounts.revision=?';
+ const accountArgs=[user,state.revision,body,...(claimSource?[claimSource.userId,claimSource.revision,claimSource.userId]:[]),...(normalizedReady?[user]:[]),previousRevision];
  const statements=[db.prepare(accountSql).bind(...accountArgs)];
  // The exact body guards every dependent insert inside one atomic batch.
  for(const plan of state.plans)statements.push(db.prepare('INSERT OR IGNORE INTO coaching_plans(user_id,plan_id,created_at,body) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(user,plan.id,plan.created_at,JSON.stringify(plan),user,state.revision,body));
@@ -228,24 +231,24 @@ export async function backfillAccountToNormalizedTables(db,user){
  const nowIso=new Date().toISOString();
  const stmts=[];
  for(const e of s.foodEntries||[]){
-  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_food_entries(user_id,entry_id,date,slot,source,updated_at,deleted,body) VALUES(?,?,?,?,?,?,0,?)').bind(user,e.id,e.date,e.slot||'snack',e.source||'manual',e.at||nowIso,JSON.stringify(e)));
+  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_food_entries(user_id,entry_id,date,slot,source,updated_at,deleted,body) SELECT ?,?,?,?,?,?,0,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?)').bind(user,e.id,e.date,e.slot||'snack',e.source||'manual',e.at||nowIso,JSON.stringify(e),user,s.revision));
  }
  for(const w of s.waterLogs||[]){
-  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_water_logs(user_id,date,cups,liters,updated_at,body) VALUES(?,?,?,?,?,?)').bind(user,w.date,w.cups||0,String(w.liters||0),w.at||nowIso,JSON.stringify(w)));
+  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_water_logs(user_id,date,cups,liters,updated_at,body) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?)').bind(user,w.date,w.cups||0,String(w.liters||0),w.at||nowIso,JSON.stringify(w),user,s.revision));
  }
  for(const w of s.weights||[]){
-  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_weight_logs(user_id,date,kg,source,updated_at,body) VALUES(?,?,?,?,?,?)').bind(user,w.date,String(w.kg),w.source||'manual',nowIso,JSON.stringify(w)));
+  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_weight_logs(user_id,date,kg,source,updated_at,body) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?)').bind(user,w.date,String(w.kg),w.source||'manual',nowIso,JSON.stringify(w),user,s.revision));
  }
  for(const l of s.workoutLogs||[]){
-  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_workout_logs(user_id,log_id,date,exercise_id,plan_id,updated_at,deleted,body) VALUES(?,?,?,?,?,?,0,?)').bind(user,l.id,l.date,l.exerciseId,l.planId||'unknown',l.at||nowIso,JSON.stringify(l)));
+  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_workout_logs(user_id,log_id,date,exercise_id,plan_id,updated_at,deleted,body) SELECT ?,?,?,?,?,?,0,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?)').bind(user,l.id,l.date,l.exerciseId,l.planId||'unknown',l.at||nowIso,JSON.stringify(l),user,s.revision));
  }
  for(const sess of s.sessions||[]){
-  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_sessions(user_id,session_id,date,day_index,status,updated_at,body) VALUES(?,?,?,?,?,?,?)').bind(user,sess.id,sess.date,sess.dayIndex||0,sess.status||'completed',nowIso,JSON.stringify(sess)));
+  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_sessions(user_id,session_id,date,day_index,status,updated_at,body) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?)').bind(user,sess.id,sess.date,sess.dayIndex||0,sess.status||'completed',nowIso,JSON.stringify(sess),user,s.revision));
  }
  for(const c of s.checkins||[]){
-  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_checkins(user_id,date,at,body) VALUES(?,?,?,?)').bind(user,c.date,c.at||nowIso,JSON.stringify(c)));
+  stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_checkins(user_id,date,at,body) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?)').bind(user,c.date,c.at||nowIso,JSON.stringify(c),user,s.revision));
  }
- if(stmts.length)await db.batch(stmts);
+ if(stmts.length){const result=await db.batch(stmts);if(!result.some(r=>r.meta.changes))throw Object.assign(Error('تغير الحساب أثناء الترحيل؛ حدّث البيانات وأعد المحاولة.'),{status:409});}
  return {
   migrated:true,
   counts:{
@@ -298,6 +301,7 @@ export async function exportFullAccountData(db,user){
 export async function deleteFullAccountData(db,user){
  const nowIso=new Date().toISOString();
  const normalized=await hasNormalizedTables(db);
+ if(!normalized)throw Object.assign(Error('حذف الحساب يتطلب ترحيل مخزن إبطال الجلسات أولًا.'),{status:503});
  const tables=['coaching_accounts','coaching_requests','coaching_plans','coaching_changes','coaching_workout_plans'];
  if(normalized){
   tables.push('coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_auth_sessions');

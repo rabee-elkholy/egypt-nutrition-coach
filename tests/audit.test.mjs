@@ -107,7 +107,7 @@ test('AUD-21: retry after a concurrent original commit returns a state at least 
  const {default:worker}=await import('../server/worker.mjs');let reads=0;
  const raw=JSON.stringify({revision:0,action:'weight',payload:{kg:79}}),bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)),digest=Array.from(new Uint8Array(bytes)).map(v=>v.toString(16).padStart(2,'0')).join('');
  const old=empty(),next={...empty(),revision:1};
- const db={prepare(sql){return {bind(){return this;},async first(){if(sql.includes('coaching_auth_sessions'))return null;if(sql.includes('coaching_accounts'))return {body:JSON.stringify(reads++?next:old)};if(sql.includes('coaching_requests'))return {digest,response:JSON.stringify({revision:1})};throw Error(sql);}};}};
+ const db={prepare(sql){return {bind(){return this;},async first(){if(sql.includes('sqlite_master'))return null;if(sql.includes('coaching_auth_sessions'))return null;if(sql.includes('coaching_accounts'))return {body:JSON.stringify(reads++?next:old)};if(sql.includes('coaching_requests'))return {digest,response:JSON.stringify({revision:1})};throw Error(sql);}};}};
  const response=await worker.fetch(new Request('https://example.test/v1/commands',{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':'u','Idempotency-Key':'same'},body:raw}),{DB:db});const result=await response.json();assert.equal(response.status,200);assert.equal(result.revision,1);assert.equal(result.commandReceipt.revision,1);
 });
 test('AUD-22: meal times never invent a pre/post-workout relationship',()=>{
