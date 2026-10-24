@@ -6,7 +6,7 @@ import {recovery,calorieReview,progression} from '../server/recovery.mjs';
 import {workoutPlan} from '../server/workouts.mjs';
 import {dateOffset,localDate} from '../coaching-shared.mjs';
 const draft={name:'Test',age:30,weight:80,height:175,sex:'male',goal:'lose',serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5]};
-const fixture=generate(empty(),draft);
+const fixture=generate(empty(),draft,'audit-fixture');
 // These follow-up scenarios represent an established goal, not today's first onboarding.
 fixture.nutritionContextStartedOn=dateOffset(today(),-28);
 const run=(s,a,p)=>{const result=command(structuredClone(s),a,p);result.revision++;return result;};
@@ -109,4 +109,11 @@ test('renewing an expired week preserves the accepted energy and leaves the prev
  const s=structuredClone(fixture),previous=s.plans[0];for(const day of previous.days)day.date=dateOffset(day.date,-7);previous.start_date=dateOffset(previous.start_date,-7);
  const frozen=JSON.stringify(previous),energy=previous.targets.energy-100;s.nutritionAdjustment={energy,protein:previous.targets.protein,reason:'accepted earlier'};
  const next=run(s,'renew_plan',{}),plan=next.plans.at(-1);assert.equal(plan.targets.energy,energy);assert.equal(plan.days[0].date,today());assert.equal(JSON.stringify(next.plans[0]),frozen);
+});
+
+test('calorie acceptance rejects an infeasible future protein prescription without changing saved input',()=>{
+ const s=structuredClone(fixture);s.checkins=[healthyCheckin()];
+ for(const meal of s.plans[0].days[1].meals)meal.snapshot.values.protein='1';
+ s.adaptations=[{id:'invalid-quality',kind:'calories',delta:-100,reason:'test',status:'pending',baseRevision:s.revision}];
+ const before=JSON.stringify(s);assert.throws(()=>run(s,'adaptation',{id:'invalid-quality',accept:true}),/حدود السعرات والبروتين/);assert.equal(JSON.stringify(s),before);
 });
