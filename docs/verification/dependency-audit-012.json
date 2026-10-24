@@ -1,0 +1,19 @@
+{
+  "vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "scope": "npm audit including development dependencies; this is not a penetration test",
+  "overrides": {
+    "esbuild": "$esbuild",
+    "miniflare": {
+      "sharp": "0.35.5",
+      "undici": "7.30.1"
+    }
+  },
+  "packages": []
+}

@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "revision": 5,
+  "serverNow": "2026-10-24T09:16:12.000Z",
+  "serverDate": "2026-10-24",
+  "timezone": "Africa/Cairo",
+  "commandReceipt": {
+    "revision": 5,
+    "action": "water",
+    "replayed": false,
+    "at": "2026-10-24T09:16:12.000Z"
+  },
+  "affected": [
+    {
+      "entityType": "water_log",
+      "entityId": "2026-10-24",
+      "op": "upsert",
+      "payload": {
+        "date": "2026-10-24",
+        "cups": 8,
+        "liters": 2,
+        "targetCups": 11,
+        "targetLiters": 2.8,
+        "at": "2026-10-24T09:16:12.000Z"
+      }
+    }
+  ]
+}

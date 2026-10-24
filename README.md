@@ -1,3 +1,5 @@
+> إصدار 0.12 المستورد من تعديلات أرجون: [نتائج التحقق والتصحيحات وحدود الجاهزية](docs/IMPORT_VERIFICATION_012_AR.md)، و[عقد API](contracts/openapi.yaml).
+
 > تحديث 0.11: [إصلاحات الدقة والمتابعة وحدود الإصدار](docs/RELEASE_011_AR.md). الاستضافة المعتمدة والفرع الحالي موضحان في AGENTS.md.
 
 # Egypt Nutrition Coach

@@ -6,7 +6,7 @@ import {recovery,hasPerformanceDrop} from '../server/recovery.mjs';
 import {dayTotals} from '../server/food.mjs';
 import {dateOffset,number} from '../coaching-shared.mjs';
 const draft={name:'Audit',age:30,weight:80,height:175,sex:'male',goal:'lose',serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5]};
-const fixture=generate(empty(),draft);
+const fixture=generate(empty(),draft,'audit-fixture');
 const clone=()=>structuredClone(fixture);
 const readyCheckin=()=>({date:today(),at:new Date().toISOString(),sleepHours:8,sleepQuality:4,fatigue:1,stress:1,soreness:0,pain:false,illness:false,redFlags:false});
 const run=(s,a,p)=>{const result=command(structuredClone(s),a,p);result.revision++;return result;};
@@ -66,8 +66,8 @@ test('AUD-11: late corrections are ordered by exposure date rather than edit tim
 });
 test('AUD-12: day targets are frozen when future energy targets change',()=>{
  const plan=structuredClone(fixture.plans[0]),old=plan.targets.energy;
- retargetPlan(plan,old-100,fixture.preferences,dateOffset(today(),1));
- assert.equal(plan.days[0].targets.energy,old);assert.equal(plan.days[1].targets.energy,old-100);
+ retargetPlan(plan,old+100,fixture.preferences,dateOffset(today(),1));
+ assert.equal(plan.days[0].targets.energy,old);assert.equal(plan.days[1].targets.energy,old+100);
 });
 test('AUD-13: backfilled manual diary cannot obtain a target from a plan created later',()=>{
  const s=clone(),date=dateOffset(today(),-30);const n=run(s,'food_entry',{source:'manual',date,slot:'snack',name:'وجبة',energy:500});
@@ -107,7 +107,7 @@ test('AUD-21: retry after a concurrent original commit returns a state at least 
  const {default:worker}=await import('../server/worker.mjs');let reads=0;
  const raw=JSON.stringify({revision:0,action:'weight',payload:{kg:79}}),bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)),digest=Array.from(new Uint8Array(bytes)).map(v=>v.toString(16).padStart(2,'0')).join('');
  const old=empty(),next={...empty(),revision:1};
- const db={prepare(sql){return {bind(){return this;},async first(){if(sql.includes('coaching_accounts'))return {body:JSON.stringify(reads++?next:old)};if(sql.includes('coaching_requests'))return {digest,response:JSON.stringify({revision:1})};throw Error(sql);}};}};
+ const db={prepare(sql){return {bind(){return this;},async first(){if(sql.includes('coaching_auth_sessions'))return null;if(sql.includes('coaching_accounts'))return {body:JSON.stringify(reads++?next:old)};if(sql.includes('coaching_requests'))return {digest,response:JSON.stringify({revision:1})};throw Error(sql);}};}};
  const response=await worker.fetch(new Request('https://example.test/v1/commands',{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':'u','Idempotency-Key':'same'},body:raw}),{DB:db});const result=await response.json();assert.equal(response.status,200);assert.equal(result.revision,1);assert.equal(result.commandReceipt.revision,1);
 });
 test('AUD-22: meal times never invent a pre/post-workout relationship',()=>{

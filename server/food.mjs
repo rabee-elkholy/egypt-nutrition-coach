@@ -1,10 +1,11 @@
-import {clockNow,isoNow,clockDate} from './clock.mjs';
+import {clockNow,isoNow,clockDate,clockTimeZone} from './clock.mjs';
 import library from '../data/planning-library.json' with {type:'json'};
 import {alternatives,scaleSnapshot,sumSnapshots,assessDay,nutritionQualityIssues} from '../planner-core.mjs';
 import {assertDietDay} from '../diet-patterns.mjs';
 import {number,dateForLog as validateLogDate,localDate} from '../coaching-shared.mjs';
+import {getFoodCatalogItem} from './food-catalog.mjs';
 export {library};
-const dateForLog=date=>validateLogDate(date,clockNow());
+const dateForLog=(date,tz=clockTimeZone())=>validateLogDate(date,clockNow(),tz);
 const metrics=['energy','protein','fat','carbs','fiber','saturated','sodium','sugars'];
 export const activePlan=s=>s.plans.find(p=>p.id===s.active_plan_id);
 export function plannedEnergyForDate(s,date){
@@ -29,8 +30,9 @@ function refreshDay(s,date){
 }
 export function foodCommand(s,action,p){
  s.foodEntries||=[];
+ const tz=s?.profile?.timezone||clockTimeZone();
  if(action==='food_entry'){
-  const date=dateForLog(p.date||clockDate());if(!['planned','ingredient','manual'].includes(p.source))throw Error('مصدر الوجبة غير صالح.');
+  const date=dateForLog(p.date||localDate(clockNow(),tz),tz);if(!['planned','ingredient','manual'].includes(p.source))throw Error('مصدر الوجبة غير صالح.');
   if(!['breakfast','lunch','dinner','snack'].includes(p.slot))throw Error('حدد الوجبة.');
   const previous=s.foodLogs.find(d=>d.date===date);if(previous&&previous.source!=='entries')throw Error('اليوم مسجل كإجمالي؛ حوّله صراحةً إلى السجل التفصيلي قبل إضافة وجبات.');
   let snapshot,mealId=null,planId=null,quantity;
@@ -39,8 +41,15 @@ export function foodCommand(s,action,p){
    if(s.foodEntries.some(e=>e.date===date&&e.mealId===meal.id))throw Error('الوجبة دي متسجلة بالفعل؛ احذف التسجيل قبل تصحيح الكمية.');
    quantity=number(p.quantity,.1,4,'نسبة الحصة');snapshot=scaleSnapshot(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;
   }else if(p.source==='ingredient'){
-   const i=typeof p.key==='string'&&Object.hasOwn(library.ingredients,p.key)?library.ingredients[p.key]:null;if(!i)throw Error('الصنف غير موجود.');quantity=number(p.grams,1,2000,'الكمية بالجرام');
-   snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
+   const i=typeof p.key==='string'&&Object.hasOwn(library.ingredients,p.key)?library.ingredients[p.key]:null;
+   const catItem=!i&&typeof p.key==='string'?getFoodCatalogItem(p.key):null;
+   if(!i&&(!catItem||catItem.status!=='approved'||!catItem.quantity_basis?.grams_available))throw Error('الصنف غير موجود.');
+   quantity=number(p.grams,1,2000,'الكمية بالجرام');
+   if(i){
+    snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
+   }else{
+    snapshot={name:catItem.name,values:Object.fromEntries(metrics.map(k=>[k,catItem.values[k]==null?null:String(Number(catItem.values[k])*quantity/100)])),ingredients:[{key:catItem.id,name:catItem.name,grams:String(quantity),state:catItem.state,food_id:catItem.id,source:catItem.source,values_per_100g:catItem.values}]};
+   }
   }else{
    const name=typeof p.name==='string'?p.name.trim():'';if(!name||name.length>120)throw Error('اكتب اسم الوجبة في حدود 120 حرف.');
    snapshot={name,values:Object.fromEntries(metrics.map(k=>[k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))])),ingredients:[],is_approximate:true};
@@ -50,7 +59,7 @@ export function foodCommand(s,action,p){
   refreshDay(s,date);
   Object.assign(s.foodLogs.find(d=>d.date===date),{complete:false,completionPolicy:1,confirmedAt:null});
  }else if(action==='food_switch_to_entries'){
-  const date=dateForLog(p.date),previous=s.foodLogs.find(d=>d.date===date);
+  const date=dateForLog(p.date,tz),previous=s.foodLogs.find(d=>d.date===date);
   if(p.confirm!==true||!previous||previous.source==='entries')throw Error('تأكيد تحويل إجمالي اليوم إلى تسجيل تفصيلي مطلوب.');
   s.history.push({kind:'food_diary_mode',at:isoNow(),previous:structuredClone(previous)});
   s.foodLogs=s.foodLogs.filter(d=>d.date!==date);refreshDay(s,date);
@@ -58,7 +67,7 @@ export function foodCommand(s,action,p){
   const entry=s.foodEntries.find(e=>e.id===p.id);if(!entry)throw Error('التسجيل غير موجود.');s.foodEntries=s.foodEntries.filter(e=>e.id!==p.id);refreshDay(s,entry.date);
   Object.assign(s.foodLogs.find(d=>d.date===entry.date),{complete:false,confirmedAt:null,completionPolicy:1});
  }else if(action==='food_complete'){
-  const date=dateForLog(p.date);if(typeof p.complete!=='boolean')throw Error('حدد اكتمال اليوم.');
+  const date=dateForLog(p.date,tz);if(typeof p.complete!=='boolean')throw Error('حدد اكتمال اليوم.');
   if(!s.foodEntries.some(e=>e.date===date))throw Error('سجّل أكلك الأول قبل إغلاق اليوم.');
   refreshDay(s,date);Object.assign(s.foodLogs.find(d=>d.date===date),{complete:p.complete,completionPolicy:1,confirmedAt:p.complete?isoNow():null});
  }else throw Error('عملية أكل غير معروفة');
@@ -67,12 +76,13 @@ export function foodCommand(s,action,p){
 export function mealAlternatives(s,mealId){
  const {plan,day,meal}=plannedMeal(s,mealId);
  return alternatives(meal,s.preferences,library,30).filter(a=>{
-  try{const snapshots=day.meals.map(m=>m.id===mealId?a.snapshot:m.snapshot);assertDietDay(snapshots,s.preferences.diet,day.targets||plan.targets);return !nutritionQualityIssues(sumSnapshots(snapshots),day.targets||plan.targets).length;}catch{return false;}
+  try{const snapshots=day.meals.map(m=>m.id===mealId?a.snapshot:m.snapshot);assertDietDay(snapshots,s.preferences.diet,day.targets||plan.targets,s.profile);return !nutritionQualityIssues(sumSnapshots(snapshots),day.targets||plan.targets).length;}catch{return false;}
  }).slice(0,6);
 }
 export function replaceMeal(s,p){
+ const tz=s?.profile?.timezone||clockTimeZone();
  const {plan,day,meal}=plannedMeal(s,p.mealId);
- if(day.date<clockDate())throw Error('لا نغيّر خطط أيام فاتت.');
+ if(day.date<localDate(clockNow(),tz))throw Error('لا نغيّر خطط أيام فاتت.');
  if((s.foodEntries||[]).some(e=>e.mealId===meal.id))throw Error('الوجبة اتسجلت كأكل فعلي؛ اختار وجبة لسه متاكلتش.');
  const alternative=mealAlternatives(s,p.mealId).find(a=>a.snapshot.template_id===p.templateId);if(!alternative)throw Error('البديل لم يعد متاحًا تحت نفس اختياراتك.');
  const next=structuredClone(plan);next.id='plan-'+crypto.randomUUID();next.parent_id=plan.id;next.created_at=isoNow();next.changeReason='استبدال وجبة باختيارك';

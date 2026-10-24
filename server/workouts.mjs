@@ -1,5 +1,5 @@
 import {clockNow,isoNow,clockDate} from './clock.mjs';
-import {localDate,dateOffset,integer,stringList,plainRecord} from '../coaching-shared.mjs';
+import {localDate,dateOffset,integer,stringList,plainRecord,canonicalInjuries} from '../coaching-shared.mjs';
 import catalog from '../data/exercises.json' with {type:'json'};
 export {catalog};
 const equipmentMap={dumbbells:['dumbbell'],resistance_bands:['resistance_band'],bench:['flat_bench'],yoga_mat:['mat'],pullup_bar:['pullup_bar'],barbell:['barbell'],kettlebell:['kettlebell'],jump_rope:['jump_rope'],cardio_machine:['cardio_machine']};
@@ -27,7 +27,7 @@ const INJURY_NAMES={
  diastasis_recti:/crunch|sit.?up|v.?up|leg raise/i
 };
 export function isFriendlyForInjuries(e,injuries=[]){
- return injuries.filter(x=>x!=='none').every(injury=>Object.hasOwn(INJURY_PATTERNS,injury)&&
+ return canonicalInjuries(injuries).every(injury=>Object.hasOwn(INJURY_PATTERNS,injury)&&
  !INJURY_PATTERNS[injury].includes(e.pattern)&&!INJURY_NAMES[injury].test(e.name));
 }
 export function workoutSafetyIssues(s){
@@ -43,7 +43,7 @@ export function equipmentAllowed(exercise,prefs,location){
 function score(e,location){return (/\b(squat|push-up|push up|bench press|row|lat pulldown|deadlift|curl|calf raise)\b/i.test(e.name)?-20:0)+(e.loadMode==='assisted'?10:0)+e.equipment.length+(location==='gym'&&e.loadMode==='external'?-5:0);}
 function candidates(pattern,prefs,location,exclude=[]){
  const base=catalog.exercises.filter(e=>e.modality==='strength'&&e.pattern===pattern&&['weight_reps','bodyweight_reps'].includes(e.tracking)&&(prefs.fitnessLevel==='advanced'||e.difficulty!=='advanced')&&(prefs.fitnessLevel!=='beginner'||e.difficulty==='beginner')&&!exclude.includes(e.id)&&equipmentAllowed(e,prefs,location)).sort((a,b)=>score(a,location)-score(b,location)||a.id.localeCompare(b.id));
- const injuries=Array.isArray(prefs.injuries)?prefs.injuries.filter(x=>x&&x!=='none'):[];
+ const injuries=Array.isArray(prefs.injuries)?canonicalInjuries(prefs.injuries):[];
  if(!injuries.length)return base;
  const friendly=base.filter(e=>isFriendlyForInjuries(e,injuries));
  return friendly;
@@ -65,7 +65,7 @@ export function workoutPlan(draft){
  if(homeEquipment.some(e=>e!=='none'&&!Object.hasOwn(equipmentMap,e)))throw Error('معدات غير معروفة.');
  const dayLocations=draft.dayLocations==null?{}:plainRecord(draft.dayLocations,'أماكن الأيام');
  if(Object.entries(dayLocations).some(([key,value])=>!/^\d$/.test(key)||Number(key)>6||!['home','gym','home_only','gym_only'].includes(value)))throw Error('مكان أحد الأيام غير صالح.');
- const injuries=Array.isArray(draft.injuries)?draft.injuries.filter(x=>x&&x!=='none'):[];
+ const injuries=Array.isArray(draft.injuries)?canonicalInjuries(draft.injuries):[];
  const goal=draft.goal||'maintain';
  draft={...draft,workoutLocation,homeEquipment,dayLocations,fitnessLevel:level,injuries,goal};
  let split=draft.workoutSplitPreference==='auto'||!draft.workoutSplitPreference?(days.length<=3?'full_body':'upper_lower'):draft.workoutSplitPreference;
@@ -76,20 +76,36 @@ export function workoutPlan(draft){
  if(split==='bro_split'&&days.length<5){warnings.push('تقسيمة العضلة الواحدة تحتاج 5 أيام؛ استخدمنا الجسم كله لتغطية العضلات في الأيام المتاحة.');split='full_body';}
  if(split==='ppl'&&days.length<3){warnings.push('الدفع والسحب والأرجل يحتاجوا 3 أيام على الأقل؛ استخدمنا الجسم كله.');split='full_body';}
  const goalNote=goal==='lose'?'خطة مقاومة لحماية العضلات وتنشيط الحرق (مع 15 دقيقة مشي سريع بعد الجلسة عند الإمكان)':goal==='muscle_gain'||goal==='gain'?'خطة بناء عضلي بالتركيز على المدى الحركي الكامل والتدرج في الأوزان':'خطة متوازنة للحفاظ على القوة واللياقة وصحة المفاصل';
+ // Track used exercises per focus/pattern across the week so multi-day full_body or repeated focus days rotate variations deterministically
+ const focusOccurrenceCount=new Map();
  const sessions=days.map((dayIndex,i)=>{
   const rawLocation=draft.workoutLocation==='home_only'?'home':draft.workoutLocation==='home_and_gym'?(draft.dayLocations?.[dayIndex]||'home'):'gym';
   const location=['gym','gym_only'].includes(rawLocation)?'gym':'home';
   const focus=split==='upper_lower'?(i%2?'lower':'upper'):split==='ppl'?['push','pull','legs'][i%3]:split==='bro_split'?['chest','back','legs','shoulders','arms','core'][i%6]:'full_body';
+  const focusOccurrence=focusOccurrenceCount.get(focus)||0;
+  focusOccurrenceCount.set(focus,focusOccurrence+1);
   const used=[],missing=[];let seconds=300;
   const exercises=[];
-  const patternOrder=focus==='full_body'&&duration<=30&&i%2?['hinge','horizontal_pull','horizontal_push','squat','anti_extension','vertical_pull']:schemes[focus];
+  const fullBodyOrders=[
+   ['squat','horizontal_push','horizontal_pull','hinge','anti_extension','vertical_pull'],
+   ['hinge','horizontal_pull','horizontal_push','squat','anti_extension','vertical_pull'],
+   ['squat','vertical_pull','horizontal_push','hinge','horizontal_pull','anti_extension']
+  ];
+  const patternOrder=focus==='full_body'?(duration<=30?(i%2?fullBodyOrders[1]:fullBodyOrders[0]):fullBodyOrders[focusOccurrence%fullBodyOrders.length]):schemes[focus];
   for(const pattern of patternOrder){
-   const pool=candidates(pattern,{...draft,fitnessLevel:level},location,used);const e=pool[0];if(!e){missing.push(pattern);continue;}
+   const pool=candidates(pattern,{...draft,fitnessLevel:level},location,used);
+   if(!pool.length){missing.push(pattern);continue;}
    const sets=level==='beginner'?2:3;const compound=['squat','hinge','horizontal_push','horizontal_pull','vertical_push','vertical_pull','lunge'].includes(pattern);
    const restSeconds=compound?(goal==='lose'&&duration>=45?90:120):(goal==='lose'&&duration>=45?60:75);
    const repMin=compound?8:10,repMax=compound?(goal==='lose'&&level==='beginner'?12:12):(goal==='lose'?15:15);
+   // Select a candidate that fits the time budget, rotating across focusOccurrence when multiple budget-fitting candidates exist
+   const fitting=pool.filter(cand=>{
+    const cCost=sets*repMax*3*(eachSide(cand)?2:1)+(sets-1)*restSeconds+60;
+    return seconds+cCost<=duration*60;
+   });
+   if(!fitting.length){missing.push(pattern);continue;}
+   const e=fitting[focusOccurrence%fitting.length];
    const cost=sets*repMax*3*(eachSide(e)?2:1)+(sets-1)*restSeconds+60;
-   if(seconds+cost>duration*60){missing.push(pattern);continue;}
    seconds+=cost;used.push(e.id);exercises.push({...e,regions:muscleRegions(e),sets,repMin,repMax,rir:level==='beginner'?3:2,restSeconds});
   }
   return {dayIndex,location,focus,goalNote,exercises,missing,duration,estimatedMinutes:Math.ceil(seconds/60),isTrainingDay:true};
@@ -105,7 +121,26 @@ export function workoutPlan(draft){
  if(sessions.some(s=>s.exercises.length===0))warnings.push('في يوم لا يحتوي على تمرين مناسب؛ راجع المعدات أو مستوى التمرين قبل البدء.');
  if(split==='full_body'&&days.some((d,i)=>days.length>1&&(days[(i+1)%days.length]-d+7)%7===1))warnings.push('في أيام تمرين متتالية؛ راقب الاستشفاء ويفضل يوم راحة بين جلسات الجسم كله.');
  const weeklySets=weeklySetTotals(sessions);
- return {injuryPolicyVersion:INJURY_POLICY_VERSION,id:crypto.randomUUID(),version:1,split,goalNote,days:sessions,warnings,weeklySets,sourceVersion:catalog.manifest.version};
+ const totalPatternsRequested=sessions.reduce((sum,s)=>sum+s.exercises.length+s.missing.length,0);
+ const totalPatternsCovered=sessions.reduce((sum,s)=>sum+s.exercises.length,0);
+ return {
+  injuryPolicyVersion:INJURY_POLICY_VERSION,
+  id:crypto.randomUUID(),
+  version:1,
+  split,
+  goalNote,
+  days:sessions,
+  warnings,
+  weeklySets,
+  coverage:{
+   requestedPatterns:totalPatternsRequested,
+   coveredPatterns:totalPatternsCovered,
+   missingPatternsCount:totalPatternsRequested-totalPatternsCovered,
+   complete:totalPatternsRequested===totalPatternsCovered,
+   reviewScope:'system_generated_heuristic_not_clinical_clearance'
+  },
+  sourceVersion:catalog.manifest.version
+ };
 }
 export function exerciseAlternatives(s,dayIndex,exerciseId){
  const index=integer(dayIndex,0,6,'يوم التمرين');

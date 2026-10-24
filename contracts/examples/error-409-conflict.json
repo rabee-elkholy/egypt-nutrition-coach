@@ -1,0 +1,15 @@
+{
+  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
+  "code": "REVISION_CONFLICT",
+  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
+  "fieldErrors": [],
+  "requestId": "9a1c4b22-6e81-4f09-b812-33d4e5f6a7b8",
+  "retryable": false,
+  "currentRevision": 12,
+  "mergeHints": {
+    "expectedRevision": 10,
+    "serverRevision": 12,
+    "syncChangesEndpoint": "/v1/sync/changes?after=10",
+    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  }
+}

@@ -64,7 +64,13 @@ export function medicalContraindicatedKeys(profile={}){
     for(const k of ['fava','kidney','whitebeans','chickpeas','falafel','cabbage','onion','garlic'])out.add(k);
   }
   if(diseases.has('hypertension')){
-    for(const k of ['feta'])out.add(k);
+    for(const k of ['feta','bread','shawarma_chicken','shawarma_beef','tabbouleh','fattoush','babaghanouj'])out.add(k);
+  }
+  if(diseases.has('lactose_intolerance')){
+    for(const k of ['milk','wholemilk','yogurt','greekyogurt','cottage','feta','mozzarella'])out.add(k);
+  }
+  if(diseases.has('favism')){
+    for(const k of ['fava','falafel'])out.add(k);
   }
   if(diseases.has('cholesterol')){
     for(const k of ['lamb','liver','wholemilk','shawarma_beef'])out.add(k);
@@ -158,10 +164,11 @@ function regionAllowsKey(ing, region){
   return region==='any'||(ing.regions||[]).includes(region);
 }
 
-export function assertDietDay(snapshots,diet,targets=null){
+export function assertDietDay(snapshots,diet,targets=null,profile=null){
   if(['vegetarian','vegan','mediterranean','dash','keto'].includes(diet) && snapshots.some(s=>s.ingredients.some(i=>!i.key || !dietIngredientAllowed({...i,values:i.values_per_100g},diet))))throw Error('البديل لا يطابق قواعد النظام أو مكوناته غير موثقة؛ اختار بديلًا مناسبًا.');
   if(diet==='high_protein'&&targets&&snapshots.reduce((s,x)=>s+Number(x.values.protein),0)<targets.protein*.8)throw Error('الوجبات لا تحقق الحد المطلوب لهدف البروتين؛ زوّد مصادر البروتين المتاحة.');
-  if(diet==='dash'){
+  const hasHypertension=Boolean(profile?.diseases?.includes('hypertension')||targets?.medical_conditions?.includes('hypertension'));
+  if(diet==='dash'||hasHypertension){
     const getSodium=s=>s.values.sodium!=null&&Number.isFinite(Number(s.values.sodium))&&Number(s.values.sodium)>=0?Number(s.values.sodium):null;
     if(snapshots.some(s=>getSodium(s)==null)||snapshots.reduce((s,x)=>s+getSodium(x),0)>2300)throw Error('الخطة لا تحقق حد الصوديوم في داش قبل الملح المضاف. غيّر الاختيارات.');
   }

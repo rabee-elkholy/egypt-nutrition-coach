@@ -22,6 +22,13 @@
       "when": 1792723458264,
       "tag": "0002_woozy_spitfire",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792800000000,
+      "tag": "0003_production_readiness",
+      "breakpoints": true
     }
   ]
 }

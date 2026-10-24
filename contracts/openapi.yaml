@@ -1,0 +1,1336 @@
+openapi: 3.1.0
+info:
+  title: Egypt Nutrition Coach Backend API
+  version: 1.0.0
+  summary: REST API integration contract v1 for Kotlin Multiplatform (KMM) Android & iOS clients and Web MVP.
+  description: |
+    Canonical API contract for Egypt Nutrition Coach (`v0.12.0`).
+    - **Authentication**: Mobile KMM clients authenticate via `Authorization: Bearer <JWT>` (RS256/ES256/HS256 verified against configured OIDC/JWKS). Web MVP uses an `HttpOnly` `coach_uid` cookie adapter.
+    - **Idempotency**: All `POST /v1/commands` writes require a unique `Idempotency-Key` header (UUID) and `revision` integer. Canonical JSON hashing guarantees key-order-independent retry safety.
+    - **Slim Responses**: Append `?view=receipt` or send `Prefer: return=minimal` on `POST /v1/commands` to receive a compact delta receipt (size depends on affected entities) instead of the full state aggregate.
+    - **Timezones & Dates**: Timestamps are `ISO-8601 UTC` (`YYYY-MM-DDTHH:mm:ss.sssZ`). Local calendar dates are `YYYY-MM-DD` evaluated in the user's configured IANA timezone (`Africa/Cairo`, `Asia/Riyadh`, `Asia/Dubai`, etc.).
+  contact:
+    name: Egypt Nutrition Coach Platform Engineering
+servers:
+  - url: https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev
+    description: Canonical Cloudflare Worker Production / Trial Host
+  - url: http://127.0.0.1:8787
+    description: Local Miniflare / Wrangler Development Server
+security:
+  - BearerAuth: []
+  - AnonymousCookieAuth: []
+paths:
+  /v1/health:
+    get:
+      operationId: getHealth
+      summary: Public health and engine version check
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                  - apiVersion
+                  - engineVersion
+                  - requestId
+                properties:
+                  ok:
+                    type: boolean
+                  apiVersion:
+                    type: string
+                  engineVersion:
+                    type: string
+                  requestId:
+                    type: string
+  /v1/capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Runtime capabilities, schema version, catalog versions, and enabled feature flags
+      security: []
+      responses:
+        "200":
+          description: Runtime capabilities manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilitiesResponse"
+  /v1/bootstrap:
+    get:
+      operationId: getBootstrap
+      summary: Lightweight KMM startup payload (< 10 KB) with profile, active plan refs, today summary, and pending adaptations
+      parameters:
+        - $ref: "#/components/parameters/IfNoneMatchHeader"
+        - $ref: "#/components/parameters/SimulationQuery"
+      responses:
+        "200":
+          description: Lightweight bootstrap payload
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootstrapResponse"
+        "304":
+          description: Not Modified (ETag matched)
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+      description: Persist and resend the ETag returned by the server. It includes revision, local day and a short time bucket so recovery and date-dependent content expire. Do not construct it from revision alone.
+  /v1/state:
+    get:
+      operationId: getFullState
+      summary: Full account state including active nutrition/workout plans and logs (used by Web MVP and initial full sync)
+      parameters:
+        - $ref: "#/components/parameters/IfNoneMatchHeader"
+        - $ref: "#/components/parameters/SimulationQuery"
+      responses:
+        "200":
+          description: Full account state
+          content:
+            application/json:
+              schema:
+                type: object
+        "304":
+          description: Not Modified
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+  /v1/commands:
+    post:
+      operationId: postCommand
+      summary: Execute an idempotent domain mutation (generate, food_entry, water, weight, workout, session, recovery, review, adaptation, timezone, etc.)
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 100
+          description: Client-generated UUID for at-least-once retry safety
+        - name: Prefer
+          in: header
+          required: false
+          schema:
+            type: string
+            enum:
+              - return=minimal
+              - return=representation
+        - name: view
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - receipt
+              - minimal
+              - delta
+              - full
+        - $ref: "#/components/parameters/SimulationQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandRequest"
+      responses:
+        "200":
+          description: Command applied or replayed idempotently
+          headers:
+            ETag:
+              schema:
+                type: string
+            Idempotency-Replayed:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/CommandReceiptResponse"
+                  - type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "413":
+          $ref: "#/components/responses/PayloadTooLargeError"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+  /v1/foods:
+    get:
+      operationId: searchFoods
+      summary: Search the Egyptian & reference food catalog with Arabic normalization, synonyms, and provenance metadata
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum:
+              - all
+              - approved
+              - planning
+              - beverages
+            default: all
+        - name: includeEstimated
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 40
+      responses:
+        "200":
+          description: Paginated food search results with coverage status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodSearchResponse"
+  /v1/foods/{id}:
+    get:
+      operationId: getFoodDetail
+      summary: Get full food item details, portions, provenance, and recipe formulation metadata
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detailed food item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodCatalogItem"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/beverages:
+    get:
+      operationId: searchBeverages
+      summary: Search prepared Egyptian, Ramadan, cafe, and fresh juice beverages
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: includeEstimated
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 40
+      responses:
+        "200":
+          description: Paginated beverage search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodSearchResponse"
+  /v1/foods/calculate:
+    post:
+      operationId: calculateRecipeOrBeverage
+      summary: Calculate custom home/restaurant recipe or prepared beverage nutrients with density & cooking yield guardrails
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Calculated nutrient profile with reviewStatus
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/food-diary:
+    get:
+      operationId: getFoodDiaryDay
+      summary: Get actual food entries, nullable nutrient totals, completion status, and target energy for a date
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Daily food diary summary
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/water-logs:
+    get:
+      operationId: listWaterLogs
+      summary: Paginated water intake logs ordered by date descending
+      parameters:
+        - $ref: "#/components/parameters/FromDateQuery"
+        - $ref: "#/components/parameters/ToDateQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated water logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLogsResponse"
+  /v1/weight-logs:
+    get:
+      operationId: listWeightLogs
+      summary: Paginated weight measurements ordered by date descending
+      parameters:
+        - $ref: "#/components/parameters/FromDateQuery"
+        - $ref: "#/components/parameters/ToDateQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated weight logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLogsResponse"
+  /v1/workout-logs:
+    get:
+      operationId: listWorkoutLogs
+      summary: Paginated exercise set/rep/load logs ordered by date descending
+      parameters:
+        - $ref: "#/components/parameters/FromDateQuery"
+        - $ref: "#/components/parameters/ToDateQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated workout logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLogsResponse"
+  /v1/sessions:
+    get:
+      operationId: listWorkoutSessions
+      summary: Paginated workout session completion logs
+      parameters:
+        - $ref: "#/components/parameters/FromDateQuery"
+        - $ref: "#/components/parameters/ToDateQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated session logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLogsResponse"
+  /v1/checkins:
+    get:
+      operationId: listRecoveryCheckins
+      summary: Paginated daily recovery check-ins (sleep, fatigue, stress, soreness, pain, redFlags)
+      parameters:
+        - $ref: "#/components/parameters/FromDateQuery"
+        - $ref: "#/components/parameters/ToDateQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated recovery check-ins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLogsResponse"
+  /v1/plans:
+    get:
+      operationId: listNutritionPlans
+      summary: List archived and active nutrition plan version references
+      responses:
+        "200":
+          description: Nutrition plan references
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/plans/{id}:
+    get:
+      operationId: getNutritionPlan
+      summary: Get full owned nutrition plan by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full nutrition plan
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/plans/{id}/days/{date}:
+    get:
+      operationId: getNutritionPlanDay
+      summary: Lazy-load a single day's meals and summary from an owned nutrition plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Single day nutrition plan detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/workout-plans:
+    get:
+      operationId: listWorkoutPlans
+      summary: List owned workout plan version references
+      responses:
+        "200":
+          description: Workout plan references
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/workout-plans/{id}:
+    get:
+      operationId: getWorkoutPlan
+      summary: Get full owned workout plan by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full workout plan
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/exercises:
+    get:
+      operationId: listExercises
+      summary: Search and filter the 868 OpenExerciseDB catalog
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: muscle
+          in: query
+          schema:
+            type: string
+        - name: equipment
+          in: query
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Paginated exercises (30 per page)
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/exercises/{id}:
+    get:
+      operationId: getExerciseDetail
+      summary: Get full exercise details by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exercise detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/meal-alternatives:
+    get:
+      operationId: getMealAlternatives
+      summary: Get up to 6 validated meal alternatives matching diet and clinical constraints
+      parameters:
+        - name: mealId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated meal alternatives
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/exercise-alternatives:
+    get:
+      operationId: getExerciseAlternatives
+      summary: Get up to 6 injury-safe, time-budget-validated exercise alternatives
+      parameters:
+        - name: dayIndex
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 6
+        - name: exerciseId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated exercise alternatives
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/progress/summary:
+    get:
+      operationId: getProgressSummary
+      summary: 14-day weight trend, food completeness, hydration adherence, and workout progression insights
+      responses:
+        "200":
+          description: Progress summary
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/eligibility:
+    post:
+      operationId: evaluateEligibility
+      summary: Pre-onboarding clinical and physiological screening
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Eligibility result
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/sync/changes:
+    get:
+      operationId: getSyncChanges
+      summary: Paginated change feed with entity-level upserts, delete tombstones, and monotonic sync cursor
+      parameters:
+        - name: after
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: afterSeq
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Change feed and entity deltas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncChangesResponse"
+  /v1/auth/session:
+    get:
+      operationId: getAuthSession
+      summary: Inspect current authenticated session, subject, scopes, and entitlement tier
+      responses:
+        "200":
+          description: Active session info
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/auth/revoke:
+    post:
+      operationId: revokeAuthSession
+      summary: Revoke current device session or all sessions across devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                allDevices:
+                  type: boolean
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/auth/claim-anonymous:
+    post:
+      operationId: claimAnonymousAccount
+      summary: Explicitly migrate/claim an anonymous trial account into a verified KMM user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - anonymousUserId
+                - consent
+              properties:
+                anonymousUserId:
+                  type: string
+                consent:
+                  type: boolean
+                mergeStrategy:
+                  type: string
+                  enum:
+                    - fail_if_not_empty
+                    - overwrite_empty
+      responses:
+        "200":
+          description: Anonymous data claimed and transferred
+          content:
+            application/json:
+              schema:
+                type: object
+        "409":
+          $ref: "#/components/responses/ConflictError"
+      description: Requires a verified bearer token and the owning coach_uid cookie. The public gateway derives proof from the cookie; a client-supplied internal identity header is never trusted. Transfer is atomic and cannot overwrite an existing profile.
+  /v1/account/export:
+    get:
+      operationId: exportAccountData
+      summary: Export full machine-readable user profile, logs, archived plans, and consent records
+      responses:
+        "200":
+          description: Full account JSON export
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/account/delete:
+    post:
+      operationId: deleteAccountData
+      summary: Permanently erase all account data, plans, logs, and revoke active sessions
+      requestBody: &a1
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - confirm
+              properties:
+                confirm:
+                  type: boolean
+      responses: &a2
+        "200":
+          description: Account permanently deleted
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      operationId: deleteAccountUsingDelete
+      summary: Permanently erase all account data, plans, logs, and revoke active sessions
+      requestBody: *a1
+      responses: *a2
+  /v1/account/consents:
+    post:
+      operationId: recordAccountConsent
+      summary: Record explicit user privacy/health data consent version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - consentType
+                - version
+                - accepted
+              properties:
+                consentType:
+                  type: string
+                version:
+                  type: string
+                accepted:
+                  type: boolean
+      responses:
+        "200":
+          description: Consent recorded
+  /v1/wearables/ingest:
+    post:
+      operationId: ingestWearableRecords
+      summary: Ingest deduplicated Health Connect / Apple Health weight, steps, and active energy records
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - records
+              properties:
+                records:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+      responses:
+        "200":
+          description: Wearable batch ingested
+  /v1/activity-logs:
+    get:
+      operationId: listActivityLogs
+      summary: Paginated activity records
+      responses:
+        "200":
+          description: Paginated activity records
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/notifications/preferences:
+    get:
+      operationId: getNotificationPreferences
+      summary: Stored preferences; no background delivery is implied
+      responses:
+        "200":
+          description: Stored preferences; no background delivery is implied
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/entitlements:
+    get:
+      operationId: getEntitlements
+      summary: Stored entitlements; billing provider is not connected
+      responses:
+        "200":
+          description: Stored entitlements; billing provider is not connected
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/catalog/manifest:
+    get:
+      operationId: getCatalogManifest
+      summary: Pinned exercise and food provenance
+      responses:
+        "200":
+          description: Pinned exercise and food provenance
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/catalog/muscles:
+    get:
+      operationId: listMuscles
+      summary: Muscle taxonomy
+      responses:
+        "200":
+          description: Muscle taxonomy
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/account/backfill:
+    post:
+      operationId: backfillNormalizedLogs
+      summary: Backfill the authenticated account into normalized tables
+      responses:
+        "200":
+          description: Backfill counts and status
+          content:
+            application/json:
+              schema:
+                type: object
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    AnonymousCookieAuth:
+      type: apiKey
+      in: cookie
+      name: coach_uid
+  parameters:
+    IfNoneMatchHeader:
+      name: If-None-Match
+      in: header
+      required: false
+      schema:
+        type: string
+    SimulationQuery:
+      name: simulation
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - "1"
+    FromDateQuery:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+    ToDateQuery:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+    OffsetQuery:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    LimitQuery:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+  responses:
+    ValidationError:
+      description: Validation or domain rule error (400)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    UnauthorizedError:
+      description: Unauthenticated or token expired/revoked (401)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFoundError:
+      description: Resource not found or not owned by caller (404)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ConflictError:
+      description: Optimistic concurrency revision mismatch or idempotency key conflict (409)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    PayloadTooLargeError:
+      description: Request body > 40 KB or account capacity reached (413)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    RateLimitedError:
+      description: Per-user rate limit exceeded (429)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+        - code
+        - message
+        - fieldErrors
+        - requestId
+        - retryable
+      properties:
+        error:
+          type: string
+          description: Legacy human-readable Arabic error message
+        code:
+          type: string
+          description: Stable machine-readable error code for KMM localization
+        message:
+          type: string
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+        requestId:
+          type: string
+        retryable:
+          type: boolean
+        currentRevision:
+          type: integer
+        mergeHints:
+          type: object
+    CapabilitiesResponse:
+      type: object
+      required:
+        - apiVersion
+        - schemaVersion
+        - engineVersion
+        - catalogVersion
+        - serverTime
+        - features
+      properties:
+        apiVersion:
+          type: string
+        schemaVersion:
+          type: integer
+        engineVersion:
+          type: string
+        catalogVersion:
+          type: string
+        foodCatalogVersion:
+          type: string
+        serverTime:
+          type: string
+          format: date-time
+        features:
+          type: array
+          items:
+            type: string
+    BootstrapResponse:
+      type: object
+      required:
+        - schemaVersion
+        - revision
+        - serverNow
+        - serverDate
+        - timezone
+        - profile
+        - preferences
+        - eligibility
+        - todaySummary
+      properties:
+        schemaVersion:
+          type: integer
+        revision:
+          type: integer
+        serverNow:
+          type: string
+          format: date-time
+        serverDate:
+          type: string
+          format: date
+        timezone:
+          type: string
+        profile:
+          type:
+            - object
+            - "null"
+        preferences:
+          type:
+            - object
+            - "null"
+        activeNutritionPlanRef:
+          type:
+            - object
+            - "null"
+        activeWorkoutPlanRef:
+          type:
+            - object
+            - "null"
+        todaySummary:
+          type: object
+        pendingAdaptations:
+          type: array
+          items:
+            type: object
+        workoutSafetyIssues:
+          type: array
+          items:
+            type: object
+        entitlements:
+          type: object
+        notificationPreferences:
+          type: object
+    CommandRequest:
+      type: object
+      required:
+        - revision
+        - action
+        - payload
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        action:
+          type: string
+          enum:
+            - generate
+            - confirm_health
+            - confirm_schedule
+            - renew_plan
+            - food_entry
+            - food_delete
+            - food_complete
+            - food
+            - food_switch_to_entries
+            - replace_meal
+            - weight
+            - water
+            - steps
+            - activity
+            - recovery
+            - workout
+            - session
+            - replace_exercise
+            - reschedule
+            - review
+            - adaptation
+            - timezone
+            - notification_preferences
+            - simulation_reset
+            - simulation_next
+            - simulation_fill
+        payload:
+          type: object
+    CommandReceiptResponse:
+      type: object
+      required:
+        - ok
+        - revision
+        - serverNow
+        - serverDate
+        - timezone
+        - commandReceipt
+        - affected
+      properties:
+        ok:
+          type: boolean
+        revision:
+          type: integer
+        serverNow:
+          type: string
+          format: date-time
+        serverDate:
+          type: string
+          format: date
+        timezone:
+          type: string
+        commandReceipt:
+          type: object
+          required:
+            - revision
+            - action
+            - replayed
+            - at
+          properties:
+            revision:
+              type: integer
+            action:
+              type: string
+            replayed:
+              type: boolean
+            at:
+              type: string
+              format: date-time
+        affected:
+          type: array
+          items:
+            type: object
+            required:
+              - entityType
+              - entityId
+              - op
+            properties:
+              entityType:
+                type: string
+              entityId:
+                type: string
+              op:
+                type: string
+                enum:
+                  - upsert
+                  - delete
+              payload:
+                type: object
+    FoodCatalogItem:
+      type: object
+      required:
+        - id
+        - key
+        - name
+        - status
+        - reviewStatus
+        - qualityTier
+        - approvedForPlanning
+        - values
+        - source
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        planningKey:
+          type:
+            - string
+            - "null"
+        name:
+          type: string
+        name_ar:
+          type: string
+        name_en:
+          type:
+            - string
+            - "null"
+        state:
+          type: string
+        kind:
+          type: string
+        beverage:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - approved
+            - estimated
+        reviewStatus:
+          type: string
+          enum:
+            - Approved
+            - Pending Review
+        qualityTier:
+          type: string
+        approvedForPlanning:
+          type: boolean
+        isApproximate:
+          type: boolean
+        region:
+          type: string
+        basis:
+          type: string
+        basis_label:
+          type: string
+        values:
+          type: object
+          properties:
+            energy:
+              type:
+                - string
+                - "null"
+            protein:
+              type:
+                - string
+                - "null"
+            fat:
+              type:
+                - string
+                - "null"
+            carbs:
+              type:
+                - string
+                - "null"
+            fiber:
+              type:
+                - string
+                - "null"
+            saturated:
+              type:
+                - string
+                - "null"
+            sodium:
+              type:
+                - string
+                - "null"
+            sugars:
+              type:
+                - string
+                - "null"
+        source:
+          type: string
+    FoodSearchResponse:
+      type: object
+      required:
+        - items
+        - total
+        - offset
+        - limit
+        - nextOffset
+        - coverageStatus
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FoodCatalogItem"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type:
+            - integer
+            - "null"
+        coverageStatus:
+          type: string
+          enum:
+            - verified_reference_available
+            - mixed_verified_and_estimated
+            - estimated_model_only_requires_specialist_review
+            - missing_coverage
+    PaginatedLogsResponse:
+      type: object
+      required:
+        - total
+        - offset
+        - limit
+        - nextOffset
+        - items
+      properties:
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type:
+            - integer
+            - "null"
+        items:
+          type: array
+          items:
+            type: object
+    SyncChangesResponse:
+      type: object
+      required:
+        - items
+        - deltas
+        - currentRevision
+        - nextCursor
+        - nextSeqCursor
+        - hasMore
+        - resyncRequired
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+        deltas:
+          type: array
+          items:
+            type: object
+            required:
+              - seq
+              - revision
+              - entityType
+              - entityId
+              - op
+              - at
+              - payload
+            properties:
+              seq:
+                type: integer
+              revision:
+                type: integer
+              entityType:
+                type: string
+              entityId:
+                type: string
+              op:
+                type: string
+                enum:
+                  - upsert
+                  - delete
+              at:
+                type: string
+                format: date-time
+              payload:
+                type: object
+        currentRevision:
+          type: integer
+        nextCursor:
+          type: integer
+        nextSeqCursor:
+          type: integer
+        hasMore:
+          type: boolean
+        resyncRequired:
+          type: boolean

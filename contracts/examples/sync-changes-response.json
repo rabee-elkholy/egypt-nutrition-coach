@@ -1,0 +1,55 @@
+{
+  "items": [
+    {
+      "revision": 3,
+      "action": "food_entry",
+      "at": "2026-10-24T09:10:00.000Z"
+    },
+    {
+      "revision": 4,
+      "action": "food_delete",
+      "at": "2026-10-24T09:12:00.000Z"
+    }
+  ],
+  "deltas": [
+    {
+      "seq": 301,
+      "revision": 3,
+      "entityType": "food_entry",
+      "entityId": "c18b4e22-9a11-4d00-8b22-123456789abc",
+      "op": "upsert",
+      "at": "2026-10-24T09:10:00.000Z",
+      "payload": {
+        "id": "c18b4e22-9a11-4d00-8b22-123456789abc",
+        "date": "2026-10-24",
+        "slot": "lunch",
+        "source": "manual",
+        "snapshot": {
+          "name": "كشري بيتي",
+          "values": {
+            "energy": "580",
+            "protein": "19"
+          },
+          "is_approximate": true
+        }
+      }
+    },
+    {
+      "seq": 401,
+      "revision": 4,
+      "entityType": "food_entry",
+      "entityId": "c18b4e22-9a11-4d00-8b22-123456789abc",
+      "op": "delete",
+      "at": "2026-10-24T09:12:00.000Z",
+      "payload": {
+        "id": "c18b4e22-9a11-4d00-8b22-123456789abc",
+        "deletedAt": "2026-10-24T09:12:00.000Z"
+      }
+    }
+  ],
+  "currentRevision": 4,
+  "nextCursor": 4,
+  "nextSeqCursor": 401,
+  "hasMore": false,
+  "resyncRequired": false
+}

@@ -13,7 +13,7 @@ try{
    if(await page.locator('#readiness-form').count()){
     if(serviceTrack==='workouts_only')await page.locator('#readiness-form [name=healthConfirmed]').check();
     else for(const d of [1,3,5])await page.locator(`#readiness-form [name="external:${d}"]`).check();
-    await page.locator('#readiness-form button').first().click();await page.locator('#weight-log').waitFor();finished=true;break;
+    await page.locator('#readiness-form button').first().click();await page.locator('#weight-log').waitFor({state:'attached'});finished=true;break;
    }
    const force=page.locator('[data-chat-action="force-target-weight"]');if(await force.isVisible()){await force.click();continue;}
    let acted=false;
@@ -21,7 +21,7 @@ try{
    if(acted)continue;
    for(const [key,value]of Object.entries(choices)){const choice=page.locator(`[data-chat-select="${key}"][data-val="${value}"]`);if(await choice.isVisible()){await choice.click();acted=true;break;}}
    if(acted)continue;
-   for(const action of ['confirm-workout-days','confirm-day-split','finish-onboarding','login-summary-clean-sync']){const button=page.locator(`[data-chat-action="${action}"]`);if(await button.isVisible()){if(action==='confirm-workout-days')selectedDays=await page.locator('[data-toggle-workout-day][aria-pressed="true"]').evaluateAll(nodes=>nodes.map(n=>Number(n.dataset.toggleWorkoutDay)));await button.click();if(action==='login-summary-clean-sync')await page.locator('#readiness-form,#weight-log').first().waitFor();acted=true;break;}}
+   for(const action of ['confirm-workout-days','confirm-day-split','finish-onboarding','login-summary-clean-sync']){const button=page.locator(`[data-chat-action="${action}"]`);if(await button.isVisible()){if(action==='confirm-workout-days')selectedDays=await page.locator('[data-toggle-workout-day][aria-pressed="true"]').evaluateAll(nodes=>nodes.map(n=>Number(n.dataset.toggleWorkoutDay)));await button.click();if(action==='login-summary-clean-sync')await page.locator('#readiness-form,#weight-log').first().waitFor({state:'attached'});acted=true;break;}}
    if(acted)continue;
    const multi=page.locator('[data-chat-action="confirm-multi"]');if(await multi.isVisible()){await multi.click();continue;}
    throw Error('Unrecognized onboarding step: '+(await page.locator('#planner-view').innerText()).slice(-1500));

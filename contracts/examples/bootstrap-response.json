@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 3,
+  "revision": 4,
+  "serverNow": "2026-10-24T09:15:00.000Z",
+  "serverDate": "2026-10-24",
+  "timezone": "Africa/Cairo",
+  "profile": {
+    "weekdayConvention": "js_sunday_0",
+    "name": "أحمد",
+    "age": 30,
+    "weight": 80,
+    "height": 175,
+    "sex": "male",
+    "goal": "lose",
+    "targetWeight": 74,
+    "goalPace": "moderate",
+    "activity": "light",
+    "timezone": "Africa/Cairo",
+    "locale": "ar-EG",
+    "trainingDays": 3,
+    "workoutDays": [1, 3, 5],
+    "externalTrainingDays": [],
+    "diseases": ["hypertension"],
+    "maternalStatus": "none",
+    "ketoAcknowledged": false,
+    "fastingAcknowledged": false,
+    "recomposition": false
+  },
+  "preferences": {
+    "diet": "balanced",
+    "fasting": "none",
+    "eatingStart": "12:00",
+    "region": "egypt",
+    "budget": "medium",
+    "meals": 4,
+    "proteins": ["legumes", "eggs", "dairy", "chicken", "fish", "meat", "nuts"],
+    "excludedKeys": [],
+    "excludedFoodIds": [],
+    "excludedGroups": []
+  },
+  "eligibility": {
+    "needsHealthConfirmation": false,
+    "needsScheduleConfirmation": false,
+    "status": "eligible"
+  },
+  "activeNutritionPlanRef": {
+    "id": "plan-8f2a9c11-4d3b-4c22-8f11-90a1b2c3d4e5",
+    "start_date": "2026-10-24",
+    "end_date": "2026-10-30",
+    "effective_from": "2026-10-24",
+    "targets": {
+      "energy": 2020,
+      "protein": 128,
+      "fat": 67,
+      "carbs": 226
+    }
+  },
+  "activeWorkoutPlanRef": {
+    "id": "wp-7b1e2d33-5a4c-4b99-8d22-11a2b3c4d5e6",
+    "version": 1,
+    "split": "full_body",
+    "daysCount": 3,
+    "weeklySets": {
+      "quadriceps": 6,
+      "chest": 6,
+      "back": 12,
+      "hamstrings": 6,
+      "abs": 6
+    },
+    "coverage": {
+      "requestedPatterns": 18,
+      "coveredPatterns": 18,
+      "missingPatternsCount": 0,
+      "complete": true,
+      "reviewScope": "system_generated_heuristic_not_clinical_clearance"
+    }
+  },
+  "todaySummary": {
+    "date": "2026-10-24",
+    "nutrition": {
+      "energy": "620",
+      "protein": "42",
+      "targetEnergy": 2020,
+      "complete": false,
+      "entriesCount": 1
+    },
+    "hydration": {
+      "cups": 6,
+      "liters": 1.5,
+      "targetCups": 11,
+      "targetLiters": 2.8
+    },
+    "latestWeight": {
+      "date": "2026-10-24",
+      "kg": 79.6,
+      "source": "manual"
+    },
+    "recovery": {
+      "status": "ready",
+      "reasonCode": "RECOVERY_READY",
+      "progressionAllowed": true
+    },
+    "scheduledWorkout": null
+  },
+  "pendingAdaptations": [],
+  "workoutSafetyIssues": [],
+  "entitlements": {
+    "tier": "free",
+    "features": ["core_nutrition", "core_workouts", "offline_sync", "arabic_food_search"],
+    "updatedAt": null
+  },
+  "notificationPreferences": {
+    "dailyReminder": true,
+    "workoutReminder": true,
+    "waterReminder": true,
+    "weeklyReviewReminder": true,
+    "quietHoursStart": "22:00",
+    "quietHoursEnd": "08:00",
+    "channels": ["in_app"]
+  }
+}

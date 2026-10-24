@@ -198,7 +198,7 @@ export function estimateNeeds(input) {
       const remaining = Math.max(0, energy - carbGrams * 4);
       proteinGrams = round(Math.min(effectiveWeight * 1.8, remaining * 0.45 / 4));
       fatGrams = round(Math.max(0, energy - carbGrams * 4 - proteinGrams * 4) / 9);
-      notes.push("تم ضبط الكربوهيدرات لتكون منخفضة المؤشر الجلايسيمي (~38% من السعرات) لمراعاة السكر ومقاومة الإنسولين.");
+      notes.push("ضبطنا نسبة الكربوهيدرات إلى نحو 38% من السعرات كبداية للتخطيط؛ النسبة لا تثبت المؤشر الجلايسيمي للوجبات ولا تغني عن خطة مختص.");
     }
   }
 
@@ -359,8 +359,18 @@ export function prepareTemplate(t, lib, p, profile = null) {
   )
     return null;
   if (t.component_definitions) {
-    if (t.items.some(part=>!ingredientAllowed(lib.ingredients[part.key],p,profile))) return null;
-    return copy(t);
+    let candidate = t;
+    if (profile?.diseases?.includes("hypertension") && t.items.some(part => part.key === "bread") && lib.ingredients.wholebread && ingredientAllowed(lib.ingredients.wholebread, p, profile)) {
+      const replaceName = s => String(s || "").replace(/عيش بلدي/g, "خبز قمح كامل");
+      candidate = {
+        ...copy(t),
+        name: replaceName(t.name),
+        items: t.items.map(part => part.key === "bread" ? { ...part, key: "wholebread" } : { ...part }),
+        component_definitions: t.component_definitions.map(c => ({ ...c, name: replaceName(c.name) }))
+      };
+    }
+    if (candidate.items.some(part=>!ingredientAllowed(lib.ingredients[part.key],p,profile))) return null;
+    return copy(candidate);
   }
   const items = [];
   let substituted = false;
@@ -566,17 +576,14 @@ export function fitMeal(t, desiredEnergy, desiredProtein, lib) {
     }
     return p.max_g ?? lib.ingredients[p.key].max_g;
   };
-  let base = totalsForParts(t.items, lib).values;
-  const scale = clamp(desiredEnergy / Math.max(1, Number(base.energy)), 0.65, 2.2);
-  let parts = t.items.map((p) => {
-    return {
-      ...p,
-      grams: String(
-        Math.round(clamp(Number(p.grams) * scale, lower(p), upper(p))),
-      ),
-    };
-  });
-  const get = () => totalsForParts(parts, lib).values;
+  const fastEnergyAndProtein = (arr) => { let energy = 0, protein = 0; for (const p of arr) { const i = lib.ingredients[p.key], g = Number(p.grams) / 100; energy += Number(i.values.energy) * g; protein += Number(i.values.protein) * g; } return { energy, protein }; };
+  let base = fastEnergyAndProtein(t.items);
+  const scale = clamp(desiredEnergy / Math.max(1, base.energy), 0.65, 2.2);
+  let parts = t.items.map((p) => ({
+    ...p,
+    grams: String(Math.round(clamp(Number(p.grams) * scale, lower(p), upper(p)))),
+  }));
+  const get = () => fastEnergyAndProtein(parts);
   // Count reference protein grams without inventing digestibility percentages for food groups.
   const effectiveProtein = () => {
     let total = 0;
@@ -861,7 +868,7 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
           return { t, snapshot, score, family };
         })
         .filter(a=>{
-          if (p.diet === 'dash') {
+          if (p.diet === 'dash' || profile?.diseases?.includes('hypertension')) {
             const sod = a.snapshot.values.sodium;
             return sod != null && Number(sod) <= 2300 * slot.share;
           }
@@ -916,7 +923,7 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
           const next=fitMeal(template, nextE, nextP, lib);
           const currentTotal=Number(sumSnapshots(meals.map(x=>x.snapshot)).values.energy);
           const nextTotal=currentTotal-Number(m.snapshot.values.energy)+Number(next.values.energy);
-          const dashOk = p.diet!=='dash' || (sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium != null && Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium)<=2300);
+          const dashOk = (p.diet!=='dash' && !profile?.diseases?.includes('hypertension')) || (sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium != null && Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium)<=2300);
           const carbOk = !['keto','low_carb'].includes(p.diet) || Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.carbs ?? 0)<=(p.diet==='keto'?50:130);
           const currentSummary=sumSnapshots(meals.map(x=>x.snapshot));
           const nextSummary=sumSnapshots(meals.map(x=>x===m?next:x.snapshot));

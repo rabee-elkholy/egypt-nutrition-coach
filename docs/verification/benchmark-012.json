@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-10-24T09:38:39.031Z",
+  "environment": {
+    "nodeVersion": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64",
+    "sqliteVersion": "3.40.1"
+  },
+  "payloadComparison": {
+    "legacyFullStateResponse": {
+      "rawBytes": 500611,
+      "gzipBytes": 52536
+    },
+    "kmmBootstrapResponse": {
+      "rawBytes": 3118,
+      "gzipBytes": 1720,
+      "reductionPct": 99.38
+    },
+    "kmmWaterLogReceiptResponse": {
+      "rawBytes": 413,
+      "gzipBytes": 250,
+      "reductionPct": 99.92
+    }
+  },
+  "latenciesMs": {
+    "arabicFoodCatalogSearchInMemory": {
+      "samples": 50,
+      "p50": 1.36,
+      "p95": 6.19,
+      "p99": 18.6
+    },
+    "httpBootstrapReadD1": {
+      "samples": 50,
+      "p50": 14.67,
+      "p95": 25.23,
+      "p99": 41.4
+    },
+    "httpCommandReceiptWriteD1": {
+      "samples": 30,
+      "p50": 37.76,
+      "p95": 51.41,
+      "p99": 90.67
+    }
+  }
+}

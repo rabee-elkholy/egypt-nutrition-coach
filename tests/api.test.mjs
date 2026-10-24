@@ -20,7 +20,7 @@ test('D1 API authenticates, isolates accounts, persists and rejects stale/idempo
  const compact=await db.prepare('SELECT body FROM coaching_accounts WHERE user_id=?').bind('user-a').first();assert.deepEqual(JSON.parse(compact.body).plans,[]);assert.ok(compact.body.length<50000);
  const archived=await req('plans/'+current.planRefs[0].id,{headers});assert.equal(archived.status,200);
  assert.equal((await req('plans/'+current.planRefs[0].id,{headers:{'oai-authenticated-user-id':'user-b'}})).status,404);
- const savedReceipt=await db.prepare('SELECT response FROM coaching_requests WHERE user_id=? AND request_key=?').bind('user-a','plan-1').first();assert.ok(savedReceipt.response.length<100);
+ const savedReceipt=await db.prepare('SELECT response FROM coaching_requests WHERE user_id=? AND request_key=?').bind('user-a','plan-1').first();assert.ok(savedReceipt.response.length<10000);assert.ok(!savedReceipt.response.includes('exercises'));assert.equal(JSON.parse(savedReceipt.response).revision,2);
  const replay=await req('commands',{method:'POST',headers,body});assert.equal(replay.headers.get('Idempotency-Replayed'),'true');const replayed=await replay.json();assert.equal(replayed.revision,3);assert.equal(replayed.commandReceipt.revision,1);
  const race=await Promise.all([1,2].map(n=>req('commands',{method:'POST',headers:{...headers,'Idempotency-Key':'race-'+n},body:JSON.stringify({revision:3,action:'weight',payload:{kg:78+n}})})));assert.deepEqual(race.map(x=>x.status).sort(),[200,409]);
  const changes=await (await req('sync/changes?after=1',{headers})).json();assert.deepEqual(changes.items.map(x=>x.revision),[2,3,4]);

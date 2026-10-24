@@ -1,0 +1,31 @@
+{
+  "baseline": "2a415e436b2afc8ed1e0c78592c7a3d8d12d499d",
+  "source": "User-provided Argon v0.12 archive and four accompanying documents",
+  "attachments": [
+    {
+      "name": "1-Production-Gap-Audit-Ar.md",
+      "bytes": 20177,
+      "sha256": "4e2492bf594c117e9208f89573c7031bb73ae589f4cb324936e71b914ef9416e"
+    },
+    {
+      "name": "2-Kmm-Backend-Integration.md",
+      "bytes": 9266,
+      "sha256": "1fde6f2d2edf9c33aeca7df38c95531a5a19df8b068554b5f3278eae53427b5b"
+    },
+    {
+      "name": "3-Production-Readiness-Ar.md",
+      "bytes": 8261,
+      "sha256": "f2ccfd278a024159ecd96c7ff24ba16e7d1895d648dcb0bec29557aba898136a"
+    },
+    {
+      "name": "4-openapi.yaml",
+      "bytes": 31249,
+      "sha256": "7f7662a4bff22f0534c82416263f941a9af7334b13f96989d88abeede60490a0"
+    },
+    {
+      "name": "5-egypt-nutrition-coach-v0.12.zip",
+      "bytes": 6019187,
+      "sha256": "467132f697486f98ef358292069902e41256df0541706e6813094838428d0d6c"
+    }
+  ]
+}

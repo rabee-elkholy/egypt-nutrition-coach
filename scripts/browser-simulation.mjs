@@ -9,18 +9,17 @@ try{
  const settled=()=>page.waitForFunction(()=>!document.querySelector('#planner-view[aria-busy=true]'));
  await page.goto(origin);await page.locator('[data-view=planner]').click();await page.locator('#enter-simulation').click();await page.locator('#simulation-start-sample').click();await page.locator('#simulation-next').waitFor();await settled();
  let s=await read();const firstDate=s.serverDate;assert.equal(s.simulation.day,1);
- await page.getByText('إضافة وجبة أو مشروب يدويًا',{exact:true}).click();await page.locator('#manual-food [name=name]').fill('تسجيل يدوي في المحاكاة');await page.locator('#manual-food [name=energy]').fill('150');await page.locator('#manual-food button').click();await settled();
- await page.locator('#weight-log [name=kg]').fill('80');await page.locator('#weight-log button').click();await settled();
- await page.locator('#simulation-next').click();await settled();s=await read();assert.equal(s.simulation.day,2);assert.equal(s.serverDate,dateOffset(firstDate,1));assert.equal(s.simulation.history[0].energy,150);assert.equal(s.simulation.history[0].foodComplete,false);assert.equal(await page.locator('#diary-date').inputValue(),s.serverDate);
+ await page.locator('#food-diary details > summary').click();await page.locator('#manual-food [name=name]').fill('تسجيل يدوي في المحاكاة');await page.locator('#manual-food [name=energy]').fill('150');await page.locator('#manual-food button').click();await settled();
+ await page.locator('[data-tab=recovery]').click();await page.locator('#weight-log [name=kg]').fill('80');await page.locator('#weight-log button').click();await settled();
+ await page.locator('[data-tab=nutrition]').click();await page.locator('#simulation-next').click();await settled();s=await read();assert.equal(s.simulation.day,2);assert.equal(s.serverDate,dateOffset(firstDate,1));assert.equal(s.simulation.history[0].energy,150);assert.equal(s.simulation.history[0].foodComplete,false);assert.equal(await page.locator('#diary-date').inputValue(),s.serverDate);
  await page.reload();await page.locator('[data-view=planner]').click();await page.locator('#simulation-panel').waitFor();assert.equal((await read()).simulation.day,2);
  for(let day=2;day<=14;day++){
-  const details=page.locator('.simulation-tools');if(!await details.evaluate(e=>e.open))await details.locator('summary').click();
-  await page.locator('#simulation-fill select').selectOption(day===3?'poor_recovery':'plateau');await page.locator('#simulation-fill button').click();await settled();
+  await page.locator(`[data-quick-scenario=${day===3?'poor_recovery':'plateau'}]`).click();await settled();
   s=await read();assert.equal(s.simulation.day,day);assert.equal(s.weights.length,day);if(day===3)assert.equal(s.lastReview.recovery,'high');
-  if(day<14){await page.locator('#simulation-next').click();await settled();}
+  if(day<14){await page.locator('[data-tab=nutrition]').click();await page.locator('#simulation-next').click();await settled();}
  }
  const proposal=s.adaptations.find(a=>a.status==='pending'&&a.kind==='calories');assert.ok(proposal,'plateau generates an actual calorie proposal');const previousEnergy=s.plans.find(p=>p.id===s.active_plan_id).targets.energy;
- await page.locator(`[data-adapt="${proposal.id}"][data-accept=true]`).click();await settled();await page.locator('#simulation-next').click();await settled();s=await read();assert.equal(s.simulation.day,15);assert.ok(s.plans.find(p=>p.id===s.active_plan_id).targets.energy<previousEnergy);assert.ok(s.simulation.history[13].changes.length);
+ await page.locator(`[data-adapt="${proposal.id}"][data-accept=true]`).click();await settled();await page.locator('[data-tab=nutrition]').click();await page.locator('#simulation-next').click();await settled();s=await read();assert.equal(s.simulation.day,15);assert.ok(s.plans.find(p=>p.id===s.active_plan_id).targets.energy<previousEnergy);assert.ok(s.simulation.history[13].changes.length);
  await page.locator('#simulation-panel').screenshot({path:'outputs/simulation-desktop.png'});
  await page.setViewportSize({width:390,height:844});await page.locator('#simulation-panel').scrollIntoViewIfNeeded();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.locator('#simulation-panel').screenshot({path:'outputs/simulation-mobile.png'});
  await page.locator('#leave-simulation').click();await page.locator('#coach-onboarding-section').waitFor();const actual=await (await context.request.get(origin+'/v1/state')).json();assert.equal(actual.profile,null);assert.equal(actual.revision,0);assert.equal(actual.foodEntries.length,0);
