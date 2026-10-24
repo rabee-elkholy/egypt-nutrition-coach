@@ -15,7 +15,16 @@
     "audit:matrix": "node scripts/audit-matrix.mjs",
     "benchmark": "node scripts/benchmark-load.mjs",
     "data:manifest": "node scripts/check-data-manifest.mjs --write",
-    "test:browser:release": "node scripts/browser-release-011.mjs"
+    "test:browser:release": "node scripts/browser-release-011.mjs",
+    "sim:100:90": "node scripts/cohort/run.mjs",
+    "sim:verify": "node scripts/cohort/verify.mjs",
+    "sim:report": "node scripts/cohort/report.mjs",
+    "sim:stress": "node scripts/cohort/stress.mjs",
+    "sim:serve": "node scripts/cohort/serve.mjs",
+    "sim:browser": "node scripts/cohort/browser.mjs",
+    "sim:compare": "node scripts/cohort/compare.mjs",
+    "sim:fast": "node scripts/run-full-simulation.mjs",
+    "sim:fast:verify": "node scripts/verify-simulation.mjs"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",

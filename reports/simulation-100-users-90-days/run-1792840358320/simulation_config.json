@@ -1,0 +1,11 @@
+{
+  "users": 100,
+  "days": 90,
+  "seed": 42100,
+  "output": null,
+  "userId": null,
+  "fromDay": 1,
+  "runId": "run-1792840358320",
+  "totalCohortUsers": 100,
+  "totalUserDays": 9000
+}

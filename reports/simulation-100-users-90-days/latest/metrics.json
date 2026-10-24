@@ -1,0 +1,82 @@
+{
+  "totalUsers": 100,
+  "totalUserDays": 9000,
+  "passedAllSafetyGates": true,
+  "passedGatesCount": 100,
+  "averageQualityScore": 90.92,
+  "cohortScores": {
+    "development": {
+      "count": 80,
+      "avgScore": 90.35
+    },
+    "holdout": {
+      "count": 20,
+      "avgScore": 93.2
+    }
+  },
+  "subScores": {
+    "safety": 30,
+    "nutrition": 18.84,
+    "workout": 15.98,
+    "adaptation": 14.86,
+    "message": 11.24
+  },
+  "byGoal": {
+    "lose": {
+      "count": 50,
+      "avgScore": 91.04
+    },
+    "muscle_gain": {
+      "count": 32,
+      "avgScore": 91.25
+    },
+    "maintain": {
+      "count": 14,
+      "avgScore": 89.57
+    },
+    "gain": {
+      "count": 4,
+      "avgScore": 91.5
+    }
+  },
+  "byGender": {
+    "male": {
+      "count": 56,
+      "avgScore": 91.25
+    },
+    "female": {
+      "count": 44,
+      "avgScore": 90.5
+    }
+  },
+  "byTrack": {
+    "nutrition_and_workouts": {
+      "count": 75,
+      "avgScore": 90.65
+    },
+    "nutrition_only": {
+      "count": 12,
+      "avgScore": 95.08
+    },
+    "workouts_only": {
+      "count": 13,
+      "avgScore": 88.62
+    }
+  },
+  "latencies": {
+    "p50": 0.58,
+    "p95": 8.76,
+    "p99": 20.87
+  },
+  "interventions": {
+    "totalCalorieProposals": 10,
+    "totalDeloadProposals": 834,
+    "totalVolumeProposals": 0,
+    "unwarrantedCalorieProposals": 0,
+    "missedPlateauInterventions": 8
+  },
+  "stressTests": {
+    "total": 20,
+    "passed": 20
+  }
+}

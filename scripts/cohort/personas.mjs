@@ -1,0 +1,26 @@
+import {rng,pick,round,chance,hash,countBy} from './common.mjs';
+// Deliberately no imports from planning or eligibility engines. Coverage is fixed before outcomes.
+export function personas(seed='egypt-100x90-v1',users=100){
+ const all=Array.from({length:users},(_,i)=>{
+  const id='user-'+String(i+1).padStart(3,'0'),r=rng(seed+':persona:'+id),sex=pick(r,['male','female']),height=Math.round((sex==='male'?164:151)+r.next()*28),bmi=round(20+r.next()*16),weight=round(bmi*(height/100)**2,1),goal=['lose','muscle_gain','maintain','gain'][i%4];
+  const regions=[['egypt','Egypt','Africa/Cairo'],['gulf','Saudi Arabia','Asia/Riyadh'],['levant','Jordan','Asia/Amman'],['maghreb','Morocco','Africa/Casablanca']],region=regions[Math.floor(i/4)%4];
+  const diets=['balanced','low_carb','high_protein','intermittent_fasting','mediterranean','dash','vegetarian','vegan','keto'],diet=diets[i%diets.length];
+  const days=pick(r,[2,3,3,4,5,6]),offset=Math.floor(r.next()*7),selected=[...new Set(Array.from({length:days},(_,j)=>(offset+Math.floor(j*7/days))%7))].sort();
+  const location=pick(r,['gym_only','gym_only','home_only','home_and_gym']);
+  const adherence=round(.25+r.next()*.72),logging=round(.2+r.next()*.77),fitness=pick(r,['beginner','intermediate','advanced']),duration=pick(r,[20,30,45,60,90]);
+  const conditions=['hypertension','lactose_intolerance','favism','cholesterol','anemia','vitamin_d_deficiency','fatty_liver','insulin_resistance','ibs'];
+  // Common stable conditions; incompatible ketogenic/clinical combinations reserved for stress cases.
+  const diseases=i%7===0&&diet!=='keto'?[conditions[Math.floor(i/7)%conditions.length]]:[];
+  const injuries=i%9===0?[['knee_pain','lower_back_pain','shoulder_pain','wrist_pain','ankle_pain','neck_pain','hip_pain','diastasis_recti'][Math.floor(i/9)%8]]:[];
+  const targetWeight=goal==='lose'?round(Math.max(19*(height/100)**2,weight*(.90-r.next()*.04)),1):goal==='maintain'?weight:goal==='muscle_gain'&&i%8===1?weight:round(weight+3+r.next()*7,1);
+  const onboarding={name:`مشارك افتراضي ${i+1}`,age:18+Math.floor(r.next()*49),sex,height,weight,targetWeight,goal,goalPace:pick(r,['slow','moderate']),serviceTrack:'nutrition_and_workouts',dailyActivity:pick(r,['sedentary','light','moderate','active']),dietType:diet,region:region[0],timezone:region[2],budget:pick(r,['low','medium','high']),mealsCount:pick(r,[2,3,4,5]),selectedWorkoutDays:selected,workoutDaysCount:days,weekdayConvention:'js_sunday_0',fitnessLevel:fitness,sessionDuration:duration,workoutLocation:location,homeEquipment:pick(r,[['none'],['dumbbells','bench'],['resistance_bands','yoga_mat'],['dumbbells','pullup_bar','bench']]),dayLocations:Object.fromEntries(selected.map((d,j)=>[d,j%2?'gym':'home'])),workoutSplitPreference:pick(r,['auto','full_body','upper_lower','ppl']),injuries,diseases,healthConfirmed:true,excludedGroups:i%13===0?['fish']:[],eatingStart:pick(r,['10:00','12:00','13:00'])};
+  const traits={adherence,foodAdherence:round(adherence*.6+r.next()*.38),exerciseAdherence:round(adherence*.5+r.next()*.48),logging,weightLogging:round(.1+r.next()*.85),checkinLogging:round(.15+r.next()*.8),returnProbability:round(.06+r.next()*.45),acceptAdvice:round(.25+r.next()*.7),workStress:round(.1+r.next()*.7),sleepBaseline:round(5.4+r.next()*3.2,1),forgetProbability:round(1-logging),travelProbability:round(.003+r.next()*.027),burnoutSensitivity:round(r.next()),habitStrength:round(r.next()),calorieExperience:pick(r,['none','some','experienced']),work:pick(r,['desk','shift','manual','student','remote']),wakeHour:pick(r,[5,6,7,8,10]),bedHour:pick(r,[21,22,23,0,1]),budgetFlexibility:round(r.next()),foodLikes:pick(r,[['eggs','chicken'],['legumes','bread'],['fish','rice'],['dairy','fruit']]),lifestyle:pick(r,['family','single','caregiver','social']),plateauPropensity:round(.02+r.next()*.12)};
+  traits.bedHour=(traits.wakeHour-Math.round(traits.sleepBaseline)+24)%24;
+  return {userId:id,split:null,country:region[1],bmi,onboarding,traits,supportNotes:{generalFitness:'mapped to maintain; no separate supported goal',recomposition:goal==='muscle_gain'&&targetWeight===weight,foodAllergies:'not generated: no supported allergy clearance; exclusions are preferences'},generatorVersion:'1.0.0'};
+ });
+ // Seeded, preregistered split, independent of generation success or behavior.
+ const order=[...all].sort((a,b)=>hash(seed+':holdout:'+a.userId).localeCompare(hash(seed+':holdout:'+b.userId))),n=Math.round(users*.2);
+ for(const [i,p] of order.entries())p.split=i<n?'holdout':'development';
+ return all;
+}
+export function cohortCoverage(cohort){return {uniqueProfiles:new Set(cohort.map(p=>hash(p.onboarding))).size,uniqueTraits:new Set(cohort.map(p=>hash(p.traits))).size,split:countBy(cohort,p=>p.split),goals:countBy(cohort,p=>p.onboarding.goal),diet:countBy(cohort,p=>p.onboarding.dietType),region:countBy(cohort,p=>p.onboarding.region),sex:countBy(cohort,p=>p.onboarding.sex),budget:countBy(cohort,p=>p.onboarding.budget),experience:countBy(cohort,p=>p.onboarding.fitnessLevel),equipment:countBy(cohort,p=>p.onboarding.homeEquipment.join(',')),trainingDays:countBy(cohort,p=>p.onboarding.selectedWorkoutDays.length),supportedConditions:countBy(cohort,p=>p.onboarding.diseases.join(',')||'none'),injuries:countBy(cohort,p=>p.onboarding.injuries.join(',')||'none')};}
