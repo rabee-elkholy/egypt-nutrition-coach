@@ -10,7 +10,9 @@
 
 ملف `onboarding-chat.mjs` مطابق لنقطة البداية، والأسئلة ومسار الأونبوردينج الأصلي محفوظان. التأكيدات الإضافية اللازمة تظهر بعده. تطوير تسجيل الدخول ما زال مؤجلًا حسب طلب صاحب المشروع؛ الوصول الحالي يعتمد على هوية استضافة Sites الخاصة. لم يتم إنشاء نظام حسابات موبايل.
 
-نسخة التجربة: https://egypt-nutrition-coach-trial.bolddog32.chatgpt.site
+الموقع الحالي: [Egypt Nutrition Coach على Cloudflare](https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/#planner).
+
+محاكاة ٩٠ يومًا: [افتح المحاكاة](https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/?simulation=1#planner).
 
 ## الموجود فعليًا في النظام
 
