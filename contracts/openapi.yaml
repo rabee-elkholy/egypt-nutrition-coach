@@ -561,6 +561,41 @@ paths:
             application/json:
               schema:
                 type: object
+  /v1/coaching/brief:
+    get:
+      operationId: getCoachingBrief
+      summary: Deterministic personal follow-up for KMM without duplicating JavaScript rules
+      description: |
+        On-demand nutrition, training and follow-up view based on recorded account data.
+        IDs remain stable per account namespace, local day and role; refresh the note when revision/content changes.
+        This endpoint does not persist notifications or imply delivery, rendering, reading or actioning.
+        Unonboarded accounts return requiresOnboarding=true and no notes.
+      parameters:
+        - $ref: "#/components/parameters/IfNoneMatchHeader"
+        - $ref: "#/components/parameters/SimulationQuery"
+      responses:
+        "200":
+          description: Current personalized coaching view
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingBriefResponse"
+        "304":
+          description: Not Modified; no delivery or rendering acknowledgement implied
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+        "503":
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/eligibility:
     post:
       operationId: evaluateEligibility
@@ -681,7 +716,8 @@ paths:
   /v1/account/delete:
     post:
       operationId: deleteAccountData
-      summary: Permanently erase all account data, plans, logs, and revoke active sessions
+      summary: Erase account data and owned simulation copies, and revoke sessions
+      description: Call outside simulation mode. Clears the account namespace, its simulation namespace and legacy claimed anonymous namespaces within one database batch. Revocation tombstones remain to reject old tokens and already authenticated writes. simulation=1 is rejected with ACCOUNT_DELETION_SIMULATION_FORBIDDEN.
       requestBody: &a1
         required: true
         content:
@@ -699,10 +735,27 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/AccountDeletionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "415":
+          description: Content-Type must be application/json
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or required revocation schema unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     delete:
       operationId: deleteAccountUsingDelete
-      summary: Permanently erase all account data, plans, logs, and revoke active sessions
+      summary: Erase account data and owned simulation copies, and revoke sessions
+      description: Same scope and simulation-mode rejection as POST /v1/account/delete.
       requestBody: *a1
       responses: *a2
   /v1/account/consents:
@@ -910,6 +963,85 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
+    CoachingBriefResponse:
+      type: object
+      required: [apiVersion, viewKind, date, timezone, revision, generatedAt, requiresOnboarding, notes, requestId]
+      properties:
+        apiVersion:
+          type: string
+          const: "1"
+        viewKind:
+          type: string
+          const: on_demand_coaching_brief
+        date:
+          type: string
+          format: date
+        timezone:
+          type: string
+        revision:
+          type: integer
+          minimum: 0
+        generatedAt:
+          type: string
+          format: date-time
+        requiresOnboarding:
+          type: boolean
+        requestId:
+          type: string
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachingBriefNote"
+    CoachingBriefNote:
+      type: object
+      required: [id, role, key, priority, text, action, basedOnRevision, relatedPlanId, status, deliveryStatus, renderingStatus]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [nutrition, training, followup]
+        key:
+          type: string
+        priority:
+          type: string
+          enum: [normal, attention, urgent]
+        text:
+          type: string
+        action:
+          type: string
+        basedOnRevision:
+          type: integer
+          minimum: 0
+        relatedPlanId:
+          type: [string, "null"]
+        status:
+          type: string
+          const: GENERATED
+        deliveryStatus:
+          type: string
+          const: NOT_MEASURED
+        renderingStatus:
+          type: string
+          const: NOT_MEASURED
+    AccountDeletionResponse:
+      type: object
+      required: [deleted, userId, deletedAt, tablesCleared, namespacesCleared]
+      properties:
+        deleted:
+          type: boolean
+          const: true
+        userId:
+          type: string
+        deletedAt:
+          type: string
+          format: date-time
+        tablesCleared:
+          type: integer
+          minimum: 1
+        namespacesCleared:
+          type: integer
+          minimum: 1
     ErrorEnvelope:
       type: object
       required:

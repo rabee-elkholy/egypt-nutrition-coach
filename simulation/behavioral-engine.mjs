@@ -9,6 +9,17 @@ import { scheduledSessions, exerciseAlternatives } from '../server/workouts.mjs'
 import { usesKg } from '../exercise-load.mjs';
 import { dateOffset } from '../coaching-shared.mjs';
 
+const INJURY_TO_MUSCLE_REGIONS = {
+  lower_back_pain: ['lower_back'],
+  knee_pain: ['quadriceps', 'hamstrings'],
+  shoulder_pain: ['shoulders'],
+  wrist_pain: ['forearms'],
+  ankle_pain: ['calves'],
+  neck_pain: ['neck'],
+  hip_pain: ['hips', 'glutes'],
+  diastasis_recti: ['abs']
+};
+
 export function createBehavioralState(user, seed = 777) {
   const prng = createPRNG(seed + ':' + user.id);
 
@@ -75,7 +86,8 @@ export function simulateUserDay(user, userState, appState, dayNumber, dateStr) {
     // 15% probability of mild flare up on training days
     if (prng.bool(0.15)) {
       hasPain = true;
-      painRegions.push(userState.painJoint.replace('_pain', '').replace('_injury', ''));
+      const mapped = INJURY_TO_MUSCLE_REGIONS[userState.painJoint] || ['lower_back'];
+      painRegions.push(...mapped);
     }
   }
 
@@ -214,13 +226,16 @@ export function simulateUserDay(user, userState, appState, dayNumber, dateStr) {
               const alts = mealAlternatives(appState, meal.id);
               if (alts && alts.length) {
                 const choice = prng.pick(alts);
-                commandsToExecute.push({
-                  action: 'replace_meal',
-                  payload: {
-                    mealId: meal.id,
-                    alternativeId: choice.id
-                  }
-                });
+                const templateId = choice.snapshot?.template_id || choice.templateId || choice.id;
+                if (templateId) {
+                  commandsToExecute.push({
+                    action: 'replace_meal',
+                    payload: {
+                      mealId: meal.id,
+                      templateId
+                    }
+                  });
+                }
               }
             } catch {}
           }
@@ -277,16 +292,41 @@ export function simulateUserDay(user, userState, appState, dayNumber, dateStr) {
       const sessionDay = appState.workoutPlan.days.find(d => d.dayIndex === scheduled.dayIndex);
       if (sessionDay) {
         if (actualWorkoutDone === 'missed') {
-          // User either explicitly logs missed or asks to reschedule
+          // User either explicitly logs missed or asks to reschedule to a free rest day
           if (prng.bool(0.35)) {
-            const nextFreeDate = dateOffset(dateStr, prng.int(1, 3));
-            commandsToExecute.push({
-              action: 'reschedule',
-              payload: {
-                dayIndex: sessionDay.dayIndex,
-                toDate: nextFreeDate
+            const upcoming = scheduledSessions(appState, dateStr);
+            const occupiedDates = new Set(upcoming.map(x => x.date));
+            if (appState.sessions) {
+              for (const s of appState.sessions) {
+                if (s.status === 'completed') occupiedDates.add(s.date);
               }
-            });
+            }
+            let targetRestDate = null;
+            for (let offset = 1; offset <= 4; offset++) {
+              const candidate = dateOffset(dateStr, offset);
+              if (!occupiedDates.has(candidate)) {
+                targetRestDate = candidate;
+                break;
+              }
+            }
+            if (targetRestDate) {
+              commandsToExecute.push({
+                action: 'reschedule',
+                payload: {
+                  dayIndex: sessionDay.dayIndex,
+                  toDate: targetRestDate
+                }
+              });
+            } else {
+              commandsToExecute.push({
+                action: 'session',
+                payload: {
+                  dayIndex: sessionDay.dayIndex,
+                  date: dateStr,
+                  status: 'missed'
+                }
+              });
+            }
           } else {
             commandsToExecute.push({
               action: 'session',
@@ -302,30 +342,33 @@ export function simulateUserDay(user, userState, appState, dayNumber, dateStr) {
           const exercises = actualWorkoutDone === 'partial' ? sessionDay.exercises.slice(0, 1) : sessionDay.exercises;
 
           for (const exercise of exercises) {
+            let activeExerciseId = exercise.id;
             // Check exercise substitution if injury cautious
             if (hasPain && prng.bool(b.substituteExerciseProb)) {
               try {
                 const alts = exerciseAlternatives(appState, sessionDay.dayIndex, exercise.id);
                 if (alts && alts.length) {
+                  const altChoice = prng.pick(alts);
                   commandsToExecute.push({
                     action: 'replace_exercise',
                     payload: {
                       dayIndex: sessionDay.dayIndex,
                       exerciseId: exercise.id,
-                      alternativeId: prng.pick(alts).id
+                      alternativeId: altChoice.id
                     }
                   });
+                  activeExerciseId = altChoice.id; // Update to the new exercise!
                 }
               } catch {}
             }
 
             // Progression load adoption
-            let weightKg = usesKg(exercise) ? (exercise.suggestedKg || userState.exerciseLoadProgression[exercise.id] || 20) : 0;
+            let weightKg = usesKg(exercise) ? (exercise.suggestedKg || userState.exerciseLoadProgression[activeExerciseId] || 20) : 0;
             // Record if user accepted suggested weight
             if (exercise.suggestedKg && prng.bool(0.85)) {
               weightKg = exercise.suggestedKg;
             }
-            userState.exerciseLoadProgression[exercise.id] = weightKg;
+            userState.exerciseLoadProgression[activeExerciseId] = weightKg;
 
             const setsCount = exercise.sets || 3;
             const reps = prng.int(exercise.repMin || 8, exercise.repMax || 12);
@@ -334,7 +377,7 @@ export function simulateUserDay(user, userState, appState, dayNumber, dateStr) {
             commandsToExecute.push({
               action: 'workout',
               payload: {
-                exerciseId: exercise.id,
+                exerciseId: activeExerciseId,
                 dayIndex: sessionDay.dayIndex,
                 date: dateStr,
                 sets: Array.from({ length: setsCount }, () => ({

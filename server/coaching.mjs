@@ -96,7 +96,11 @@ export function review(s){
   catch(e){discardPending(s);s.lastReview={at:isoNow(),reviewScope:'system_generated_guidance',reasonCode:'PLAN_CONSTRAINTS_VERIFICATION_FAILED',recovery:ready.status,nutrition:{action:'hold',reasonCode:'PLAN_CONSTRAINTS_VERIFICATION_FAILED',reason:'الخطة القديمة لا تحقق قيودك الحالية؛ أعد إنشاء الخطة.'},message:e.message};return s;}
  }
  let nutrition={action:'hold',reasonCode:plan?'RECOVERY_NOT_READY_FOR_CALORIE_CHANGE':'WORKOUTS_ONLY_TRACK',reviewScope:'system_generated_guidance',reason:plan?'توجيه النظام الآلي للتغذية: يُنصح باستقرار النوم والاستشفاء أولاً قبل أي تعديل في سعراتك.':'مسارك الحالي للتمارين فقط بدون خطة أكل.'};
- if(['caution','high'].includes(ready.status)&&s.workoutPlan)proposals.push({kind:'recovery',reasonCode:'RECOVERY_DELOAD_PROPOSAL',reviewScope:'system_generated_guidance',setFactor:ready.setFactor,regions:Object.entries(ready.muscles).filter(([,m])=>m.status==='caution').map(([r])=>r),reason:`توصية النظام الآلي للتدريب: لأن ${ready.reasons.join(' و')}، نقترح تخفيف جولة واحدة من تمرين النهاردة لحماية عضلاتك ومفاصلك.`,expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
+ const needsRecoveryAdvice=['caution','high'].includes(ready.status)&&!!s.workoutPlan;
+ const currentAdjustment=s.sessionAdjustment;
+ const acceptedRecovery=needsRecoveryAdvice&&currentAdjustment&&(!currentAdjustment.planId||currentAdjustment.planId===s.workoutPlan.id)&&Date.parse(currentAdjustment.expiresAt)>clockNow()&&currentAdjustment.setFactor===ready.setFactor;
+ const declinedRecovery=needsRecoveryAdvice&&[...s.adaptations].reverse().find(a=>a.kind==='recovery'&&a.status==='rejected'&&a.setFactor===ready.setFactor&&Date.parse(a.expiresAt)>clockNow()&&(a.recoveryEvidenceAt?a.recoveryEvidenceAt===ready.asOf:Date.parse(a.at)>=Date.parse(ready.asOf)));
+ if(needsRecoveryAdvice&&!acceptedRecovery&&!declinedRecovery)proposals.push({kind:'recovery',reasonCode:'RECOVERY_DELOAD_PROPOSAL',reviewScope:'system_generated_guidance',recoveryEvidenceAt:ready.asOf,setFactor:ready.setFactor,regions:Object.entries(ready.muscles).filter(([,m])=>m.status==='caution').map(([r])=>r),reason:`توصية النظام الآلي للتدريب: لأن ${ready.reasons.join(' و')}، نقترح تقليل عدد الجولات مؤقتًا؛ تطبيق التعديل يحتاج موافقتك.`,expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
  const profileChange=s.history.filter(h=>h.kind==='profile').at(-1)?.at;
  const contextStart=s.nutritionContextStartedOn||(profileChange?localDate(Date.parse(profileChange),tz):null);
  const contextWeights=s.weights.filter(w=>!contextStart||w.date>=contextStart),contextFood=s.foodLogs.filter(d=>!contextStart||d.date>=contextStart);
@@ -130,7 +134,8 @@ export function review(s){
   :avgCups<wTarget.targetCups*0.7
   ?`متوسط شربك للمية (${avgCups} من ${wTarget.targetCups} كوب) أقل من هدف اليوم الحالي؛ المقارنة تقريبية لأن الأهداف قد تختلف بين الأيام، والتسجيل مش قياسًا مباشرًا للجفاف.`
   :`متوسط المية المسجلة ${avgCups} كوب في ${recentWater.length} أيام مسجلة؛ ده ملخص التسجيل ومش تشخيصًا لترطيب الجسم.`;
- s.lastReview={at:isoNow(),reviewScope:'system_generated_guidance',reasonCode:proposals.length?proposals[0].reasonCode||'ADAPTATION_PROPOSED':nutrition.reasonCode||'NO_CHANGE_NEEDED',recovery:ready.status,nutrition,volume,hydration:{avgCups,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,loggedDays:recentWater.length,reason:hydrationReason},workoutInsights,workout:{partial:sessions.filter(x=>x.status==='partial').length,completed:sessions.filter(x=>x.status==='completed').length,missed:sessions.filter(x=>x.status==='missed').length},message:proposals.length?'محرك المتابعة الآلي جهّز لك توصية جديدة بانتظار موافقتك.':'مفيش تعديل جديد مقترح بناءً على البيانات المتاحة؛ راجع أسباب القرار وتغطية التسجيل أدناه.'};
+ const recoveryAdvice={status:acceptedRecovery?'active':declinedRecovery?'declined':needsRecoveryAdvice?'pending':'not_needed',evidenceAt:ready.asOf||null,planId:s.workoutPlan?.id||null,expiresAt:acceptedRecovery?currentAdjustment.expiresAt:declinedRecovery?declinedRecovery.expiresAt:proposals.find(a=>a.kind==='recovery')?.expiresAt||null};
+ s.lastReview={at:isoNow(),reviewScope:'system_generated_guidance',reasonCode:proposals.length?proposals[0].reasonCode||'ADAPTATION_PROPOSED':acceptedRecovery?'RECOVERY_ADJUSTMENT_ACTIVE':declinedRecovery?'RECOVERY_ADVICE_DECLINED':nutrition.reasonCode||'NO_CHANGE_NEEDED',recovery:ready.status,recoveryAdvice,nutrition,volume,hydration:{avgCups,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,loggedDays:recentWater.length,reason:hydrationReason},workoutInsights,workout:{partial:sessions.filter(x=>x.status==='partial').length,completed:sessions.filter(x=>x.status==='completed').length,missed:sessions.filter(x=>x.status==='missed').length},message:proposals.length?'محرك المتابعة الآلي جهّز لك توصية جديدة بانتظار موافقتك.':acceptedRecovery?'التخفيف اللي وافقت عليه لسه ساري. مش محتاج توافق على نفس التعديل تاني.':declinedRecovery?'رفضك السابق للتخفيف محفوظ، ولم نغيّر جولتك. هنراجع التوصية بعد متابعة جديدة لحالتك.':'مفيش تعديل جديد مقترح بناءً على البيانات المتاحة؛ راجع أسباب القرار وتغطية التسجيل أدناه.'};
  return s;
 }
 export function retargetPlan(plan,energy,prefs,effective,profile=null){
@@ -183,11 +188,11 @@ export function command(input,action,p){
    if(prefs[k]!==undefined)s.notificationPreferences[k]=boolean(prefs[k],k);
   }
   if(prefs.quietHoursStart!==undefined){
-   if(!/^\d{2}:\d{2}$/.test(String(prefs.quietHoursStart)))throw Error('وقت بداية الهدوء غير صالح.');
+   if(typeof prefs.quietHoursStart!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(prefs.quietHoursStart))throw Error('وقت بداية الهدوء غير صالح.');
    s.notificationPreferences.quietHoursStart=String(prefs.quietHoursStart);
   }
   if(prefs.quietHoursEnd!==undefined){
-   if(!/^\d{2}:\d{2}$/.test(String(prefs.quietHoursEnd)))throw Error('وقت نهاية الهدوء غير صالح.');
+   if(typeof prefs.quietHoursEnd!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(prefs.quietHoursEnd))throw Error('وقت نهاية الهدوء غير صالح.');
    s.notificationPreferences.quietHoursEnd=String(prefs.quietHoursEnd);
   }
   return s;
@@ -295,7 +300,7 @@ export function command(input,action,p){
   const a=s.adaptations.find(x=>x.id===p.id&&x.status==='pending');if(!a)throw Error('الاقتراح غير موجود.');
   if(p.accept===false){a.status='rejected';a.rejectedAt=isoNow();return s;}if(p.accept!==true)throw Error('حدد موافقتك على الاقتراح.');
   if(a.baseRevision!==s.revision)throw Object.assign(Error('بياناتك اتغيرت؛ اطلب مراجعة جديدة.'),{status:409});
-  if(a.expiresAt&&Date.parse(a.expiresAt)<clockNow())throw Error('الاقتراح انتهت صلاحيته؛ اطلب مراجعة جديدة.');
+  if(a.expiresAt&&(!Number.isFinite(Date.parse(a.expiresAt))||Date.parse(a.expiresAt)<=clockNow()))throw Error('الاقتراح انتهت صلاحيته؛ اطلب مراجعة جديدة.');
   if((needsHealthConfirmation(s)||needsScheduleConfirmation(s))&&a.kind!=='schedule')throw Error('أكد الجاهزية الصحية واطلب مراجعة جديدة.');
   if(workoutSafetyIssues(s).length)throw Error('راجع التمارين المستبعدة في الخطة قبل قبول تعديلات.');
   const currentRecovery=recovery(s.checkins,clockNow(),s.workoutLogs,tz);

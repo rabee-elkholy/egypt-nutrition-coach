@@ -5,7 +5,7 @@ import {hash} from './common.mjs';
 // Collect exact engine strings recursively, plus the actual frontend message functions.
 export function messages(state,ctx){
  const found=[];
- const add=(text,type,source,reasonCode=null,trigger=null)=>{if(typeof text!=='string'||!text.trim())return;found.push({...ctx,messageId:'msg-'+hash([ctx.userId,ctx.day,ctx.engineStateRevision,type,text]).slice(0,24),messageType:type,exactText:text,reasonCode,trigger,sourceFileOrFunction:source,generatedAt:state.serverNow,visibleAt:null,wasActuallyRendered:false,displayStatus:'generated',eligibleForDisplay:ctx.openedApp,relatedPlanId:state.active_plan_id,relatedDecisionId:null});};
+ const add=(text,type,source,reasonCode=null,trigger=null)=>{if(typeof text!=='string'||!text.trim())return;found.push({...ctx,messageId:'msg-'+hash([ctx.userId,ctx.day,ctx.engineStateRevision,type,text]).slice(0,24),messageType:type,exactText:text,reasonCode,trigger,sourceFileOrFunction:source,generatedAt:state.serverNow,visibleAt:null,wasActuallyRendered:false,displayStatus:'GENERATED',renderingStatus:'NOT_MEASURED',deliveryStatus:'NOT_MEASURED',eligibleForDisplay:ctx.openedApp,relatedPlanId:state.active_plan_id,relatedDecisionId:null});};
  if(state.profile){for(const n of personalBrief(state,state.serverDate)){add(n.text,'personal:'+n.role,'personal-brief.mjs:personalBrief',n.key);add(n.action,'action:'+n.role,'personal-brief.mjs:personalBrief',n.key);}
  for(const t of dailyTips(state.serverDate,{hasWorkout:!!state.workoutPlan,offset:0}))add(t.text,'tip','coach-messages.mjs:dailyTips',t.cat);
  const split=splitReview(state,state.serverDate);if(split)add(split.text,'split-review','split-review.mjs:splitReview');}

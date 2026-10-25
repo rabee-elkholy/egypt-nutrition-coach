@@ -690,9 +690,9 @@ export function generateStressCohort() {
     },
     {
       id: 'stress_20',
-      title: 'Gulf region with DASH diet: should fail closed on sodium constraints',
+      title: 'Gulf DASH: a feasible plan must retain measured daily sodium at or below 2300 mg',
       draft: { name: 'داش بالخليج', age: 30, weight: 80, height: 175, sex: 'male', goal: 'lose', dietType: 'dash', region: 'gulf', serviceTrack: 'nutrition_and_workouts' },
-      expectedOutcome: 'rejected_unsupported_regional_template'
+      expectedOutcome: 'dash_sodium_bound_enforced'
     }
   ];
 }

@@ -5,11 +5,12 @@ import {nutritionQualityIssues} from '../planner-core.mjs';
 import {command,evaluateEligibility,progressSummary,dailyWaterTarget} from './coaching.mjs';
 import {catalog,workoutSafetyIssues,exerciseAlternatives,regionForMuscle,scheduledSessions} from './workouts.mjs';
 import {recovery} from './recovery.mjs';
-import {loadAccount,saveAccount,canonicalCommandDigest,deriveSyncDeltas,exportFullAccountData,deleteFullAccountData,backfillAccountToNormalizedTables} from './store.mjs';
+import {loadAccount,saveAccount,canonicalCommandDigest,deriveSyncDeltas,exportFullAccountData,deleteFullAccountData,backfillAccountToNormalizedTables,sha256Hex} from './store.mjs';
 import {library,mealAlternatives,dayTotals} from './food.mjs';
 import {searchFoodCatalog,getFoodCatalogItem,getFoodCatalogManifest,calculatePreparedBeverageOrRecipe} from './food-catalog.mjs';
 import {authenticateRequest,checkRateLimit} from './auth.mjs';
 import {formatErrorBody,createApiError,logEvent} from './logger.mjs';
+import {personalBrief} from '../personal-brief.mjs';
 import {localDate,integer,validDate,needsHealthConfirmation,needsScheduleConfirmation} from '../coaching-shared.mjs';
 
 const SECURITY_HEADERS={
@@ -280,6 +281,7 @@ export default {async fetch(request,env){
    return json(exported,200,{},reqId);
   }
   if((request.method==='POST'||request.method==='DELETE')&&url.pathname==='/v1/account/delete'){
+   if(simulationMode)throw createApiError('حذف الحساب متاح خارج وضع المحاكاة فقط ويشمل بيانات المحاكاة المرتبطة.',400,{code:'ACCOUNT_DELETION_SIMULATION_FORBIDDEN'});
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('JSON مطلوب.',415,reqId);
    const body=JSON.parse(await requestJson(request));
    if(body?.confirm!==true)throw createApiError('تأكيد حذف الحساب نهائيًا مطلوب (confirm: true).',400,{code:'DELETE_CONFIRMATION_REQUIRED'});
@@ -315,6 +317,16 @@ export default {async fetch(request,env){
      return json(present(s),200,{ETag:etag},reqId);
     }
     if(url.pathname==='/v1/progress/summary')return json(progressSummary(s),200,{ETag:etag},reqId);
+    if(url.pathname==='/v1/coaching/brief'){
+     const snapshot=present(s),notes=s.profile?personalBrief(snapshot,currDate):[];
+     const briefEtag=`W/"brief-${await sha256Hex(JSON.stringify([user,s.revision,currDate,notes]))}"`;
+     if(request.headers.get('If-None-Match')===briefEtag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:briefEtag,'X-Request-Id':reqId}});
+     const items=await Promise.all(notes.map(async note=>{
+      const id=await sha256Hex(JSON.stringify([user,currDate,note.role]));
+      return {...note,id:'brief-'+id,basedOnRevision:s.revision,relatedPlanId:note.role==='nutrition'?s.active_plan_id||null:note.role==='training'?s.workoutPlan?.id||null:null,status:'GENERATED',deliveryStatus:'NOT_MEASURED',renderingStatus:'NOT_MEASURED'};
+     }));
+     return json({apiVersion:'1',viewKind:'on_demand_coaching_brief',date:currDate,timezone:tz,revision:s.revision,generatedAt:snapshot.serverNow,requiresOnboarding:!s.profile,notes:items,requestId:reqId},200,{ETag:briefEtag},reqId);
+    }
     if(url.pathname==='/v1/food-diary'){
      const date=url.searchParams.get('date')||currDate;
      if(!validDate(date))throw createApiError('تاريخ غير صالح.',400,{code:'INVALID_DATE'});

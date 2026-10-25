@@ -62,12 +62,14 @@ test('Imported 0.12 public edge security and durable state transitions',async t=
   await t.test('a delayed backfill cannot replace a newer committed log',async()=>{
    const user='backfill-race',s=generate(empty(),draft,'backfill-race');s.revision=1;s.waterLogs=[{date:today(),cups:2,liters:.5}];
    await saveAccount(db,user,s,0,{key:'seed',digest:'seed',action:'generate'});
-   let injected=false;
-   const wrapped={prepare:sql=>db.prepare(sql),batch:async statements=>{
-    if(!injected){injected=true;const before=await loadAccount(db,user),next=command(structuredClone(before),'water',{cups:4});next.revision=2;await saveAccount(db,user,next,1,{key:'newer',digest:'newer',action:'water',previousState:before});}
+   let injected=false,backfillPrepared=false;
+   const wrapped={prepare:sql=>{if(sql.startsWith('INSERT OR REPLACE INTO coaching_'))backfillPrepared=true;return db.prepare(sql);},batch:async statements=>{
+    // Delay the backfill write, after its snapshot read, not the new read-only batch.
+    if(backfillPrepared&&!injected){injected=true;const before=await loadAccount(db,user),next=command(structuredClone(before),'water',{cups:4});next.revision=2;await saveAccount(db,user,next,1,{key:'newer',digest:'newer',action:'water',previousState:before});}
     return db.batch(statements);
    }};
    await assert.rejects(()=>backfillAccountToNormalizedTables(wrapped,user),e=>e.status===409);
+   assert.equal(injected,true);
    assert.equal((await loadAccount(db,user)).waterLogs[0].cups,4);
   });
   await t.test('an already authenticated write cannot recreate an account deleted before commit',async()=>{

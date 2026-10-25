@@ -37,22 +37,55 @@ export function evaluateUserSimulation(simulationResult) {
   const hasLactose = user.diseases.includes('lactose_intolerance');
   const hasGout = user.diseases.includes('gout');
   const hasHypertension = user.diseases.includes('hypertension') || user.dietType === 'dash';
+  const hasCholesterol = user.diseases.includes('cholesterol');
+  const hasIbs = user.diseases.includes('ibs');
+  const hasCeliac = user.diseases.includes('celiac');
+
+  // Check contraindications
+  if (hasGout && user.dietType === 'keto') {
+    safetyViolations.push({
+      gate: 'medical_safety',
+      severity: 'critical',
+      rule: 'GOUT_KETO_CONTRAINDICATION',
+      details: 'حمية الكيتو محظورة تمامًا لمرضى النقرس.'
+    });
+  }
+  if (hasCholesterol && user.dietType === 'keto') {
+    safetyViolations.push({
+      gate: 'medical_safety',
+      severity: 'critical',
+      rule: 'CHOLESTEROL_KETO_CONTRAINDICATION',
+      details: 'حمية الكيتو محظورة لمرضى ارتفاع الكوليسترول.'
+    });
+  }
 
   for (const np of nutritionPlans) {
     for (const day of np.plan?.days || []) {
+      // Sodium limit check for hypertension / DASH (max 2300 mg/day)
+      const daySodium = day.summary?.values?.sodium;
+      if (hasHypertension && daySodium != null && daySodium > 2300) {
+        safetyViolations.push({
+          gate: 'medical_safety',
+          severity: 'critical',
+          rule: 'HYPERTENSION_SODIUM_EXCEEDED',
+          details: `صوديوم اليوم (${daySodium} mg) يتجاوز الحد الأقصى 2300 mg لمريض ضغط/داش.`
+        });
+      }
+
       for (const meal of day.meals || []) {
         const ingredients = meal.snapshot?.ingredients || [];
         for (const ing of ingredients) {
           const key = ing.key || '';
-          if (hasFavism && key.includes('fava')) {
+
+          if (hasFavism && (key.includes('fava') || key === 'falafel')) {
             safetyViolations.push({
               gate: 'medical_safety',
               severity: 'critical',
               rule: 'FAVISM_CONTRAINDICATION',
-              details: `وجبة تحتوي فول مدمس لمستخدم مصاب بأنيميا الفول: ${key} في خطة ${np.plan.id}`
+              details: `وجبة تحتوي فول أو فلافل لمستخدم مصاب بأنيميا الفول: ${key} في خطة ${np.plan.id}`
             });
           }
-          if (hasLactose && ['milk', 'yogurt', 'cheese', 'cottage', 'feta'].includes(key)) {
+          if (hasLactose && ['milk', 'wholemilk', 'yogurt', 'greekyogurt', 'cheese', 'cottage', 'feta', 'mozzarella'].includes(key)) {
             safetyViolations.push({
               gate: 'medical_safety',
               severity: 'critical',
@@ -60,7 +93,47 @@ export function evaluateUserSimulation(simulationResult) {
               details: `مشتق ألبان لمستخدم يعاني عدم تحمل اللاكتوز: ${key} في خطة ${np.plan.id}`
             });
           }
-          if (isVegan && ['chicken', 'beef', 'fish', 'meat', 'egg', 'eggwhite', 'milk', 'cheese', 'yogurt'].includes(key)) {
+          if (hasGout && ['liver', 'shrimp', 'lamb', 'beef', 'shawarma_beef', 'fava'].includes(key)) {
+            safetyViolations.push({
+              gate: 'medical_safety',
+              severity: 'critical',
+              rule: 'GOUT_PURINE_CONTRAINDICATION',
+              details: `صنف غني بالبيورين لمستخدم مصاب بالنقرس: ${key} في خطة ${np.plan.id}`
+            });
+          }
+          if (hasCholesterol && ['lamb', 'liver', 'wholemilk', 'shawarma_beef'].includes(key)) {
+            safetyViolations.push({
+              gate: 'medical_safety',
+              severity: 'critical',
+              rule: 'CHOLESTEROL_CONTRAINDICATION',
+              details: `صنف عالي الدهون المشبعة/الكوليسترول لمريض كوليسترول: ${key} في خطة ${np.plan.id}`
+            });
+          }
+          if (hasHypertension && ['feta', 'bread', 'shawarma_chicken', 'shawarma_beef', 'tabbouleh', 'fattoush', 'babaghanouj'].includes(key)) {
+            safetyViolations.push({
+              gate: 'medical_safety',
+              severity: 'critical',
+              rule: 'HYPERTENSION_RESTRICTED_FOOD',
+              details: `صنف محظور لارتفاع ضغط الدم / داش: ${key} في خطة ${np.plan.id}`
+            });
+          }
+          if (hasIbs && ['fava', 'kidney', 'whitebeans', 'chickpeas', 'falafel', 'cabbage', 'onion', 'garlic'].includes(key)) {
+            safetyViolations.push({
+              gate: 'medical_safety',
+              severity: 'critical',
+              rule: 'IBS_HIGH_FODMAP_CONTRAINDICATION',
+              details: `صنف عالي الفودماب لمريض القولون العصبي: ${key} في خطة ${np.plan.id}`
+            });
+          }
+          if (hasCeliac && ['bread', 'pasta', 'flour', 'wheat'].includes(key)) {
+            safetyViolations.push({
+              gate: 'medical_safety',
+              severity: 'critical',
+              rule: 'CELIAC_GLUTEN_CONTRAINDICATION',
+              details: `صنف يحتوي على جلوتين لمريض السيلياك: ${key} في خطة ${np.plan.id}`
+            });
+          }
+          if (isVegan && ['chicken', 'beef', 'fish', 'meat', 'egg', 'eggwhite', 'milk', 'wholemilk', 'cheese', 'yogurt', 'greekyogurt', 'cottage', 'feta', 'mozzarella', 'lamb', 'liver', 'shrimp', 'salmon', 'tuna', 'seabass', 'shawarma_chicken', 'shawarma_beef'].includes(key)) {
             safetyViolations.push({
               gate: 'dietary_safety',
               severity: 'critical',
@@ -68,7 +141,7 @@ export function evaluateUserSimulation(simulationResult) {
               details: `مكون حيواني في خطة نباتي صرف: ${key} في خطة ${np.plan.id}`
             });
           }
-          if (isVegetarian && ['chicken', 'beef', 'fish', 'meat'].includes(key)) {
+          if (isVegetarian && ['chicken', 'beef', 'fish', 'meat', 'lamb', 'liver', 'shrimp', 'salmon', 'tuna', 'seabass', 'shawarma_chicken', 'shawarma_beef'].includes(key)) {
             safetyViolations.push({
               gate: 'dietary_safety',
               severity: 'critical',
@@ -164,7 +237,7 @@ export function evaluateUserSimulation(simulationResult) {
   const initialEnergy = nutritionPlans[0]?.plan?.targets?.energy || null;
   const initialProtein = nutritionPlans[0]?.plan?.targets?.protein || null;
   const targetProteinMin = Math.round(user.weight * 1.2);
-  const proteinAdequate = !hasNutrition || (!initialProtein || initialProtein >= targetProteinMin);
+  const proteinAdequate = !hasNutrition || (initialProtein !== null && initialProtein >= targetProteinMin);
 
   const mealNames = new Set();
   let totalMealsCount = 0;
@@ -261,21 +334,58 @@ export function evaluateUserSimulation(simulationResult) {
   const p95 = latencies[Math.floor(latencies.length * 0.95)] || 0;
   const p99 = latencies[Math.floor(latencies.length * 0.99)] || 0;
 
-  // --- 7. QUALITY SCORE CALCULATION (0 - 100) ---
+  // --- 7. WORKOUT & SESSION EXECUTION METRICS ---
+  const sessionEvents = [...new Map(apiEvents.filter(e => e.action === 'session' && e.status === 'success').map(e => [(e.payload?.date || e.date || e.day) + ':' + e.payload?.dayIndex, e])).values()];
+  const completedSessionsCount = sessionEvents.filter(e => e.payload?.status === 'completed').length;
+  const partialSessionsCount = sessionEvents.filter(e => e.payload?.status === 'partial').length;
+  const missedSessionsCount = sessionEvents.filter(e => e.payload?.status === 'missed').length;
+  const scheduledSessionsCount = completedSessionsCount + partialSessionsCount + missedSessionsCount;
+
+  let totalSetsLogged = 0;
+  let totalRepsLogged = 0;
+  let totalVolumeLogged = 0;
+  for (const w of workoutHistory) {
+    const sets = w.sets?.sets || [];
+    totalSetsLogged += sets.length;
+    for (const s of sets) {
+      const reps = Number(s.reps || 0);
+      const kg = Number(s.kg || 0);
+      totalRepsLogged += reps;
+      totalVolumeLogged += reps * kg;
+    }
+  }
+
+  // --- 8. PLAN TRANSITION & SNAPSHOT AUDIT ---
+  const distinctActivePlanIds = new Set(dailyAppState.map(d => d.activePlanId).filter(Boolean));
+  const planSnapshotsCaptured = nutritionPlans.map(p => p.plan?.id).filter(Boolean);
+  const distinctCapturedPlanIds = new Set(planSnapshotsCaptured);
+  const missingPlanSnapshots = [...distinctActivePlanIds].filter(id => !distinctCapturedPlanIds.has(id));
+  if (missingPlanSnapshots.length > 0) {
+    findings.push({
+      category: 'plan_integrity',
+      issue: 'MISSING_PLAN_SNAPSHOTS',
+      details: `${missingPlanSnapshots.length} معرفات خطط نشطة لم يتم التقاط لقطة كاملة لها في سجل الخطط.`
+    });
+  }
+
+  // --- 9. TRACK-SPECIFIC QUALITY SCORE CALCULATION (0 - 100) ---
   let safetyScore = safetyViolations.length === 0 ? 30 : 0;
-  let nutritionScore = 0;
-  if (!hasNutrition) {
-    nutritionScore = 20; // N/A, full marks for workouts-only
-  } else {
+
+  let nutritionScore = null;
+  let maxNutrition = 0;
+  if (hasNutrition) {
+    maxNutrition = 20;
+    nutritionScore = 0;
     if (proteinAdequate) nutritionScore += 8;
     if (mealDiversityRatio >= 0.15) nutritionScore += 6;
     if (planRenewalGaps.length === 0) nutritionScore += 6;
   }
 
-  let workoutScore = 0;
-  if (!hasWorkouts) {
-    workoutScore = 20; // N/A, full marks for nutrition-only
-  } else {
+  let workoutScore = null;
+  let maxWorkout = 0;
+  if (hasWorkouts) {
+    maxWorkout = 20;
+    workoutScore = 0;
     if (excessiveVolumeMuscles.length === 0) workoutScore += 8;
     if (insufficientVolumeMuscles.length === 0) workoutScore += 6;
     if (workoutPlans.length >= 1) workoutScore += 6;
@@ -289,20 +399,23 @@ export function evaluateUserSimulation(simulationResult) {
   if (repetitionRate < 0.65) messageScore += 8;
   if (shortSleepDaysWithoutNote <= 2) messageScore += 7;
 
-  const totalScore = safetyScore === 0 ? 0 : (safetyScore + nutritionScore + workoutScore + adaptationScore + messageScore);
+  const maxPossible = 30 + maxNutrition + maxWorkout + 15 + 15;
+  const rawEarned = (safetyScore === 0 ? 0 : safetyScore) + (nutritionScore || 0) + (workoutScore || 0) + adaptationScore + messageScore;
+  const totalScore = safetyScore === 0 ? 0 : Math.round((rawEarned / maxPossible) * 10000) / 100;
 
   return {
     userId: user.id,
-    passedAllGates: safetyViolations.length === 0,
+    passedAllGates: safetyViolations.length === 0 && missingPlanSnapshots.length === 0 && (!hasNutrition || nutritionPlans.length > 0) && (!hasWorkouts || workoutPlans.length > 0),
     safetyViolations,
     findings,
     scores: {
       total: totalScore,
       safety: safetyScore,
-      nutrition: nutritionScore,
-      workout: workoutScore,
+      nutrition: nutritionScore, // null if N/A
+      workout: workoutScore,     // null if N/A
       adaptation: adaptationScore,
-      message: messageScore
+      message: messageScore,
+      maxPossible
     },
     metrics: {
       initialEnergy,
@@ -312,9 +425,19 @@ export function evaluateUserSimulation(simulationResult) {
       uniqueMealsCount: mealNames.size,
       mealDiversityRatio,
       planRenewalGapsCount: planRenewalGaps.length,
+      distinctActivePlanIdsCount: distinctActivePlanIds.size,
+      distinctCapturedPlanSnapshotsCount: distinctCapturedPlanIds.size,
+      missingPlanSnapshotsCount: missingPlanSnapshots.length,
       workoutPlansCount: workoutPlans.length,
       excessiveVolumeMuscles,
       insufficientVolumeMuscles,
+      scheduledSessionsCount,
+      completedSessionsCount,
+      partialSessionsCount,
+      missedSessionsCount,
+      totalSetsLogged,
+      totalRepsLogged,
+      totalVolumeLogged,
       calorieProposalsCount: calorieProposals.length,
       recoveryProposalsCount: recoveryProposals.length,
       volumeProposalsCount: volumeProposals.length,

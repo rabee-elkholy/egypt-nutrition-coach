@@ -31,6 +31,17 @@ test('logged meals cannot be replaced, alternatives retain exclusions, unlogged 
  const logged=run(s,'food_entry',{source:'planned',date:today(),mealId:meal.id,slot:meal.slot,quantity:1});
  assert.throws(()=>run(logged,'replace_meal',{mealId:meal.id,templateId:choices[0].snapshot.template_id}),/اتسجلت/);
 });
+test('meal replacement accepts the existing alternativeId alias and retains templateId precedence',()=>{
+ const s=structuredClone(fixture),meal=s.plans[0].days[0].meals[0],choices=mealAlternatives(s,meal.id);
+ assert.ok(choices.length);
+ const target=choices[0].snapshot.template_id,original=JSON.stringify(s.plans[0]);
+ for(const payload of [{alternativeId:target},{templateId:target,alternativeId:'unavailable'}]){
+  const next=run(s,'replace_meal',{mealId:meal.id,...payload});
+  assert.equal(next.plans.find(p=>p.id===next.active_plan_id).days[0].meals.find(m=>m.id===meal.id).snapshot.template_id,target);
+  assert.equal(JSON.stringify(next.plans[0]),original);
+ }
+ assert.throws(()=>run(s,'replace_meal',{mealId:meal.id,alternativeId:'unavailable'}),/متاح/);
+});
 test('regional pain blocks progression; duplicated and future reports cannot create a personal baseline',()=>{
  const now=Date.now(),base={at:new Date(now).toISOString(),date:today(),sleepHours:8,sleepQuality:4,fatigue:2,stress:2,soreness:0,sorenessByRegion:{quadriceps:8},painRegions:[],pain:false,illness:false,redFlags:false};
  let r=recovery([base],now);assert.equal(r.muscles.quadriceps.status,'caution');assert.equal(r.muscles.chest.status,'unknown');

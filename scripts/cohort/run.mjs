@@ -2,19 +2,21 @@ import {readFileSync,writeFileSync,existsSync,mkdirSync,appendFileSync,renameSyn
 import {gzipSync,gunzipSync} from 'node:zlib';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {args,json,read,lines,hash,rng,chance,pick,round,VERSION,inventory} from './common.mjs';
+import {args,json,read,lines,hash,rng,chance,pick,round,VERSION,inventory,cohortDayDate} from './common.mjs';
 import {personas,cohortCoverage} from './personas.mjs';
 import {initialMemory,behavioralDay} from './behavior.mjs';
 import {localRuntime} from './runtime.mjs';
-import {messages} from './messages.mjs';
 import {generateReports} from './report.mjs';
+import {sourceProvenance,snapshotSource} from '../audit/evidence.mjs';
 
 export async function run(options=args()){
  const started=Date.now(),users=Number(options.users||100),days=Number(options.days||90),seed=String(options.seed||'egypt-100x90-v1'),output=path.resolve(String(options.output||'reports/simulation-100-users-90-days/baseline-v1'));
  if(!Number.isInteger(users)||users<1||users>1000||!Number.isInteger(days)||days<1||days>90)throw Error('Invalid users/days');
  if(options['from-day']&&!options.resume)throw Error('--from-day requires --resume and existing checkpoints; no future state injection');
+ const cohort=personas(seed,users).filter(p=>!options['user-id']||[p.userId,String(Number(p.userId.slice(5)))].includes(String(options['user-id'])));
+ if(!cohort.length)throw Error('Selected user is not in the preregistered cohort');
  mkdirSync(output,{recursive:true});
- const config={users,days,seed,startDate:'2026-10-24',versions:{persona:VERSION,behavior:VERSION,evaluation:VERSION,schema:1},localOnly:true};
+ const config={users:cohort.length,days,seed,startDate:'2026-10-24',messageEvidence:'BACKEND_BRIEF_API',versions:{persona:VERSION,behavior:VERSION,evaluation:VERSION,schema:1},localOnly:true,...(options['user-id']?{cohortGenerationUsers:users,selectedUserIds:cohort.map(p=>p.userId)}:{})};
  if(existsSync(path.join(output,'simulation_config.json'))){if(!options.resume)throw Error('Output exists: choose a new directory or --resume');if(hash(read(path.join(output,'simulation_config.json')))!==hash(config))throw Error('Resume configuration mismatch');}
  else json(path.join(output,'simulation_config.json'),config);
  const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -24,9 +26,12 @@ export async function run(options=args()){
  if(previous&&hash(previous.engineHashes)!==hash(engineHashes))throw Error('Engine files changed; baseline resume forbidden');
  const harnessFiles=execFileSync('git',['ls-files','--cached','--others','--exclude-standard','scripts/cohort','tests/cohort-harness.test.mjs'],{encoding:'utf8'}).trim().split(/\r?\n/).filter(existsSync),harnessHashes=Object.fromEntries(harnessFiles.map(p=>[p,hash(readFileSync(p))]));
  if(previous?.harnessHashes&&hash(previous.harnessHashes)!==hash(harnessHashes))throw Error('Harness changed; use a new output directory instead of resuming');
- const manifest={...previous,gitCommit:previous?.gitCommit||sha,harnessGitCommit:sha,harnessHashes,engineVersion:'weekly-planner-0.11.0',nodeVersion:process.version,seed,versions:config.versions,startDate:config.startDate,engineHashes,runStarted:previous?.runStarted||new Date().toISOString(),status:'running',environment:'local Miniflare / migrated local D1; production Worker and D1 untouched',baselineTests:{command:'npm run check',passed:173,failed:0,source:'baseline-check.log'},limitations:['Synthetic behavior and weight are not clinical evidence','All full HTTP bodies are preserved in per-day gzip journals','Local latency includes instrumentation; no production performance claim','DOM rendering coverage is recorded separately; generated does not mean rendered'],files:[]};
+ const provenance=sourceProvenance();
+ if(previous?.provenance?.sourceHashes&&hash(previous.provenance.sourceHashes)!==hash(provenance.sourceHashes))throw Error('Source changed; resume forbidden');
+ const manifest={...previous,gitCommit:previous?.gitCommit||sha,provenance:previous?.provenance||provenance,harnessGitCommit:sha,harnessHashes,engineVersion:read('package.json').version,nodeVersion:process.version,seed,versions:config.versions,startDate:config.startDate,engineHashes,runStarted:previous?.runStarted||new Date().toISOString(),status:'running',environment:'local Miniflare dispatchFetch / migrated local D1; harness clock and trusted identity bypass public edge and JWT',baselineTests:{status:'NOT_MEASURED',reason:'Use separately captured command execution evidence; no embedded historical pass counts'},limitations:['Synthetic behavior and weight are not clinical evidence','All full HTTP bodies are preserved in per-day gzip journals','Local dispatch latency includes instrumentation; no production performance claim','Public edge and JWT verified only by separate integration tests','DOM rendering coverage is recorded separately; generated does not mean rendered'],files:[]};
+ manifest.sourceSnapshot=snapshotSource(output,{...engineHashes,...harnessHashes,...provenance.sourceHashes});
  json(manifestPath,manifest);if(existsSync('baseline-check.log')&&!existsSync(path.join(output,'baseline-check.log')))copyFileSync('baseline-check.log',path.join(output,'baseline-check.log'));
- const cohort=personas(seed,users);json(path.join(output,'cohort.json'),cohort);json(path.join(output,'cohort_diversity.json'),cohortCoverage(cohort));
+ json(path.join(output,'cohort.json'),cohort);json(path.join(output,'cohort_diversity.json'),cohortCoverage(cohort));
  const {mf,db}=await localRuntime(output);
  let completed=0;
  try{
@@ -40,7 +45,7 @@ export async function run(options=args()){
   for(let day=(checkpoint?.day||0)+1;day<=days;day++){
    const journal=path.join(dir,'days',String(day).padStart(3,'0')+'.journal.jsonl'),cached=lines(journal),records=[],dayState=structuredClone(state),revisionBefore=state.revision;
    let replayIndex=0;
-   const request=async(method,endpoint,body=null,simulation=true,extra={})=>{
+   const request=async(method,endpoint,body=null,simulation=true,extra={},expectedOutcome=null)=>{
     seq++;const eventId=persona.userId+'-'+seq,key=hash(seed+':'+eventId).slice(0,32),requestData={method,endpoint,body,simulation,extra};
     if(cached[replayIndex]){const rec=cached[replayIndex++];if(rec.eventId!==eventId||hash(rec.request)!==hash(requestData))throw Error('Recovery journal differs at '+eventId);records.push(rec);if(rec.response.revision!=null&&rec.status<300)state=rec.response.profile!==undefined?rec.response:{...state,revision:rec.response.revision};return rec;}
     const begin=performance.now(),headers={'oai-authenticated-user-id':persona.userId,'Content-Type':'application/json','Idempotency-Key':key,'x-cohort-key':seed+':'+eventId,'x-cohort-now':String(Date.parse(config.startDate+'T12:00:00Z')+(day-1)*86400000+seq*1000),...extra};
@@ -48,8 +53,11 @@ export async function run(options=args()){
     let response,content,status,requestId,error=null;
     try{response=await mf.dispatchFetch(url,{method,headers,...(body?{body:JSON.stringify(body)}:{})});status=response.status;requestId=response.headers.get('x-request-id');content=await response.text();try{content=JSON.parse(content);}catch{content={unparsed:content};}}
     catch(e){status=599;content={error:e.message};error=e.stack;}
-    const rec={eventId,userId:persona.userId,day,requestId,timestamp:headers['x-cohort-now'],request:requestData,status,latencyMs:performance.now()-begin,responseBytes:Buffer.byteLength(JSON.stringify(content)),responseHash:hash(content),response:content,transportError:error};
+    const classification=error?'INFRASTRUCTURE_FAILURE':expectedOutcome==='VALIDATION_ERROR'?(status===400?'EXPECTED_USER_VALIDATION_ERROR':'UNEXPECTED_VALIDATION_OUTCOME'):status<400?'SUCCESS':status===401||status===403?'AUTHORIZATION_FAILURE':status>=500?'BACKEND_OR_INFRASTRUCTURE_FAILURE':'UNEXPECTED_REJECTION_REQUIRES_REVIEW';
+    const rec={eventId,userId:persona.userId,day,requestId,timestamp:headers['x-cohort-now'],request:requestData,requestUrl:url,requestHeaders:headers,idempotencyKey:key,identityContext:{userId:persona.userId,adapter:'HARNESS_TRUSTED_IDENTITY'},expectedOutcome,classification,status,latencyMs:performance.now()-begin,latencyProvenance:'LOCAL_MINIFLARE_DISPATCH_WITH_D1',responseBytes:Buffer.byteLength(JSON.stringify(content)),responseHash:hash(content),response:content,transportError:error};
     appendFileSync(journal,JSON.stringify(rec)+'\n');records.push(rec);replayIndex++;
+    // Local fault-injection only: the response is durable, but the checkpoint is not.
+    if(Number(options['interrupt-after-event'])===seq)throw Error('COHORT_INJECTED_INTERRUPTION_AFTER_JOURNAL');
     if(status<300&&content.revision!=null)state=content.profile!==undefined?content:{...state,revision:content.revision};
     return rec;
    };
@@ -65,11 +73,13 @@ export async function run(options=args()){
     else state={...state,onboardingFailure:{status:generation.status,body:generation.response},serverDate:config.startDate};
    }
    else if(state.profile)await command('simulation_next',{});
-   const date=state.serverDate||new Date(Date.parse(config.startDate+'T12:00:00Z')+(day-1)*86400000).toISOString().slice(0,10);
+   const date=cohortDayDate(state,config.startDate,day);
    let plan=state.plans?.find(p=>p.id===state.active_plan_id),planDay=plan?.days.find(d=>d.date===date),occ=state.scheduledSessions?.find(x=>x.date===date),workoutDay=state.workoutPlan?.days.find(d=>d.dayIndex===occ?.dayIndex);
    const behavior=behavioralDay(persona,memory,{day,date,planDay,workoutDay}),r=rng(seed+':actions:'+persona.userId+':'+day),truth={userId:persona.userId,day,date,...behavior,actualMeals:behavior.food.filter(x=>x.eaten).map(choice=>({type:'planned',mealId:choice.mealId,planId:plan?.id,quantity:choice.quantity,snapshotReference:{planId:plan?.id,mealId:choice.mealId},logged:choice.logged,late:choice.late}))},decisions=[];
    if(behavior.extra||behavior.outside){truth.actualMeals.push({type:behavior.outside?'outside':'extra',key:pick(r,['rice','egg','chicken','bread','banana','oats']),grams:pick(r,[80,100,150,200]),nutrients:'catalog reference; quantity is a synthetic user estimate',logged:behavior.openedApp&&chance(r,persona.traits.logging*.7)});}
    if(state.profile&&behavior.openedApp){
+    // Preregistered realistic typo; never alter the expected response to match the result.
+    if(day%11===0)await request('POST','commands',{revision:state.revision,action:'water',payload:{cups:-1}},true,{},'VALIDATION_ERROR');
     if(behavior.changeTimezone)await command('timezone',{timezone:state.profile.timezone==='Asia/Riyadh'?'Africa/Cairo':'Asia/Riyadh'});
     if(behavior.changeGoal||behavior.changeDays){const changed={...persona.onboarding,...state.profile,goal:behavior.changeGoal?'maintain':state.profile.goal,targetWeight:behavior.changeGoal?null:state.profile.targetWeight,dailyActivity:state.profile.activity};if(behavior.changeDays){changed.selectedWorkoutDays=persona.onboarding.selectedWorkoutDays.slice(0,-1);if(!changed.selectedWorkoutDays.length)changed.selectedWorkoutDays=[1,4];}await command('generate',changed);}
     if(behavior.logRecovery)await command('recovery',{sleepHours:behavior.sleepHours,sleepQuality:Math.round(Math.min(5,Math.max(1,behavior.sleepHours-3))),fatigue:behavior.fatigue,stress:behavior.stress,soreness:behavior.soreness,pain:behavior.pain,illness:behavior.illness,redFlags:false});
@@ -110,9 +120,10 @@ export async function run(options=args()){
     const pending=state.adaptations?.filter(a=>a.status==='pending')||[];
     // Each proposal is reviewed against its original revision; the engine may reject subsequent accepts.
     for(const a of pending){const before={nutrition:state.active_plan_id,workout:state.workoutPlan?.id},rec=await command('adaptation',{id:a.id,accept:behavior.accept});decisions.push({kind:a.kind,id:a.id,decision:a,accept:behavior.accept,before,after:{nutrition:state.active_plan_id,workout:state.workoutPlan?.id},eventId:rec.eventId,status:rec.status,evidenceRevision:a.baseRevision});}
+    await request('GET','coaching/brief');
    }
-   if(state.profile)await request('GET','state');
-   const generated=records.flatMap(rec=>rec.response.profile?messages(rec.response,{userId:persona.userId,day,date:rec.response.serverDate,engineStateRevision:rec.response.revision,openedApp:behavior.openedApp,eventId:rec.eventId}):[]);
+   if(state.profile||behavior.openedApp)await request('GET','state');
+   const generated=records.flatMap(rec=>rec.request.method==='GET'&&rec.request.endpoint==='coaching/brief'&&rec.status===200?rec.response.notes.map(note=>({...note,userId:persona.userId,day,date:rec.response.date,messageId:note.id,messageType:'personal:'+note.role,exactText:note.text,actionText:note.action,reasonCode:note.key,engineStateRevision:rec.response.revision,generatedAt:rec.response.generatedAt,eventId:rec.eventId,sourceFileOrFunction:'GET /v1/coaching/brief',visibleAt:null,wasActuallyRendered:false,displayStatus:note.status})):[]);
    const unique=[...new Map(generated.map(x=>[x.messageId,x])).values()];memory.previousMessages=unique.filter(x=>x.messageType.startsWith('personal:')).map(x=>x.exactText);memory.previousAcceptance=decisions.at(-1)?.accept??null;
    const bundle={userId:persona.userId,day,date,timezone:state.profile?.timezone||persona.onboarding.timezone,revisionBefore,revisionAfter:state.revision,truth,behavior,decisions,messages:unique,records,state};
    const dest=path.join(dir,'days',String(day).padStart(3,'0')+'.json.gz');writeFileSync(dest+'.tmp',gzipSync(JSON.stringify(bundle),{level:6}));renameSync(dest+'.tmp',dest);

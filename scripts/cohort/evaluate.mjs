@@ -4,6 +4,9 @@ const metrics=['energy','protein','fat','carbs','fiber','saturated','sodium','su
 const bans={knee_pain:['squat','lunge','knee_extension'],lower_back_pain:['hinge'],shoulder_pain:['vertical_push','shoulder_abduction'],wrist_pain:['elbow_flexion'],ankle_pain:['plantar_flexion','lunge'],neck_pain:['scapular_elevation'],hip_pain:['squat','lunge','hinge'],diastasis_recti:['spinal_flexion','hip_flexion']};
 const names={knee_pain:/jump|plyo|pistol|sissy|lunge|split squat/i,lower_back_pain:/good morning|deadlift|back squat|sit.?up/i,shoulder_pain:/upright row|behind.*neck|dip|overhead/i,wrist_pain:/barbell curl|close.grip bench|handstand|push.?up/i,ankle_pain:/jump|hop|sprint|plyo|calf raise/i,neck_pain:/neck|shrug/i,hip_pain:/sumo|wide.stance|split squat|lunge/i,diastasis_recti:/crunch|sit.?up|v.?up|leg raise/i};
 const equipment={none:[],dumbbells:['dumbbell'],bench:['flat_bench'],resistance_bands:['resistance_band'],yoga_mat:['mat'],pullup_bar:['pullup_bar'],barbell:['barbell'],kettlebell:['kettlebell'],jump_rope:['jump_rope'],cardio_machine:['cardio_machine']};
+// Independently encode the public taste-category distinction. The nutrition
+// protein family "fish" also contains shrimp and is not this preference contract.
+const distinctTasteKeys={fish:new Set(['fish','seabass','tuna','salmon']),shellfish:new Set(['shrimp'])};
 export const nutritionSignature=p=>hash(p.days.map(d=>d.meals.map(m=>m.snapshot.ingredients.map(i=>[i.key,round(Number(i.grams),0)]).sort()).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
 export const menuSignature=p=>hash(p.days.flatMap(d=>d.meals.map(m=>m.snapshot.ingredients.map(i=>i.key).sort().join('+'))).sort());
 export const workoutSignature=p=>hash(p.days.map(d=>d.exercises.map(e=>[e.id,e.sets,e.repMin,e.repMax,e.rir]).sort()).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
@@ -27,12 +30,23 @@ export function evaluateDay(bundle,persona,library){
    if(ing.role==='protein')nutrition.proteinSources.push(ing.key);if(ing.role==='carb')nutrition.carbSources.push(ing.key);if(ing.role==='fat')nutrition.fatSources.push(ing.key);
    if(!ref)add('UNKNOWN_CATALOG_INGREDIENT','P1',{ing},'اربط كل مكون بمصدر النظام.');
    const excluded=s.preferences?.excludedGroups||[],groups=[...(ref?.groups||[]),...(ref?.tags||[]),ref?.group,ref?.protein_group,ing.key].filter(Boolean);
-   if(excluded.some(g=>groups.includes(g)))add('FOOD_EXCLUSION','P0',{ingredient:ing.key,groups,excluded,mealId:meal.id},'طبّق استبعاد الصنف على جميع مراحل التخطيط والبدائل.','planner-core.mjs:ingredientAllowed');
+   if(excluded.some(g=>distinctTasteKeys[g]?distinctTasteKeys[g].has(ing.key):groups.includes(g)))add('FOOD_EXCLUSION','P0',{ingredient:ing.key,groups,excluded,mealId:meal.id},'طبّق استبعاد الصنف على جميع مراحل التخطيط والبدائل.','planner-core.mjs:ingredientAllowed');
    const animal=['chicken','fish','meat'].includes(ref?.protein_group)||['beef','lamb','liver','turkey','shrimp','salmon','tuna','seabass','shawarma_chicken','shawarma_beef'].includes(ing.key),dairyEgg=['egg','eggwhite','friedegg','milk','wholemilk','yogurt','greekyogurt','cottage','feta','mozzarella'].includes(ing.key);
    if((s.preferences?.diet==='vegan'&&(animal||dairyEgg))||(s.preferences?.diet==='vegetarian'&&animal))add('DIET_RESTRICTION','P0',{ingredient:ing.key,diet:s.preferences.diet,mealId:meal.id},'راجع المكونات الحيوانية في النظام النباتي.','diet-patterns.mjs');
+   const diseases=new Set(persona.onboarding?.diseases||s.profile?.diseases||[]);
+   if(diseases.has('favism')&&(ing.key==='fava'||ing.key==='falafel'||ing.key.includes('fava')))add('FAVISM_CONTRAINDICATION','P0',{ingredient:ing.key,mealId:meal.id},'استبعد الفول والفلافل لمريض أنيميا الفول.','diet-patterns.mjs');
+   if(diseases.has('lactose_intolerance')&&['milk','wholemilk','yogurt','greekyogurt','cheese','cottage','feta','mozzarella'].includes(ing.key))add('LACTOSE_CONTRAINDICATION','P0',{ingredient:ing.key,mealId:meal.id},'استبعد الألبان لمريض حساسية اللاكتوز.','diet-patterns.mjs');
+   if(diseases.has('gout')&&['liver','shrimp','lamb','beef','shawarma_beef','fava'].includes(ing.key))add('GOUT_CONTRAINDICATION','P0',{ingredient:ing.key,mealId:meal.id},'استبعد مصادر البيورين العالية لمريض النقرس.','diet-patterns.mjs');
+   if(diseases.has('cholesterol')&&['lamb','liver','wholemilk','shawarma_beef'].includes(ing.key))add('CHOLESTEROL_CONTRAINDICATION','P0',{ingredient:ing.key,mealId:meal.id},'استبعد الدهون المشبعة العالية لمريض الكوليسترول.','diet-patterns.mjs');
+   if(diseases.has('hypertension')&&['feta','bread','shawarma_chicken','shawarma_beef','tabbouleh','fattoush','babaghanouj'].includes(ing.key))add('HYPERTENSION_FOOD_RESTRICTION','P0',{ingredient:ing.key,mealId:meal.id},'استبعد الأطعمة عالية الصوديوم لمريض الضغط.','diet-patterns.mjs');
+   if(diseases.has('ibs')&&['fava','kidney','whitebeans','chickpeas','falafel','cabbage','onion','garlic'].includes(ing.key))add('IBS_CONTRAINDICATION','P0',{ingredient:ing.key,mealId:meal.id},'استبعد الفودماب العالي لمريض القولون العصبي.','diet-patterns.mjs');
+   if(diseases.has('celiac')&&['bread','pasta','flour','wheat'].includes(ing.key))add('CELIAC_CONTRAINDICATION','P0',{ingredient:ing.key,mealId:meal.id},'استبعد الجلوتين لمريض السيلياك.','diet-patterns.mjs');
   }
  }
  if(foodDay){
+  const diseases=new Set(persona.onboarding?.diseases||s.profile?.diseases||[]);
+  if((diseases.has('gout')||diseases.has('cholesterol')||diseases.has('diabetes'))&&s.preferences?.diet==='keto')add('KETO_DISEASE_CONTRAINDICATION','P0',{diet:'keto',diseases:[...diseases]},'الكيتو محظور مع هذه الحالة الطبية.','diet-patterns.mjs');
+  if(diseases.has('hypertension')&&foodDay.summary?.values?.sodium!=null&&Number(foodDay.summary.values.sodium)>2300)add('HYPERTENSION_SODIUM_LIMIT','P0',{sodium:foodDay.summary.values.sodium},'صوديوم اليوم يتجاوز 2300 ملجم لمريض الضغط.','diet-patterns.mjs');
   const target=foodDay.targets||plan.targets,energy=foodDay.summary.values.energy,protein=foodDay.summary.values.protein;
   nutrition.energyRatio=energy==null?null:Number(energy)/target.energy;nutrition.proteinRatio=protein==null?null:Number(protein)/target.protein;
   if(nutrition.energyRatio!==null&&Math.abs(nutrition.energyRatio-1)>.12)add('PLAN_ENERGY_TARGET_GAP','P1',{planId:plan.id,target:target.energy,actual:energy,ratio:nutrition.energyRatio},'حسّن تغطية الوجبات مع الاحتفاظ بقيود الأمان.','planner-core.mjs:makeWeek');

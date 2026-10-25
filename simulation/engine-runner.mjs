@@ -110,10 +110,22 @@ export async function runUserSimulation(user, totalDays = 90, seed = 42100) {
 
   // Phase 2: Run Days 1 to totalDays
   for (let day = 1; day <= totalDays; day++) {
+    if (s.simulation) s.simulation.day = day;
     await withClock(simulationTime(s), async () => {
       const currDate = clockDate();
       const planBefore = s.active_plan_id;
       const workoutPlanBefore = s.workoutPlan?.id;
+
+      // Check if current nutrition plan needs weekly renewal
+      const currentActiveP = activePlan(s);
+      if (currentActiveP && currentActiveP.days?.at(-1)?.date < currDate) {
+        try {
+          s = command(s, 'renew_plan', {});
+          s.revision++;
+        } catch (err) {
+          errors.push({ day, date: currDate, action: 'renew_plan', error: err.message, at: isoNow() });
+        }
+      }
 
       // 1. Behavioral simulation decision for this day
       const dailySim = simulateUserDay(user, userState, s, day, currDate);
@@ -273,8 +285,12 @@ export async function runUserSimulation(user, totalDays = 90, seed = 42100) {
           sourceFileOrFunction: 'personal-brief.mjs#personalBrief',
           engineStateRevision: s.revision,
           generatedAt: isoNow(),
-          visibleAt: isoNow(),
-          wasActuallyRendered: dailySim.opensApp, // rendered when user opened app
+          visibleAt: null,
+          wasActuallyRendered: false, // NOT_MEASURED in headless benchmark (DOM rendering unverified without Playwright)
+          clientOpenedApp: dailySim.opensApp,
+          displayStatus: 'GENERATED',
+          renderingStatus: 'NOT_MEASURED',
+          deliveryStatus: 'NOT_MEASURED',
           relatedPlanId: s.active_plan_id,
           relatedDecisionId: s.lastReview?.reasonCode || null
         });
@@ -297,8 +313,12 @@ export async function runUserSimulation(user, totalDays = 90, seed = 42100) {
           sourceFileOrFunction: 'server/coaching.mjs#review',
           engineStateRevision: s.revision,
           generatedAt: isoNow(),
-          visibleAt: isoNow(),
-          wasActuallyRendered: dailySim.opensApp,
+          visibleAt: null,
+          wasActuallyRendered: false, // NOT_MEASURED in headless benchmark (DOM rendering unverified without Playwright)
+          clientOpenedApp: dailySim.opensApp,
+          displayStatus: 'GENERATED',
+          renderingStatus: 'NOT_MEASURED',
+          deliveryStatus: 'NOT_MEASURED',
           relatedPlanId: s.active_plan_id,
           relatedDecisionId: s.lastReview.reasonCode || null
         });
@@ -327,10 +347,39 @@ export async function runUserSimulation(user, totalDays = 90, seed = 42100) {
 
       // 8. Advance Virtual Clock to Next Day
       if (day < totalDays) {
+        const planBeforeNext = s.active_plan_id;
         s = simulationCommand(s, 'simulation_next');
         s.revision++;
+        if (s.active_plan_id !== planBeforeNext) {
+          const cur = s.plans.find(p => p.id === s.active_plan_id);
+          if (cur && !nutritionPlans.some(p => p.plan?.id === cur.id)) {
+            nutritionPlans.push({
+              version: nutritionPlans.length + 1,
+              day: day + 1,
+              date: cur.effective_from || cur.days?.[0]?.date || currDate,
+              reason: cur.changeReason || 'تجديد الخطة الأسبوعية',
+              plan: structuredClone(cur)
+            });
+          }
+        }
       }
     });
+  }
+
+  // Final Plan Snapshot Invariant: Ensure every activePlanId in dailyAppState has a captured snapshot
+  for (const d of dailyAppState) {
+    if (d.activePlanId && !nutritionPlans.some(p => p.plan?.id === d.activePlanId)) {
+      const planObj = s.plans.find(p => p.id === d.activePlanId);
+      if (planObj) {
+        nutritionPlans.push({
+          version: nutritionPlans.length + 1,
+          day: d.day,
+          date: d.date,
+          reason: planObj.changeReason || 'خطة نشطة مسجلة',
+          plan: structuredClone(planObj)
+        });
+      }
+    }
   }
 
   // Calculate final summary metrics
@@ -358,7 +407,8 @@ export async function runUserSimulation(user, totalDays = 90, seed = 42100) {
     weightsLoggedCount: healthTracking.filter(h => h.type === 'weight').length,
     waterLogsCount: healthTracking.filter(h => h.type === 'water').length,
     checkinsCount: healthTracking.filter(h => h.type === 'recovery').length,
-    workoutsCompletedCount: workoutHistory.length,
+    workoutsCompletedCount: s.sessions.filter(session => session.status === 'completed').length,
+    exerciseLogsCount: workoutHistory.length,
     elapsedMs
   };
 

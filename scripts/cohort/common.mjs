@@ -16,4 +16,6 @@ export function line(p,v){mkdirSync(path.dirname(p),{recursive:true});appendFile
 export function files(dir){return readdirSync(dir,{withFileTypes:true}).flatMap(x=>x.isDirectory()?files(path.join(dir,x.name)):[path.join(dir,x.name)]);}
 export function distribution(v){const a=v.filter(Number.isFinite).sort((a,b)=>a-b),q=p=>a.length?a[Math.min(a.length-1,Math.floor((a.length-1)*p))]:null;return {n:a.length,mean:a.length?a.reduce((x,y)=>x+y,0)/a.length:null,median:q(.5),p10:q(.1),p90:q(.9),p95:q(.95),p99:q(.99),min:a[0]??null,max:a.at(-1)??null};}
 export const countBy=(a,f)=>a.reduce((o,x)=>{const k=f(x);o[k]=(o[k]||0)+1;return o;},{});
-export function inventory(root){return files(root).filter(p=>!p.includes(path.sep+'.local-d1'+path.sep)&&!p.endsWith('manifest.json')&&!p.endsWith('verification.json')).map(p=>({path:path.relative(root,p).replaceAll('\\','/'),bytes:statSync(p).size,sha256:hash(readFileSync(p))}));}
+export const cohortCalendarDate=(startDate,day)=>new Date(Date.parse(startDate+'T12:00:00Z')+(day-1)*86400000).toISOString().slice(0,10);
+export const cohortDayDate=(state,startDate,day)=>state.profile?state.serverDate:cohortCalendarDate(startDate,day);
+export function inventory(root){return files(root).filter(p=>!p.includes(path.sep+'.local-d1'+path.sep)&&!['manifest.json','verification.json'].includes(path.relative(root,p).replaceAll('\\','/'))).map(p=>({path:path.relative(root,p).replaceAll('\\','/'),bytes:statSync(p).size,sha256:hash(readFileSync(p))}));}

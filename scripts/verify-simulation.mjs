@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { generateCohort } from '../simulation/persona-generator.mjs';
 import { runUserSimulation } from '../simulation/engine-runner.mjs';
+import {verifyFileManifest} from './audit/evidence.mjs';
 
 function sha256(content) {
   return createHash('sha256').update(content).digest('hex');
@@ -19,19 +20,28 @@ function sha256(content) {
 async function verify() {
   console.log('=== STARTING INDEPENDENT ARTIFACT & REPRODUCIBILITY VERIFICATION ===\n');
 
-  // Find latest simulation run directory
-  const baseReports = 'reports/simulation-100-users-90-days';
-  const dirs = (await readdir(baseReports, { withFileTypes: true }))
-    .filter(d => d.isDirectory() && d.name.startsWith('run-'))
-    .map(d => d.name)
-    .sort();
-
-  if (!dirs.length) {
-    throw Error('No simulation runs found in ' + baseReports);
+  const args = process.argv.slice(2);
+  let customDir = null;
+  for (const a of args) {
+    if (a.startsWith('--dir=')) customDir = a.split('=')[1];
+    else if (a.startsWith('--output=')) customDir = a.split('=')[1];
   }
 
-  const latestRun = dirs.at(-1);
-  const runDir = `${baseReports}/${latestRun}`;
+  // Find latest simulation run directory
+  const baseReports = 'reports/simulation-100-users-90-days';
+  let runDir = customDir;
+  if (!runDir) {
+    const dirs = (await readdir(baseReports, { withFileTypes: true }))
+      .filter(d => d.isDirectory() && (d.name.startsWith('run-') || d.name.includes('curafit-authoritative')))
+      .map(d => d.name)
+      .sort();
+
+    if (!dirs.length) {
+      throw Error('No simulation runs found in ' + baseReports);
+    }
+    const latestRun = dirs.at(-1);
+    runDir = `${baseReports}/${latestRun}`;
+  }
   console.log(`Checking run directory: ${runDir}`);
 
   // 1. Read and verify manifest
@@ -40,7 +50,7 @@ async function verify() {
   console.log(`Manifest loaded. Seed: ${manifest.seed}, Users: ${manifest.cohortSize}, User-Days: ${manifest.totalUserDays}`);
   assert.equal(manifest.cohortSize, 100, 'Manifest must record exactly 100 cohort users');
   assert.equal(manifest.totalUserDays, 9000, 'Manifest must record exactly 9,000 user-days');
-  assert.equal(manifest.safetyGatesStatus, 'PASSED_100%', 'Safety gates must be PASSED_100%');
+  // Artifact integrity is independent of the evaluated safety outcome.
 
   // 2. Verify all_days.jsonl has exactly 9,000 lines
   const allDaysRaw = await readFile(`${runDir}/all_days.jsonl`, 'utf8');
@@ -73,19 +83,11 @@ async function verify() {
   }
   console.log(`✔ Verified ${fileVerificationCount} user files across all 100 folders.`);
 
-  // 4. Verify Manifest Checksums on a sample of files
+  // 4. Verify every listed file, with no sampling or unsafe paths.
   console.log('Verifying SHA-256 checksums from manifest...');
-  let checksumChecks = 0;
-  for (const [relPath, expectedHash] of Object.entries(manifest.files)) {
-    // Check every 10th file to save time while ensuring comprehensive coverage
-    if (checksumChecks % 10 === 0) {
-      const fullPath = `${runDir}/${relPath}`;
-      const content = await readFile(fullPath, 'utf8');
-      const actualHash = sha256(content);
-      assert.equal(actualHash, expectedHash, `Checksum mismatch for ${relPath}`);
-    }
-    checksumChecks++;
-  }
+  const checksumFailures = verifyFileManifest(runDir, manifest.files);
+  assert.deepEqual(checksumFailures, [], 'Manifest integrity failed: ' + checksumFailures.join(', '));
+  const checksumChecks = Object.keys(manifest.files).length;
   console.log(`✔ Verified ${checksumChecks} file checksums matched manifest.`);
 
   // 5. Test Deterministic Reproducibility
@@ -103,7 +105,7 @@ async function verify() {
   assert.equal(reSim.userSummary.totalCommandsExecuted, originalSummary.totalCommandsExecuted, 'Commands count must match');
   assert.equal(reSim.userSummary.foodCompleteDaysCount, originalSummary.foodCompleteDaysCount, 'Food complete count must match');
   assert.equal(reSim.userSummary.weightsLoggedCount, originalSummary.weightsLoggedCount, 'Weights logged count must match');
-  console.log('✔ Reproducibility test passed: exact byte-level state match for User 42 across independent runs!');
+  console.log('✔ Six selected summary fields match for User 42; full state and byte-level reproducibility NOT established.');
 
   console.log('\n====================================================================');
   console.log('✅ ALL VERIFICATION CHECKS PASSED PERFECTLY!');

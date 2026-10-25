@@ -18,14 +18,14 @@ export function recovery(checkins, now=clockNow(),workoutLogs=[],tz=clockTimeZon
  const base={confidence:coverage.length>=14?'high':baselineReady?'medium':'low',baselineReady,baseline,coverage:coverage.length,muscles:{},setFactor:1,progressionAllowed:false,reviewScope:'system_generated_guidance'};
  if(fresh?.redFlags===true)return {...base,status:'stop',reasonCode:'RED_FLAGS_STOP',reasons:['تنبيه طبي عاجل: أوقف التمرين فوراً واطلب تقييماً طبياً للاطمئنان مع وجود ألم الصدر أو الدوخة الشديدة.'],setFactor:0};
  const newPain=workoutLogs.some(l=>validDate(l.date)&&l.date>=dateOffset(localDate(now,tz),-1)&&l.date<=localDate(now,tz)&&Date.parse(l.at)<=now&&Date.parse(l.at)>=now-DAY&&(!fresh||Date.parse(l.at)>Date.parse(fresh.at))&&l.sets?.some(set=>set.pain===true));
- if(newPain)return {...base,status:'hold',reasonCode:'WORKOUT_PAIN_HOLD',reasons:['تنبيه النظام الآلي للتدريب: لأنك سجلت ألماً أثناء التمرين الأخير، ثبتنا الأحمال لحماية مفاصلك لحد ما تطمنّا في متابعة الاستشفاء.']};
+ if(newPain)return {...base,status:'hold',reasonCode:'WORKOUT_PAIN_HOLD',reasons:['لأنك سجلت ألمًا أثناء التمرين الأخير، أوقفنا اقتراح زيادة الحمل. حدّث حالتك قبل مراجعة المجهود المناسب.']};
  if(!fresh||!reportComplete(fresh))return {...base,status:'unknown',reasonCode:'CHECKIN_MISSING_OR_STALE',reasons:['محرك المتابعة الآلي في انتظار تسجيل حالتك اليومية (النوم والطاقة) لضبط حمل تمرين النهاردة بأمان.']};
  const domains=[];const reasons=[];
- if(fresh.sleepHours<6||fresh.sleepQuality<=2||(baseline?.sleepHours&&fresh.sleepHours<baseline.sleepHours-1.5)){domains.push('sleep');reasons.push('نومك النهاردة أقل من المعتاد وجسمك محتاج اهتمام بالراحة');}
- if(fresh.fatigue>=4||(baseline?.fatigue&&fresh.fatigue>=baseline.fatigue+1.5)){domains.push('fatigue');reasons.push('حاسس بإجهاد بدني أعلى من المعتاد');}
- if(fresh.stress>=4){domains.push('stress');reasons.push('ضغط اليوم عالي وهنراعي ده في حمل التمرين');}
+ if(fresh.sleepHours<6||fresh.sleepQuality<=2||(baseline?.sleepHours&&fresh.sleepHours<baseline.sleepHours-1.5)){domains.push('sleep');reasons.push(fresh.sleepHours<6||fresh.sleepQuality<=2?`آخر نوم سجلته ${fresh.sleepHours} ساعات وجودته ${fresh.sleepQuality} من ٥؛ الراحة تحتاج اهتمام قبل زيادة المجهود`:`آخر نوم سجلته ${fresh.sleepHours} ساعات، أقل من متوسط متابعاتك السابقة ${Math.round(baseline.sleepHours*10)/10} ساعات`);}
+ if(fresh.fatigue>=4||(baseline?.fatigue&&fresh.fatigue>=baseline.fatigue+1.5)){domains.push('fatigue');reasons.push(fresh.fatigue>=4?`التعب المسجل في آخر متابعة ${fresh.fatigue} من ٥`:`التعب المسجل ${fresh.fatigue} من ٥، أعلى من متوسط متابعاتك السابقة ${Math.round(baseline.fatigue*10)/10}`);}
+ if(fresh.stress>=4){domains.push('stress');reasons.push(`الضغط المسجل في آخر متابعة ${fresh.stress} من ٥، وهنراعيه في المجهود`);}
  const regional=Object.entries(fresh.sorenessByRegion||{});
- if(fresh.soreness>=7||regional.some(([,v])=>v>=7)){domains.push('soreness');reasons.push('فيه شد عضلي واضح من التمرين السابق محتاج تخفيف');}
+ if(fresh.soreness>=7||regional.some(([,v])=>v>=7)){domains.push('soreness');reasons.push('سجلت شدًا عضليًا مرتفعًا في آخر متابعة؛ هنراعيه عند اقتراح المجهود');}
  const pains=new Set(fresh.painRegions||[]);
  for(const key of Object.keys(MUSCLE_REGIONS)){
   const score=fresh.sorenessByRegion?.[key];base.muscles[key]={soreness:score??null,status:pains.has(key)?'hold':score==null?'unknown':score>=7?'caution':'ready'};

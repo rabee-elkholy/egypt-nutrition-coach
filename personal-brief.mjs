@@ -1,5 +1,5 @@
 import {usesKg} from './exercise-load.mjs';
-import {dateOffset,FOCUS_LABELS} from './coaching-shared.mjs';
+import {dateOffset,FOCUS_LABELS,effectiveSets} from './coaching-shared.mjs';
 import {seedPick} from './coach-messages.mjs';
 const finite=n=>typeof n==='number'&&Number.isFinite(n);
 const num=n=>Math.round(n*10)/10;
@@ -53,11 +53,17 @@ export function personalBrief(state,today){
   const next=(state.scheduledSessions||[]).filter(s=>s.date>today).sort((a,b)=>a.date.localeCompare(b.date))[0];
   const insight=state.progressSummary?.workoutSummary?.insights;
   if(['stop','hold'].includes(ready.status))add('training','safety',ready.reasons?.[0]||'بياناتك الحالية بتشير إن التمرين محتاج توقف وتقييم.','أوقف الحركة المؤلمة؛ ومع ألم الصدر أو الدوخة الشديدة اطلب تقييمًا طبيًا عاجلًا.','urgent');
-  else if(['high','caution'].includes(ready.status))add('training','fatigue',`حسب آخر متابعة: ${ready.reasons?.join('، ')||'الاستشفاء محتاج اهتمام'}.`,'راجع توصية تخفيف الحمل قبل التمرين؛ التعديل ما يتطبقش إلا بعد موافقتك.','attention');
+  else if(['high','caution'].includes(ready.status)){
+   const adjustmentActive=p.days?.some(d=>d.exercises?.some(e=>effectiveSets(state,e,today,now)<e.sets));
+   const declined=(state.adaptations||[]).some(a=>a.kind==='recovery'&&a.status==='rejected'&&a.setFactor===ready.setFactor&&Date.parse(a.expiresAt)>now&&(a.recoveryEvidenceAt?a.recoveryEvidenceAt===ready.asOf:Date.parse(a.at)>=Date.parse(ready.asOf)));
+   if(adjustmentActive)add('training','adjustment-active','التخفيف اللي وافقت عليه لسه ساري، والجولات المخففة متاحة لجلسة النهاردة.','اتبع عدد الجولات المعدّل؛ مش مطلوب تعوض الجولات اللي خففناها.','attention');
+   else if(declined)add('training','fatigue-declined','رفضك السابق لتخفيف الجولات محفوظ، وخطتك لم تتغير. هنراجع القرار مع متابعة جديدة لحالتك.','checkin','attention');
+   else add('training','fatigue',`حسب آخر متابعة: ${ready.reasons?.join('، ')||'الاستشفاء محتاج اهتمام'}.`,'راجع توصية تخفيف الحمل قبل التمرين؛ التعديل ما يتطبقش إلا بعد موافقتك.','attention');
+  }
+  else if(session?.status==='completed')add('training','completed',`جلسة ${today} مسجلة مكتملة${finite(session.duration)?` في ${session.duration} دقيقة`:''}. أحسنت على التسجيل والمتابعة.${ready.status==='unknown'?' مفيش متابعة استشفاء حديثة؛ سجّل حالتك قبل الجلسة الجاية.':''}`,ready.status==='unknown'?'checkin':'done');
+  else if(session?.status==='partial')add('training','partial','جلسة النهاردة مسجلة جزئية. ده بيوضح اللي اتعمل فعلًا من غير ضغط لإكمالها على حساب راحتك.'+(ready.status==='unknown'?' مفيش متابعة استشفاء حديثة؛ سجّل حالتك قبل الجلسة الجاية.':''),ready.status==='unknown'?'checkin':'done');
+  else if(session?.status==='missed')add('training','missed','جلسة النهاردة مسجلة فائتة. يوم واحد ما يلغيّش مجهودك السابق.',ready.status==='unknown'?'checkin':'ارجع لموعدك القادم أو استخدم نقل الموعد؛ بلاش تضاعف المجهود للتعويض.');
   else if(ready.status==='unknown')add('training','unknown','مفيش متابعة استشفاء حديثة مكتملة، فمش هنفترض إنك جاهز لزيادة الحمل.','checkin');
-  else if(session?.status==='completed')add('training','completed',`جلسة ${today} مسجلة مكتملة${finite(session.duration)?` في ${session.duration} دقيقة`:''}. أحسنت على التسجيل والمتابعة.`,'done');
-  else if(session?.status==='partial')add('training','partial','جلسة النهاردة مسجلة جزئية. ده بيوضح اللي اتعمل فعلًا من غير ضغط لإكمالها على حساب راحتك.','done');
-  else if(session?.status==='missed')add('training','missed','جلسة النهاردة مسجلة فائتة. يوم واحد ما يلغيّش مجهودك السابق.','ارجع لموعدك القادم أو استخدم نقل الموعد؛ بلاش تضاعف المجهود للتعويض.');
   else {
    const changes=[...(insight?.loadIncreases||[]).map(x=>({...x,type:'up'})),...(insight?.loadDecreases||[]).map(x=>({...x,type:'down'})),...(insight?.repIncreases||[]).map(x=>({...x,type:'reps'}))].filter(x=>x.date===today);
    const change=seedPick(changes,seed+':exercise');

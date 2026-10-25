@@ -1,0 +1,404 @@
+{
+  "schemaVersion": 1,
+  "findings": [
+    {
+      "id": "EVID-001",
+      "severity": "P0",
+      "description": "Misidentified fast run",
+      "affectedModules": "scripts/run-full-simulation.mjs",
+      "evidence": "Legacy supplied run remains in-process. Corrected local Worker/D1 run independently verifies 100 personas, 9000 dates and 31266 HTTP operations.",
+      "reproduction": "Run archive inspector",
+      "rootCause": "Name and narrative implied integration despite direct function calls",
+      "fix": "Explicit IN_PROCESS_DOMAIN_ENGINE labeling and fresh HTTP run",
+      "regressionTests": "tests/evidence-integrity.test.mjs",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      },
+      "remaining": "Public edge/JWT/mobile/production are separate scopes; not overall release readiness."
+    },
+    {
+      "id": "EVID-002",
+      "severity": "P0",
+      "description": "Fabricated source and test provenance",
+      "affectedModules": "scripts/run-full-simulation.mjs; scripts/cohort/run.mjs",
+      "evidence": "Hard-coded f23b9f6 and 173 baseline passes",
+      "reproduction": "Inspect initial backup patch",
+      "rootCause": "Metadata copied from a past baseline",
+      "fix": "Actual HEAD, dirty status, source hashes; NOT_MEASURED baseline instead of invented totals",
+      "regressionTests": "provenance test and captured execution records",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "EVID-003",
+      "severity": "P0",
+      "description": "Incomplete hashing and overstated replay",
+      "affectedModules": "scripts/verify-simulation.mjs",
+      "evidence": "Every tenth file checked; six fields called byte-level match",
+      "reproduction": "Mutate formerly unsampled file",
+      "rootCause": "Sample loop increment counted unchecked files",
+      "fix": "All-file hashing, safe paths, accurate replay scope",
+      "regressionTests": "manifest tampering regression",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "EVID-004",
+      "severity": "P0",
+      "description": "Incomplete archive",
+      "affectedModules": "scripts/audit/archive-evidence.py",
+      "evidence": "Original ZIP has 1508 missing inventory entries. New complete frozen diagnostic ZIPs independently verify 10630 raw and 682 reports files, including logical D1 and exact runtime.",
+      "reproduction": "inspect supplied ZIP",
+      "rootCause": "Reports-only packaging reused raw-run manifest",
+      "fix": "Independent role manifests, derived required files, separate complete ZIPs",
+      "regressionTests": "seven Python archive controls, including full table/runtime requirements",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      },
+      "remaining": "Preserve originals and their failed temporal verdict; package current cohort separately."
+    },
+    {
+      "id": "EVID-005",
+      "severity": "P0",
+      "description": "Contradictory render assertions",
+      "affectedModules": "simulation/engine-runner.mjs; simulation/evidence-reports.mjs",
+      "evidence": "False DOM limitations text and nonnull visibleAt",
+      "reproduction": "Inspect baseline generator",
+      "rootCause": "Headless generation confused with client rendering",
+      "fix": "GENERATED, null visibleAt, delivery/rendering NOT_MEASURED",
+      "regressionTests": "HTTP fabricated-rendering mutation control",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "EVAL-001",
+      "severity": "P0",
+      "description": "No-evidence stress pass",
+      "affectedModules": "scripts/cohort/stress.mjs",
+      "evidence": "Offline boundary assertion has zero events and passed=true",
+      "reproduction": "Run baseline stress and inspect results",
+      "rootCause": "No dispatch treated as positive evidence",
+      "fix": "NOT_TESTED, excluded from pass count; failing cases set nonzero exit",
+      "regressionTests": "corrected captured stress output",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "EVAL-002",
+      "severity": "P0",
+      "description": "Missing history did not fail gate",
+      "affectedModules": "simulation/evaluation-engine.mjs",
+      "evidence": "Missing snapshot was only informational finding",
+      "reproduction": "Run negative control 10",
+      "rootCause": "Safety flag ignored evidence completeness",
+      "fix": "Missing plan or required track snapshot fails evidence gate",
+      "regressionTests": "negative control 10 strengthened",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "EVAL-003",
+      "severity": "P1",
+      "description": "Session overcount",
+      "affectedModules": "simulation/evaluation-engine.mjs; simulation/engine-runner.mjs",
+      "evidence": "Exercise rows counted as completed workouts",
+      "reproduction": "Compare session commands with exercise log count",
+      "rootCause": "Wrong event granularity and duplicate commands",
+      "fix": "Count final occurrence statuses and saved sessions",
+      "regressionTests": "session-occurrence regression",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "REPORT-001",
+      "severity": "P1",
+      "description": "Conflicting repetition metric",
+      "affectedModules": "simulation/evidence-reports.mjs",
+      "evidence": "42% narrative vs measured 62.2857109008%",
+      "reproduction": "Inspect ZIP dashboard and local raw JSONL",
+      "rootCause": "Manually authored constant",
+      "fix": "Shared exact-text per-user metric; pooled denominator separately labeled",
+      "regressionTests": "canonical metric/report regression",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "REPORT-002",
+      "severity": "P1",
+      "description": "Diversity schema and persona defects",
+      "affectedModules": "scripts/audit/evidence.mjs",
+      "evidence": "Experience populated; 14 male feminine-occupation strings",
+      "reproduction": "Run cohortDiversity over actual cohort",
+      "rootCause": "Evaluator used nonexistent aliases; generator grammar issue",
+      "fix": "Use fitnessLevel, region, diseases; preserve country unknown; flag grammar",
+      "regressionTests": "diversity regression",
+      "status": "PARTIALLY_IMPLEMENTED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "OPS-001",
+      "severity": "P1",
+      "description": "Unsupported backup and monitoring claims",
+      "affectedModules": "PRODUCTION_READINESS.md",
+      "evidence": "Named backup script absent; no monitor evidence",
+      "reproduction": "Check repository and operational artifacts",
+      "rootCause": "Narrative deployment claim unsupported",
+      "fix": "Claims superseded; implement verified controls next",
+      "regressionTests": "NOT_TESTED",
+      "status": "MISSING",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "AUTH-001",
+      "severity": "P1",
+      "description": "Provider lifecycle unverified",
+      "affectedModules": "server/auth.mjs; server/worker.mjs",
+      "evidence": "No /v1/auth/refresh",
+      "reproduction": "Route census",
+      "rootCause": "Token verifier exists without demonstrated provider lifecycle",
+      "fix": "Provider decision and contract/lifecycle implementation pending",
+      "regressionTests": "NOT_TESTED",
+      "status": "MISSING",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "AUTH-002",
+      "severity": "P1",
+      "description": "Isolate-local rate limiter",
+      "affectedModules": "server/auth.mjs",
+      "evidence": "MEM_RATE_LIMITS Map",
+      "reproduction": "Inspect checkRateLimit",
+      "rootCause": "In-memory quota not distributed",
+      "fix": "Document limit; distributed control design pending",
+      "regressionTests": "Only local burst assertion",
+      "status": "PARTIALLY_IMPLEMENTED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "CONTRACT-001",
+      "severity": "P1",
+      "description": "Nonexhaustive KMM schemas",
+      "affectedModules": "contracts/openapi.yaml",
+      "evidence": "Generic command and aggregate object schemas",
+      "reproduction": "Compare route bodies to OpenAPI",
+      "rootCause": "Structural validation mistaken for full contract conformance",
+      "fix": "Endpoint census documented; exhaustive types pending",
+      "regressionTests": "E15 structural validation only",
+      "status": "PARTIALLY_IMPLEMENTED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "PERF-001",
+      "severity": "P1",
+      "description": "Unsupported capacity/network projections",
+      "affectedModules": "PERFORMANCE_REPORT.md; PRODUCTION_READINESS.md",
+      "evidence": "Regional latency and capacity inferred locally",
+      "reproduction": "Read provenance of source measurements",
+      "rootCause": "Algorithm timings extrapolated to deployed capacity",
+      "fix": "Unsupported conclusions withdrawn; measured layer matrix added",
+      "regressionTests": "NOT_TESTED production/mobile",
+      "status": "MISSING",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "PRODUCT-001",
+      "severity": "P1",
+      "description": "Strict audit protein target gaps",
+      "affectedModules": "planner-core.mjs",
+      "evidence": "Corrected full run: 235 days across 15 users below the strict 85% protein audit threshold; min ratio 0.8010565709; zero below implemented 80% floor.",
+      "reproduction": "Replay user-001 pilot seed curafit-audit-20261024",
+      "rootCause": "Evaluator threshold is below 85% protein; implemented production rejection floor is 80% and warnings begin below 90%. This observation alone does not prove violation of the implemented floor.",
+      "fix": "Retain stricter audit observation; agree product target tolerance and investigate feasibility without weakening safety/reference constraints.",
+      "regressionTests": "current-target-fit-audit; no safety or product bounds weakened",
+      "status": "PARTIALLY_IMPLEMENTED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "SOURCE-001",
+      "severity": "P1",
+      "description": "Initial remote refresh failure resolved",
+      "affectedModules": "Git origin/main",
+      "evidence": "Actual git fetch and ff-only pull succeeded on 2026-10-25; d86f3a8 was six commits ahead and zero behind origin/main. See current-main-freshness.json.",
+      "reproduction": "git fetch origin main",
+      "rootCause": "Initial transient DNS failure; earlier connector comparison and later successful Git commands retained.",
+      "fix": "Successful read-only refresh/reconciliation; no push or production mutation.",
+      "regressionTests": "successful-current-main-fetch and current-main-pull-check",
+      "status": "VERIFIED",
+      "commitReference": {
+        "initialHead": "2720fe150fa63862e3a0a9d0002f88b8fdb14831",
+        "fixCommit": "Resolve with git log -- <affected module>; execution records include exact source hashes."
+      }
+    },
+    {
+      "id": "PRIV-001",
+      "severity": "P0",
+      "description": "Account deletion retained its simulation health-data copy",
+      "affectedModules": "server/store.mjs; server/worker.mjs",
+      "evidence": "privacy-regressions-before-fix: residual coaching_accounts row; ambiguous simulation deletion returned 200",
+      "reproduction": "Run tests/privacy-retention.test.mjs against pre-fix bundle",
+      "rootCause": "Deletion addressed only the selected account namespace",
+      "fix": "Atomic principal/simulation erasure and tombstones; simulation-mode deletion rejected",
+      "regressionTests": "privacy-retention.test.mjs",
+      "status": "VERIFIED",
+      "commitReference": "Resolve focused privacy fix commit with git log -- server/store.mjs; source hashes in captured records."
+    },
+    {
+      "id": "PRIV-002",
+      "severity": "P0",
+      "description": "Claimed anonymous simulation copies survived account claim and later owner deletion",
+      "affectedModules": "server/store.mjs",
+      "evidence": "privacy-claim-regressions-before-fix: 3 pass, 2 fail",
+      "reproduction": "Create anonymous real/simulation accounts, claim, inspect rows; seed trusted legacy claim linkage and delete owner",
+      "rootCause": "Claim cleanup omitted simulation namespace and legacy source ownership",
+      "fix": "Guarded transactional source-simulation cleanup; deletion follows trusted legacy claim metadata",
+      "regressionTests": "privacy-retention.test.mjs",
+      "status": "VERIFIED",
+      "commitReference": "Resolve focused privacy fix commit with git log -- server/store.mjs; source hashes in captured records."
+    },
+    {
+      "id": "VALID-001",
+      "severity": "P1",
+      "description": "Invalid clock values accepted for quiet hours",
+      "affectedModules": "server/coaching.mjs",
+      "evidence": "24:00, 99:99 and 12:60 accepted before fix",
+      "reproduction": "Run quiet-hour boundary regression",
+      "rootCause": "Shape-only time regex",
+      "fix": "Strict hours 00-23 and minutes 00-59; valid boundaries retained",
+      "regressionTests": "privacy-retention.test.mjs",
+      "status": "VERIFIED",
+      "commitReference": "15a3ee30ddcff6b91c836c8e2e1d002cf6e5ae0f"
+    },
+    {
+      "id": "EVID-006",
+      "severity": "P0",
+      "description": "Rejected onboarding froze synthetic user dates",
+      "affectedModules": "scripts/cohort/run.mjs; common.mjs; verify.mjs",
+      "evidence": "Original full run has 7398 unique user-dates. Corrected full run independently passes 9000 records / 9000 unique user-dates, zero temporal failures.",
+      "reproduction": "Run scripts/audit/check-calendar.mjs against the frozen baseline",
+      "rootCause": "A rejected onboarding retained day one's serverDate without a simulated profile clock",
+      "fix": "Advance no-profile dates from the preregistered calendar; reject mismatches; selected-user replay retains original cohort identity",
+      "regressionTests": "90-day failed-onboarding calendar control; user-006 replay has 90 unique dates",
+      "status": "VERIFIED",
+      "remaining": "Onboarding coverage is a separate unresolved product gate.",
+      "commitReference": "ce27805"
+    },
+    {
+      "id": "EVAL-004",
+      "severity": "P0",
+      "description": "Fish taste exclusion incorrectly included shellfish",
+      "affectedModules": "scripts/cohort/evaluate.mjs",
+      "evidence": "All 58 frozen P0 food flags were shrimp under fish-only taste preferences; explicit shellfish exclusion could be missed",
+      "reproduction": "tests/cohort-exclusion-contract.test.mjs and separate immutable-baseline re-evaluation",
+      "rootCause": "Catalog protein_group conflated categories separated by the public taste-preference contract",
+      "fix": "Independent fish and shellfish ingredient keys; retain actual fish/shellfish detection",
+      "regressionTests": "Three controls, initially two failing then all passing; corrected full-cohort evaluation retained",
+      "status": "VERIFIED",
+      "remaining": "Taste preference rules are not an allergy-safety guarantee",
+      "commitReference": "Resolve evaluator fix with git log -- scripts/cohort/evaluate.mjs"
+    },
+    {
+      "id": "FOLLOWUP-001",
+      "severity": "P1",
+      "description": "Follow-up repeated decisions and invented unsupported context",
+      "affectedModules": "server/coaching.mjs; server/recovery.mjs; personal-brief.mjs",
+      "evidence": "Nine continuity tests pass after reproducing decision repetition, expiry/factuality, cached-review invalidation after water logging and hidden completed-session acknowledgement.",
+      "reproduction": "tests/followup-continuity.test.mjs",
+      "rootCause": "Review ignored decisions on unchanged evidence; wording assumed personal baseline and soreness cause",
+      "fix": "Remember evidence/plan/expiry; acknowledge real active changes; cite measured sleep and reported symptoms",
+      "regressionTests": "Nine continuity tests; seven brief API tests/subtests; full 7311-note finite factual audit",
+      "status": "VERIFIED",
+      "commitReference": "756184dd4e09886df48dc2b9511a01ef4b0cba34",
+      "additionalFixCommit": "d86f3a8a470ac9e70a6d588bfafbbd7f8bd7fc46"
+    },
+    {
+      "id": "DATA-001",
+      "severity": "P1",
+      "description": "Concurrent account reads mixed aggregate revision and newer normalized history",
+      "affectedModules": "server/store.mjs",
+      "evidence": "Real local D1 injection returned revision 1 with revision-2 water history",
+      "reproduction": "tests/account-snapshot.test.mjs; evidence/account-snapshot-before-fix/",
+      "rootCause": "Aggregate and six normalized history reads were separate database operations",
+      "fix": "Re-read aggregate/history together in one transactional D1 batch; reject snapshot errors",
+      "regressionTests": "Three subtests pass after fix: competing write, deletion boundary and read failure",
+      "status": "VERIFIED",
+      "commitReference": "53d806a"
+    },
+    {
+      "id": "FOLLOWUP-002",
+      "severity": "P1",
+      "description": "Scheduled notification delivery and real user perception unverified",
+      "affectedModules": "Notification lifecycle and KMM client integration",
+      "evidence": "Authenticated on-demand brief exists; no scheduled push/render/read lifecycle is implemented by it",
+      "reproduction": "Inspect endpoint census, notification preference handling and FOLLOWUP_QUALITY.md",
+      "rootCause": "A generated view is not persisted notification scheduling or delivery acknowledgement",
+      "fix": "Define and implement notification lifecycle and observe real client/user behavior",
+      "regressionTests": "NOT_TESTED delivery, reading or human satisfaction",
+      "status": "MISSING",
+      "commitReference": "756184dd4e09886df48dc2b9511a01ef4b0cba34 adds the on-demand view only"
+    },
+    {
+      "id": "PRODUCT-002",
+      "severity": "P1",
+      "description": "Initial plan coverage: two root causes fixed, eight profiles still rejected",
+      "affectedModules": "planner-core.mjs; regional diet/library coverage",
+      "evidence": "Exact HTTP replay improves 82 -> 92 successful profiles, 300 requests, zero regressions. Three newly supported contexts pass 270 targeted days / 881 HTTP operations / 189 finite-fact-checked notes / 44 persisted nutrition transitions.",
+      "reproduction": "Retained onboarding-coverage-sweep source/results and exact original onboarding drafts",
+      "rootCause": "Seed-sensitive finite search in one observed profile; budget/catalog/constraint feasibility remains to be traced for the others.",
+      "fix": "Bounded full-day repair and fallback to the original strict pool when variety filters hide compliant options; no preference or nutrient-bound relaxation.",
+      "regressionTests": "239 Node tests, zero fail/skip; before/after controls and exact initial HTTP replay; targeted 90-day source/factual/history verification.",
+      "status": "PARTIALLY_IMPLEMENTED",
+      "commitReference": [
+        "c63009e",
+        "743cebd"
+      ],
+      "remaining": "Eight remaining coverage cases; a full 100x90 rerun of the later source is not claimed."
+    }
+  ],
+  "updatedAt": "2026-10-25T11:57:52.931Z"
+}

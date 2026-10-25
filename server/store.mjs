@@ -30,21 +30,28 @@ async function hasNormalizedTables(db){
 
 export async function loadAccount(db,user){
  const row=await db.prepare('SELECT revision,body FROM coaching_accounts WHERE user_id=?').bind(user).first();
- const parsed=row?JSON.parse(row.body):empty();
+ let parsed=row?JSON.parse(row.body):empty();
  // The transactional revision column is authoritative for legacy/restored bodies.
  if(Number.isSafeInteger(row?.revision))parsed.revision=row.revision;
  // Hydrate normalized tables if present and if aggregate trimmed old historical logs
  if(row&&await hasNormalizedTables(db)){
   try{
    if(parsed._normalizedStorage){
-    const [fe,wl,wgl,wkl,ss,ck]=await Promise.all([
-     db.prepare('SELECT body FROM coaching_food_entries WHERE user_id=? AND deleted=0 ORDER BY date, entry_id').bind(user).all(),
-     db.prepare('SELECT body FROM coaching_water_logs WHERE user_id=? ORDER BY date').bind(user).all(),
-     db.prepare('SELECT body FROM coaching_weight_logs WHERE user_id=? ORDER BY date').bind(user).all(),
-     db.prepare('SELECT body FROM coaching_workout_logs WHERE user_id=? AND deleted=0 ORDER BY date, log_id').bind(user).all(),
-     db.prepare('SELECT body FROM coaching_sessions WHERE user_id=? ORDER BY date, session_id').bind(user).all(),
-     db.prepare('SELECT body FROM coaching_checkins WHERE user_id=? ORDER BY date').bind(user).all()
+    // Re-read the aggregate and all normalized history in one D1 transaction.
+    // Separate reads could attach newer logs to an older account revision.
+    const [account,fe,wl,wgl,wkl,ss,ck]=await db.batch([
+     db.prepare('SELECT revision,body FROM coaching_accounts WHERE user_id=?').bind(user),
+     db.prepare('SELECT body FROM coaching_food_entries WHERE user_id=? AND deleted=0 ORDER BY date, entry_id').bind(user),
+     db.prepare('SELECT body FROM coaching_water_logs WHERE user_id=? ORDER BY date').bind(user),
+     db.prepare('SELECT body FROM coaching_weight_logs WHERE user_id=? ORDER BY date').bind(user),
+     db.prepare('SELECT body FROM coaching_workout_logs WHERE user_id=? AND deleted=0 ORDER BY date, log_id').bind(user),
+     db.prepare('SELECT body FROM coaching_sessions WHERE user_id=? ORDER BY date, session_id').bind(user),
+     db.prepare('SELECT body FROM coaching_checkins WHERE user_id=? ORDER BY date').bind(user)
     ]);
+    const snapshotRow=account.results[0];
+    if(!snapshotRow)return empty();
+    parsed=JSON.parse(snapshotRow.body);
+    if(Number.isSafeInteger(snapshotRow.revision))parsed.revision=snapshotRow.revision;
     if(fe?.results?.length){
      const map=new Map((parsed.foodEntries||[]).map(x=>[x.id,x]));
      for(const r of fe.results){const item=JSON.parse(r.body);map.set(item.id,item);}
@@ -215,7 +222,10 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
  if(claimSource){
   const from=claimSource.userId;
   for(const [table,columns]of [['coaching_plans','plan_id,created_at,body'],['coaching_workout_plans','plan_id,body'],['coaching_account_consents','consent_type,version,accepted,at']])statements.push(db.prepare(`INSERT OR IGNORE INTO ${table}(user_id,${columns}) SELECT ?,${columns} FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(user,from,user,state.revision,body));
-  for(const table of ['coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_requests','coaching_plans','coaching_workout_plans','coaching_changes','coaching_accounts'])statements.push(db.prepare(`DELETE FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(from,user,state.revision,body));
+  const fromSimulation='__simulation__:'+await sha256Hex(from);
+  for(const sourceUser of [from,fromSimulation])for(const table of ['coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_requests','coaching_plans','coaching_workout_plans','coaching_changes','coaching_accounts'])statements.push(db.prepare(`DELETE FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(sourceUser,user,state.revision,body));
+  statements.push(db.prepare('DELETE FROM coaching_auth_sessions WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(fromSimulation,user,state.revision,body));
+  statements.push(db.prepare("INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) SELECT ?,'__deleted__','system',?,NULL,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)").bind(fromSimulation,nowIso,nowIso,user,state.revision,body));
   statements.push(db.prepare("INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) SELECT ?,'__claimed__',?,?,NULL,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)").bind(from,user,nowIso,nowIso,user,state.revision,body));
  }
  const result=await db.batch(statements);
@@ -306,10 +316,17 @@ export async function deleteFullAccountData(db,user){
  if(normalized){
   tables.push('coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_auth_sessions');
  }
- const stmts=tables.map(t=>db.prepare(`DELETE FROM ${t} WHERE user_id=?`).bind(user));
+ // Simulation profiles can contain copied health data. Erase both owned namespaces
+ // in the same transaction and close both to already authenticated in-flight writes.
+ // Legacy claim tombstones record the verified destination identity in device_id.
+ // They let erasure cover anonymous simulation copies left by older releases.
+ const claims=user.startsWith('__simulation__:')?[]:(await db.prepare("SELECT user_id FROM coaching_auth_sessions WHERE session_id='__claimed__' AND device_id=? AND revoked_at IS NOT NULL").bind(user).all()).results||[];
+ const owners=[...new Set([user,...claims.map(row=>row.user_id)])];
+ const identities=[...new Set((await Promise.all(owners.map(async identity=>identity.startsWith('__simulation__:')?[identity]:[identity,'__simulation__:'+await sha256Hex(identity)]))).flat())];
+ const stmts=identities.flatMap(identity=>tables.map(t=>db.prepare(`DELETE FROM ${t} WHERE user_id=?`).bind(identity)));
  if(normalized){
-  stmts.push(db.prepare('INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?)').bind(user,'__deleted__','system',nowIso,null,nowIso));
+  for(const identity of identities)stmts.push(db.prepare('INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?)').bind(identity,'__deleted__','system',nowIso,null,nowIso));
  }
  await db.batch(stmts);
- return {deleted:true,userId:user,deletedAt:nowIso,tablesCleared:tables.length};
+ return {deleted:true,userId:user,deletedAt:nowIso,tablesCleared:tables.length,namespacesCleared:identities.length};
 }

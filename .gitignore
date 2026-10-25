@@ -23,3 +23,9 @@ reports/*.zip
 *-run.log
 baseline-check.log
 final-check.log
+
+# Detailed local audit artifacts are retained outside the published source tree.
+/docs/production-readiness/evidence/
+/reports/audit/
+/reports/simulation-100-users-90-days/audit-*/
+/scripts/audit/__pycache__/

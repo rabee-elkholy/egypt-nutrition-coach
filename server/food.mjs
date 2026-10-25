@@ -84,7 +84,8 @@ export function replaceMeal(s,p){
  const {plan,day,meal}=plannedMeal(s,p.mealId);
  if(day.date<localDate(clockNow(),tz))throw Error('لا نغيّر خطط أيام فاتت.');
  if((s.foodEntries||[]).some(e=>e.mealId===meal.id))throw Error('الوجبة اتسجلت كأكل فعلي؛ اختار وجبة لسه متاكلتش.');
- const alternative=mealAlternatives(s,p.mealId).find(a=>a.snapshot.template_id===p.templateId);if(!alternative)throw Error('البديل لم يعد متاحًا تحت نفس اختياراتك.');
+ const targetTemplate=p.templateId||p.alternativeId;
+ const alternative=mealAlternatives(s,p.mealId).find(a=>a.snapshot.template_id===targetTemplate);if(!alternative)throw Error('البديل لم يعد متاحًا تحت نفس اختياراتك.');
  const next=structuredClone(plan);next.id='plan-'+crypto.randomUUID();next.parent_id=plan.id;next.created_at=isoNow();next.changeReason='استبدال وجبة باختيارك';
  const updated=next.days.find(d=>d.date===day.date);updated.meals.find(m=>m.id===meal.id).snapshot=alternative.snapshot;
  updated.summary=sumSnapshots(updated.meals.map(m=>m.snapshot));next.warnings=next.days.flatMap(d=>{const messages=assessDay(d.summary,d.targets||next.targets);return messages.length?[{date:d.date,messages}]:[];});

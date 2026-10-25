@@ -830,7 +830,8 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
         ? t.items.filter(i => t.component_definitions.some(c => c.id === i.component_id && c.role === 'main'))
           .filter(i => lib.ingredients[i.key].role === 'protein').map(i => i.key).sort().join('|')
         : '');
-      let slotPool = egyptianSlotPool(pool, p.region, slot.slot);
+      const eligibleSlotPool = egyptianSlotPool(pool, p.region, slot.slot);
+      let slotPool = eligibleSlotPool;
       if (slot.slot !== 'snack') {
         const different = slotPool.filter(t => !chosenMains.has(mainIdentity(t)));
         if (different.length) slotPool = different;
@@ -840,7 +841,7 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
       const differentDay = slotPool.filter(t => egyptianMealFamily(t, lib, p.region) !== previousSlotFamily.get(slot.id));
       if (differentDay.length) slotPool = differentDay;
 
-      const candidates = slotPool.map((t) => {
+      const rankCandidates = rankedPool => rankedPool.map((t) => {
           const key = t.id + "|" + Math.round(desired) + "|" + Math.round(protein);
           if (!fitted.has(key))
             fitted.set(key, fitMeal(t, desired, protein, lib));
@@ -882,6 +883,10 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
           return true;
         })
         .sort((a, b) => a.score - b.score || a.t.id.localeCompare(b.t.id));
+      let candidates = rankCandidates(slotPool);
+      // Variety is a preference within the strict pool. If it removes every
+      // eligible option, reconsider that pool with the same nutrient checks.
+      if(!candidates.length&&slotPool.length<eligibleSlotPool.length)candidates=rankCandidates(eligibleSlotPool);
       if(!candidates.length)throw Error('لا يوجد اختيار يحقق حدود النظام لهذا الموعد مع تفضيلاتك. جرّب ميزانية أو مصادر بروتين أخرى.');
       const best = candidates[0];
       const mealFamily = egyptianMealFamily(best.t, lib, p.region);
@@ -934,7 +939,10 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
       }
     }
     // Nutrition feasibility outranks variety. Repair an out-of-bounds day using the same strict pool.
-    for(let repair=0;repair<2&&nutritionQualityIssues(sumSnapshots(meals.map(m=>m.snapshot)),targets).length;repair++){
+    // Allow bounded improvements across the whole day. Two swaps could reject
+    // a feasible four-meal day before the remaining meals were repaired.
+    const repairBudget=meals.length*2;
+    for(let repair=0;repair<repairBudget&&nutritionQualityIssues(sumSnapshots(meals.map(m=>m.snapshot)),targets).length;repair++){
       let best=null,current=nutritionObjective(sumSnapshots(meals.map(m=>m.snapshot)),targets);
       const gap=Math.max(0,targets.protein-Number(sumSnapshots(meals.map(m=>m.snapshot)).values.protein));
       for(const meal of meals)for(const template of pool.filter(t=>t.meal_slots.includes(meal.slot))){
