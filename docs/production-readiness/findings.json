@@ -470,7 +470,19 @@
       "regressionTests": "tests/planner-week-restarts.test.mjs; 100-profile initial replay retains 92 supported without regression.",
       "status": "VERIFIED",
       "commitReference": "Later than full 1daf889; exact source hashes and frozen replay retained, see git log -- planner-core.mjs"
+    },
+    {
+      "id": "PLAN-QUALITY-001",
+      "severity": "P2",
+      "description": "Day repair stopped at acceptance boundaries despite available higher-quality portions",
+      "affectedModules": "planner-core.mjs",
+      "evidence": "Paired 100-profile HTTP: 15 protein-gap days -> 0 and one energy-gap day -> 0, 92 supported unchanged. Paired 1268-plan solver replay: 245 -> 1 protein gaps, 34 -> 0 energy gaps, zero per-plan regressions.",
+      "rootCause": "The repair loop used 80% / +/-15% acceptance as its stopping goal instead of pursuing the stricter audit goals.",
+      "fix": "Continue bounded strict-pool improvements toward 85% / +/-12%, with valid-to-invalid swaps blocked and existing acceptance retained.",
+      "regressionTests": "Five frozen-source failures then five passes; full check 265 pass. Legacy hold fixture retains original valid reference quantities.",
+      "status": "VERIFIED",
+      "commitReference": "After 8ac9c4a; see NUTRITION_QUALITY_REPAIR.md and git log -- planner-core.mjs"
     }
   ],
-  "updatedAt": "2026-10-26T09:04:47.095Z"
+  "updatedAt": "2026-10-26T14:02:42.309Z"
 }

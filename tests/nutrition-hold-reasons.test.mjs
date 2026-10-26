@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {generate,empty,command} from '../server/coaching.mjs';
-import {makeWeek} from '../planner-core.mjs';
+import {makeWeek,planningTemplates,prepareTemplate,snapshotTemplate,sumSnapshots} from '../planner-core.mjs';
+import {independentPlanIssues} from '../scripts/audit/scenario-http.mjs';
 import {library} from '../server/food.mjs';
 import {withClock} from '../server/clock.mjs';
 import {dateOffset} from '../coaching-shared.mjs';
@@ -27,6 +29,21 @@ test('an existing lower energy hold keeps its compatible reason code',()=>withCl
 }));
 test('portion/protein validation failure inside energy bounds does not claim a floor breach',()=>withClock(now,()=>{
  const s=established({name:'Target-fit hold',age:29,sex:'male',height:191,weight:99.8,targetWeight:null,goal:'lose',goalPace:'slow',serviceTrack:'nutrition_and_workouts',dailyActivity:'sedentary',dietType:'balanced',region:'egypt',timezone:'Africa/Cairo',budget:'low',mealsCount:4,selectedWorkoutDays:[0,1,2,4,5],workoutDaysCount:5,weekdayConvention:'js_sunday_0',fitnessLevel:'beginner',sessionDuration:45,workoutLocation:'gym_only',homeEquipment:['dumbbells','pullup_bar','bench'],dayLocations:{0:'home',1:'gym',2:'home',4:'gym',5:'home'},workoutSplitPreference:'ppl',injuries:['knee_pain'],diseases:['hypertension'],healthConfirmed:true,excludedGroups:['fish'],eatingStart:'12:00'},'hold-probe-user-001');
+ // The improved generator no longer produces this tight-protein witness.
+ // Existing saved plans still can: reconstruct exact reference quantities from
+ // a valid 8ac9c4a day rather than weakening the hold assertion.
+ const legacy=JSON.parse(fs.readFileSync(new URL('./fixtures/legacy-protein-constrained-day.json',import.meta.url)));
+ const plan=s.plans.find(p=>p.id===s.active_plan_id),templates=planningTemplates(library,s.preferences);
+ assert.deepEqual(plan.targets,legacy.targets);
+ for(const day of plan.days){
+  day.meals=legacy.meals.map((m,i)=>{
+   const t=prepareTemplate(templates.find(t=>t.id===m.templateId),library,s.preferences,s.profile);
+   const parts=t.items.map(p=>({...p,grams:m.parts.find(i=>i.key===p.key).grams}));
+   return {...day.meals[i],snapshot:snapshotTemplate(t,parts,library)};
+  });
+  day.summary=sumSnapshots(day.meals.map(m=>m.snapshot));
+ }
+ assert.deepEqual(independentPlanIssues(plan,library),[],'Archived quantities still satisfy original acceptance bounds');
  const before=JSON.stringify(s.plans),next=command(s,'review',{});
  assert.equal(next.lastReview.nutrition.reasonCode,'PLAN_CONSTRAINTS_ADJUSTMENT_HOLD');
  assert.equal(JSON.stringify(next.plans),before);assert.doesNotMatch(next.lastReview.nutrition.reason,/أقل من الحد/);

@@ -34,6 +34,7 @@ try{
   if(generation.status===200){
    assert.equal(reload.response.profile.name,persona.onboarding.name);assert.equal(reload.response.revision,1);assert.equal(reload.response.active_plan_id,generation.response.active_plan_id);
    const plan=reload.response.plans.find(p=>p.id===reload.response.active_plan_id);assert.equal(plan.days.length,7);assert.deepEqual(independentPlanIssues(plan,library),[],'Independent source arithmetic and nutrient bounds');
+   result.quality={days:plan.days.length,proteinGapDays:plan.days.filter(d=>Number(d.summary.values.protein)<d.targets.protein*.85).length,energyGapDays:plan.days.filter(d=>Math.abs(Number(d.summary.values.energy)-d.targets.energy)>d.targets.energy*.12).length};
    for(const day of plan.days){const e=Number(day.summary.values.energy),p=Number(day.summary.values.protein);assert.ok(day.summary.values.energy!=null&&Number.isFinite(e));assert.ok(day.summary.values.protein!=null&&Number.isFinite(p));assert.ok(Math.abs(e-day.targets.energy)<=day.targets.energy*.15);assert.ok(p>=day.targets.protein*.8);}
   }else{assert.equal(reload.response.profile,null);assert.equal(reload.response.revision,0);}
  }

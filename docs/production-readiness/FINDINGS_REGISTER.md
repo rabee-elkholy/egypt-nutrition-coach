@@ -38,3 +38,6 @@ Machine-readable details: [findings.json](findings.json). Historical reports rem
 | PLAN-RENEW-002 | P1 | Another renewal seed left one supported user without a current day | Exact failure reproduced; bounded deterministic restarts retain constraints and public identity; latest user-089 90-day replay has zero window gaps; initial 100-profile support remains 92/8 |
 
 “Fixed” above applies to the described local code and regression scope, not to overall launch readiness. Exact commit ownership is available with `git log -- <affected file>` and the execution source hashes.
+# Later nutrition quality repair — 2026-10-26
+
+**PLAN-QUALITY-001 (P2, verified within measured scope):** bounded repair stopped at implemented acceptance before pursuing available stricter quality. Paired initial HTTP and 1,268-plan solver comparisons improve strict gaps without support or per-plan quality regressions. Five old-source failures now pass; complete check 265/265. One strict protein-gap plan day and eight unsupported initial profiles remain. See [scope, evidence and retained failed fixture](NUTRITION_QUALITY_REPAIR.md). This later comparison does not replace historical longitudinal metrics or authorize release.

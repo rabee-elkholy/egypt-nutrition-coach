@@ -970,11 +970,12 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy) {
         }
       }
     }
-    // Nutrition feasibility outranks variety. Repair an out-of-bounds day using the same strict pool.
+    // Improve toward the audit's tighter quality targets using the same strict pool.
+    // These are search goals, not new acceptance rules for constrained libraries.
     // Allow bounded improvements across the whole day. Two swaps could reject
     // a feasible four-meal day before the remaining meals were repaired.
     const repairBudget=meals.length*2;
-    for(let repair=0;repair<repairBudget&&nutritionQualityIssues(sumSnapshots(meals.map(m=>m.snapshot)),targets).length;repair++){
+    for(let repair=0;repair<repairBudget&&needsNutritionImprovement(sumSnapshots(meals.map(m=>m.snapshot)),targets);repair++){
       let best=null,current=nutritionObjective(sumSnapshots(meals.map(m=>m.snapshot)),targets);
       const gap=Math.max(0,targets.protein-Number(sumSnapshots(meals.map(m=>m.snapshot)).values.protein));
       for(const meal of meals)for(const template of pool.filter(t=>t.meal_slots.includes(meal.slot))){
@@ -982,6 +983,8 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy) {
         if(!fitted.has(key))fitted.set(key,fitMeal(template,meal.target_energy,desiredProtein,lib));
         const snapshot=fitted.get(key),snapshots=meals.map(m=>m===meal?snapshot:m.snapshot);
         try{assertDietDay(snapshots,p.diet,targets);}catch{continue;}
+        // Never trade an already valid day for a lower-scoring invalid one.
+        if(!nutritionQualityIssues(sumSnapshots(meals.map(m=>m.snapshot)),targets).length&&nutritionQualityIssues(sumSnapshots(snapshots),targets).length)continue;
         const score=nutritionObjective(sumSnapshots(snapshots),targets);
         if(score<current){best={meal,snapshot};current=score;}
       }
@@ -1018,6 +1021,9 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy) {
 function nutritionObjective(summary,targets){
  const energy=Number(summary.values.energy),protein=Number(summary.values.protein);
  return Math.abs(energy-targets.energy)/targets.energy*5+Math.max(0,targets.protein-protein)/Math.max(1,targets.protein)*3;
+}
+function needsNutritionImprovement(summary,targets){
+ return nutritionQualityIssues(summary,targets).length>0||Number(summary.values.protein)<targets.protein*.85||Math.abs(Number(summary.values.energy)-targets.energy)>targets.energy*.12;
 }
 export function nutritionQualityIssues(summary,targets){
  const messages=[],energy=Number(summary.values.energy),protein=Number(summary.values.protein);

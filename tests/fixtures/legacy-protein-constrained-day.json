@@ -1,0 +1,144 @@
+{
+  "sourceCommit": "8ac9c4a",
+  "sourceSeed": "hold-probe-user-001",
+  "targets": {
+    "training_days": 5,
+    "training_calorie_scope": "النشاط المختار يشمل تمرينك؛ لا نضيف سعرات التمرين مرة ثانية.",
+    "energy": 2220,
+    "protein": 159.7,
+    "protein_factor": 1.6,
+    "effective_weight": 99.8,
+    "max_protein_factor": 1.8,
+    "fat": 74,
+    "carbs": 228.8,
+    "carb_target_scope": "تقسيم استرشادي للطاقة؛ القيم الغذائية المرجعية لا تُعاد اشتقاقها بمعادلة 4/4/9",
+    "bmi": 27.4,
+    "ree": 2051.8,
+    "tdee": 2462.1,
+    "activity_factor": 1.2,
+    "energy_change": -242.1,
+    "goal_pace": "slow",
+    "medical_conditions": [
+      "hypertension"
+    ],
+    "notes": [
+      "سرعة الهدف تحدد عجزًا أو فائضًا مبدئيًا محدودًا؛ معدل تغير الوزن الفعلي بيتراجع من قياساتك، ومش ضمان لتاريخ وصول.",
+      "تم تفعيل سقف الصوديوم المنخفض واستبعاد الأجبان عالية الملوحة لمراعاة ضغط الدم."
+    ],
+    "method": "Mifflin–St Jeor 1990; activity multipliers and moderate goal offsets are product heuristics, not measured expenditure",
+    "sources": [
+      "https://pubmed.ncbi.nlm.nih.gov/2305711/",
+      "https://pubmed.ncbi.nlm.nih.gov/28642676/"
+    ]
+  },
+  "meals": [
+    {
+      "slot": "breakfast",
+      "templateId": "eg-menu-oats-milk-banana-pb",
+      "parts": [
+        {
+          "key": "oats",
+          "grams": "40"
+        },
+        {
+          "key": "milk",
+          "grams": "366"
+        },
+        {
+          "key": "banana",
+          "grams": "118"
+        },
+        {
+          "key": "peanutbutter",
+          "grams": "20"
+        },
+        {
+          "key": "cucumber",
+          "grams": "120"
+        }
+      ]
+    },
+    {
+      "slot": "lunch",
+      "templateId": "eg-menu-beans-pasta",
+      "parts": [
+        {
+          "key": "whitebeans",
+          "grams": "313.25"
+        },
+        {
+          "key": "tomatocooked",
+          "grams": "60"
+        },
+        {
+          "key": "onion",
+          "grams": "52.5"
+        },
+        {
+          "key": "olive",
+          "grams": "6.75"
+        },
+        {
+          "key": "pasta",
+          "grams": "124"
+        },
+        {
+          "key": "olive",
+          "grams": "4.5"
+        },
+        {
+          "key": "tomato",
+          "grams": "74.5"
+        },
+        {
+          "key": "cucumber",
+          "grams": "90"
+        },
+        {
+          "key": "pepper",
+          "grams": "50"
+        }
+      ]
+    },
+    {
+      "slot": "dinner",
+      "templateId": "eg-menu-cottage-egg-bread",
+      "parts": [
+        {
+          "key": "cottage",
+          "grams": "226"
+        },
+        {
+          "key": "egg",
+          "grams": "200"
+        },
+        {
+          "key": "olive",
+          "grams": "2.25"
+        },
+        {
+          "key": "wholebread",
+          "grams": "30"
+        },
+        {
+          "key": "tomato",
+          "grams": "186.25"
+        }
+      ]
+    },
+    {
+      "slot": "snack",
+      "templateId": "eg-menu-snack-pb-banana",
+      "parts": [
+        {
+          "key": "banana",
+          "grams": "118"
+        },
+        {
+          "key": "peanutbutter",
+          "grams": "30"
+        }
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@ export const sha256 = value => createHash('sha256').update(value).digest('hex');
 
 export function sourceProvenance() {
   const git = args => execFileSync('git', args, {encoding: 'utf8'}).trim();
-  const files = git(['ls-files', '--cached', '--others', '--exclude-standard', '--', '*.mjs', '*.py', '*.sql', '*.yaml', 'data/*.json', 'package.json', 'package-lock.json', 'wrangler.jsonc', ':(exclude)reports/**', ':(exclude)outputs/**', ':(exclude)docs/production-readiness/evidence/**'])
+  const files = git(['ls-files', '--cached', '--others', '--exclude-standard', '--', '*.mjs', '*.py', '*.sql', '*.yaml', 'data/*.json', 'tests/fixtures/*.json', 'package.json', 'package-lock.json', 'wrangler.jsonc', ':(exclude)reports/**', ':(exclude)outputs/**', ':(exclude)docs/production-readiness/evidence/**'])
     .split(/\r?\n/).filter(p => p && existsSync(p));
   return {gitCommit: git(['rev-parse', 'HEAD']), branch: git(['branch', '--show-current']),
     workingTreeDirty: git(['status', '--porcelain']).length > 0,
