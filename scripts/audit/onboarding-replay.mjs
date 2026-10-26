@@ -6,6 +6,8 @@ import {gzipSync} from 'node:zlib';
 import assert from 'node:assert/strict';
 import {localRuntime} from '../cohort/runtime.mjs';
 import {sourceProvenance,sha256} from './evidence.mjs';
+import {independentPlanIssues} from './scenario-http.mjs';
+import {library} from '../../server/food.mjs';
 
 const source=path.resolve(process.argv[2]||''),output=path.resolve(process.argv[3]||'');
 if(!process.argv[2]||!process.argv[3])throw Error('Usage: onboarding-replay.mjs <completed-source-run> <new-output>');
@@ -31,7 +33,7 @@ try{
   if(priorReplay?.users.some(u=>u.userId===persona.userId&&u.afterStatus===200)&&generation.status!==200)failures.push({userId:persona.userId,code:'PRIOR_REPLAY_PROFILE_REGRESSED'});
   if(generation.status===200){
    assert.equal(reload.response.profile.name,persona.onboarding.name);assert.equal(reload.response.revision,1);assert.equal(reload.response.active_plan_id,generation.response.active_plan_id);
-   const plan=reload.response.plans.find(p=>p.id===reload.response.active_plan_id);assert.equal(plan.days.length,7);
+   const plan=reload.response.plans.find(p=>p.id===reload.response.active_plan_id);assert.equal(plan.days.length,7);assert.deepEqual(independentPlanIssues(plan,library),[],'Independent source arithmetic and nutrient bounds');
    for(const day of plan.days){const e=Number(day.summary.values.energy),p=Number(day.summary.values.protein);assert.ok(day.summary.values.energy!=null&&Number.isFinite(e));assert.ok(day.summary.values.protein!=null&&Number.isFinite(p));assert.ok(Math.abs(e-day.targets.energy)<=day.targets.energy*.15);assert.ok(p>=day.targets.protein*.8);}
   }else{assert.equal(reload.response.profile,null);assert.equal(reload.response.revision,0);}
  }

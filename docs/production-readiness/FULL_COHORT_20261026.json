@@ -1,0 +1,369 @@
+{
+  "scope": "SCOPED_FULL_COHORT_AND_INDEPENDENT_VERIFICATION",
+  "root": "E:\\Egypt_Nutrition_Local\\website\\dist\\reports\\simulation-100-users-90-days\\audit-expanded-current-100x90-20261026",
+  "sourceCommit": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03",
+  "runStatus": "complete",
+  "passedStructuralChecks": true,
+  "releaseVerdict": "NOT_READY",
+  "calendar": {
+    "records": 9000,
+    "uniqueUserDates": 9000,
+    "failures": []
+  },
+  "facts": {
+    "counts": {
+      "days": 9000,
+      "briefViews": 2720,
+      "notes": 8160,
+      "absentDays": 6099
+    },
+    "keys": {
+      "food-missing": 598,
+      "rest": 443,
+      "water": 389,
+      "scheduled": 180,
+      "activity": 373,
+      "sleep": 62,
+      "missed": 370,
+      "return": 456,
+      "food-partial": 396,
+      "safety": 86,
+      "safety-support": 86,
+      "weight-coverage": 945,
+      "short-sleep": 1047,
+      "completed": 215,
+      "adjustment-active": 292,
+      "protein": 371,
+      "fatigue-declined": 163,
+      "unknown": 907,
+      "food-complete": 305,
+      "missing-checkin": 306,
+      "weight-trend": 105,
+      "partial": 64,
+      "tired": 1
+    },
+    "failures": [],
+    "auditorSha256": "e93aeda7dae3715d66890176a3df7b84b9bbe37f265f2e93865d72fb61632837"
+  },
+  "nutrition": {
+    "users": 100,
+    "snapshots": 1372,
+    "transitions": 1372,
+    "failures": 0
+  },
+  "workout": {
+    "users": 100,
+    "snapshots": 216,
+    "transitions": 32,
+    "failures": 0
+  },
+  "export": {
+    "tables": 14,
+    "rows": 79200
+  },
+  "onboarding": {
+    "observed": 100,
+    "supported": 92,
+    "rejected": [
+      {
+        "userId": "user-009",
+        "status": 400
+      },
+      {
+        "userId": "user-017",
+        "status": 400
+      },
+      {
+        "userId": "user-018",
+        "status": 400
+      },
+      {
+        "userId": "user-047",
+        "status": 400
+      },
+      {
+        "userId": "user-054",
+        "status": 400
+      },
+      {
+        "userId": "user-063",
+        "status": 400
+      },
+      {
+        "userId": "user-074",
+        "status": 400
+      },
+      {
+        "userId": "user-092",
+        "status": 400
+      }
+    ]
+  },
+  "httpEvents": 34794,
+  "rejections": [
+    {
+      "action": "water",
+      "status": 400,
+      "code": "VALIDATION_ERROR",
+      "stage": null,
+      "message": "أكواب المية خارج النطاق",
+      "expectedOutcome": "VALIDATION_ERROR",
+      "classification": "EXPECTED_USER_VALIDATION_ERROR",
+      "count": 246,
+      "examples": [
+        {
+          "userId": "user-001",
+          "day": 22,
+          "eventId": "user-001-69"
+        },
+        {
+          "userId": "user-001",
+          "day": 55,
+          "eventId": "user-001-170"
+        },
+        {
+          "userId": "user-001",
+          "day": 66,
+          "eventId": "user-001-208"
+        }
+      ]
+    },
+    {
+      "action": "generate",
+      "status": 400,
+      "code": "PLAN_CONSTRAINTS_UNMET",
+      "stage": "NO_ELIGIBLE_MEAL_FOR_SLOT",
+      "message": "مفيش وجبات مناسبة لكل اختياراتك في الفطار. أضف مصدر بروتين أو غيّر الميزانية أو قلّل الاستبعادات. لم نغيّر اختياراتك تلقائيًا.",
+      "expectedOutcome": null,
+      "classification": "UNEXPECTED_REJECTION_REQUIRES_REVIEW",
+      "count": 7,
+      "examples": [
+        {
+          "userId": "user-009",
+          "day": 1,
+          "eventId": "user-009-2"
+        },
+        {
+          "userId": "user-018",
+          "day": 1,
+          "eventId": "user-018-2"
+        },
+        {
+          "userId": "user-047",
+          "day": 1,
+          "eventId": "user-047-2"
+        }
+      ]
+    },
+    {
+      "action": "food_complete",
+      "status": 400,
+      "code": "VALIDATION_ERROR",
+      "stage": null,
+      "message": "سجّل أكلك الأول قبل إغلاق اليوم.",
+      "expectedOutcome": null,
+      "classification": "UNEXPECTED_REJECTION_REQUIRES_REVIEW",
+      "count": 2,
+      "examples": [
+        {
+          "userId": "user-021",
+          "day": 1,
+          "eventId": "user-021-8"
+        },
+        {
+          "userId": "user-098",
+          "day": 26,
+          "eventId": "user-098-77"
+        }
+      ]
+    },
+    {
+      "action": "generate",
+      "status": 400,
+      "code": "PLAN_CONSTRAINTS_UNMET",
+      "stage": "NUTRIENT_TARGETS_UNMET",
+      "message": "البحث الحالي لم يصل لخطة تحقق حدود السعرات والبروتين مع كل اختياراتك. لم نغيّر القيود أو نحفظ خطة ناقصة.",
+      "expectedOutcome": null,
+      "classification": "UNEXPECTED_REJECTION_REQUIRES_REVIEW",
+      "count": 1,
+      "examples": [
+        {
+          "userId": "user-017",
+          "day": 1,
+          "eventId": "user-017-2"
+        }
+      ]
+    },
+    {
+      "action": "adaptation",
+      "status": 400,
+      "code": "VALIDATION_ERROR",
+      "stage": null,
+      "message": "موعد الجلسة فات؛ اطلب نقلًا جديدًا.",
+      "expectedOutcome": null,
+      "classification": "UNEXPECTED_REJECTION_REQUIRES_REVIEW",
+      "count": 1,
+      "examples": [
+        {
+          "userId": "user-021",
+          "day": 87,
+          "eventId": "user-021-934"
+        }
+      ]
+    }
+  ],
+  "currentRuntimeInputsMatch": false,
+  "changedInputs": [
+    "scripts/audit/followup-facts.mjs",
+    "scripts/audit/scenario-http.mjs",
+    "scripts/audit/verify-frozen-run.mjs",
+    "scripts/audit/verify-scenarios.mjs",
+    "server/coaching.mjs"
+  ],
+  "limitations": [
+    "Full run validates its frozen source, not later changes. The later energy-hold reason repair has separate regressions and a 180-day replay.",
+    "Initial rejected profiles remain rejected; structural success is not 100 successful customer journeys.",
+    "No production, clinical, mobile, delivery/read or human-perception acceptance is inferred."
+  ],
+  "qualityFindings": [
+    {
+      "code": "PLAN_PROTEIN_TARGET_GAP",
+      "count": 235,
+      "users": 15
+    },
+    {
+      "code": "ONBOARDING_REJECTED",
+      "count": 720,
+      "users": 8
+    },
+    {
+      "code": "PLAN_ENERGY_TARGET_GAP",
+      "count": 31,
+      "users": 3
+    },
+    {
+      "code": "EXPIRED_OR_MISSING_DAY",
+      "count": 1,
+      "users": 1
+    },
+    {
+      "code": "REQUEST_REJECTION",
+      "count": 257,
+      "users": 91
+    },
+    {
+      "code": "WORKOUT_COVERAGE_GAP",
+      "count": 6300,
+      "users": 70
+    }
+  ],
+  "targetFit": {
+    "protein": {
+      "n": 8279,
+      "mean": 1.0410803066841894,
+      "median": 1.0199893667296787,
+      "p10": 0.9402347818648417,
+      "p90": 1.1887599999999998,
+      "p95": 1.241395850973751,
+      "p99": 1.4223947972456008,
+      "min": 0.8010565709312445,
+      "max": 1.7536170839469807
+    },
+    "energy": {
+      "n": 8279,
+      "mean": 1.0000508943817104,
+      "median": 0.9997850877192983,
+      "p10": 0.9856961436170213,
+      "p90": 1.0132630952380952,
+      "p95": 1.017603125,
+      "p99": 1.0957225806451611,
+      "min": 0.8765308219178083,
+      "max": 1.148616129032258
+    }
+  },
+  "messageRepetition": {
+    "scope": "EXACT_TEXT_OBSERVATION_NOT_HUMAN_SATISFACTION",
+    "pooledRepeatedFraction": 0.5990196078431372,
+    "meanPerUserRepeatedFraction": 0.16887369790710471
+  },
+  "oldPlanWindow": {
+    "scope": "INDEPENDENT_ACTIVE_NUTRITION_DAY_WINDOW_CHECK",
+    "sourceCommit": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03",
+    "nutritionDays": 8280,
+    "passed": false,
+    "gaps": [
+      {
+        "userId": "user-089",
+        "day": 43,
+        "date": "2026-12-05",
+        "planId": "plan-f916c91e-fa16-4ab1-a716-c5f8f816c78b",
+        "renewalError": "البحث الحالي لم يصل لخطة تحقق حدود السعرات والبروتين مع كل اختياراتك. لم نغيّر القيود أو نحفظ خطة ناقصة."
+      }
+    ]
+  },
+  "laterRepairs": {
+    "reasonLabels": {
+      "controls": {
+        "tests": 10,
+        "suites": 0,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "gain180": {
+        "journeys": 1,
+        "userDays": 180,
+        "acceptedAdjustments": 10,
+        "observedProductGaps": 0
+      }
+    },
+    "boundedWeekRestarts": {
+      "planWindow": {
+        "scope": "INDEPENDENT_ACTIVE_NUTRITION_DAY_WINDOW_CHECK",
+        "sourceCommit": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03",
+        "nutritionDays": 90,
+        "passed": true,
+        "gaps": []
+      },
+      "facts": {
+        "days": 90,
+        "briefViews": 47,
+        "notes": 141,
+        "absentDays": 43
+      },
+      "nutritionHistory": {
+        "users": 1,
+        "snapshots": 14,
+        "transitions": 14,
+        "failures": 0
+      },
+      "initial100": {
+        "users": 100,
+        "httpEvents": 300,
+        "beforeSuccess": 92,
+        "afterSuccess": 92,
+        "remainingRejected": 8,
+        "improved": [],
+        "regressions": [],
+        "persistedAccounts": 92
+      }
+    }
+  },
+  "latestTests": {
+    "tests": 260,
+    "suites": 0,
+    "pass": 260,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "latestBackendHashes": {
+    "planner-core.mjs": "4f67a28da05a65543e199ebe2d62fba7df60e5f3252d2d1f9ee8ccb1ac67ad88",
+    "server/coaching.mjs": "c1786e284fde2399c2cc9f35647f6e001be6fd5b5870d156594aced7d9197cde",
+    "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+    "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2"
+  }
+}

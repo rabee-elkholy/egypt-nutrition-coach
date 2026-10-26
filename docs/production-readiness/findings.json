@@ -387,9 +387,9 @@
       "severity": "P1",
       "description": "Initial plan coverage: two root causes fixed, eight profiles still rejected",
       "affectedModules": "planner-core.mjs; regional diet/library coverage",
-      "evidence": "Exact HTTP replay improves 82 -> 92 successful profiles, 300 requests, zero regressions. Three newly supported contexts pass 270 targeted days / 881 HTTP operations / 189 finite-fact-checked notes / 44 persisted nutrition transitions.",
+      "evidence": "Exact HTTP replay improves 82 -> 92 successful profiles, 300 requests, zero regressions. Three newly supported contexts pass 270 targeted days / 881 HTTP operations / 189 finite-fact-checked notes / 44 persisted nutrition transitions. Expanded matrix: 96 fixed-seed original-preference attempts rejected; all 14 isolated higher-budget diagnostic controls succeed. Failure is typed and leaves no partial account.",
       "reproduction": "Retained onboarding-coverage-sweep source/results and exact original onboarding drafts",
-      "rootCause": "Seed-sensitive finite search in one observed profile; budget/catalog/constraint feasibility remains to be traced for the others.",
+      "rootCause": "Seven original-preference low-budget keto/low-carb profiles have an empty eligible meal slot; one Egyptian vegan profile remains below the unchanged protein floor after finite search.",
       "fix": "Bounded full-day repair and fallback to the original strict pool when variety filters hide compliant options; no preference or nutrient-bound relaxation.",
       "regressionTests": "239 Node tests, zero fail/skip; before/after controls and exact initial HTTP replay; targeted 90-day source/factual/history verification.",
       "status": "PARTIALLY_IMPLEMENTED",
@@ -397,8 +397,80 @@
         "c63009e",
         "743cebd"
       ],
-      "remaining": "Eight remaining coverage cases; a full 100x90 rerun of the later source is not claimed."
+      "remaining": "Eight original coverage cases; a full 1daf889 100x90 cohort completed. Later bounded restarts have separate exact-seed, 100-profile initial and 90-day affected-user proof."
+    },
+    {
+      "id": "FOLLOWUP-003",
+      "severity": "P1",
+      "description": "Nutrition rejection was re-proposed without changed evidence",
+      "affectedModules": "server/coaching.mjs; nutrition-decisions.mjs; personal-brief.mjs",
+      "evidence": "Exact HTTP observation followed by before/after domain controls and 266 matched/decision user-days, 1336 HTTP requests, 854 checks.",
+      "rootCause": "Only recovery decisions had evidence-bound memory.",
+      "fix": "Persist exact nutrition evidence; acknowledge matching declines and reconsider on new evidence.",
+      "regressionTests": "tests/nutrition-decision-memory.test.mjs",
+      "status": "VERIFIED",
+      "commitReference": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03"
+    },
+    {
+      "id": "PLAN-RENEW-001",
+      "severity": "P1",
+      "description": "Day-57 renewal failed after accepted calorie changes",
+      "affectedModules": "planner-core.mjs; server/coaching.mjs",
+      "evidence": "Failed HTTP renewal at 1663 kcal; repaired two 365-day histories: 3168 HTTP / 2268 checks.",
+      "rootCause": "Generating at the original energy then scaling all source portions reduced protein below its floor.",
+      "fix": "Fit the new week directly at validated accepted energy while preserving protein and constraints.",
+      "regressionTests": "tests/planner-renewal-targets.test.mjs",
+      "status": "VERIFIED",
+      "commitReference": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03"
+    },
+    {
+      "id": "CONTRACT-002",
+      "severity": "P2",
+      "description": "Coverage/search rejection had no actionable machine code",
+      "affectedModules": "planner-core.mjs; contracts/openapi.yaml",
+      "evidence": "Three failing-then-passing controls; 214-request matrix checks stage codes and empty rejected accounts.",
+      "rootCause": "All planner failures were bare validation Error objects.",
+      "fix": "PLAN_CONSTRAINTS_UNMET with three stable coverage stages; no infeasibility claim.",
+      "regressionTests": "tests/plan-coverage-errors.test.mjs",
+      "status": "VERIFIED",
+      "commitReference": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03"
+    },
+    {
+      "id": "EVID-007",
+      "severity": "P1",
+      "description": "Annual scenario evidence exceeded a single JSON string limit",
+      "affectedModules": "scripts/audit/scenario-http.mjs",
+      "evidence": "Retained RangeError; streamed replay completes 730 unique dates / 3168 requests and independent raw census.",
+      "rootCause": "Retaining and stringifying all historical responses together.",
+      "fix": "Stream gzip NDJSON with backpressure and retain compact counters.",
+      "regressionTests": "Independent raw census and tamper controls; complete annual repeat.",
+      "status": "VERIFIED",
+      "commitReference": "1daf889 and later scoped evidence-writer changes; see git log -- scripts/audit/scenario-http.mjs"
+    },
+    {
+      "id": "FOLLOWUP-004",
+      "severity": "P2",
+      "description": "Upper-bound and nutrient-fit holds were described as a calorie floor",
+      "affectedModules": "server/coaching.mjs",
+      "evidence": "Four wrong reasons after day 154; valid frozen-source regressions 1 pass / 2 fail, then 3 pass; fixed 180-day replay 781 HTTP / 554 checks.",
+      "rootCause": "One catch branch labeled every target/portion failure as a lower energy bound.",
+      "fix": "Distinguish ceiling, compatible floor and nutrient/portion constraint reasons without changing limits or deltas.",
+      "regressionTests": "tests/nutrition-hold-reasons.test.mjs",
+      "status": "VERIFIED",
+      "commitReference": "Later than the 1daf889 full cohort; exact repair commit from git log -- server/coaching.mjs"
+    },
+    {
+      "id": "PLAN-RENEW-002",
+      "severity": "P1",
+      "description": "A different renewal seed left user-089 day 43 without a current plan",
+      "affectedModules": "planner-core.mjs:makeWeek",
+      "evidence": "Frozen full-cohort independent window gate fails one day. Exact seed fails, three unchanged-input restarts succeed. Latest replay: 438 HTTP / 141 fact-checked notes / 14 persisted nutrition snapshots and no window gaps.",
+      "rootCause": "One finite greedy week search could miss an existing compliant combination.",
+      "fix": "At most four deterministic total attempts for nutrient/candidate search failures, retaining constraints and original public identity.",
+      "regressionTests": "tests/planner-week-restarts.test.mjs; 100-profile initial replay retains 92 supported without regression.",
+      "status": "VERIFIED",
+      "commitReference": "Later than full 1daf889; exact source hashes and frozen replay retained, see git log -- planner-core.mjs"
     }
   ],
-  "updatedAt": "2026-10-25T11:57:52.931Z"
+  "updatedAt": "2026-10-26T09:04:47.095Z"
 }

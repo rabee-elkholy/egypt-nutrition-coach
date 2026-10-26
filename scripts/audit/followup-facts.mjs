@@ -4,13 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {gunzipSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
+import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const offset=(date,days)=>new Date(Date.parse(date+'T12:00:00Z')+days*86400000).toISOString().slice(0,10);
 const n=value=>Math.round(value*10)/10;
 const latest=values=>values.toSorted((a,b)=>a.date.localeCompare(b.date)||Date.parse(a.at)-Date.parse(b.at)).at(-1);
-function inspect(b,event){
+export function inspect(b,event){
  const s=b.state,date=b.date,now=Date.parse(event.response.generatedAt),failures=[],notes=event.response.notes||[],ready=s.recovery||{},p=s.workoutPlan;
  const fail=(rule,note)=>failures.push({rule,noteId:note?.id||null,key:note?.key||null});
  if(event.response.date!==date)fail('BRIEF_DATE');
@@ -21,7 +22,10 @@ function inspect(b,event){
  const fresh=latest((s.checkins||[]).filter(x=>x.date<=date&&Date.parse(x.at)<=now&&now-Date.parse(x.at)<=86400000));
  const ownedSessions=(s.sessions||[]).filter(x=>x.date===date&&(p?.programId?x.programId===p.programId:x.planId===p?.id)),session=latest(ownedSessions);
  const training=notes.find(x=>x.role==='training');
- if(p&&['hold','stop'].includes(ready.status)&&(training?.key!=='safety'||training?.priority!=='urgent'))fail('SAFETY_PRIORITY',training);
+ // A scenario may open the brief the next day without a new state request.
+ // Its last observed readiness can expire; never demand a stale safety label.
+ const observedAt=Date.parse(s.serverNow||event.response.generatedAt),readinessStillObserved=observedAt>=now||now-observedAt<=86400000;
+ if(p&&readinessStillObserved&&['hold','stop'].includes(ready.status)&&(training?.key!=='safety'||training?.priority!=='urgent'))fail('SAFETY_PRIORITY',training);
  for(const note of notes){
   if(note.id!=='brief-'+digest(JSON.stringify([owner,date,note.role])))fail('NOTE_IDENTITY',note);
   if(note.basedOnRevision!==event.response.revision||event.response.revision!==s.revision)fail('NOTE_REVISION',note);
@@ -47,6 +51,19 @@ function inspect(b,event){
    if(!a||Date.parse(a.expiresAt)<=now||a.planId&&a.planId!==p?.id||!(a.setFactor<1)||!p?.days.some(d=>d.exercises.some(e=>e.sets>1)))fail('FALSE_ACTIVE_ADJUSTMENT',note);
   }
   if(key==='fatigue-declined'&&!(s.adaptations||[]).some(a=>a.kind==='recovery'&&a.status==='rejected'&&a.setFactor===ready.setFactor&&Date.parse(a.expiresAt)>now&&(a.recoveryEvidenceAt?a.recoveryEvidenceAt===ready.asOf:Date.parse(a.at)>=Date.parse(ready.asOf))))fail('FALSE_REMEMBERED_DECLINE',note);
+  if(['calories-declined','maintenance-declined'].includes(key)){
+   const kind=key==='calories-declined'?'calories':'maintenance',plan=s.plans?.find(p=>p.id===s.active_plan_id),profileChange=s.history?.filter(h=>h.kind==='profile').at(-1)?.at;
+   const context=s.nutritionContextStartedOn||(profileChange?new Intl.DateTimeFormat('en-CA',{timeZone:s.profile?.timezone||'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(profileChange)):null);
+   const relevant=x=>x.date>=offset(date,-13)&&x.date<=date&&(!context||x.date>=context);
+   const rows=values=>[...new Map(values.map(x=>[x[0],x])).values()].toSorted((a,b)=>a[0].localeCompare(b[0]));
+   const weights=rows((s.weights||[]).filter(x=>relevant(x)&&Number.isFinite(x.kg)).map(x=>[x.date,x.kg]));
+   const food=rows((s.foodLogs||[]).filter(x=>relevant(x)&&x.complete&&x.energy>0&&x.adherence>=80).map(x=>[x.date,x.energy,x.adherence]));
+   const matches=(s.adaptations||[]).some(a=>{
+    if(a.kind!==kind||a.status!=='rejected'||!a.nutritionEvidence)return false;
+    try{const e=JSON.parse(a.nutritionEvidence);return e.version===1&&e.planId===plan?.id&&e.energy===plan?.targets.energy&&e.goal===s.profile?.goal&&e.targetWeight===(s.profile?.targetWeight??null)&&e.recomposition===!!s.profile?.recomposition&&e.context===context&&JSON.stringify(e.weights)===JSON.stringify(weights)&&JSON.stringify(e.food)===JSON.stringify(food);}catch{return false;}
+   });
+   if(!matches)fail('FALSE_NUTRITION_DECLINE',note);
+  }
   if(key==='short-sleep'&&(!fresh||!(fresh.sleepHours<7)||!note.text.includes('سجلته '+fresh.sleepHours+' ساعات')))fail('FALSE_SHORT_SLEEP',note);
   if(key==='sleep'&&(!fresh||!Number.isFinite(fresh.sleepHours)||!note.text.includes('مسجل '+fresh.sleepHours+' ساعات')))fail('FALSE_SLEEP',note);
   if(key==='tired'&&(!fresh||!(fresh.fatigue>=4)||!note.text.includes('متابعة '+fresh.fatigue+' من')))fail('FALSE_FATIGUE',note);
@@ -67,12 +84,21 @@ function selfTest(){
  const date='2026-10-25',fixture={userId:'test-owner',date,behavior:{openedApp:true},state:{revision:2,foodEntries:[{date}],foodLogs:[]}},event={request:{simulation:false},response:{date,revision:2,generatedAt:date+'T12:00:00Z',notes:[{id:'brief-'+digest(JSON.stringify(['test-owner',date,'nutrition'])),role:'nutrition',key:'food-partial',text:'عندك 1 تسجيل أكل',action:'next',basedOnRevision:2,status:'GENERATED',deliveryStatus:'NOT_MEASURED',renderingStatus:'NOT_MEASURED'}]}};
  assert.deepEqual(inspect(fixture,event),[]);
  const controls=[['FALSE_PARTIAL_FOOD',b=>b.state.foodEntries=[]],['BRIEF_DATE',(b,e)=>e.response.date='2026-10-24'],['NOTE_IDENTITY',(b,e)=>e.response.notes[0].id='other'],['NOTE_REVISION',b=>b.state.revision=3],['FALSE_DELIVERY',(b,e)=>e.response.notes[0].renderingStatus='RENDERED'],['FALSE_SESSION_STATUS',(b,e)=>e.response.notes[0].key='completed'],['FALSE_ACTIVE_ADJUSTMENT',(b,e)=>e.response.notes[0].key='adjustment-active'],['FALSE_REMEMBERED_DECLINE',(b,e)=>e.response.notes[0].key='fatigue-declined'],['FALSE_RETURN',(b,e)=>e.response.notes[0].key='return'],['SAFETY_PRIORITY',b=>{b.state.workoutPlan={id:'p'};b.state.recovery={status:'stop'};}]];
+ controls.push(['FALSE_NUTRITION_DECLINE',(b,e)=>e.response.notes[0].key='calories-declined'],['FALSE_NUTRITION_DECLINE',(b,e)=>e.response.notes[0].key='maintenance-declined']);
+ controls.push(['SAFETY_PRIORITY',(b,e)=>{b.state.workoutPlan={id:'p'};b.state.recovery={status:'stop'};b.state.serverNow=new Date(Date.parse(e.response.generatedAt)+1000).toISOString();}]);
+ const acceptedFixture=structuredClone(fixture),declineEvent=structuredClone(event);
+ acceptedFixture.state={...acceptedFixture.state,profile:{goal:'lose',targetWeight:65,timezone:'Africa/Cairo'},plans:[{id:'p',targets:{energy:2040}}],active_plan_id:'p',weights:[],history:[],adaptations:[{kind:'calories',status:'rejected',nutritionEvidence:JSON.stringify({version:1,planId:'p',energy:2040,goal:'lose',targetWeight:65,recomposition:false,context:null,weights:[],food:[]})}]};
+ declineEvent.response.notes[0].key='calories-declined';assert.deepEqual(inspect(acceptedFixture,declineEvent),[]);
+ acceptedFixture.state.weights=[{date,kg:80}];assert.ok(inspect(acceptedFixture,declineEvent).some(f=>f.rule==='FALSE_NUTRITION_DECLINE'));
+ const staleFixture=structuredClone(fixture),staleEvent=structuredClone(event);
+ staleFixture.state={...staleFixture.state,serverNow:'2026-10-24T11:59:59Z',workoutPlan:{id:'p'},recovery:{status:'stop'}};staleEvent.response.notes[0].key='unknown';assert.deepEqual(inspect(staleFixture,staleEvent),[]);
  for(const [rule,mutate]of controls){const b=structuredClone(fixture),e=structuredClone(event);mutate(b,e);assert.ok(inspect(b,e).some(f=>f.rule===rule),rule);}
  console.log(JSON.stringify({validFixture:1,negativeControls:controls.length,passed:true}));
 }
 
-if(process.argv.includes('--self-test'))selfTest();
-else{
+const isCli=process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href;
+if(isCli&&process.argv.includes('--self-test'))selfTest();
+else if(isCli){
  const root=path.resolve(process.argv[2]),output=path.resolve(process.argv[3]);if(fs.existsSync(output))throw Error('Preserve prior audit');
  const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'))),config=JSON.parse(fs.readFileSync(path.join(root,'simulation_config.json'))),cohort=JSON.parse(fs.readFileSync(path.join(root,'cohort.json'))),failures=[],keys={},counts={days:0,briefViews:0,notes:0,absentDays:0},identityContent=new Map();
  for(const persona of cohort){const dir=path.join(root,'users',persona.userId,'days');if(!fs.existsSync(dir))continue;for(const file of fs.readdirSync(dir).filter(x=>x.endsWith('.json.gz'))){

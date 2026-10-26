@@ -119,8 +119,11 @@ export function review(s){
   if(nutrition.action==='propose'&&nutrition.delta<0&&hasPerformanceDrop(s.workoutLogs,clockNow(),tz))nutrition={...nutrition,action:'hold',reasonCode:'PERFORMANCE_DROP_CALORIE_CUT_HOLD',reason:'قرار مشترك من محركي التغذية والتدريب الآليين: رغم ثبات الوزن، لاحظنا انخفاضًا في أداء التمرين؛ لذلك ثبتنا السعرات لحماية الكتلة العضلية واستعادة طاقتك أولاً.'};
   if(nutrition.action==='propose'&&matchingNutritionDecline(s,clockNow(),tz,'calories'))nutrition={...nutrition,action:'hold',reasonCode:'CALORIE_ADVICE_DECLINED',reason:'رفضك السابق لتعديل السعرات محفوظ، وخطتك لم تتغير. نراجع التوصية عند تغير بيانات التغذية أو الخطة.'};
   if(nutrition.action==='propose'){
-   try{validateEnergyChange(s,Number(plan.targets.energy)+nutrition.delta);retargetPlan(structuredClone(plan),Number(plan.targets.energy)+nutrition.delta,s.preferences,dateOffset(currDate,1),s.profile);proposals.push({kind:'calories',...nutrition,nutritionEvidence:nutritionEvidenceKey(s,clockNow(),tz),expiresAt:new Date(clockNow()+86400000).toISOString()});}
-   catch(error){if(error instanceof TypeError||error instanceof ReferenceError)throw error;nutrition={...nutrition,action:'hold',reasonCode:'MIN_SAFE_ENERGY_FLOOR_HOLD',reason:'محرك التغذية الآلي احتفظ بسعراتك الحالية لأن أي خصم إضافي هيكون أقل من الحد الصحي الآمن لجسمك.'};}
+   const requestedEnergy=Number(plan.targets.energy)+nutrition.delta;
+   if(requestedEnergy<(s.profile.sex==='female'?1200:1400))nutrition={...nutrition,action:'hold',reasonCode:'MIN_SAFE_ENERGY_FLOOR_HOLD',reason:'محرك التغذية الآلي احتفظ بسعراتك الحالية لأن أي خصم إضافي هيكون أقل من الحد الصحي الآمن لجسمك.'};
+   else if(requestedEnergy>4200)nutrition={...nutrition,action:'hold',reasonCode:'MAX_SAFE_ENERGY_CEILING_HOLD',reason:'احتفظنا بسعراتك الحالية لأن الزيادة المقترحة تتجاوز الحد الأعلى للتخطيط الآلي. راجع احتياجاتك مع مختص قبل زيادة أخرى.'};
+   else try{validateEnergyChange(s,requestedEnergy);retargetPlan(structuredClone(plan),requestedEnergy,s.preferences,dateOffset(currDate,1),s.profile);proposals.push({kind:'calories',...nutrition,nutritionEvidence:nutritionEvidenceKey(s,clockNow(),tz),expiresAt:new Date(clockNow()+86400000).toISOString()});}
+   catch(error){if(error instanceof TypeError||error instanceof ReferenceError)throw error;nutrition={...nutrition,action:'hold',reasonCode:'PLAN_CONSTRAINTS_ADJUSTMENT_HOLD',reason:'احتفظنا بخطتك الحالية لأن التعديل المقترح لم يحقق قيود الوجبات أو السعرات أو البروتين. لم نغيّر القيود أو نطبّق التعديل.'};}
   }
  }
  const volume=volumeReview(s,ready,clockNow());

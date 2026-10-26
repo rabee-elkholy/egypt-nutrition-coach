@@ -30,5 +30,11 @@ Machine-readable details: [findings.json](findings.json). Historical reports rem
 | DATA-001 | P1 | Concurrent reads mixed revision/history | Real D1 race reproduced and fixed with transactional snapshot; commit 53d806a |
 | FOLLOWUP-002 | P1 | Scheduled delivery/read lifecycle and human perception absent | On-demand view verified; delivery/rendering and human satisfaction NOT_MEASURED |
 | PRODUCT-002 | P1 | Initial plan coverage gaps | Two root causes fixed: exact HTTP comparison improves 82 -> 92 supported profiles with zero regressions; eight remain rejected; targeted 90-day checks pass |
+| FOLLOWUP-003 | P1 | Rejected nutrition advice was re-proposed on unchanged evidence | Fixed exact nutrition-evidence decision memory and persisted brief acknowledgement; before/after regressions and 266-day matched trajectories |
+| PLAN-RENEW-001 | P1 | Renewal failed on day 57 after repeated accepted calorie changes | Fixed direct fitting at the validated accepted energy while retaining protein and diet bounds; two 365-day histories pass |
+| CONTRACT-002 | P2 | Coverage/search failures returned generic validation errors | Fixed stable PLAN_CONSTRAINTS_UNMET and stage codes; 96 original-preference failures have truthful HTTP errors and no partial accounts |
+| EVID-007 | P1 | Annual scenario evidence exceeded a single JSON string limit | Fixed streamed gzip NDJSON with backpressure; retained failed run, repeated 730 days and independently verified original events |
+| FOLLOWUP-004 | P2 | Upper-bound and portion-fit holds claimed a calorie floor | Fixed truthful upper/lower/constraint reasons, compatible floor code retained; 180-day repeat and valid frozen-source controls |
+| PLAN-RENEW-002 | P1 | Another renewal seed left one supported user without a current day | Exact failure reproduced; bounded deterministic restarts retain constraints and public identity; latest user-089 90-day replay has zero window gaps; initial 100-profile support remains 92/8 |
 
 “Fixed” above applies to the described local code and regression scope, not to overall launch readiness. Exact commit ownership is available with `git log -- <affected file>` and the execution source hashes.

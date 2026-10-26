@@ -769,6 +769,21 @@ function planCoverageError(stage,message){
  return Object.assign(Error(message),{status:400,code:'PLAN_CONSTRAINTS_UNMET',retryable:false,fieldErrors:[{field:'preferences',code:stage,message}]});
 }
 export function makeWeek(profile, prefs, lib, startDate, seed = "1", acceptedEnergy = null) {
+  let lastError;
+  for(let attempt=0;attempt<4;attempt++){
+    try{
+      const plan=buildWeek(profile,prefs,lib,startDate,attempt?String(seed)+':restart:'+attempt:seed,acceptedEnergy);
+      plan.id='plan-'+String(seed);
+      return plan;
+    }catch(error){
+      const stage=error.fieldErrors?.[0]?.code;
+      if(error.code!=='PLAN_CONSTRAINTS_UNMET'||!['NUTRIENT_TARGETS_UNMET','NO_CANDIDATE_WITHIN_DIET_LIMITS'].includes(stage))throw error;
+      lastError=error;
+    }
+  }
+  throw lastError;
+}
+function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy) {
   const targets = estimateNeeds(profile),
     p = validatePreferences(prefs, lib),
     slots = daySlots(p.meals, p.diet);

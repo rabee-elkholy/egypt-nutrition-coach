@@ -1,0 +1,485 @@
+{
+  "createdAt": "2026-10-26T07:32:30.855Z",
+  "scope": "SCOPED_EXPANDED_SYNTHETIC_MEASUREMENTS_WITH_INDEPENDENT_RAW_CENSUS",
+  "releaseVerdict": "NOT_READY",
+  "runs": [
+    {
+      "name": "remaining-eight",
+      "run": "audit-remaining-eight-typed-20261026",
+      "measurementSha256": "9f671e4abe08d90feb2e154ff3926163653f07b7caa126c4c1e1265e454efbf9",
+      "scope": "REMAINING_EIGHT_EXACT_HTTP_AND_FIXED_SEED_MATRIX",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 214,
+        "checks": 324,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 118,
+          "400": 96
+        }
+      },
+      "summary": {
+        "profiles": 8,
+        "seedAttempts": 96,
+        "seedSuccesses": 0,
+        "classifications": {
+          "EMPTY_ELIGIBLE_SLOT_LIBRARY": 7,
+          "BOUNDED_SEARCH_OR_PORTION_COVERAGE_UNRESOLVED": 1
+        }
+      },
+      "observations": [],
+      "sourceCommit": "70b58c44c86116de21625667136212ef9ec4c15a",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2b824e88588df90478edb161bdbafff48424ffa01dba72c8bc77d50914ee4f71",
+        "scripts/audit/scenario-http.mjs": "ae2bb13d421e6853321963a6de5786048f0dbeeea7feb57ff535c167374cf85c",
+        "server/coaching.mjs": "ccda12a79e56a9cf243279d2b253bc0d406c78099911c088ee7279eafab5ff55",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "251725df533805613995ce758e7f757df45b12f3e8f0ec32b3effb0813880f6b",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 214,
+        "users": 110,
+        "uniqueUserDays": 110,
+        "notes": 0,
+        "failures": []
+      }
+    },
+    {
+      "name": "progress-decisions",
+      "run": "audit-progress-decisions-fixed-20261026",
+      "measurementSha256": "5998fd30232ded688343abfc05d0daa6278a55b2ab2d8a8c9936f191b3d4d040",
+      "scope": "MATCHED_42_DAY_PROGRESS_AND_ACCUMULATED_DECISION_HTTP_JOURNEYS",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 1336,
+        "checks": 854,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 1336
+        }
+      },
+      "summary": {
+        "matchedTrajectories": 6,
+        "matchedUserDays": 252,
+        "recoveryUserDays": 14,
+        "decisionCount": 13,
+        "observedProductGaps": 0
+      },
+      "observations": [],
+      "sourceCommit": "70b58c44c86116de21625667136212ef9ec4c15a",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2a591984324542a3b12f9b42f699308184d6ca30aacc3cc9aa27d993de57dac2",
+        "scripts/audit/scenario-http.mjs": "ae2bb13d421e6853321963a6de5786048f0dbeeea7feb57ff535c167374cf85c",
+        "server/coaching.mjs": "ae2cd0d0da28b407cfc47c048de659ac03c434c922f729a15bb822b6ba2337c5",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "25ae6a89d85d70e61515ae744b6aa3c78c20ea91659809a8795dee2da96aaa6e",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 1336,
+        "users": 7,
+        "uniqueUserDays": 266,
+        "notes": 804,
+        "failures": []
+      },
+      "finiteFactualAudit": {
+        "passed": true,
+        "views": 268,
+        "notes": 804,
+        "failures": [],
+        "auditorSha256": "ff34af0dd6155df2ba0ffd1912dfe26f5f4f2835262fdf2d4e3f1e76c631cdd9"
+      }
+    },
+    {
+      "name": "workout-paths",
+      "run": "audit-workout-progress-paths-20261026",
+      "measurementSha256": "37517f03dd7300667f51874ec3220d69829ceda9dc4b2bb0305d2513763e461b",
+      "scope": "FOUR_MATCHED_28_DAY_WORKOUT_PERFORMANCE_AND_RECOVERY_HTTP_PATHS",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 396,
+        "checks": 148,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 396
+        }
+      },
+      "summary": {
+        "journeys": 4,
+        "userDays": 112,
+        "exposures": 32
+      },
+      "observations": [],
+      "sourceCommit": "70b58c44c86116de21625667136212ef9ec4c15a",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2b824e88588df90478edb161bdbafff48424ffa01dba72c8bc77d50914ee4f71",
+        "scripts/audit/scenario-http.mjs": "ae2bb13d421e6853321963a6de5786048f0dbeeea7feb57ff535c167374cf85c",
+        "server/coaching.mjs": "ccda12a79e56a9cf243279d2b253bc0d406c78099911c088ee7279eafab5ff55",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "7714fffd17cac962c4a262f4a51df60f35f3a0f44feb5439c955b2296e349659",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 396,
+        "users": 4,
+        "uniqueUserDays": 112,
+        "notes": 24,
+        "failures": []
+      },
+      "finiteFactualAudit": {
+        "passed": true,
+        "views": 8,
+        "notes": 24,
+        "failures": [],
+        "auditorSha256": "6af4d4149436d33e2508680872f500a51a72559ea1e0226973d8d6dc28543a54"
+      }
+    },
+    {
+      "name": "service-tracks",
+      "run": "audit-service-track-matrix-20261026",
+      "measurementSha256": "eb937aa3ac1fafab85cdb47e526b03d4a0614a992f2ef32e21cdf0fa2e0df196",
+      "scope": "100_PROFILES_ACROSS_THREE_SERVICE_TRACKS_INITIAL_HTTP_MATRIX",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 900,
+        "checks": 1352,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 884,
+          "400": 16
+        }
+      },
+      "summary": {
+        "profiles": 100,
+        "cases": 300,
+        "tracks": {
+          "nutrition_only": {
+            "accepted": 92,
+            "rejected": 8
+          },
+          "workouts_only": {
+            "accepted": 100,
+            "rejected": 0
+          },
+          "nutrition_and_workouts": {
+            "accepted": 92,
+            "rejected": 8
+          }
+        }
+      },
+      "observations": [],
+      "sourceCommit": "70b58c44c86116de21625667136212ef9ec4c15a",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2b824e88588df90478edb161bdbafff48424ffa01dba72c8bc77d50914ee4f71",
+        "scripts/audit/scenario-http.mjs": "ae2bb13d421e6853321963a6de5786048f0dbeeea7feb57ff535c167374cf85c",
+        "server/coaching.mjs": "ccda12a79e56a9cf243279d2b253bc0d406c78099911c088ee7279eafab5ff55",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "56e017ba921186bd72b7d8f951e5a1d7ebc18b4dc95f95dcf16efcf876cd57da",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 900,
+        "users": 300,
+        "uniqueUserDays": 300,
+        "notes": 660,
+        "failures": []
+      },
+      "finiteFactualAudit": {
+        "passed": true,
+        "views": 300,
+        "notes": 660,
+        "failures": [],
+        "auditorSha256": "6af4d4149436d33e2508680872f500a51a72559ea1e0226973d8d6dc28543a54"
+      }
+    },
+    {
+      "name": "annual",
+      "run": "audit-long-horizon-streamed-20261026",
+      "measurementSha256": "57975d68726a7bb5fe4b08fe31eaf5d5652c3b9740352277deb5de6005635891",
+      "scope": "TWO_365_DAY_HTTP_JOURNEYS_REPEATED_ADJUSTMENTS_AND_GOAL_CHANGE",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 3168,
+        "checks": 2268,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 3168
+        }
+      },
+      "summary": {
+        "journeys": 2,
+        "userDays": 730,
+        "acceptedAdjustments": 15,
+        "observedProductGaps": 0
+      },
+      "observations": [],
+      "sourceCommit": "70b58c44c86116de21625667136212ef9ec4c15a",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2b824e88588df90478edb161bdbafff48424ffa01dba72c8bc77d50914ee4f71",
+        "scripts/audit/scenario-http.mjs": "7ad67d86ee7dbe4ed72f2e2c3729b366f12d1d3b074e3678503e3b25a9c41e28",
+        "server/coaching.mjs": "ccda12a79e56a9cf243279d2b253bc0d406c78099911c088ee7279eafab5ff55",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "14200021495b605c9b00205bf533b02e404b788b34a6c32e50d674ef04439d19",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 3168,
+        "users": 2,
+        "uniqueUserDays": 730,
+        "notes": 2190,
+        "failures": []
+      },
+      "finiteFactualAudit": {
+        "passed": true,
+        "views": 730,
+        "notes": 2190,
+        "failures": [],
+        "auditorSha256": "6af4d4149436d33e2508680872f500a51a72559ea1e0226973d8d6dc28543a54"
+      }
+    },
+    {
+      "name": "standalone-tracks",
+      "run": "audit-standalone-track-histories-20261026",
+      "measurementSha256": "75228ae16586bfe3fe93be1198bc866ce131a2db736d9418f01fc5c07490f44c",
+      "scope": "THREE_180_DAY_SINGLE_SERVICE_TRACK_HTTP_HISTORIES",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 2689,
+        "checks": 1095,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 2689
+        }
+      },
+      "summary": {
+        "journeys": 3,
+        "userDays": 540,
+        "workoutExposures": 77
+      },
+      "observations": [],
+      "sourceCommit": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2b824e88588df90478edb161bdbafff48424ffa01dba72c8bc77d50914ee4f71",
+        "scripts/audit/scenario-http.mjs": "7ad67d86ee7dbe4ed72f2e2c3729b366f12d1d3b074e3678503e3b25a9c41e28",
+        "server/coaching.mjs": "ccda12a79e56a9cf243279d2b253bc0d406c78099911c088ee7279eafab5ff55",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "24aa92026cf9afbeba97cec8d9f44b0dff1b9745a309577e21156556283f600c",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 2689,
+        "users": 3,
+        "uniqueUserDays": 540,
+        "notes": 1080,
+        "failures": []
+      },
+      "finiteFactualAudit": {
+        "passed": true,
+        "views": 540,
+        "notes": 1080,
+        "failures": [],
+        "auditorSha256": "ff34af0dd6155df2ba0ffd1912dfe26f5f4f2835262fdf2d4e3f1e76c631cdd9"
+      }
+    },
+    {
+      "name": "timezone-boundaries",
+      "run": "audit-timezone-boundaries-20261026",
+      "measurementSha256": "626cba8ac5d81c4887590237f5f56f0b180053d146fb923c4d44aa5b9b5eba4a",
+      "scope": "SIX_TIMEZONES_AROUND_MIDNIGHT_AND_CLOCK_TRANSITION_HTTP_BOUNDARIES",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 168,
+        "checks": 96,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 138,
+          "400": 30
+        }
+      },
+      "summary": {
+        "timezones": 6,
+        "utcInstants": 5,
+        "boundaryCases": 30
+      },
+      "observations": [],
+      "sourceCommit": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2b824e88588df90478edb161bdbafff48424ffa01dba72c8bc77d50914ee4f71",
+        "scripts/audit/scenario-http.mjs": "6823ea0b170975fac549862bfbf56b92a999062501ad30afc499a9dd3c682e88",
+        "server/coaching.mjs": "ccda12a79e56a9cf243279d2b253bc0d406c78099911c088ee7279eafab5ff55",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "3b1406d89f4ddb9a7b2dc78b397d6c7e2c91f9b90954250d7714c3087942361b",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 168,
+        "users": 6,
+        "uniqueUserDays": 6,
+        "notes": 90,
+        "failures": []
+      },
+      "finiteFactualAudit": {
+        "passed": true,
+        "views": 30,
+        "notes": 90,
+        "failures": [],
+        "auditorSha256": "ff34af0dd6155df2ba0ffd1912dfe26f5f4f2835262fdf2d4e3f1e76c631cdd9"
+      }
+    },
+    {
+      "name": "aged-receipts",
+      "run": "audit-aged-command-receipts-20261026",
+      "measurementSha256": "e2ecdb0ff2e7cead78889fceb0b57fda1d71d018a14484e5c8e5e0aba06d1454",
+      "scope": "INTERLEAVED_FULL_VS_MINIMAL_COMMANDS_ON_ISOLATED_365_DAY_HISTORY_COPY",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 67,
+        "checks": 98,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 67
+        }
+      },
+      "summary": {
+        "samples": 60,
+        "idempotentReplays": 5,
+        "initialRevision": 1217,
+        "finalRevision": 1277,
+        "modes": {
+          "full": {
+            "latencyMs": {
+              "n": 30,
+              "p50": 74.4414999999999,
+              "p95": 81.81990000000042,
+              "p99": 99.49000000000024
+            },
+            "responseJsonBytes": {
+              "n": 30,
+              "p50": 747355,
+              "p95": 747359,
+              "p99": 747359
+            }
+          },
+          "minimal": {
+            "latencyMs": {
+              "n": 30,
+              "p50": 63.47189999999955,
+              "p95": 67.46579999999994,
+              "p99": 71.08540000000085
+            },
+            "responseJsonBytes": {
+              "n": 30,
+              "p50": 418,
+              "p95": 419,
+              "p99": 419
+            }
+          }
+        }
+      },
+      "observations": [],
+      "sourceCommit": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2b824e88588df90478edb161bdbafff48424ffa01dba72c8bc77d50914ee4f71",
+        "scripts/audit/scenario-http.mjs": "9228f653a1b3ebf9914aae10bc313fe38c601860774b87c13bd2e37a4a444829",
+        "server/coaching.mjs": "ccda12a79e56a9cf243279d2b253bc0d406c78099911c088ee7279eafab5ff55",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "1e2b065d339f9ddf3a9c825233291e5d70404ec1c1e418247b1c6a1cb99cda60",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 67,
+        "users": 1,
+        "uniqueUserDays": 1,
+        "notes": 0,
+        "failures": []
+      }
+    },
+    {
+      "name": "gain-ceiling",
+      "run": "audit-gain-ceiling-history-fixed-20261026",
+      "measurementSha256": "0bdecce874d0cd5693d26c045c95bec1c6fff1b5ba0bfd3be3a0ee39b2c3ce5c",
+      "scope": "180_DAY_GAIN_TARGET_UPPER_BOUND_AND_REPEATED_RENEWAL_HTTP_HISTORY",
+      "status": "COMPLETED",
+      "passed": true,
+      "totals": {
+        "httpEvents": 781,
+        "checks": 554,
+        "failedChecks": 0,
+        "statuses": {
+          "200": 781
+        }
+      },
+      "summary": {
+        "journeys": 1,
+        "userDays": 180,
+        "acceptedAdjustments": 10,
+        "observedProductGaps": 0
+      },
+      "observations": [],
+      "sourceCommit": "1daf88926075cf29d7441c6f2d7cc0aa50a47e03",
+      "workingTreeDirty": true,
+      "sourceHashes": {
+        "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+        "personal-brief.mjs": "3b0afddce8159b28a0ae130612515bdb75705e16e93ba76f71d5d1bc0a1785c2",
+        "planner-core.mjs": "2b824e88588df90478edb161bdbafff48424ffa01dba72c8bc77d50914ee4f71",
+        "scripts/audit/scenario-http.mjs": "9228f653a1b3ebf9914aae10bc313fe38c601860774b87c13bd2e37a4a444829",
+        "server/coaching.mjs": "c1786e284fde2399c2cc9f35647f6e001be6fd5b5870d156594aced7d9197cde",
+        "server/recovery.mjs": "443557ca18daab4c2917d4d35bcfe33c332687641287169f6bd5f44411a48ea8"
+      },
+      "eventsSha256": "8998977ca0293c42549359af2ba652229c321f6c5e356156c7e451a944a4005b",
+      "independentCensus": {
+        "passed": true,
+        "httpEvents": 781,
+        "users": 1,
+        "uniqueUserDays": 180,
+        "notes": 540,
+        "failures": []
+      },
+      "finiteFactualAudit": {
+        "passed": true,
+        "views": 180,
+        "notes": 540,
+        "failures": [],
+        "auditorSha256": "e93aeda7dae3715d66890176a3df7b84b9bbe37f265f2e93865d72fb61632837"
+      }
+    }
+  ],
+  "limitations": [
+    "Distinct frozen runtime/harness versions are reported separately; no full-run acceptance transfers between them.",
+    "Seed probes, initial service-track cases and longitudinal user-days have different denominators.",
+    "Production delivery, rendering, clinical effectiveness and human perception remain unestablished."
+  ]
+}

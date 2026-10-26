@@ -7,21 +7,31 @@ import {localRuntime} from '../cohort/runtime.mjs';
 import {sourceProvenance,snapshotSource,sha256} from './evidence.mjs';
 
 // Test identity/clock adapter only. Uses ordinary account routes, never production.
-export async function scenarioRuntime(output,scope){
+export async function scenarioRuntime(output,scope,options={}){
  output=path.resolve(output);
  if(fs.existsSync(output))throw Error('Preserve previous measurement: '+output);
  fs.mkdirSync(output,{recursive:true});
  const provenance=sourceProvenance();snapshotSource(output,provenance.sourceHashes);
+ let seededFrom=null;
+ if(options.seedD1From){
+  const source=fs.realpathSync(path.resolve(options.seedD1From)),workspace=fs.realpathSync(process.cwd());
+  if(!source.toLowerCase().startsWith((workspace+path.sep).toLowerCase()))throw Error('Fixture source must remain inside this workspace');
+  const prior=JSON.parse(fs.readFileSync(path.join(source,'measurement.json')));
+  if(prior.status!=='COMPLETED'||prior.passed!==true)throw Error('Only clone a completed synthetic scenario');
+  fs.cpSync(path.join(source,'.local-d1'),path.join(output,'.local-d1'),{recursive:true,errorOnExist:true,force:false});
+  seededFrom={source,scope:prior.scope,eventsSha256:prior.eventsSha256};
+ }
  const {mf,db}=await localRuntime(output),events=[],checks=[];
  const rawPath=path.join(output,'http-events.jsonl.gz'),gzip=createGzip();let streamError;
  const streamDone=pipeline(gzip,fs.createWriteStream(rawPath)).catch(e=>{streamError=e;});
  const report={scope,startedAt:new Date().toISOString(),provenance,checks,status:'RUNNING',limitations:['Synthetic local Worker/D1 HTTP dispatch with trusted identity/clock, not public JWT, edge or mobile networking.','On-demand generated notes are not delivered/read notifications or human-perception measurements.','Product-rule verification does not establish clinical suitability.']};
+ if(seededFrom)report.seededFrom=seededFrom;
  function check(name,condition,details={}){checks.push({name,status:condition?'PASS':'FAIL',...details});}
  function client(userId){
   let seq=0,day=1,state={revision:0};
   return {userId,get state(){return state;},set day(n){day=n;},get day(){return day;},
    async request(method,endpoint,body=null,options={}){
-    seq++;const key=options.key||`${userId}:${seq}`,now=Date.parse('2026-10-24T12:00:00Z')+(day-1)*86400000+seq*1000;
+    seq++;const key=options.key||`${userId}:${seq}`,now=options.now??(Date.parse('2026-10-24T12:00:00Z')+(day-1)*86400000+seq*1000);
     const headers={'oai-authenticated-user-id':userId,'Content-Type':'application/json','Idempotency-Key':key,'x-cohort-key':options.seedKey||key,'x-cohort-now':String(now)};
     const start=performance.now(),response=await mf.dispatchFetch('http://scenario.local/v1/'+endpoint,{method,headers,...(body?{body:JSON.stringify(body)}:{})}),value=await response.json();
     const event={userId,day,seq,method,endpoint,headers,body,status:response.status,requestId:response.headers.get('X-Request-Id'),response:value,latencyMs:performance.now()-start};

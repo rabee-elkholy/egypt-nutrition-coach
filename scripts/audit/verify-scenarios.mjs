@@ -16,7 +16,7 @@ export async function verifyScenario(root){
   if(!event.userId||!Number.isInteger(event.day)||event.day<1||!event.requestId)failures.push('INVALID_EVENT_IDENTITY');
   const expected=1+(sequences.get(event.userId)||0);if(event.seq!==expected)failures.push('EVENT_SEQUENCE_GAP_OR_DUPLICATE');sequences.set(event.userId,event.seq);
   days.add(event.userId+':'+event.day);
-  const date=new Date(Date.parse('2026-10-24T12:00:00Z')+(event.day-1)*86400000).toISOString().slice(0,10);
+  const date=event.headers?.['x-cohort-now']&&event.response.timezone?new Intl.DateTimeFormat('en-CA',{timeZone:event.response.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Number(event.headers['x-cohort-now']))):new Date(Date.parse('2026-10-24T12:00:00Z')+(event.day-1)*86400000).toISOString().slice(0,10);
   if(event.status>=500)failures.push('SERVER_ERROR');
   if(event.endpoint==='coaching/brief'&&event.status===200){
    if(event.response.date!==date)failures.push('BRIEF_CALENDAR_MISMATCH');
