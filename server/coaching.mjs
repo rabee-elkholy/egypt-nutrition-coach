@@ -7,6 +7,7 @@ import {recovery,calorieReview,progression,hasPerformanceDrop,workoutProgression
 import {library,activePlan,foodCommand,replaceMeal,plannedEnergyForDate} from './food.mjs';
 import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reconcileSessions} from './training-state.mjs';
 import {volumeReview} from './training-review.mjs';
+import {nutritionEvidenceKey,matchingNutritionDecline} from '../nutrition-decisions.mjs';
 import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,needsHealthConfirmation,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES} from '../coaching-shared.mjs';
 
 const userTz=s=>s?.profile?.timezone||clockTimeZone()||'Africa/Cairo';
@@ -109,14 +110,16 @@ export function review(s){
  const reached=!s.profile.recomposition&&targetWeights.length>=3&&s.profile.targetWeight&&((s.profile.goal==='lose'&&averageWeight<=s.profile.targetWeight)||(['gain','muscle_gain'].includes(s.profile.goal)&&averageWeight>=s.profile.targetWeight));
  if(plan&&ready.status==='ready'&&reached){
   nutrition={action:'propose',reasonCode:'GOAL_WEIGHT_REACHED_MAINTENANCE',reviewScope:'system_generated_guidance',reason:'مبروك يا بطل! 🎉 إشعار النظام الآلي للتغذية: متوسط وزنك وصل للهدف بنجاح؛ نقترح الانتقال لخطة تثبيت الوزن للحفاظ على النتيجة اللي حققتها.'};
-  proposals.push({kind:'maintenance',averageWeight,...nutrition,expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
+  if(matchingNutritionDecline(s,clockNow(),tz,'maintenance'))nutrition={...nutrition,action:'hold',reasonCode:'MAINTENANCE_ADVICE_DECLINED',reason:'رفضك السابق للانتقال إلى التثبيت محفوظ. لم نغيّر هدفك؛ نراجع التوصية عند تغير بيانات التغذية أو الخطة.'};
+  else proposals.push({kind:'maintenance',averageWeight,...nutrition,nutritionEvidence:nutritionEvidenceKey(s,clockNow(),tz),expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
  }
  else if(plan&&ready.status==='ready'&&(!s.lastVolumeChange||clockNow()-s.lastVolumeChange>=14*86400000)){
   nutrition=calorieReview(contextWeights,contextFood,s.profile.recomposition?'recomposition':s.profile.goal,Number(plan.targets.energy),clockNow(),s.lastCalorieChange||0,tz);
   if(contextStart)nutrition.contextStartedOn=contextStart;
   if(nutrition.action==='propose'&&nutrition.delta<0&&hasPerformanceDrop(s.workoutLogs,clockNow(),tz))nutrition={...nutrition,action:'hold',reasonCode:'PERFORMANCE_DROP_CALORIE_CUT_HOLD',reason:'قرار مشترك من محركي التغذية والتدريب الآليين: رغم ثبات الوزن، لاحظنا انخفاضًا في أداء التمرين؛ لذلك ثبتنا السعرات لحماية الكتلة العضلية واستعادة طاقتك أولاً.'};
+  if(nutrition.action==='propose'&&matchingNutritionDecline(s,clockNow(),tz,'calories'))nutrition={...nutrition,action:'hold',reasonCode:'CALORIE_ADVICE_DECLINED',reason:'رفضك السابق لتعديل السعرات محفوظ، وخطتك لم تتغير. نراجع التوصية عند تغير بيانات التغذية أو الخطة.'};
   if(nutrition.action==='propose'){
-   try{validateEnergyChange(s,Number(plan.targets.energy)+nutrition.delta);retargetPlan(structuredClone(plan),Number(plan.targets.energy)+nutrition.delta,s.preferences,dateOffset(currDate,1),s.profile);proposals.push({kind:'calories',...nutrition,expiresAt:new Date(clockNow()+86400000).toISOString()});}
+   try{validateEnergyChange(s,Number(plan.targets.energy)+nutrition.delta);retargetPlan(structuredClone(plan),Number(plan.targets.energy)+nutrition.delta,s.preferences,dateOffset(currDate,1),s.profile);proposals.push({kind:'calories',...nutrition,nutritionEvidence:nutritionEvidenceKey(s,clockNow(),tz),expiresAt:new Date(clockNow()+86400000).toISOString()});}
    catch(error){if(error instanceof TypeError||error instanceof ReferenceError)throw error;nutrition={...nutrition,action:'hold',reasonCode:'MIN_SAFE_ENERGY_FLOOR_HOLD',reason:'محرك التغذية الآلي احتفظ بسعراتك الحالية لأن أي خصم إضافي هيكون أقل من الحد الصحي الآمن لجسمك.'};}
   }
  }
@@ -227,8 +230,7 @@ export function command(input,action,p){
  if(action==='renew_plan'){
   const current=activePlan(s);if(!current)throw Error('مسارك للتمرين فقط.');
   if(current.days.at(-1).date>=currDate)throw Error('الخطة الحالية لسه شغالة؛ الأسبوع الجديد يظهر بعد انتهائها.');
-  const next=makeWeek(s.profile,s.preferences,library,currDate,crypto.randomUUID());next.created_at=isoNow();next.parent_id=current.id;next.effective_from=currDate;
-  if(s.nutritionAdjustment)retargetPlan(next,s.nutritionAdjustment.energy,s.preferences,currDate,s.profile);
+  const next=makeWeek(s.profile,s.preferences,library,currDate,crypto.randomUUID(),s.nutritionAdjustment?.energy??null);next.created_at=isoNow();next.parent_id=current.id;next.effective_from=currDate;
   s.plans.push(next);s.active_plan_id=next.id;
  }else if(action==='weight'){
   const date=dateForLog(p.date||currDate,s),kg=number(p.kg,35,250,'الوزن');s.weights=s.weights.filter(x=>x.date!==date);s.weights.push({date,kg,source:p.source||'manual',at:isoNow()});

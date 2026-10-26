@@ -1,6 +1,7 @@
 import {usesKg} from './exercise-load.mjs';
 import {dateOffset,FOCUS_LABELS,effectiveSets} from './coaching-shared.mjs';
 import {seedPick} from './coach-messages.mjs';
+import {matchingNutritionDecline} from './nutrition-decisions.mjs';
 const finite=n=>typeof n==='number'&&Number.isFinite(n);
 const num=n=>Math.round(n*10)/10;
 const mean=a=>a.reduce((s,x)=>s+x,0)/a.length;
@@ -41,7 +42,8 @@ export function personalBrief(state,today){
   if(record?.complete&&finite(record.protein)&&finite(target?.protein))options.push(['protein',`البروتين المسجل النهاردة ${num(record.protein)} جم، وهدف خطتك ${num(target.protein)} جم. خلي هدف خطتك مرجعك لباقي الوجبات.`,'complete']);
   if(older.length>=3&&newer.length>=3)options.push(['weight-trend',`متوسط وزنك الأسبوع الحالي ${num(mean(newer.map(x=>x.kg)))} كجم من ${newer.length} قياسات، والسابق ${num(mean(older.map(x=>x.kg)))} من ${older.length}. المتوسط أوضح من قراءة يوم واحد.`,'weight']);
   else if(weights.length)options.push(['weight-coverage',`عندك ${weights.length} قياسات وزن خلال آخر أسبوعين؛ لسه محتاجين ٣ قياسات في كل أسبوع لمقارنة المتوسطات بشكل أوضح.`,'weight']);
-  const selected=seedPick(options,seed+':nutrition-topic');add('nutrition',...selected);
+  const decline=matchingNutritionDecline(state,Date.parse(state.serverNow||today+'T23:59:59Z'),state.profile?.timezone);
+  const selected=decline?[decline.kind==='maintenance'?'maintenance-declined':'calories-declined',decline.kind==='maintenance'?'رفضك السابق للانتقال للتثبيت محفوظ، وهدفك لم يتغير. نراجع التوصية عند تغير بيانات التغذية أو الخطة.':'رفضك السابق لتعديل السعرات محفوظ، وخطتك لم تتغير. نراجع التوصية عند تغير بيانات التغذية أو الخطة.','weight']:seedPick(options,seed+':nutrition-topic');add('nutrition',...selected);
  }
  const ready=state.recovery||{status:'unknown',reasons:[]};
  const now=Date.parse(state.serverNow||today+'T23:59:59Z');

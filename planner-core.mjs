@@ -765,10 +765,27 @@ export function addDays(date, offset) {
   d.setUTCDate(d.getUTCDate() + offset);
   return d.toISOString().slice(0, 10);
 }
-export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
+function planCoverageError(stage,message){
+ return Object.assign(Error(message),{status:400,code:'PLAN_CONSTRAINTS_UNMET',retryable:false,fieldErrors:[{field:'preferences',code:stage,message}]});
+}
+export function makeWeek(profile, prefs, lib, startDate, seed = "1", acceptedEnergy = null) {
   const targets = estimateNeeds(profile),
     p = validatePreferences(prefs, lib),
     slots = daySlots(p.meals, p.diet);
+  // Internal renewal target: fit source portions to the accepted energy while
+  // preserving protein, instead of scaling a newly generated higher-energy week.
+  if(acceptedEnergy!=null){
+    const before=targets.energy;
+    targets.energy=finite(acceptedEnergy,profile.sex==='female'?1200:1400,4200,'السعرات المعدلة');
+    targets.fat=round(targets.fat*targets.energy/before);
+    targets.carbs=round(Math.max(0,targets.energy-targets.protein*4-targets.fat*9)/4);
+    targets.energy_change=round(targets.energy-targets.tdee);
+    if(targets.forecast){
+      const f=targets.forecast,weekly=round(Math.abs(targets.energy_change)*7/7700,2);
+      const center=weekly&&Math.abs(f.target_delta_kg)>=.2?Math.max(1,Math.ceil(Math.abs(f.target_delta_kg)/Math.max(.1,weekly))):0;
+      targets.forecast={...f,daily_energy_delta:targets.energy_change,weekly_rate_kg:targets.energy_change<0?-weekly:weekly,estimated_weeks_min:center?Math.max(1,Math.floor(center*.85)):0,estimated_weeks_max:Math.ceil(center*1.25)};
+    }
+  }
   if(p.diet==='high_protein'){
     const weightBasis=targets.effective_weight??Number(profile.weight);
     const maxFactor=targets.max_protein_factor??1.8;
@@ -799,7 +816,7 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
     fitted = new Map();
   for (const slot of slots)
     if (!pool.some((t) => t.meal_slots.includes(slot.slot)))
-      throw Error(
+      throw planCoverageError('NO_ELIGIBLE_MEAL_FOR_SLOT',
         "مفيش وجبات مناسبة لكل اختياراتك في " +
           {
             breakfast: "الفطار",
@@ -887,7 +904,7 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
       // Variety is a preference within the strict pool. If it removes every
       // eligible option, reconsider that pool with the same nutrient checks.
       if(!candidates.length&&slotPool.length<eligibleSlotPool.length)candidates=rankCandidates(eligibleSlotPool);
-      if(!candidates.length)throw Error('لا يوجد اختيار يحقق حدود النظام لهذا الموعد مع تفضيلاتك. جرّب ميزانية أو مصادر بروتين أخرى.');
+      if(!candidates.length)throw planCoverageError('NO_CANDIDATE_WITHIN_DIET_LIMITS','لا يوجد اختيار يحقق حدود النظام لهذا الموعد مع تفضيلاتك. لم نغيّر اختياراتك أو نحفظ خطة ناقصة.');
       const best = candidates[0];
       const mealFamily = egyptianMealFamily(best.t, lib, p.region);
       counts.set(mealFamily, (counts.get(mealFamily) || 0) + 1);
@@ -958,7 +975,7 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1") {
     assertDietDay(meals.map(m=>m.snapshot),p.diet,targets);
     const summary = sumSnapshots(meals.map((m) => m.snapshot));
     const quality=nutritionQualityIssues(summary,targets);
-    if(quality.length)throw Error('المكتبة الحالية لا تحقق حدود السعرات والبروتين مع كل اختياراتك. جرّب مصادر بروتين أو ميزانية أو عدد وجبات مختلف؛ لم نغيّر القيود أو نحفظ خطة ناقصة.');
+    if(quality.length)throw planCoverageError('NUTRIENT_TARGETS_UNMET','البحث الحالي لم يصل لخطة تحقق حدود السعرات والبروتين مع كل اختياراتك. لم نغيّر القيود أو نحفظ خطة ناقصة.');
     const checks = assessDay(summary, targets);
     if (checks.length)
       warnings.push({ date: addDays(startDate, day), messages: checks });

@@ -1057,7 +1057,7 @@ components:
           description: Legacy human-readable Arabic error message
         code:
           type: string
-          description: Stable machine-readable error code for KMM localization
+          description: Stable machine-readable error code for KMM localization. PLAN_CONSTRAINTS_UNMET is a non-retryable 400 for finite plan coverage/search failures; it does not prove mathematical infeasibility.
         message:
           type: string
         fieldErrors:
@@ -1069,6 +1069,7 @@ components:
                 type: string
               code:
                 type: string
+                description: Plan coverage stages include NO_ELIGIBLE_MEAL_FOR_SLOT, NO_CANDIDATE_WITHIN_DIET_LIMITS, and NUTRIENT_TARGETS_UNMET.
               message:
                 type: string
         requestId:
