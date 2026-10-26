@@ -1,0 +1,380 @@
+[
+  {
+    "id": "user-009",
+    "draft": {
+      "name": "مشارك افتراضي 9",
+      "age": 63,
+      "sex": "male",
+      "height": 167,
+      "weight": 94,
+      "targetWeight": 84,
+      "goal": "lose",
+      "goalPace": "slow",
+      "serviceTrack": "nutrition_and_workouts",
+      "dailyActivity": "sedentary",
+      "dietType": "keto",
+      "region": "levant",
+      "timezone": "Asia/Amman",
+      "budget": "low",
+      "mealsCount": 5,
+      "selectedWorkoutDays": [
+        0,
+        1,
+        2,
+        4,
+        5,
+        6
+      ],
+      "workoutDaysCount": 6,
+      "weekdayConvention": "js_sunday_0",
+      "fitnessLevel": "beginner",
+      "sessionDuration": 30,
+      "workoutLocation": "gym_only",
+      "homeEquipment": [
+        "resistance_bands",
+        "yoga_mat"
+      ],
+      "dayLocations": {
+        "0": "home",
+        "1": "gym",
+        "2": "home",
+        "4": "gym",
+        "5": "home",
+        "6": "gym"
+      },
+      "workoutSplitPreference": "upper_lower",
+      "injuries": [],
+      "diseases": [],
+      "healthConfirmed": true,
+      "excludedGroups": [],
+      "eatingStart": "10:00"
+    }
+  },
+  {
+    "id": "user-017",
+    "draft": {
+      "name": "مشارك افتراضي 17",
+      "age": 39,
+      "sex": "male",
+      "height": 189,
+      "weight": 97.4,
+      "targetWeight": 83.8,
+      "goal": "lose",
+      "goalPace": "moderate",
+      "serviceTrack": "nutrition_and_workouts",
+      "dailyActivity": "sedentary",
+      "dietType": "vegan",
+      "region": "egypt",
+      "timezone": "Africa/Cairo",
+      "budget": "high",
+      "mealsCount": 2,
+      "selectedWorkoutDays": [
+        1,
+        2,
+        3,
+        5,
+        6
+      ],
+      "workoutDaysCount": 5,
+      "weekdayConvention": "js_sunday_0",
+      "fitnessLevel": "intermediate",
+      "sessionDuration": 60,
+      "workoutLocation": "gym_only",
+      "homeEquipment": [
+        "dumbbells",
+        "bench"
+      ],
+      "dayLocations": {
+        "1": "home",
+        "2": "gym",
+        "3": "home",
+        "5": "gym",
+        "6": "home"
+      },
+      "workoutSplitPreference": "upper_lower",
+      "injuries": [],
+      "diseases": [],
+      "healthConfirmed": true,
+      "excludedGroups": [],
+      "eatingStart": "10:00"
+    }
+  },
+  {
+    "id": "user-018",
+    "draft": {
+      "name": "مشارك افتراضي 18",
+      "age": 52,
+      "sex": "female",
+      "height": 167,
+      "weight": 100.1,
+      "targetWeight": 100.1,
+      "goal": "muscle_gain",
+      "goalPace": "slow",
+      "serviceTrack": "nutrition_and_workouts",
+      "dailyActivity": "active",
+      "dietType": "keto",
+      "region": "egypt",
+      "timezone": "Africa/Cairo",
+      "budget": "low",
+      "mealsCount": 5,
+      "selectedWorkoutDays": [
+        0,
+        1,
+        2,
+        4,
+        5
+      ],
+      "workoutDaysCount": 5,
+      "weekdayConvention": "js_sunday_0",
+      "fitnessLevel": "beginner",
+      "sessionDuration": 90,
+      "workoutLocation": "gym_only",
+      "homeEquipment": [
+        "none"
+      ],
+      "dayLocations": {
+        "0": "home",
+        "1": "gym",
+        "2": "home",
+        "4": "gym",
+        "5": "home"
+      },
+      "workoutSplitPreference": "full_body",
+      "injuries": [],
+      "diseases": [],
+      "healthConfirmed": true,
+      "excludedGroups": [],
+      "eatingStart": "13:00"
+    }
+  },
+  {
+    "id": "user-047",
+    "draft": {
+      "name": "مشارك افتراضي 47",
+      "age": 20,
+      "sex": "male",
+      "height": 186,
+      "weight": 93.7,
+      "targetWeight": 93.7,
+      "goal": "maintain",
+      "goalPace": "slow",
+      "serviceTrack": "nutrition_and_workouts",
+      "dailyActivity": "light",
+      "dietType": "low_carb",
+      "region": "maghreb",
+      "timezone": "Africa/Casablanca",
+      "budget": "low",
+      "mealsCount": 5,
+      "selectedWorkoutDays": [
+        0,
+        4
+      ],
+      "workoutDaysCount": 2,
+      "weekdayConvention": "js_sunday_0",
+      "fitnessLevel": "beginner",
+      "sessionDuration": 20,
+      "workoutLocation": "gym_only",
+      "homeEquipment": [
+        "dumbbells",
+        "bench"
+      ],
+      "dayLocations": {
+        "0": "home",
+        "4": "gym"
+      },
+      "workoutSplitPreference": "full_body",
+      "injuries": [],
+      "diseases": [],
+      "healthConfirmed": true,
+      "excludedGroups": [],
+      "eatingStart": "12:00"
+    }
+  },
+  {
+    "id": "user-054",
+    "draft": {
+      "name": "مشارك افتراضي 54",
+      "age": 29,
+      "sex": "male",
+      "height": 186,
+      "weight": 81.2,
+      "targetWeight": 84.7,
+      "goal": "muscle_gain",
+      "goalPace": "moderate",
+      "serviceTrack": "nutrition_and_workouts",
+      "dailyActivity": "sedentary",
+      "dietType": "keto",
+      "region": "gulf",
+      "timezone": "Asia/Riyadh",
+      "budget": "low",
+      "mealsCount": 4,
+      "selectedWorkoutDays": [
+        1,
+        5
+      ],
+      "workoutDaysCount": 2,
+      "weekdayConvention": "js_sunday_0",
+      "fitnessLevel": "intermediate",
+      "sessionDuration": 90,
+      "workoutLocation": "home_and_gym",
+      "homeEquipment": [
+        "resistance_bands",
+        "yoga_mat"
+      ],
+      "dayLocations": {
+        "1": "home",
+        "5": "gym"
+      },
+      "workoutSplitPreference": "full_body",
+      "injuries": [],
+      "diseases": [],
+      "healthConfirmed": true,
+      "excludedGroups": [],
+      "eatingStart": "12:00"
+    }
+  },
+  {
+    "id": "user-063",
+    "draft": {
+      "name": "مشارك افتراضي 63",
+      "age": 18,
+      "sex": "male",
+      "height": 176,
+      "weight": 87.9,
+      "targetWeight": 87.9,
+      "goal": "maintain",
+      "goalPace": "moderate",
+      "serviceTrack": "nutrition_and_workouts",
+      "dailyActivity": "light",
+      "dietType": "keto",
+      "region": "maghreb",
+      "timezone": "Africa/Casablanca",
+      "budget": "low",
+      "mealsCount": 4,
+      "selectedWorkoutDays": [
+        1,
+        5
+      ],
+      "workoutDaysCount": 2,
+      "weekdayConvention": "js_sunday_0",
+      "fitnessLevel": "advanced",
+      "sessionDuration": 90,
+      "workoutLocation": "gym_only",
+      "homeEquipment": [
+        "dumbbells",
+        "pullup_bar",
+        "bench"
+      ],
+      "dayLocations": {
+        "1": "home",
+        "5": "gym"
+      },
+      "workoutSplitPreference": "full_body",
+      "injuries": [],
+      "diseases": [],
+      "healthConfirmed": true,
+      "excludedGroups": [],
+      "eatingStart": "10:00"
+    }
+  },
+  {
+    "id": "user-074",
+    "draft": {
+      "name": "مشارك افتراضي 74",
+      "age": 55,
+      "sex": "male",
+      "height": 179,
+      "weight": 80.3,
+      "targetWeight": 80.3,
+      "goal": "muscle_gain",
+      "goalPace": "slow",
+      "serviceTrack": "nutrition_and_workouts",
+      "dailyActivity": "sedentary",
+      "dietType": "low_carb",
+      "region": "levant",
+      "timezone": "Asia/Amman",
+      "budget": "low",
+      "mealsCount": 3,
+      "selectedWorkoutDays": [
+        1,
+        2,
+        3,
+        5,
+        6
+      ],
+      "workoutDaysCount": 5,
+      "weekdayConvention": "js_sunday_0",
+      "fitnessLevel": "intermediate",
+      "sessionDuration": 60,
+      "workoutLocation": "gym_only",
+      "homeEquipment": [
+        "resistance_bands",
+        "yoga_mat"
+      ],
+      "dayLocations": {
+        "1": "home",
+        "2": "gym",
+        "3": "home",
+        "5": "gym",
+        "6": "home"
+      },
+      "workoutSplitPreference": "ppl",
+      "injuries": [],
+      "diseases": [],
+      "healthConfirmed": true,
+      "excludedGroups": [],
+      "eatingStart": "12:00"
+    }
+  },
+  {
+    "id": "user-092",
+    "draft": {
+      "name": "مشارك افتراضي 92",
+      "age": 61,
+      "sex": "female",
+      "height": 168,
+      "weight": 94.6,
+      "targetWeight": 100.1,
+      "goal": "gain",
+      "goalPace": "moderate",
+      "serviceTrack": "nutrition_and_workouts",
+      "dailyActivity": "sedentary",
+      "dietType": "low_carb",
+      "region": "levant",
+      "timezone": "Asia/Amman",
+      "budget": "low",
+      "mealsCount": 2,
+      "selectedWorkoutDays": [
+        0,
+        2,
+        3,
+        5
+      ],
+      "workoutDaysCount": 4,
+      "weekdayConvention": "js_sunday_0",
+      "fitnessLevel": "intermediate",
+      "sessionDuration": 20,
+      "workoutLocation": "home_only",
+      "homeEquipment": [
+        "dumbbells",
+        "bench"
+      ],
+      "dayLocations": {
+        "0": "home",
+        "2": "gym",
+        "3": "home",
+        "5": "gym"
+      },
+      "workoutSplitPreference": "auto",
+      "injuries": [],
+      "diseases": [
+        "anemia"
+      ],
+      "healthConfirmed": true,
+      "excludedGroups": [
+        "fish"
+      ],
+      "eatingStart": "13:00"
+    }
+  }
+]

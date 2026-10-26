@@ -976,16 +976,17 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy) {
     // a feasible four-meal day before the remaining meals were repaired.
     const repairBudget=meals.length*2;
     for(let repair=0;repair<repairBudget&&needsNutritionImprovement(sumSnapshots(meals.map(m=>m.snapshot)),targets);repair++){
-      let best=null,current=nutritionObjective(sumSnapshots(meals.map(m=>m.snapshot)),targets);
-      const gap=Math.max(0,targets.protein-Number(sumSnapshots(meals.map(m=>m.snapshot)).values.protein));
-      for(const meal of meals)for(const template of pool.filter(t=>t.meal_slots.includes(meal.slot))){
-        const desiredProtein=meal.target_protein+gap/Math.max(1,meals.length-1),key=template.id+'|repair|'+meal.target_energy+'|'+Math.round(desiredProtein);
-        if(!fitted.has(key))fitted.set(key,fitMeal(template,meal.target_energy,desiredProtein,lib));
+      const currentSummary=sumSnapshots(meals.map(m=>m.snapshot));
+      let best=null,current=repairObjective(currentSummary,targets);
+      const gap=Math.max(0,targets.protein-Number(currentSummary.values.protein));
+      for(const meal of meals)for(const template of pool.filter(t=>t.meal_slots.includes(meal.slot)))for(const desiredEnergy of new Set([meal.target_energy,Math.max(1,targets.energy-Number(currentSummary.values.energy)+Number(meal.snapshot.values.energy))])){
+        const desiredProtein=meal.target_protein+gap/Math.max(1,meals.length-1),key=template.id+'|repair|'+desiredEnergy+'|'+desiredProtein;
+        if(!fitted.has(key))fitted.set(key,fitMeal(template,desiredEnergy,desiredProtein,lib));
         const snapshot=fitted.get(key),snapshots=meals.map(m=>m===meal?snapshot:m.snapshot);
         try{assertDietDay(snapshots,p.diet,targets);}catch{continue;}
         // Never trade an already valid day for a lower-scoring invalid one.
-        if(!nutritionQualityIssues(sumSnapshots(meals.map(m=>m.snapshot)),targets).length&&nutritionQualityIssues(sumSnapshots(snapshots),targets).length)continue;
-        const score=nutritionObjective(sumSnapshots(snapshots),targets);
+        if(!nutritionQualityIssues(currentSummary,targets).length&&nutritionQualityIssues(sumSnapshots(snapshots),targets).length)continue;
+        const score=repairObjective(sumSnapshots(snapshots),targets);
         if(score<current){best={meal,snapshot};current=score;}
       }
       if(!best)break;best.meal.snapshot=copy(best.snapshot);
@@ -1021,6 +1022,10 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy) {
 function nutritionObjective(summary,targets){
  const energy=Number(summary.values.energy),protein=Number(summary.values.protein);
  return Math.abs(energy-targets.energy)/targets.energy*5+Math.max(0,targets.protein-protein)/Math.max(1,targets.protein)*3;
+}
+function repairObjective(summary,targets){
+ const e=Math.abs(Number(summary.values.energy)-targets.energy)/targets.energy,p=Number(summary.values.protein)/Math.max(1,targets.protein);
+ return 10000*(Math.max(0,e-.15)+Math.max(0,.8-p))+100*(Math.max(0,e-.12)+Math.max(0,.85-p))+nutritionObjective(summary,targets);
 }
 function needsNutritionImprovement(summary,targets){
  return nutritionQualityIssues(summary,targets).length>0||Number(summary.values.protein)<targets.protein*.85||Math.abs(Number(summary.values.energy)-targets.energy)>targets.energy*.12;

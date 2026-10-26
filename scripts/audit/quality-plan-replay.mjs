@@ -10,21 +10,29 @@ import {library} from '../../server/food.mjs';
 import {independentPlanIssues} from './scenario-http.mjs';
 import {sourceProvenance,sha256} from './evidence.mjs';
 
-const [root,output,baselineRef]=process.argv.slice(2);
+const [root,output,baselineRef,baselineSourceRoot]=process.argv.slice(2);
 if(!root||!output||!baselineRef)throw Error('Usage: quality-plan-replay.mjs <completed-run> <new-output-directory> <baseline-git-ref>');
 if(fs.existsSync(output))throw Error('Preserve previous evidence');
 const read=p=>JSON.parse(fs.readFileSync(path.join(root,p)));
 if(read('manifest.json').status!=='complete')throw Error('Completed archive required');
 fs.mkdirSync(output,{recursive:true});
-const oldSource=execFileSync('git',['show',baselineRef+':planner-core.mjs'],{encoding:'utf8'});
+const gitShow=spec=>execFileSync('git',['show',spec],{encoding:'utf8',maxBuffer:32*1024*1024});
+const oldSource=gitShow(baselineRef+':planner-core.mjs');
 const relocated=oldSource.replace(/from\s*(['"])(\.[^'"]+)\1/g,(_,q,p)=>'from '+q+pathToFileURL(path.resolve(p)).href+q);
-const oldPath=path.resolve(output,'baseline-planner.mjs');fs.writeFileSync(oldPath,relocated);
+const oldPath=baselineSourceRoot?path.resolve(baselineSourceRoot,'planner-core.mjs'):path.resolve(output,'baseline-planner.mjs');
+if(baselineSourceRoot){
+ for(const file of ['planner-core.mjs','diet-patterns.mjs','data/planning-library.json','planner-household.mjs','planner-exclusions.mjs']){
+  const expected=gitShow(baselineRef+':'+file).replace(/\r\n/g,'\n');
+  if(fs.readFileSync(path.join(baselineSourceRoot,file),'utf8').replace(/\r\n/g,'\n')!==expected)throw Error('Frozen baseline differs from requested Git revision: '+file);
+ }
+}else fs.writeFileSync(oldPath,relocated);
 const oldMakeWeek=(await import(pathToFileURL(oldPath).href)).makeWeek;
+const baselineLibrary=baselineSourceRoot?JSON.parse(fs.readFileSync(path.join(baselineSourceRoot,'data/planning-library.json'))):library;
 const rows=[],failures=[],config=read('simulation_config.json');let sourceDays=0;
-function measure(make,p){
+function measure(make,p,lib=library){
  try{
-  const plan=make(p.profile,p.preferences,library,p.start_date,p.id.slice(5),p.targets.energy);
-  const issues=independentPlanIssues(plan,library);
+  const plan=make(p.profile,p.preferences,lib,p.start_date,p.id.slice(5),p.targets.energy);
+  const issues=independentPlanIssues(plan,lib);
   return {supported:true,issues,days:plan.days.length,proteinGapDays:plan.days.filter(d=>Number(d.summary.values.protein)<d.targets.protein*.85).length,energyGapDays:plan.days.filter(d=>Math.abs(Number(d.summary.values.energy)-d.targets.energy)>d.targets.energy*.12).length};
  }catch(e){return {supported:false,error:e.code||e.message};}
 }
@@ -34,7 +42,7 @@ for(const user of read('cohort.json')){
   const b=JSON.parse(gunzipSync(fs.readFileSync(path.join(root,'users',user.userId,'days',String(day).padStart(3,'0')+'.json.gz'))));sourceDays++;
   for(const p of b.state.plans||[]){
    if(seen.has(p.id))continue;seen.add(p.id);
-   const before=measure(oldMakeWeek,p),after=measure(makeWeek,p);
+   const before=measure(oldMakeWeek,p,baselineLibrary),after=measure(makeWeek,p);
    const row={userId:user.userId,planId:p.id,inputSha256:sha256(JSON.stringify({profile:p.profile,preferences:p.preferences,start:p.start_date,energy:p.targets.energy})),before,after};rows.push(row);
    if(before.supported&&!after.supported)failures.push({userId:user.userId,planId:p.id,code:'SUPPORT_REGRESSION'});
    if(after.supported&&after.issues.length)failures.push({userId:user.userId,planId:p.id,code:'INDEPENDENT_PLAN_INVALID',issues:after.issues});
@@ -44,7 +52,7 @@ for(const user of read('cohort.json')){
  console.log(JSON.stringify({user:user.userId,plans:rows.length,failures:failures.length}));
 }
 const totals=side=>rows.reduce((a,r)=>{const v=r[side];a.supported+=Number(v.supported);a.rejected+=Number(!v.supported);for(const k of ['days','proteinGapDays','energyGapDays'])a[k]+=v[k]||0;return a;},{supported:0,rejected:0,days:0,proteinGapDays:0,energyGapDays:0});
-const result={scope:'PAIRED_SOLVER_REPLAY_NOT_LONGITUDINAL_HTTP',baselineRef,baselineSourceSha256:sha256(oldSource),provenance:sourceProvenance(),sourceDays,plans:rows.length,before:totals('before'),after:totals('after'),passed:!failures.length,failures,rows,limitations:['Replays stored solver inputs at stored energy, including derived snapshots; does not reproduce the original adaptation or user trajectory.','Baseline planner imports current shared dependencies; only planner-core.mjs differs in this comparison.','Strict 85% / +/-12% metrics remain distinct from implemented acceptance bounds.']};
+const result={scope:'PAIRED_SOLVER_REPLAY_NOT_LONGITUDINAL_HTTP',baselineRef,baselineSourceSha256:sha256(oldSource),provenance:sourceProvenance(),sourceDays,plans:rows.length,before:totals('before'),after:totals('after'),passed:!failures.length,failures,rows,limitations:['Replays stored solver inputs at stored energy, including derived snapshots; does not reproduce the original adaptation or user trajectory.',baselineSourceRoot?'Baseline planner and library use the frozen source tree; five changed runtime/data files are checked against the requested Git revision.':'Baseline planner imports current shared dependencies; only planner-core.mjs differs in this comparison.','Strict 85% / +/-12% metrics remain distinct from implemented acceptance bounds.']};
 fs.writeFileSync(path.join(output,'comparison.json'),JSON.stringify(result,null,2)+'\n');
 console.log(JSON.stringify({passed:result.passed,plans:result.plans,before:result.before,after:result.after,failures}));
 if(!result.passed)process.exitCode=1;

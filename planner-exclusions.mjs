@@ -23,7 +23,7 @@ export const EXCLUSIONS = [
     "legumes",
     "كل البقوليات",
     "البروتين والبقول",
-    ["fava", "lentils", "chickpeas", "kidney", "whitebeans"],
+    ["fava", "lentils", "chickpeas", "kidney", "whitebeans", "soybeans"],
     ["فول", "عدس", "حمص", "فاصوليا", "beans", "lentils", "chickpeas"],
   ),
   row(
@@ -34,6 +34,7 @@ export const EXCLUSIONS = [
     ["فول", "fava", "broad beans"],
   ),
   row("lentils", "العدس", "البروتين والبقول", ["lentils"], ["عدس", "lentils"]),
+  row("soy", "الصويا", "البروتين والبقول", ["soybeans"], ["صويا", "فول صويا", "soy", "soybeans"]),
   row(
     "chickpeas",
     "الحمص",

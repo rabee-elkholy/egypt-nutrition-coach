@@ -10,4 +10,9 @@ test('missing measured DASH sodium is a diet candidate limit error, without inve
  const missing={...library,ingredients:Object.fromEntries(Object.entries(library.ingredients).map(([k,v])=>[k,{...v,values:{...v.values,sodium:null}}]))};
  rejection(()=>makeWeek(profile,{...prefs,diet:'dash',proteins:['legumes','nuts','eggs','dairy','chicken','fish','meat']},missing,'2026-10-24','missing-sodium'),'NO_CANDIDATE_WITHIN_DIET_LIMITS');
 });
-test('finite target search failure is distinguished from an empty recipe library',()=>rejection(()=>makeWeek(profile,prefs,library,'2026-10-24','vegan-coverage-original'),'NUTRIENT_TARGETS_UNMET'));
+test('nonempty pool with injected zero protein returns target-fit failure rather than empty-library error',()=>{
+ // The original vegan persona is now supported. Preserve this error contract
+ // using explicit nutrient fault injection rather than expecting that old bug.
+ const insufficient={...library,ingredients:Object.fromEntries(Object.entries(library.ingredients).map(([k,v])=>[k,{...v,values:{...v.values,protein:'0'}}]))};
+ rejection(()=>makeWeek(profile,prefs,insufficient,'2026-10-24','zero-protein-control'),'NUTRIENT_TARGETS_UNMET');
+});

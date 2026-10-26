@@ -1,0 +1,50 @@
+{
+  "id": "user-089-final-renewal-gap",
+  "profile": {
+    "weekdayConvention": "js_sunday_0",
+    "name": "مشارك افتراضي 89",
+    "age": 42,
+    "weight": 84,
+    "height": 155,
+    "sex": "female",
+    "goal": "lose",
+    "targetWeight": 74.4,
+    "goalPace": "slow",
+    "activity": "sedentary",
+    "timezone": "Asia/Amman",
+    "locale": "ar-EG",
+    "trainingDays": 6,
+    "workoutDays": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "externalTrainingDays": [],
+    "diseases": [],
+    "maternalStatus": "none",
+    "ketoAcknowledged": false,
+    "fastingAcknowledged": false,
+    "recomposition": false
+  },
+  "preferences": {
+    "diet": "vegan",
+    "fasting": "none",
+    "eatingStart": "12:00",
+    "region": "levant",
+    "budget": "low",
+    "meals": 4,
+    "proteins": [
+      "legumes",
+      "nuts"
+    ],
+    "excludedKeys": [],
+    "excludedFoodIds": [],
+    "excludedGroups": []
+  },
+  "start": "2026-12-06",
+  "seed": "eea3b662-efa3-47f5-aca3-b33ceda3b4cf",
+  "acceptedEnergy": 1550
+}

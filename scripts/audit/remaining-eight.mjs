@@ -8,6 +8,7 @@ import {library} from '../../server/food.mjs';
 import {planningTemplates,prepareTemplate,daySlots} from '../../planner-core.mjs';
 
 const [source,output]=process.argv.slice(2);
+const requireSupported=process.argv.includes('--require-supported');
 if(!source||!output)throw Error('Usage: remaining-eight.mjs <original-complete-run> <new-output>');
 const cohort=JSON.parse(fs.readFileSync(path.join(source,'cohort.json'))),config=JSON.parse(fs.readFileSync(path.join(source,'simulation_config.json')));
 const ids=['009','017','018','047','054','063','074','092'].map(n=>'user-'+n),runtime=await scenarioRuntime(output,'REMAINING_EIGHT_EXACT_HTTP_AND_FIXED_SEED_MATRIX');
@@ -31,11 +32,13 @@ try{
     const plan=c.state.plans.find(p=>p.id===c.state.active_plan_id),issues=independentPlanIssues(plan,library);
     row.planIssues=issues;check(id+':seed:'+seed+':valid-plan',issues.length===0,{issues});
     check(id+':seed:'+seed+':unchanged-preferences',JSON.stringify(c.state.preferences)===JSON.stringify(normalized.preferences));
+    if(requireSupported)check(id+':seed:'+seed+':strict-quality',plan.days.every(d=>Number(d.summary.values.protein)>=d.targets.protein*.85&&Math.abs(Number(d.summary.values.energy)-d.targets.energy)<=d.targets.energy*.12));
    }else{
     check(id+':seed:'+seed+':no-partial-account',c.state.profile===null&&c.state.revision===0&&(c.state.plans||[]).length===0);
     check(id+':seed:'+seed+':actionable-coverage-contract',result.response.code==='PLAN_CONSTRAINTS_UNMET'&&result.response.retryable===false&&result.response.fieldErrors?.some(e=>['NO_ELIGIBLE_MEAL_FOR_SLOT','NO_CANDIDATE_WITHIN_DIET_LIMITS','NUTRIENT_TARGETS_UNMET'].includes(e.code)));
    }
-   if(seed===0)check(id+':original-rejection-reproduced',result.status===400);
+   if(requireSupported)check(id+':seed:'+seed+':coverage-fixed',result.status===200);
+   else if(seed===0)check(id+':original-rejection-reproduced',result.status===400);
   }
   // Explicit diagnostic counterfactual: NEVER applied to an original user's account.
   if(entry.budget==='low')for(const budget of ['medium','high']){
@@ -44,7 +47,7 @@ try{
    check(id+':budget:'+budget+':no-server-error',result.status<500);
    if(result.status===200){const issues=independentPlanIssues(c.state.plans.find(p=>p.id===c.state.active_plan_id),library);check(id+':budget:'+budget+':valid-plan',issues.length===0,{issues});}
   }
-  entry.classification=Object.values(structural.slots).some(s=>s.afterPreferences===0)?'EMPTY_ELIGIBLE_SLOT_LIBRARY':entry.seeds.some(s=>s.status===200)?'SEED_SENSITIVE_SEARCH_FAILURE':'BOUNDED_SEARCH_OR_PORTION_COVERAGE_UNRESOLVED';
+  entry.classification=entry.seeds.every(s=>s.status===200)?'SUPPORTED_ON_ALL_TESTED_SEEDS':Object.values(structural.slots).some(s=>s.afterPreferences===0)?'EMPTY_ELIGIBLE_SLOT_LIBRARY':entry.seeds.some(s=>s.status===200)?'SEED_SENSITIVE_SEARCH_FAILURE':'BOUNDED_SEARCH_OR_PORTION_COVERAGE_UNRESOLVED';
   console.log(JSON.stringify({userId:id,classification:entry.classification,originalStatus:entry.seeds[0].status,seedSuccesses:entry.seeds.filter(s=>s.status===200).length,budgetCounterfactuals:entry.budgetCounterfactuals.map(c=>({budget:c.budget,status:c.status}))}));
  }
  report.summary={profiles:report.users.length,seedAttempts:report.users.reduce((s,u)=>s+u.seeds.length,0),seedSuccesses:report.users.reduce((s,u)=>s+u.seeds.filter(p=>p.status===200).length,0),classifications:report.users.reduce((a,u)=>(a[u.classification]=(a[u.classification]||0)+1,a),{})};

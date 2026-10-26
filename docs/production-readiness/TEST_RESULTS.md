@@ -47,3 +47,11 @@ The bounded repair and strict-pool variety fixes are later than the d86f3a8 full
 One newly supported vegan case at c63009e passes 90 days / 317 HTTP requests / 72 note checks / 15 persisted nutrition transitions. Three newly supported contexts at 743cebd pass **270 days / 881 HTTP requests / 189 note checks / 44 persisted nutrition transitions**. All targeted source/artifact/factual/history checks pass. They are not another full 100×90 result.
 
 Post-planner domain stress initially failed 19/20 because an old case demanded rejection of a now-feasible DASH profile. The replacement requires successful generation and independently recomputes canonical measured sodium for all seven days; missing evidence and excessive quantities fail. A rejection does not pass that case. Two dedicated oracle tests pass; corrected domain stress is 20/20. Latest complete build/data/Node check: **241 pass, zero fail/skip**. HTTP stress remains 31 PASS / 0 FAIL / 1 NOT_TESTED. No assertion or safety bound was loosened to accept an invalid plan; the obsolete rejection premise and failed execution remain documented.
+
+## Final coverage & longitudinal verification — 2026-10-26
+
+- `coverage-final-check-20261026`: `npm.cmd run check` passes **276 tests (`0` fail, `0` skip)**, including `tests/planner-food-coverage.test.mjs`, `tests/planner-quality-improvement.test.mjs`, `tests/nutrition-decision-memory.test.mjs`, and `tests/plan-coverage-errors.test.mjs`.
+- `coverage-eight-fixed-20261026`: 8 profiles × 12 seeds = **96 / 96** seed attempts passing (`214` HTTP events, `508` checks, `0` failed checks).
+- `coverage-all100-20261026`: **100 / 100** cohort profiles succeed on exact initial HTTP replay (`300` HTTP requests, `0` rejections, `0` regressions).
+- `coverage-archived-plans-v2-20261026`: **1,268 / 1,268** archived cohort plans (`8,876` plan days) succeed with **0** strict protein-gap days and **0** strict energy-gap days.
+- `coverage-user-{009,017,018,047,054,063,074,092}-90day-20261026` (+ `verify`, `facts`, `history`): **8 × 90 = 720** distinct user-dates, **2,503** HTTP operations, **480** fact-checked coaching notes, and **117** D1 nutrition snapshots/transitions, all passing with `0` failures.

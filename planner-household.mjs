@@ -1,4 +1,6 @@
 const FALLBACK_UNITS={
+ soybeans:['كوب',172,.25,'6ef6a66f-c0c8-400f-b846-9abe3d39b058','1 cup undetermined'],
+ sunfloweroil:['ملعقة صغيرة',4.5,.5,'64744054-d657-434c-9e68-92c8123bc2cc','1 tsp undetermined'],
  fava:['كوب',170,.25,'ae4eade3-1b20-4bb2-a26c-f2e772c4d2fb','1 cup undetermined'],
  lentils:['كوب',198,.25,'759a8573-b676-4da4-9110-d4ff4d2bbe48','1 cup undetermined'],
  chickpeas:['كوب',164,.25,'3983d435-15b2-4312-bae4-a64f8cb9a6b6','1 cup undetermined'],
@@ -138,6 +140,7 @@ export function displayPortion(i){
  if(['almonds','peanuts','walnuts','cashews'].includes(i.key))return pick(/^1 oz/i,'حفنة يد متوسطة',.5);
  if(i.key==='peanutbutter')return pick(/^2 tbsp/i,'ملعقة كبيرة',.5,.5);
  if(['tahini','honey'].includes(i.key))return pick(/^1 (tbsp|tablespoon)/i,'ملعقة كبيرة',.5);
+ if(i.key==='sunfloweroil')return pick(/^1 tsp/i,'ملعقة صغيرة',.5);
  if(i.key==='olive')return Number(i.grams)>=10?(pick(/^1 (tbsp|tablespoon)/i,'ملعقة كبيرة',.5)||pick(/^1 (tsp|teaspoon)/i,'ملعقة صغيرة',.5)):(pick(/^1 (tsp|teaspoon)/i,'ملعقة صغيرة',.5)||pick(/^1 (tbsp|tablespoon)/i,'ملعقة كبيرة',.5));
  if(i.key==='cucumber')return pick(/^0\.5 cup/i,'حبة متوسطة',.5,2)||pick(/^1 cucumber/i,'حبة متوسطة',.5);
  if(i.key==='mango')return pick(/^1 cup pieces/i,'حبة متوسطة',.5)||pick(/^1 fruit/i,'حبة متوسطة',.5);

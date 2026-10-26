@@ -243,7 +243,7 @@ test('SPEC-AUTO-COMPLETION: logging planned meals requires explicit day confirma
   assert.equal(sess.status, 'completed');
 });
 
-test('SPEC-HOUSEHOLD-PORTIONS: all 86 ingredients have rounded household labels and 1.2x snaps cleanly without decimals', async () => {
+test('SPEC-HOUSEHOLD-PORTIONS: all planning ingredients have rounded household labels and 1.2x snaps cleanly without decimals', async () => {
   const { householdQuantity, displayPortion } = await import('../planner-household.mjs');
   for (const [key, item] of Object.entries(library.ingredients)) {
     const unit = displayPortion(item);

@@ -8,8 +8,9 @@ import {independentPlanIssues} from '../scripts/audit/scenario-http.mjs';
 // Exact initial HTTP inputs/seeds: 15 protein-gap days and one energy-gap day
 // at 8ac9c4a despite passing the existing 80% / +/-15% acceptance boundaries.
 const fixtures=JSON.parse(fs.readFileSync(new URL('./fixtures/nutrition-quality-regressions.json',import.meta.url)));
+fixtures.push(JSON.parse(fs.readFileSync(new URL('./fixtures/nutrition-final-gap.json',import.meta.url))));
 for(const f of fixtures)test('available tighter-quality week: '+f.id,()=>{
- const before=JSON.stringify(f),plan=makeWeek(f.profile,f.preferences,library,f.start,f.seed);
+ const before=JSON.stringify(f),plan=makeWeek(f.profile,f.preferences,library,f.start,f.seed,f.acceptedEnergy??null);
  assert.equal(JSON.stringify(f),before);assert.equal(plan.id,'plan-'+f.seed);
  assert.deepEqual(plan.preferences,f.preferences);
  assert.deepEqual(independentPlanIssues(plan,library),[]);

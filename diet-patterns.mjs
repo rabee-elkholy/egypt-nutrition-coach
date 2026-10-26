@@ -37,7 +37,7 @@ const ketoKeys=new Set([
   'egg','friedegg','eggwhite','chicken','chickenboiled','chickenthigh','turkey','shawarma_chicken','shawarma_beef',
   'fish','seabass','tuna','salmon','shrimp','beef','lamb','liver',
   'feta','mozzarella','cottage','greekyogurt','yogurt',
-  'olive','tahini','almonds','peanuts','peanutbutter','walnuts','avocado',
+  'olive','sunfloweroil','tahini','almonds','peanuts','peanutbutter','walnuts','avocado',
   'cucumber','lettuce','spinach','broccoli','zucchini','pepper','lemon','parsley','tomato','tomatocooked','onion','garlic','eggplant','greenbeans','cabbage','babaghanouj'
 ]);
 
@@ -95,7 +95,7 @@ export function isDietUnsafeForProfile(diet, profile={}){
 
 export function dietTemplates(base,lib,diet='balanced',region='egypt'){
   if(['balanced','intermittent_fasting','high_protein','vegetarian','vegan'].includes(diet)){
-    return base.filter(t=>t.items.every(p=>dietIngredientAllowed(lib.ingredients[p.key],diet)));
+    return [...base,...(diet==='vegan'?soyMenus(lib,region):[])].filter(t=>t.items.every(p=>dietIngredientAllowed(lib.ingredients[p.key],diet)));
   }
   if(diet==='low_carb'){
     const lowCarbBase=base.filter(t=>t.items.every(p=>['egg','friedegg','eggwhite','cottage','feta','mozzarella','yogurt','greekyogurt','chicken','chickenboiled','chickenthigh','turkey','shawarma_chicken','shawarma_beef','fish','seabass','tuna','salmon','shrimp','beef','lamb','liver','olive','tahini','peanuts','almonds','walnuts','cashews','peanutbutter','avocado','cucumber','lettuce','tomato','tomatocooked','spinach','broccoli','zucchini','pepper','lemon','parsley','onion','garlic','eggplant','greenbeans','cabbage','okra','carrot','carrotcooked','babaghanouj','tabbouleh','apple','strawberry','guava','pear','melon','watermelon'].includes(p.key)));
@@ -119,6 +119,32 @@ export function dietTemplates(base,lib,diet='balanced',region='egypt'){
   };
   const salad=['سلطة بزيت الزيتون','side',[['cucumber',70,90],['lettuce',50,70],['olive',20,55]]];
   const choices=[];
+  // New economical recipes use a separately sourced cooking oil; do not
+  // relabel olive oil or silently replace ingredients in existing recipes.
+  if(has('sunfloweroil'))for(const [key,name,veg] of [
+    ['eggs-cottage','بيض مسلوق وجبنة قريش وسلطة','cucumber'],
+    ['eggs-spinach','بيض مسلوق وجبنة قريش وسبانخ','spinach'],
+    ['eggs-zucchini','بيض مسلوق وجبنة قريش وكوسة','zucchini']
+  ])choices.push(make('budget-'+key,name,['breakfast','lunch','dinner'],[
+    ['بيض وجبنة قريش','main',[['egg',150,220],['cottage',140,250]]],
+    ['خضار بكمية زيت محسوبة','side',[[veg,70,120],['sunfloweroil',25,35]]],
+    ['طحينة بالليمون','side',[['tahini',15,30],['lemon',10,15]]]
+  ]));
+  if(has('sunfloweroil'))choices.push(make('budget-cottage-snack','جبنة قريش وخيار وفول سوداني',['snack'],[
+    ['جبنة قريش','main',[['cottage',100,180]]],['خيار','side',[['cucumber',70,90]]],
+    ['فول سوداني','other',[['peanuts',20,35]]],['زيت محسوب مع الجبنة','side',[['sunfloweroil',10,15]]]
+  ]));
+  if(has('sunfloweroil'))for(const [veg,label] of [['cucumber','خيار'],['spinach','سبانخ'],['zucchini','كوسة']]){
+    choices.push(make('budget-eggs-'+veg,'بيض مسلوق وجبنة قريش مع '+label,['breakfast','lunch','dinner'],[
+      ['بيض وجبنة قريش','main',[['egg',180,220],['cottage',160,250]]],
+      [label+' بكمية زيت محسوبة','side',[[veg,70,100],['sunfloweroil',30,35]]]
+    ]));
+    choices.push(make('budget-eggs-whites-'+veg,'بيض وبياض بيض مع جبنة قريش و'+label,['breakfast','lunch','dinner'],[
+      ['بيض وبياض بيض مطهو','main',[['egg',150,220],['eggwhite',100,180],['cottage',70,100]]],
+      [label+' بكمية زيت محسوبة','side',[[veg,70,100],['sunfloweroil',30,35]]],
+      ['فول سوداني','other',[['peanuts',25,35]]]
+    ]));
+  }
   for(const [key,name]of [['egg','بيض مسلوق'],['friedegg','بيض عيون']]){
     choices.push(make(key+'-cheese',name+' وجبنة بيضاء وخيار',['breakfast','dinner'],[[name,'main',[[key,120,220],['feta',40,90]]],salad,['لوز','other',[['almonds',15,25]]]]));
     choices.push(make(key+'-tahini',name+' وسلطة بالطحينة',['breakfast','dinner'],[[name,'main',[[key,150,240]]],['سلطة بالطحينة','side',[['cucumber',70,90],['tahini',15,25],['olive',20,55]]]]));
@@ -160,6 +186,19 @@ export function dietTemplates(base,lib,diet='balanced',region='egypt'){
   return choices.filter(Boolean);
 }
 
+function soyMenus(lib,region){
+ if(!lib.ingredients.soybeans)return [];
+ return [
+  ['soy-bulgur','فول صويا مسلوق بالبرغل والخضار','bulgur','tomato'],
+  ['soy-rice','فول صويا مسلوق وأرز بني وخضار','brownrice','zucchini'],
+  ['soy-potato','فول صويا مسلوق وبطاطس وسبانخ','potato','spinach']
+ ].map(([id,name,carb,veg])=>({id:'vegan-'+id,name,meal_slots:['breakfast','lunch','dinner'],regions:[region],budget_tier:'high',dish_family:id,
+  items:[{key:'soybeans',grams:'180',min_g:80,max_g:250,component_id:'main'},
+   {key:carb,grams:'100',component_id:'carb'},{key:veg,grams:'80',component_id:'veg'},
+   {key:'olive',grams:'5',max_g:12,component_id:'veg'}],
+  component_definitions:[{id:'main',name:'فول صويا ناضج مسلوق بدون ملح',role:'main'},{id:'carb',name:lib.ingredients[carb].label,role:'side'},{id:'veg',name:'خضار بزيت محسوب',role:'side'}],
+  editorial_policy_version:'coverage-recipes-1',notes:'حصة مركبة من مراجع المكونات؛ الصويا موزونة بعد السلق الكامل والتصفية، وليست حبوبًا نيئة.'}));
+}
 function regionAllowsKey(ing, region){
   return region==='any'||(ing.regions||[]).includes(region);
 }
