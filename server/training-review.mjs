@@ -8,7 +8,7 @@ export function volumeReview(s,readiness,now=clockNow()){
  const hold=(reason,reasonCode='VOLUME_HOLD')=>({action:'hold',reasonCode,reviewScope:'system_generated_guidance',reason});
  const plan=s.workoutPlan;
  if(needsHealthConfirmation(s)||needsScheduleConfirmation(s))return hold('محرك التدريب الآلي ينتظر تأكيد الجاهزية الصحية قبل زيادة المجموعات.','HEALTH_OR_SCHEDULE_UNCONFIRMED');
- if(!plan||s.profile.goal!=='muscle_gain')return hold('حجم التمرين الحالي مضبوط تماماً لهدفك ومش محتاج زيادة مجموعات دلوقتي.','GOAL_NOT_MUSCLE_GAIN');
+ if(!plan||s.profile.goal!=='muscle_gain')return hold('زيادة المجموعات في المسار الحالي مخصصة لهدف بناء العضلات؛ عدم اقتراح زيادة لا يثبت أن الحجم مثالي.','GOAL_NOT_MUSCLE_GAIN');
  if(readiness.status!=='ready'||!readiness.baselineReady)return hold('محرك التدريب الآلي يتابع استقرار نومك واستشفائك لمدة أسبوع كامل الأول قبل إضافة أي مجموعات جديدة.','RECOVERY_BASELINE_NOT_READY');
  if((s.lastVolumeChange&&now-s.lastVolumeChange<14*86400000)||(s.lastCalorieChange&&now-s.lastCalorieChange<14*86400000))return hold('محرك المتابعة الآلي بيراقب استجابة جسمك لآخر تعديل لمدة أسبوعين قبل إضافة حمل جديد.','COOLDOWN_14D');
  const from=dateOffset(localDate(now,tz),-13),sessions=(s.sessions||[]).filter(x=>(x.planId===plan.id||x.programId===(plan.programId||plan.id))&&x.date>=from&&x.date<=localDate(now,tz)&&x.status==='completed'&&sessionCompletion(s,x).completionRatio>=.8);
@@ -29,5 +29,5 @@ export function volumeReview(s,readiness,now=clockNow()){
   if(!comparable.every(l=>l.sets.every(set=>set.kg===load))||Math.max(...comparable.map(total))-Math.min(...comparable.map(total))>1)continue;
   return {action:'propose',reasonCode:'WEEKLY_VOLUME_INCREASE_PROPOSED',reviewScope:'system_generated_guidance',kind:'weekly_volume',planId:plan.id,dayIndex:day.dayIndex,exerciseId:exercise.id,region,extraSets:1,reason:'توصية النظام الآلي للتدريب: لأن أداءك والتزامك في آخر 3 تمرينات كان قوي ومستقر مع استشفاء ممتاز، نقترح إضافة مجموعة واحدة أسبوعياً لتعزيز البناء العضلي.'};
  }
- return hold('توجيه النظام الآلي للتدريب: عدد مجموعاتك الأسبوعية الحالي مناسب جداً وبيحقق تطور ممتاز من غير إجهاد زايد.','VOLUME_OPTIMAL');
+ return hold('توجيه النظام الآلي للتدريب: السجلات المتاحة لا تحقق شروط اقتراح زيادة المجموعات حاليًا؛ استمر في التسجيل لمراجعة الاستجابة.','VOLUME_INCREASE_NOT_JUSTIFIED');
 }

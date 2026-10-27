@@ -29,6 +29,13 @@
       "when": 1792800000000,
       "tag": "0003_production_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793049820141,
+      "tag": "0004_coaching_journey",
+      "breakpoints": true
     }
   ]
 }

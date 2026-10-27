@@ -1,3 +1,4 @@
+import {coachingSafetyHold} from '../coaching-journey.mjs';
 import {usesKg} from '../exercise-load.mjs';
 import {clockNow,isoNow,clockDate,clockTimeZone} from './clock.mjs';
 import {eachSide} from './workouts.mjs';
@@ -38,6 +39,11 @@ export function recovery(checkins, now=clockNow(),workoutLogs=[],tz=clockTimeZon
  if(difficult>=3)reasons.push('لاحظنا إجهادًا في ٣ متابعات أو أكتر خلال آخر ٧ أيام');
  if(performanceDrop&&difficult>=3)reasons.push('مع هبوط بسيط في الأداء محتاج استشفاء');
  return {...base,status,reasonCode:status==='ready'?'RECOVERY_READY':'RECOVERY_DELOAD_SUGGESTED',reasons:reasons.length?reasons:['متابعة الاستشفاء الحالية تسمح بالتمرين المعتاد مع مراقبة إحساسك.'],setFactor:status==='high'?.6:status==='caution'?.8:1,progressionAllowed:status==='ready',domains,asOf:fresh.at};
+}
+export function accountRecovery(s,now=clockNow(),tz=s.profile?.timezone||clockTimeZone()){
+ const result=recovery(s.checkins||[],now,s.workoutLogs||[],tz);
+ if(result.status!=='stop'&&coachingSafetyHold(s,localDate(now,tz)))return {...result,status:'hold',progressionAllowed:false,reasonCode:'FEEDBACK_PAIN_HOLD',reasons:['سجلت الألم كعائق للتمرين. أوقف الحركة المؤلمة وحدّث حالتك قبل أي زيادة في المجهود.']};
+ return result;
 }
 export function hasPerformanceDrop(logs,now=clockNow(),tz=clockTimeZone()){
  const grouped=new Map();for(const l of logs){if(!l.sets?.length||l.sets.some(s=>s.pain)||eachSide(l)&&l.bothSides!==true)continue;const k=l.exerciseId+'|'+l.loadMode+'|'+(l.progressionKey||l.planId);const a=grouped.get(k)||[];a.push(l);grouped.set(k,a);}

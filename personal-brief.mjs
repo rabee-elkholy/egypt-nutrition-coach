@@ -1,3 +1,4 @@
+import {coachingInbox,currentFeedback} from './coaching-journey.mjs';
 import {usesKg} from './exercise-load.mjs';
 import {dateOffset,FOCUS_LABELS,effectiveSets} from './coaching-shared.mjs';
 import {seedPick} from './coach-messages.mjs';
@@ -43,7 +44,9 @@ export function personalBrief(state,today){
   if(older.length>=3&&newer.length>=3)options.push(['weight-trend',`متوسط وزنك الأسبوع الحالي ${num(mean(newer.map(x=>x.kg)))} كجم من ${newer.length} قياسات، والسابق ${num(mean(older.map(x=>x.kg)))} من ${older.length}. المتوسط أوضح من قراءة يوم واحد.`,'weight']);
   else if(weights.length)options.push(['weight-coverage',`عندك ${weights.length} قياسات وزن خلال آخر أسبوعين؛ لسه محتاجين ٣ قياسات في كل أسبوع لمقارنة المتوسطات بشكل أوضح.`,'weight']);
   const decline=matchingNutritionDecline(state,Date.parse(state.serverNow||today+'T23:59:59Z'),state.profile?.timezone);
-  const selected=decline?[decline.kind==='maintenance'?'maintenance-declined':'calories-declined',decline.kind==='maintenance'?'رفضك السابق للانتقال للتثبيت محفوظ، وهدفك لم يتغير. نراجع التوصية عند تغير بيانات التغذية أو الخطة.':'رفضك السابق لتعديل السعرات محفوظ، وخطتك لم تتغير. نراجع التوصية عند تغير بيانات التغذية أو الخطة.','weight']:seedPick(options,seed+':nutrition-topic');add('nutrition',...selected);
+  const feedback=currentFeedback(state,'nutrition',today);
+  const expired=plan.days?.at(-1)?.date<today;
+  const selected=expired?['plan-expired','خطة الأكل السابقة انتهت. نحتاج نجددها حسب بياناتك الحالية قبل عرض أهداف يوم جديد.','جدّد خطة الأكل من صفحة الخطة.']:feedback?.hunger>=4?['high-hunger',`سجلت الجوع ${feedback.hunger} من ٥ بتاريخ ${feedback.date}؛ مش هنقترح خفض السعرات مع الدليل الحديث ده.`,'سجّل الجوع والطاقة وراجع الخطوة المتفق عليها.']:decline?[decline.kind==='maintenance'?'maintenance-declined':'calories-declined',decline.kind==='maintenance'?'رفضك السابق للانتقال للتثبيت محفوظ، وهدفك لم يتغير. نراجع التوصية عند تغير بيانات التغذية أو الخطة.':'رفضك السابق لتعديل السعرات محفوظ، وخطتك لم تتغير. نراجع التوصية عند تغير بيانات التغذية أو الخطة.','weight']:(options.find(o=>o[0]==='weight-trend')||options.find(o=>o[0]==='protein')||options[0]);add('nutrition',...selected);
  }
  const ready=state.recovery||{status:'unknown',reasons:[]};
  const now=Date.parse(state.serverNow||today+'T23:59:59Z');
@@ -90,6 +93,13 @@ export function personalBrief(state,today){
   else if(finite(check.sleepHours))follow.push(['sleep',`آخر نوم مسجل ${check.sleepHours} ساعات بتاريخ ${check.date}. الاستمرار في التسجيل يساعد نلاحظ التغير بدل التخمين.`,'sleep']);
   follow.push(['activity',`سجلت نشاطًا في ${daysActive} أيام مختلفة خلال آخر ٧ أيام. كل تسجيل بيساعد الصورة تبقى أوضح، حتى لو اليوم مش ماشي حسب الخطة.`,'complete']);
   add('followup',...seedPick(follow,seed+':followup-topic'));
+ }
+ const journey=coachingInbox(state,now).items.find(c=>!c.expired);
+ if(journey&&!['hold','stop','high','caution'].includes(ready.status)){
+  const index=notes.findIndex(n=>n.role==='followup');
+  const fact=journey.reviewDue?'وصل موعد متابعة الخطوة اللي اتفقنا عليها. هل ساعدتك؟':journey.status==='accepted'?'خطوتك المتفق عليها محفوظة؛ هنراجعها يوم '+journey.reviewOn+'.':journey.title;
+  const note={role:'followup',key:'coaching-'+journey.status,priority:journey.reviewDue?'attention':'normal',text:fact,action:journey.reviewDue?'سجّل النتيجة: ساعدت، لم تساعد، أو لم أجربها.':journey.step,caseId:journey.id};
+  if(index>=0)notes[index]=note;else notes.push(note);
  }
  return notes;
 }

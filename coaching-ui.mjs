@@ -1,3 +1,4 @@
+import {journeyHTML,bindJourney} from './coaching-journey-ui.mjs';
 import {usesKg,loadLabel,setSummary} from './exercise-load.mjs';
 import {simulationPanel} from './simulation-ui.mjs?v=sim8';
 import {mountOnboardingChat} from './onboarding-chat.mjs';
@@ -685,6 +686,7 @@ export async function mountPlanner({root,toast}){
    </section>
 
    <section id="coach-review" ${activeTab==='review'?'':'hidden'}>
+    ${journeyHTML(state)}
     ${reviewHTML(todayStr,plan,todayPlanDay,pendingAdaptations)}
    </section>
 
@@ -838,6 +840,7 @@ export async function mountPlanner({root,toast}){
   };
   root.querySelector('#confirm-schedule')?.addEventListener('submit',e=>{e.preventDefault();const values=formData(e.target),dayMap=Object.fromEntries(Object.entries(values).map(([k,v])=>[k.slice(4),Number(v)]));send('confirm_schedule',{dayMap});});
   root.querySelector('#confirm-existing-health')?.addEventListener('submit',e=>{e.preventDefault();send('confirm_health',formData(e.target));});
+  bindJourney(root,send);
   const reviewBtn=root.querySelector('#review-coach');
   if(reviewBtn)reviewBtn.onclick=()=>send('review',{});
   root.querySelector('#review-next-day')?.addEventListener('click',async()=>{if(await send('simulation_next',{}))window.scrollTo({top:0,behavior:'smooth'});});

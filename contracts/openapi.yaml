@@ -561,6 +561,42 @@ paths:
             application/json:
               schema:
                 type: object
+  /v1/coaching/inbox:
+    get:
+      operationId: getCoachingInbox
+      summary: Active coaching agreements and review dates; reads never acknowledge messages
+      responses:
+        '200':
+          description: In-app view; no external push delivery is implied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachingInbox'
+  /v1/coaching/history:
+    get:
+      operationId: getCoachingHistory
+      summary: Paginated coaching agreement history using date range and offset
+      parameters:
+        - $ref: '#/components/parameters/FromDateQuery'
+        - $ref: '#/components/parameters/ToDateQuery'
+        - $ref: '#/components/parameters/OffsetQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Owner-scoped agreement history; use nextOffset and refresh pagination after new writes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: {type: integer, minimum: 0}
+                  offset: {type: integer, minimum: 0}
+                  limit: {type: integer, minimum: 1, maximum: 100}
+                  nextOffset: {type: [integer, 'null']}
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CoachingCase'
   /v1/coaching/brief:
     get:
       operationId: getCoachingBrief
@@ -1021,6 +1057,9 @@ components:
         deliveryStatus:
           type: string
           const: NOT_MEASURED
+        caseId:
+          type: string
+          description: Optional related persisted coaching agreement ID
         renderingStatus:
           type: string
           const: NOT_MEASURED
@@ -1162,7 +1201,126 @@ components:
           type: object
         notificationPreferences:
           type: object
+    CoachingFeedbackPayload:
+      oneOf:
+        - properties:
+            domain: {const: nutrition}
+            barrier: {enum: [time, budget, taste, hunger, eating_out, logging, none]}
+        - properties:
+            domain: {const: training}
+            barrier: {enum: [time, fatigue, pain, equipment, motivation, none]}
+            hunger: {type: 'null'}
+            satiety: {type: 'null'}
+      type: object
+      required: [domain, barrier]
+      properties:
+        domain:
+          type: string
+          enum: [nutrition, training]
+        barrier:
+          type: string
+          enum: [time, budget, taste, hunger, eating_out, logging, fatigue, pain, equipment, motivation, none]
+        hunger:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 5
+        satiety:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 5
+        energy:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 5
+      description: Nutrition allows time/budget/taste/hunger/eating_out/logging/none; training allows time/fatigue/pain/equipment/motivation/none. Scores are optional 1 (low) to 5 (high). Hunger and satiety require nutrition. Server assigns current user-local date.
+    CoachingDecisionPayload:
+      type: object
+      required: [id, accept]
+      properties:
+        id: {type: string}
+        accept: {type: boolean}
+    CoachingOutcomePayload:
+      type: object
+      required: [id, outcome]
+      properties:
+        id: {type: string}
+        outcome:
+          type: string
+          enum: [helped, not_helped, not_tried]
+    CoachingAckPayload:
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
+    CoachingCase:
+      type: object
+      required: [id, domain, date, createdAt, context, status, title, step, evidence, planMutation]
+      properties:
+        id: {type: string}
+        domain: {type: string, enum: [nutrition, training]}
+        date: {type: string, format: date}
+        createdAt: {type: string, format: date-time}
+        context: {type: string}
+        priorCaseId: {type: string}
+        barrier: {type: [string, 'null']}
+        status: {type: string, enum: [question, proposed, accepted, declined, completed, superseded]}
+        title: {type: string}
+        step: {type: string}
+        evidence: {type: object}
+        acknowledgedAt: {type: [string, 'null'], format: date-time}
+        acceptedAt: {type: [string, 'null'], format: date-time}
+        decidedAt: {type: string, format: date-time}
+        closedAt: {type: string, format: date-time}
+        reviewOn: {type: [string, 'null'], format: date}
+        outcome:
+          type: [object, 'null']
+          properties:
+            value: {type: string, enum: [helped, not_helped, not_tried]}
+            source: {type: string, const: user_report}
+            at: {type: string, format: date-time}
+        planMutation: {type: boolean, const: false}
+        reviewDue: {type: boolean}
+        expired: {type: boolean}
+        deliveryStatus: {type: string, const: NOT_SENT}
+        readStatus: {type: string, enum: [ACKNOWLEDGED, UNKNOWN]}
+    CoachingInbox:
+      type: object
+      required: [date, revision, channel, pushConfigured, items]
+      properties:
+        date: {type: string, format: date}
+        revision: {type: integer}
+        channel: {type: string, const: in_app}
+        pushConfigured: {type: boolean, const: false}
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoachingCase'
     CommandRequest:
+      allOf:
+        - if:
+            properties:
+              action: {const: coaching_feedback}
+          then:
+            properties:
+              payload: {$ref: '#/components/schemas/CoachingFeedbackPayload'}
+        - if:
+            properties:
+              action: {const: coaching_decision}
+          then:
+            properties:
+              payload: {$ref: '#/components/schemas/CoachingDecisionPayload'}
+        - if:
+            properties:
+              action: {const: coaching_outcome}
+          then:
+            properties:
+              payload: {$ref: '#/components/schemas/CoachingOutcomePayload'}
+        - if:
+            properties:
+              action: {const: coaching_ack}
+          then:
+            properties:
+              payload: {$ref: '#/components/schemas/CoachingAckPayload'}
       type: object
       required:
         - revision
@@ -1198,6 +1356,10 @@ components:
             - adaptation
             - timezone
             - notification_preferences
+            - coaching_feedback
+            - coaching_decision
+            - coaching_outcome
+            - coaching_ack
             - simulation_reset
             - simulation_next
             - simulation_fill

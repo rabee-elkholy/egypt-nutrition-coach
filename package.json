@@ -1,6 +1,6 @@
 {
   "name": "egypt-nutrition-coach",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "deploy": "npm run build && npx wrangler deploy --config wrangler.jsonc",
     "deploy:d1": "npx wrangler d1 migrations apply egypt-nutrition-coaching --remote --config wrangler.jsonc",
     "db:generate": "drizzle-kit generate",
-    "test:browser": "node scripts/browser-onboarding.mjs && node scripts/browser-smoke.mjs && node scripts/browser-audit.mjs && node scripts/browser-simulation.mjs",
+    "test:browser": "node scripts/browser-onboarding.mjs && node scripts/browser-smoke.mjs && node scripts/browser-audit.mjs && node scripts/browser-simulation.mjs && node scripts/browser-coaching-journey.mjs",
     "check": "node scripts/check-data-manifest.mjs && npm run build && npm test",
     "audit:matrix": "node scripts/audit-matrix.mjs",
     "benchmark": "node scripts/benchmark-load.mjs",

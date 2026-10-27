@@ -1,6 +1,6 @@
 import {chromium} from '@playwright/test';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'msedge'}),origin='http://127.0.0.1:8787';
+const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{})}),origin='http://127.0.0.1:8787';
 async function setup(suffix){
  const context=await browser.newContext({viewport:{width:1280,height:900},extraHTTPHeaders:{'oai-authenticated-user-id':'audit-browser-'+suffix+'-'+Date.now()}}),page=await context.newPage();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));

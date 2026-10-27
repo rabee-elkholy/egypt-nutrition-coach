@@ -1,7 +1,7 @@
 import {chromium} from '@playwright/test';
 import assert from 'node:assert/strict';
 import {dateOffset} from '../coaching-shared.mjs';
-const browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'msedge'}),origin='http://127.0.0.1:8787';
+const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{})}),origin='http://127.0.0.1:8787';
 try{
  const context=await browser.newContext({viewport:{width:1280,height:950},extraHTTPHeaders:{'oai-authenticated-user-id':'browser-simulation-'+Date.now()}}),page=await context.newPage(),errors=[];
  page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(20000);

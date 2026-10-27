@@ -1,10 +1,11 @@
+import {coachingInbox,reconcileCoaching} from '../coaching-journey.mjs';
 import {clockNow,clockDate,isoNow,withClock,simulationTime} from './clock.mjs';
 import {simulationCommand,simulationSummary} from './simulation.mjs';
 import {assertDietDay} from '../diet-patterns.mjs';
 import {nutritionQualityIssues} from '../planner-core.mjs';
-import {command,evaluateEligibility,progressSummary,dailyWaterTarget} from './coaching.mjs';
+import {command,review,evaluateEligibility,progressSummary,dailyWaterTarget} from './coaching.mjs';
 import {catalog,workoutSafetyIssues,exerciseAlternatives,regionForMuscle,scheduledSessions} from './workouts.mjs';
-import {recovery} from './recovery.mjs';
+import {accountRecovery} from './recovery.mjs';
 import {loadAccount,saveAccount,canonicalCommandDigest,deriveSyncDeltas,exportFullAccountData,deleteFullAccountData,backfillAccountToNormalizedTables,sha256Hex} from './store.mjs';
 import {library,mealAlternatives,dayTotals} from './food.mjs';
 import {searchFoodCatalog,getFoodCatalogItem,getFoodCatalogManifest,calculatePreparedBeverageOrRecipe} from './food-catalog.mjs';
@@ -39,7 +40,7 @@ const errorJson=(message,status=400,requestId=null,options={},headers={})=>json(
 const present=s=>withClock(simulationTime(s),()=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
- const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=recovery(s.checkins,clockNow(),s.workoutLogs,tz),needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
+ const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=accountRecovery(s,clockNow(),tz),needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
  const safety=workoutSafetyIssues(s),dietIssues=[];
  if(plan)for(const day of plan.days){try{assertDietDay(day.meals.map(m=>m.snapshot),s.preferences.diet,day.targets||plan.targets,s.profile);}catch(e){dietIssues.push({date:day.date,message:e.message});}}
  if(safety.length){ready.progressionAllowed=false;if(ready.status!=='stop'){ready.status='hold';ready.reasons=['الخطة القديمة تحتوي تمارين مستبعدة حسب إصابتك. استبدلها أو أعد إنشاء الخطة وراجع مختصًا.'];}}
@@ -63,7 +64,7 @@ const presentBootstrap=s=>withClock(simulationTime(s),()=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
  const plan=s.plans.find(p=>p.id===s.active_plan_id);
- const ready=recovery(s.checkins,clockNow(),s.workoutLogs,tz);
+ const ready=accountRecovery(s,clockNow(),tz);
  const needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
  const safety=workoutSafetyIssues(s);
  const todayDiary=dayTotals(s,currDate);
@@ -168,8 +169,8 @@ export default {async fetch(request,env){
  }
 
  if(url.pathname==='/v1/health'&&request.method!=='GET')return errorJson('GET فقط.',405,reqId,{code:'METHOD_NOT_ALLOWED'},{Allow:'GET'});
- if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.12.0',requestId:reqId},200,{},reqId);
- if(url.pathname==='/v1/capabilities'&&request.method==='GET')return json({apiVersion:'1',schemaVersion:3,engineVersion:'0.12.0',catalogVersion:catalog.manifest.version,foodCatalogVersion:getFoodCatalogManifest().version,serverTime:isoNow(),requestId:reqId,features:['adaptive_nutrition','adaptive_workouts','recovery_readiness','simulation_90d','eligibility_screening','progress_summary','kmm_bootstrap','delta_receipts','offline_sync_v2','arabic_food_catalog','multi_timezone','account_export_delete']},200,{},reqId);
+ if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.13.0',requestId:reqId},200,{},reqId);
+ if(url.pathname==='/v1/capabilities'&&request.method==='GET')return json({apiVersion:'1',schemaVersion:3,engineVersion:'0.13.0',catalogVersion:catalog.manifest.version,foodCatalogVersion:getFoodCatalogManifest().version,serverTime:isoNow(),requestId:reqId,features:['adaptive_nutrition','adaptive_workouts','recovery_readiness','simulation_90d','eligibility_screening','progress_summary','kmm_bootstrap','delta_receipts','offline_sync_v2','arabic_food_catalog','multi_timezone','account_export_delete','coaching_agreements','coaching_feedback','automatic_evidence_review']},200,{},reqId);
 
  try{
   const auth=await authenticateRequest(request,env);
@@ -317,6 +318,8 @@ export default {async fetch(request,env){
      return json(present(s),200,{ETag:etag},reqId);
     }
     if(url.pathname==='/v1/progress/summary')return json(progressSummary(s),200,{ETag:etag},reqId);
+    if(url.pathname==='/v1/coaching/inbox')return json(coachingInbox(s,clockNow()),200,{},reqId);
+    if(url.pathname==='/v1/coaching/history')return json(paginateDateCollection(s.coachingCases||[],url),200,{},reqId);
     if(url.pathname==='/v1/coaching/brief'){
      const snapshot=present(s),notes=s.profile?personalBrief(snapshot,currDate):[];
      const briefEtag=`W/"brief-${await sha256Hex(JSON.stringify([user,s.revision,currDate,notes]))}"`;
@@ -477,6 +480,12 @@ export default {async fetch(request,env){
 
    const source=simulationMode&&body.action==='simulation_reset'&&body.payload.source==='current'?await loadAccount(env.DB,identity):null;
    const next=simulationMode?simulationCommand(structuredClone(s),body.action,body.payload,source):command(structuredClone(s),body.action,body.payload);
+   // Recompute decisions in the same transaction as new relevant evidence.
+   if(['recovery','weight','food','food_entry','food_complete','food_delete','session','workout','coaching_feedback','renew_plan','timezone','confirm_health','confirm_schedule'].includes(body.action))review(next);
+   reconcileCoaching(next,clockNow());
+   // Hydration/activity/notification bookkeeping does not invalidate plan evidence.
+   if(['water','steps','activity','notification_preferences'].includes(body.action))next.adaptations=structuredClone(s.adaptations);
+   if(['water','steps','activity','notification_preferences','coaching_ack','coaching_decision','coaching_outcome'].includes(body.action))for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
    next.revision=s.revision+1;
    await saveAccount(env.DB,user,next,s.revision,{key,digest:canonDigest,action:body.action,payload:body.payload,previousState:s});
 

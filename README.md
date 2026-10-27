@@ -1,3 +1,5 @@
+> Current development release: **0.13.0** — [persistent coaching agreements, feedback, API and deployment limits](docs/COACHING_JOURNEY_013_AR.md). This source version does not certify the deployed Worker version.
+
 # Egypt Nutrition Coach (CuraFit)
 
 Server-driven Arabic nutrition planning, workout prescription, and adaptive longitudinal coaching for weight, hydration, sleep, and recovery. All planning and coaching engines run deterministically on Cloudflare Workers and D1 with **zero runtime AI API calls**. Current package version: **0.12.0**.
