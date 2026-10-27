@@ -1,0 +1,116 @@
+{
+  "scope": "FIRST_WEEK_MESSAGES_THREE_TRACKS_FOUR_TRAJECTORIES_EIGHT_DAYS",
+  "sourceHashes": {
+    "first-week-messages.mjs": "55646d7b2e7194d14f023bbdde6a9b503e04abffe26c0c73277b7077d8a58658",
+    "personal-brief.mjs": "279d97a5419b2cb86aeb6d770e382d7e18d910e9b04db45bfd272ffd9a3d3f7f",
+    "server/coaching.mjs": "67290d1a3a68dc51f2003464aebfb5c589eaa4e755ba81b4f2ef9a12a57ad2d1",
+    "coaching-ui.mjs": "39728bc01ad73fc04e1b66a04cce5ca2e54209f461fae0bac089f0ed7ac4a62f",
+    "contracts/openapi.yaml": "e85077a9f4b848552fce008935abc8734875d72ff0e7220195aeaad5fa12c3e7",
+    "tests/first-week-messages.test.mjs": "4a2a7a3fce4d05a8a213054d8244b0aeaf973adac69e8a18b70706fd1fb469db",
+    "scripts/audit/first-week-http.mjs": "b17e9781ab0625f4a5a7e586bb5e4630c06ece1e0cc6a756957d530703db5154",
+    "scripts/browser-first-week.mjs": "86759fe42e2af8862f201734419b0b1b5ff961fc17bf3ee7a5ad69e6368d19d1"
+  },
+  "runs": [
+    {
+      "label": "first-week-final-check-20261027",
+      "command": [
+        "npm",
+        "run",
+        "check"
+      ],
+      "exitCode": 0,
+      "testSummary": {
+        "tests": 315,
+        "suites": 0,
+        "pass": 315,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logs": {
+        "stdout.log": "ee9e49ebb0abe4b7136bf1efc1a542b6289eb4b4668d7881f2acfa3fbb0af38a",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "first-week-http-20261027",
+      "command": [
+        "node",
+        "scripts/audit/first-week-http.mjs",
+        "reports/simulation-100-users-90-days/audit-first-week-http-20261027"
+      ],
+      "exitCode": 0,
+      "testSummary": {},
+      "logs": {
+        "stdout.log": "e249bd73a2797d864c38d3c7003b1e9518eaa09c09463147b6d6d9e0cba1ac07",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "first-week-browser-20261027",
+      "command": [
+        "node",
+        "scripts/browser-first-week.mjs"
+      ],
+      "exitCode": 0,
+      "testSummary": {},
+      "logs": {
+        "stdout.log": "130a4c7cf34aec676b9ed44156c99edf71729c56c6d247b8f372a26fb0075aba",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "http": {
+    "httpEvents": 387,
+    "checks": 495,
+    "failedChecks": 0,
+    "statuses": {
+      "200": 387
+    },
+    "eventsSha256": "2b27cc627724da1eed4893454891a43763a9309a90cc820f68080de955ea77a3",
+    "independentCensus": {
+      "events": 387,
+      "accounts": 12,
+      "accountDays": 96
+    }
+  },
+  "retentionUplift": "NOT_MEASURED",
+  "deployment": {
+    "worker": "egypt-nutrition-coach",
+    "versionId": "e813869c-ba75-4607-a8b6-f5024af01e62",
+    "live": {
+      "verifiedAt": "2026-10-27T13:44:39.893Z",
+      "passed": true,
+      "scope": "read-only health/capabilities and public module parity",
+      "results": [
+        {
+          "path": "/v1/health",
+          "status": 200
+        },
+        {
+          "path": "/v1/capabilities",
+          "status": 200
+        },
+        {
+          "path": "/first-week-messages.mjs",
+          "status": 200,
+          "sha256": "55646d7b2e7194d14f023bbdde6a9b503e04abffe26c0c73277b7077d8a58658",
+          "matchesLocal": true
+        },
+        {
+          "path": "/personal-brief.mjs",
+          "status": 200,
+          "sha256": "279d97a5419b2cb86aeb6d770e382d7e18d910e9b04db45bfd272ffd9a3d3f7f",
+          "matchesLocal": true
+        },
+        {
+          "path": "/coaching-ui.mjs",
+          "status": 200,
+          "sha256": "39728bc01ad73fc04e1b66a04cce5ca2e54209f461fae0bac089f0ed7ac4a62f",
+          "matchesLocal": true
+        }
+      ]
+    }
+  }
+}

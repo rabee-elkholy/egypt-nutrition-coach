@@ -78,11 +78,12 @@ export function generate(s,d,seed=crypto.randomUUID()){
  const plan=d.serviceTrack==='workouts_only'?null:makeWeek(profile,prefs,library,startLocalDate,seed);
  if(d.serviceTrack==='workouts_only'&&d.healthConfirmed!==true)throw Error('أكد مراجعة حالتك الصحية قبل إنشاء خطة تمرين مستقلة.');
  if(profile.targetWeight&&(profile.goal==='gain'&&profile.targetWeight<=weight||profile.goal==='muscle_gain'&&profile.targetWeight<weight))throw Error('الوزن المستهدف للزيادة لازم يكون أكبر من الحالي.');
+ const journeyStartedOn=s.onboarding?.journeyStartedOn??(!s.profile?startLocalDate:null);
  if(s.profile)s.history.push({at:isoNow(),kind:'profile',profile:s.profile,planId:s.active_plan_id,workoutPlanId:s.workoutPlan?.id});
  if(s.workoutPlan){s.workoutArchives||=[];s.workoutArchives.push(s.workoutPlan);}
  s.profile=profile;s.preferences=prefs;s.workoutPlan=wp;s.nutritionAdjustment=null;
  const workoutPrefs={weekdayConvention:'js_sunday_0',fitnessLevel:wp?d.fitnessLevel??'beginner':'beginner',selectedWorkoutDays:wp?.days.map(x=>x.dayIndex)||externalTrainingDays,workoutDaysCount:wp?.days.length||externalTrainingDays.length,workoutSplitPreference:wp?d.workoutSplitPreference??'auto':'auto',workoutLocation:wp?d.workoutLocation??'gym_only':'gym_only',dayLocations:wp?Object.fromEntries(wp.days.map(day=>[day.dayIndex,day.location])):{},homeEquipment:wp?stringList(d.homeEquipment??['none'],'المعدات',20):['none'],sessionDuration:wp?d.sessionDuration??45:45,injuries:rawInjuries.length?rawInjuries:['none'],healthConfirmed:d.healthConfirmed===true,externalTrainingDays};
- s.onboarding={serviceTrack:d.serviceTrack,workoutPrefs,isAuthenticated:true};ensureTrainingState(s);
+ s.onboarding={serviceTrack:d.serviceTrack,workoutPrefs,isAuthenticated:true,...(journeyStartedOn?{journeyStartedOn}:{})};ensureTrainingState(s);
  if(plan){plan.created_at=isoNow();plan.effective_from=startLocalDate;s.plans.push(plan);s.active_plan_id=plan.id;}else s.active_plan_id=null;
  s.nutritionContextStartedOn=startLocalDate;s.lastReview=null;s.sessionAdjustment=null;discardPending(s);return s;
 }

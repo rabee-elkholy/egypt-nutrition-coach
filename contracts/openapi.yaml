@@ -1046,6 +1046,10 @@ components:
           type: string
         action:
           type: string
+        actionTarget:
+          type: string
+          enum: [recovery, food, feedback, workout]
+          description: Optional navigation destination for the in-app first-week next step; never performs a write.
         basedOnRevision:
           type: integer
           minimum: 0

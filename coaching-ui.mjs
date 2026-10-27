@@ -72,7 +72,7 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
   </div>
   <small class="brief-context">متابعة آلية مبنية على تسجيلاتك؛ بتتحدث لما بياناتك تتغير.</small>
   ${notes.map(n=>`<article class="personal-note" data-personal-role="${n.role}" ${n.priority==='urgent'?'role="alert"':''}>
-   <strong>${roles[n.role]}</strong><p>${esc(n.text)}</p><p class="personal-action">${esc(n.action)}</p>
+   <strong>${roles[n.role]}</strong><p>${esc(n.text)}</p>${['recovery','food','feedback','workout'].includes(n.actionTarget)?`<button type="button" data-brief-action="${n.actionTarget}">${esc(n.action)}</button>`:`<p class="personal-action">${esc(n.action)}</p>`}
   </article>`).join('')}
   ${splitAdvice?`<details class="brief-details"><summary>مراجعة تقسيمة التمرين بعد ٨ أسابيع</summary><p>${esc(splitAdvice.text)}</p></details>`:''}
   ${tags.length?`<div class="coach-tags" style="margin-top:8px">${tags.map(t=>`<span style="background:#fff;border-color:#b7dec9;color:#1b4332">🩺 مراعاة: ${esc(t)}</span>`).join('')}</div>`:''}
@@ -741,6 +741,10 @@ export async function mountPlanner({root,toast}){
    btn.setAttribute('aria-expanded',String(!editor.hidden));btn.innerHTML='<span aria-hidden="true">✎</span> '+(editor.hidden?'تعديل':'إغلاق');
   });
   root.querySelectorAll('[data-tab]').forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;render();window.scrollTo({top:0,behavior:'instant'});});
+  root.querySelectorAll('[data-brief-action]').forEach(btn=>btn.onclick=()=>{
+   const route={recovery:['recovery','#recovery-log'],food:['nutrition','#food-diary'],feedback:['review','#coaching-journey'],workout:['workout','#workout-coach']}[btn.dataset.briefAction];
+   if(!route)return;captureDrafts();activeTab=route[0];render();root.querySelector(route[1])?.scrollIntoView({block:'start',behavior:'smooth'});
+  });
   root.querySelector('#edit-profile').onclick=()=>{if(uncertainWrite){notice('أكد العملية المعلقة الأول.',true);retryUncertain();}else onboarding();};
   root.querySelector('#close-dialog').onclick=()=>root.querySelector('#coach-dialog').close();
   root.querySelector('#export-coach').onclick=async()=>{

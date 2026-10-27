@@ -1,4 +1,5 @@
 import {coachingInbox,currentFeedback} from './coaching-journey.mjs';
+import {firstWeekMessages} from './first-week-messages.mjs';
 import {usesKg} from './exercise-load.mjs';
 import {dateOffset,FOCUS_LABELS,effectiveSets} from './coaching-shared.mjs';
 import {seedPick} from './coach-messages.mjs';
@@ -101,5 +102,5 @@ export function personalBrief(state,today){
   const note={role:'followup',key:'coaching-'+journey.status,priority:journey.reviewDue?'attention':'normal',text:fact,action:journey.reviewDue?'سجّل النتيجة: ساعدت، لم تساعد، أو لم أجربها.':journey.step,caseId:journey.id};
   if(index>=0)notes[index]=note;else notes.push(note);
  }
- return notes;
+ return firstWeekMessages(state,today,notes);
 }
