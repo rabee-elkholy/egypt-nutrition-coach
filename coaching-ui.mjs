@@ -5,7 +5,7 @@ import {mountOnboardingChat} from './onboarding-chat.mjs';
 import {MUSCLE_REGIONS,FOCUS_LABELS,SLOTS,localDate,dateOffset,effectiveSets,onboardingState} from './coaching-shared.mjs';
 import {householdQuantity,displayPortion} from './planner-household.mjs';
 import {displayMealName,displayIngredientName} from './meal-presentation.mjs';
-import {say,seedPick,SORENESS,SORENESS_PRE,dailyTips} from './coach-messages.mjs?v=msg3';
+import {say,seedPick,SORENESS,dailyTips} from './coach-messages.mjs?v=msg3';
 import {personalBrief} from './personal-brief.mjs';
 import {splitReview} from './split-review.mjs';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -80,6 +80,7 @@ function buildSpecialistBrief(state,todayStr,todayPlanDay){
 }
 
 export async function mountPlanner({root,toast}){
+ root._coachRefreshCleanup?.();
  let tipOffset=0;
  const tipsHTML=(todayStr)=>{
   const tips=dailyTips(todayStr,{hasWorkout:!!state.workoutPlan,offset:tipOffset});
@@ -104,7 +105,7 @@ export async function mountPlanner({root,toast}){
  window.addEventListener('planner-leave',()=>document.body?.classList.remove('planner-active'));
  const drafts=new Map();
  const editingExercises=new Set();
- const formKey=form=>(form.id||[form.classList[0],form.dataset.day||'',form.dataset.id||form.dataset.meal||form.dataset.key||''].join('|'))+(form.dataset.diaryDate?'|'+form.dataset.diaryDate:'')+(simulationMode?'|sim-day:'+state?.simulation?.day:'');
+ const formKey=form=>(form.id||[form.classList[0],form.dataset.day||'',form.dataset.id||form.dataset.meal||form.dataset.key||form.dataset.coachingFeedback||''].join('|'))+(form.dataset.diaryDate?'|'+form.dataset.diaryDate:'')+(simulationMode?'|sim-day:'+state?.simulation?.day:'');
  function captureDrafts(excluded){for(const form of root.querySelectorAll('form'))if(!form.closest('#coach-onboarding-section')&&formKey(form)!==excluded)drafts.set(formKey(form),formData(form));if(excluded)drafts.delete(excluded);}
  function restoreDrafts(scope=root){for(const form of scope.querySelectorAll('form')){const draft=drafts.get(formKey(form));if(!draft)continue;
   if(form.matches('.workout-log')){
@@ -120,6 +121,30 @@ export async function mountPlanner({root,toast}){
  if(root._coachSubmit)root.removeEventListener('submit',root._coachSubmit,true);
  root._coachSubmit=e=>{if(!e.target.id.includes('search')&&!e.target.closest('#coach-onboarding-section'))submittedForm=formKey(e.target);};root.addEventListener('submit',root._coachSubmit,true);
  const api=async(path,options={})=>{const r=await fetch('/v1/'+path+(simulationMode?(path.includes('?')?'&':'?')+'simulation=1':''),options);const data=await r.json();if(!r.ok)throw Object.assign(Error(data.error||'تعذر الاتصال'),{status:r.status});return data;};
+ // Re-read the server clock and evidence while visible. Do not interrupt forms,
+ // race writes, or advance a simulation from the device clock.
+ let refreshing=false,disposed=false;
+ const editing=()=>root.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea,[contenteditable="true"]');
+ async function refreshMessages(){
+  if(disposed||refreshing||busy||uncertainWrite||!state?.profile||simulationMode||root.hidden||!root.isConnected||document.visibilityState==='hidden'||root.querySelector('#coach-onboarding-section')||editing())return;
+  refreshing=true;const previous=state,version=viewVersion;
+  try{
+   const summary=await api('bootstrap');
+   if(disposed||busy||uncertainWrite||state!==previous||viewVersion!==version||editing())return;
+   const before=Date.parse(state.serverNow),after=Date.parse(summary.serverNow);
+   const deadlines=[...(state.checkins||[]).map(c=>Date.parse(c.at)+86400000+1),...(state.adaptations||[]).filter(a=>a.status==='pending').map(a=>Date.parse(a.expiresAt)),...(state.coachingCases||[]).filter(c=>['proposed','question'].includes(c.status)).map(c=>Date.parse(c.createdAt)+7*86400000),Date.parse(state.sessionAdjustment?.expiresAt)];
+   if(summary.revision===state.revision&&summary.serverDate===state.serverDate&&!deadlines.some(t=>t>before&&t<=after))return;
+   const next=await api('state');
+   if(disposed||busy||uncertainWrite||state!==previous||viewVersion!==version||editing())return;
+   captureDrafts();const open=[...root.querySelectorAll('details[open]')].map(el=>[...root.querySelectorAll('details')].indexOf(el));
+   if(diaryDate===state.serverDate)diaryDate=next.serverDate;
+   state=next;render();for(const index of open)root.querySelectorAll('details')[index]?.setAttribute('open','');
+  }catch{notice('تعذر تحديث المتابعة؛ الرسائل المعروضة حسب آخر تحديث. هنحاول تاني تلقائيًا.');}
+  finally{refreshing=false;}
+ }
+ const refreshTimer=setInterval(refreshMessages,60000);
+ window.addEventListener('focus',refreshMessages);document.addEventListener('visibilitychange',refreshMessages);
+ root._coachRefreshCleanup=()=>{disposed=true;clearInterval(refreshTimer);window.removeEventListener('focus',refreshMessages);document.removeEventListener('visibilitychange',refreshMessages);};
  function notice(message,isError=false){const el=root.querySelector('#coach-feedback');if(el){el.textContent=message;el.hidden=false;el.setAttribute('role',isError?'alert':'status');}if(isError)toast?.(message);}
  async function send(action,payload){
   if(busy)return false;const fingerprint=JSON.stringify({action,payload});if(uncertainWrite&&uncertainWrite.fingerprint!==fingerprint){notice('في عملية لسه مش متأكدين من حفظها؛ أعد محاولتها الأول.',true);retryUncertain();return false;}busy=true;root.setAttribute('aria-busy','true');
@@ -419,7 +444,7 @@ export async function mountPlanner({root,toast}){
   const simDayEmpty=sim&&state.simulationToday&&!state.simulationToday.foodComplete&&!state.simulationToday.recoveryLogged&&state.simulationToday.weight==null&&!state.simulationToday.sessions.length;
   // 1. Identify muscles worked in latest session or today's workout
   const wPlan=state.workoutPlan;
-  const recentLogs=(state.workoutLogs||[]).slice().sort((a,b)=>(a.date||a.at.slice(0,10)).localeCompare(b.date||b.at.slice(0,10))||Date.parse(a.at)-Date.parse(b.at));
+  const recentLogs=(state.workoutLogs||[]).filter(l=>(l.date||l.at?.slice(0,10))<=todayStr&&(l.planId===wPlan?.id||wPlan?.days?.some(d=>d.exercises?.some(e=>e.id===l.exerciseId&&e.progressionKey&&e.progressionKey===l.progressionKey)))).slice().sort((a,b)=>(a.date||a.at.slice(0,10)).localeCompare(b.date||b.at.slice(0,10))||Date.parse(a.at)-Date.parse(b.at));
   const lastLogDate=recentLogs.at(-1)?.date||recentLogs.at(-1)?.at?.slice(0,10);
   const lastDayLogs=lastLogDate?recentLogs.filter(l=>(l.date||l.at.slice(0,10))===lastLogDate):[];
   const todaySched=(state.scheduledSessions||[]).find(s=>s.date===todayStr);
@@ -492,9 +517,10 @@ export async function mountPlanner({root,toast}){
     <div class="coach-notice" style="margin:8px 0 0;background:#f2faf5">
      <strong>✅ ملاحظة الكابتن عن الوجع العضلي:</strong>
      <p style="margin:4px 0;font-size:13.5px;line-height:1.6">
-      ${totalLoggedSets>0
+      ${totalLoggedSets>0&&lastLogDate===todayStr
        ?esc(say(SORENESS,todayStr+':sore',{sets:totalLoggedSets,hard:hardSetsCount,muscles:muscleNamesList}))
-       :esc(say(SORENESS_PRE,todayStr+':sorepre',{muscles:muscleNamesList}))}
+       :lastLogDate?esc('آخر تمرينة مسجلة بتاريخ '+lastLogDate+'؛ السجل القديم مش دليل على وجود وجع أو استشفاء النهاردة. حدّث حالتك الحالية.')
+       :esc('دي عضلات مستهدفة في الخطة؛ مفيش جلسة مسجلة نستنتج منها مجهودك أو إحساسك الحالي.')}
      </p>
      <small style="display:block;color:#355849;margin-top:4px">💡 <strong>الفرق في ثانية:</strong> وجع العضلات مش دليل نمو ولا هدف للتمرين. الألم الحاد أو المتزايد، والتورم الشديد أو البول الداكن بعد مجهود شديد، محتاجين توقف وتقييم طبي.</small>
     </div>
@@ -616,16 +642,18 @@ export async function mountPlanner({root,toast}){
   if(!state.profile)return onboarding();
   const plan=state.plans.find(p=>p.id===state.active_plan_id),ready=state.recovery||{status:'unknown',reasons:[]};
   const isFirstDay=!state.checkins?.length&&!(state.workoutLogs||[]).length&&!(state.foodEntries||[]).length;
-  const status={unknown:isFirstDay?'أول يوم في خطتك — وجباتك وتمارينك جاهزة للبداية! 🚀':'فريق المتابعة في انتظار تسجيل حالتك اليومية',ready:'بياناتك الحالية تسمح بتمرينك المعتاد ✓',caution:'كابتن التدريب ينصح بتمرين خفيف اليوم',high:'الأولوية النهاردة للاستشفاء والراحة',hold:'توصية الكابتن: ريّح المنطقة المؤلمة اليوم',stop:'تنبيه طبي: أوقف التمرين واطمئن طبياً'};
-  const pendingAdaptations=state.adaptations.filter(a=>a.status==='pending');
+  const status={unknown:isFirstDay?'خطتك جاهزة للعرض؛ سجّل حالتك قبل تحديد مجهود التمرين.':'فريق المتابعة في انتظار تسجيل حالتك اليومية',ready:'بياناتك الحالية تسمح بتمرينك المعتاد ✓',caution:'كابتن التدريب ينصح بتمرين خفيف اليوم',high:'الأولوية النهاردة للاستشفاء والراحة',hold:ready.reasons?.[0]||'أجّل التمرين وراجع سبب التوقف في حالتك الحالية',stop:'تنبيه طبي: أوقف التمرين واطمئن طبياً'};
+  const pendingAdaptations=state.adaptations.filter(a=>a.status==='pending'&&(!a.expiresAt||Date.parse(a.expiresAt)>Date.parse(state.serverNow)));
+  const expiredAdaptations=state.adaptations.some(a=>a.status==='pending'&&a.expiresAt&&Date.parse(a.expiresAt)<=Date.parse(state.serverNow));
   const todayStr=state.serverDate||localDate();
-  const todayPlanDay=plan?.days.find(d=>d.date===todayStr)||plan?.days[0];
+  const todayPlanDay=plan?.days.find(d=>d.date===todayStr);
   const otherPlanDays=plan?.days.filter(d=>d!==todayPlanDay)||[];
 
   root.innerHTML=`<div class="coach-app" dir="rtl">
    <div id="coach-feedback" role="status" class="coach-notice" hidden></div>
    ${simulationPanel(state,simulationMode,{activeTab})}
 
+   ${expiredAdaptations?'<p class="coach-notice">انتهت صلاحية توصية سابقة؛ اطلب مراجعة جديدة من تبويب المتابعة.</p>':''}
    ${pendingAdaptations.length&&activeTab!=='review'?`<section class="coach-notice proposal-banner" role="alert">
     <strong>🔔 توصية جديدة من فريق المتابعة جاهزة لموافقتك:</strong>
     ${pendingAdaptations.map(a=>`<div style="margin-top:8px">
@@ -650,7 +678,7 @@ export async function mountPlanner({root,toast}){
      <div>
       <small>متابعة آلية للأكل والتمرين — ليست مراجعة من مختص بشري</small>
       <h2>أهلًا يا ${esc(state.profile.name)} 👋</h2>
-      <p>${esc(status[ready.status])}</p>
+      <p>${esc(state.workoutPlan?status[ready.status]:'تابع أكلك وتسجيلاتك حسب خطتك الحالية.')}</p>
      </div>
      <div class="coach-heading-actions">
       <button id="edit-profile" class="secondary">⚙️ بياناتي</button>
@@ -664,7 +692,7 @@ export async function mountPlanner({root,toast}){
      <div><strong>${round(plan.targets.carbs)}</strong> جم كارب</div>
      <div><strong>${round(plan.targets.fat)}</strong> جم دهون</div>
     </div>
-    ${plan.effective_from&&(plan.effective_from>todayStr)?`<p class="coach-notice">✨ تعديل أخصائي التغذية الجديد يبدأ من بكرة (${plan.effective_from}).</p>`:''}
+    ${plan.effective_from&&(plan.effective_from>todayStr)?`<p class="coach-notice">✨ تعديل التغذية الجديد يبدأ بتاريخ (${plan.effective_from}).</p>`:''}
     ${plan.targets.forecast?`<p class="coach-notice">🎯 <strong>خطة الوصول لهدفك (${plan.targets.forecast.target_weight_kg} كجم):</strong> متوقع خلال <strong>${plan.targets.forecast.estimated_weeks_min}–${plan.targets.forecast.estimated_weeks_max} أسبوع</strong> كتقدير قابل للتغير حسب استجابتك.</p>`:''}
     ${todayPlanDay?`<div class="coach-card">
      <h3>📅 وجبات النهاردة (${todayPlanDay.date} · ${round(todayPlanDay.summary.values.energy)} سعر)</h3>

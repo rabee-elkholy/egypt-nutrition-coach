@@ -1,0 +1,171 @@
+{
+  "baseline": "29819680e927a961329671f6517caf80cdb8c570",
+  "scope": "targeted in-app message timing and copy; no fresh full-cohort or clinical validation",
+  "sourceHashes": {
+    "coaching-journey.mjs": "f2d527bfb61e21b2bafc5d5cf5d1bb64776eebc8e12e9aa196d53dcb66554122",
+    "coaching-ui.mjs": "8a9de95c7d0f3cfac43a930fc06a706677ada70d815a0b66bf426d4f55e49907",
+    "personal-brief.mjs": "1d32865a71f0de3ba4f8d44a171714cb8b7ae0c0a859db2ebacaec940c081b8f",
+    "tests/message-timing.test.mjs": "bdf984302a76508aec7f4ce82dcdf0ae7fcd73dfa264bd2cbf232243a98a6e9b",
+    "scripts/browser-message-timing.mjs": "8b999b72f4b2c319abb46864f57e828231b8022c0224ab3c3eea0137e19122e4"
+  },
+  "runs": [
+    {
+      "label": "message-timing-before-20261027",
+      "command": [
+        "node",
+        "--test",
+        "tests/message-timing.test.mjs"
+      ],
+      "exitCode": 1,
+      "startedAt": "2026-10-27T08:31:36.676Z",
+      "finishedAt": "2026-10-27T08:31:38.718Z",
+      "testSummary": {
+        "tests": 6,
+        "suites": 0,
+        "pass": 3,
+        "fail": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logs": {
+        "stdout.log": "95f6cb7be8fe1f8f773e1973b187928e41c9fabe6056e01881a0ab6713cc35a9",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "message-timing-final-check-v3-20261027",
+      "command": [
+        "npm",
+        "run",
+        "check"
+      ],
+      "exitCode": 0,
+      "startedAt": "2026-10-27T08:40:40.478Z",
+      "finishedAt": "2026-10-27T08:41:02.112Z",
+      "testSummary": {
+        "tests": 308,
+        "suites": 0,
+        "pass": 308,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logs": {
+        "stdout.log": "eb4435ab2d815db67508ccec6235eacfdc57356025cab82ede3cd529cf21d9ac",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "message-timing-browser-release-20261027",
+      "command": [
+        "node",
+        "scripts/browser-message-timing.mjs"
+      ],
+      "exitCode": 0,
+      "startedAt": "2026-10-27T08:42:28.517Z",
+      "finishedAt": "2026-10-27T08:42:33.949Z",
+      "testSummary": {},
+      "logs": {
+        "stdout.log": "d26646e27c7d3121cc296e4214cc63c50a484ba0a6b951ce321e1383b178335d",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "message-timing-journey-browser-20261027",
+      "command": [
+        "node",
+        "scripts/browser-coaching-journey.mjs"
+      ],
+      "exitCode": 0,
+      "startedAt": "2026-10-27T08:39:45.543Z",
+      "finishedAt": "2026-10-27T08:39:50.424Z",
+      "testSummary": {},
+      "logs": {
+        "stdout.log": "f036adb03a1cd83278c54a4e0b59371a9b3e31246634f6a8c724e32ed4a05825",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "timezoneBoundaryCases": 30,
+  "barrierChoices": 13,
+  "browser": {
+    "scope": "isolated Worker generation; controlled state snapshots for UI time boundaries",
+    "results": [
+      {
+        "width": 390,
+        "check": "visible timer refresh, expired plan never labelled today",
+        "passed": true
+      },
+      {
+        "width": 390,
+        "check": "editing defers refresh and draft survives subsequent refresh",
+        "passed": true
+      },
+      {
+        "width": 390,
+        "check": "return focus refresh, old workout dated, no browser errors or overflow",
+        "passed": true
+      },
+      {
+        "width": 1280,
+        "check": "visible timer refresh, expired plan never labelled today",
+        "passed": true
+      },
+      {
+        "width": 1280,
+        "check": "editing defers refresh and draft survives subsequent refresh",
+        "passed": true
+      },
+      {
+        "width": 1280,
+        "check": "return focus refresh, old workout dated, no browser errors or overflow",
+        "passed": true
+      }
+    ]
+  },
+  "notificationDelivery": "NOT_SENT",
+  "deployment": {
+    "worker": "egypt-nutrition-coach",
+    "exitCode": 0,
+    "durationMs": 187338.50939999998
+  },
+  "live": {
+    "checkedAt": "2026-10-27T13:29:15.967Z",
+    "passed": true,
+    "scope": "read-only health/capabilities/inbox and public module byte parity",
+    "results": [
+      {
+        "path": "/v1/health",
+        "status": 200
+      },
+      {
+        "path": "/v1/capabilities",
+        "status": 200
+      },
+      {
+        "path": "/v1/coaching/inbox",
+        "status": 200
+      },
+      {
+        "path": "/coaching-ui.mjs",
+        "status": 200,
+        "sha256": "8a9de95c7d0f3cfac43a930fc06a706677ada70d815a0b66bf426d4f55e49907",
+        "matchesLocal": true
+      },
+      {
+        "path": "/coaching-journey.mjs",
+        "status": 200,
+        "sha256": "f2d527bfb61e21b2bafc5d5cf5d1bb64776eebc8e12e9aa196d53dcb66554122",
+        "matchesLocal": true
+      },
+      {
+        "path": "/personal-brief.mjs",
+        "status": 200,
+        "sha256": "1d32865a71f0de3ba4f8d44a171714cb8b7ae0c0a859db2ebacaec940c081b8f",
+        "matchesLocal": true
+      }
+    ]
+  }
+}

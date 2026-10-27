@@ -95,7 +95,7 @@ export function personalBrief(state,today){
   add('followup',...seedPick(follow,seed+':followup-topic'));
  }
  const journey=coachingInbox(state,now).items.find(c=>!c.expired);
- if(journey&&!['hold','stop','high','caution'].includes(ready.status)){
+ if(journey&&!['hold','stop','high','caution'].includes(ready.status)&&!notes.some(n=>n.role==='followup'&&['short-sleep','tired'].includes(n.key))){
   const index=notes.findIndex(n=>n.role==='followup');
   const fact=journey.reviewDue?'وصل موعد متابعة الخطوة اللي اتفقنا عليها. هل ساعدتك؟':journey.status==='accepted'?'خطوتك المتفق عليها محفوظة؛ هنراجعها يوم '+journey.reviewOn+'.':journey.title;
   const note={role:'followup',key:'coaching-'+journey.status,priority:journey.reviewDue?'attention':'normal',text:fact,action:journey.reviewDue?'سجّل النتيجة: ساعدت، لم تساعد، أو لم أجربها.':journey.step,caseId:journey.id};

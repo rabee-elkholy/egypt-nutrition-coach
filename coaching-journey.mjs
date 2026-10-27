@@ -20,6 +20,7 @@ const advice={
 };
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 const active=c=>!terminal.has(c.status);
+const expired=(c,now)=>['proposed','question'].includes(c.status)&&Date.parse(c.createdAt)+7*86400000<=now;
 export function coachingContext(s,domain){return domain==='nutrition'?JSON.stringify([s.active_plan_id,s.profile?.goal]):JSON.stringify([s.workoutPlan?.id,s.profile?.goal]);}
 function evidence(s,domain,date){return {date,basedOnRevision:s.revision+1,context:coachingContext(s,domain),source:'user_report'};}
 export function currentFeedback(s,domain,today){
@@ -88,12 +89,13 @@ export function reconcileCoaching(s,now){
  s.coachingCases||=[];
  const today=localDate(now,s.profile?.timezone||'Africa/Cairo'),at=new Date(now).toISOString();
  for(const c of s.coachingCases)if(active(c)&&c.context!==coachingContext(s,c.domain)){c.status='superseded';c.closedAt=at;}
- const recent=(s.sessions||[]).filter(x=>x.date>=dateOffset(today,-6)&&x.date<=today&&x.status==='missed'&&(x.programId===s.workoutPlan?.programId||x.planId===s.workoutPlan?.id));
+ const recent=(s.sessions||[]).filter(x=>x.date>=dateOffset(today,-6)&&x.date<=today&&x.status==='missed'&&((s.workoutPlan?.programId&&x.programId===s.workoutPlan.programId)||(s.workoutPlan?.id&&x.planId===s.workoutPlan.id)));
  const food=(s.foodLogs||[]).filter(x=>x.date>=dateOffset(today,-6)&&x.date<=today&&x.complete&&x.adherence!=null&&x.adherence<80);
  for(const domain of ['nutrition','training']){
   const dates=[...new Set((domain==='training'?recent:food).map(x=>x.date))];
   if(dates.length<2||domain==='nutrition'&&!s.active_plan_id||domain==='training'&&!s.workoutPlan)continue;
-  if(s.coachingCases.some(c=>c.domain===domain&&c.context===coachingContext(s,domain)&&(active(c)||c.date>=dateOffset(today,-6))))continue;
+  if(s.coachingCases.some(c=>c.domain===domain&&c.context===coachingContext(s,domain)&&(active(c)&&!expired(c,now)||c.date>=dateOffset(today,-6))))continue;
+  for(const c of s.coachingCases.filter(c=>c.domain===domain&&active(c)&&expired(c,now))){c.status='superseded';c.closedAt=at;}
   s.coachingCases.push({id:crypto.randomUUID(),domain,date:today,createdAt:at,context:coachingContext(s,domain),barrier:null,status:'question',title:domain==='nutrition'?'في أيام مسجلة أكلك كان مختلف عن الخطة.':'في جلستين أو أكتر سجلتهم فائتين الأسبوع ده.',step:'إيه السبب الأساسي؟ سجّل العائق علشان نختار خطوة مناسبة، من غير افتراض السبب.',evidence:{dates,source:'recorded_logs',basedOnRevision:s.revision+1},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
  }
  return s;
@@ -101,7 +103,7 @@ export function reconcileCoaching(s,now){
 
 export function coachingInbox(s,now){
  const today=localDate(now,s.profile?.timezone||'Africa/Cairo');
- const items=(s.coachingCases||[]).filter(c=>active(c)&&c.context===coachingContext(s,c.domain)).map(c=>({...c,reviewDue:c.status==='accepted'&&c.reviewOn<=today,expired:c.status==='proposed'&&Date.parse(c.createdAt)+7*86400000<=now,deliveryStatus:'NOT_SENT',readStatus:c.acknowledgedAt?'ACKNOWLEDGED':'UNKNOWN'}));
+ const items=(s.coachingCases||[]).filter(c=>active(c)&&c.context===coachingContext(s,c.domain)).map(c=>({...c,reviewDue:c.status==='accepted'&&c.reviewOn<=today,expired:expired(c,now),deliveryStatus:'NOT_SENT',readStatus:c.acknowledgedAt?'ACKNOWLEDGED':'UNKNOWN'}));
  items.sort((a,b)=>Number(b.barrier==='pain')-Number(a.barrier==='pain')||Number(b.reviewDue)-Number(a.reviewDue)||b.createdAt.localeCompare(a.createdAt));
  return {date:today,revision:s.revision,channel:'in_app',pushConfigured:false,items};
 }
