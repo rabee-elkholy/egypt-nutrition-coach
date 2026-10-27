@@ -59,7 +59,7 @@ export function trainingView({state,editingExercises}){
    ${weighted&&e.suggestedKg!=null&&state.recovery?.progressionAllowed&&!blocked?`<p class="coach-success">⬆️ توصية الكابتن اليوم: ${e.loadMode==='assisted'?'وزن المساعدة المقترح':'الحمل المقترح'} ${e.suggestedKg} كجم (${esc(e.progressionReason)})</p>`:''}
    ${blocked?'<p class="coach-notice">⚠️ في ملاحظة ألم أو إجهاد على المنطقة دي؛ وقف الحركة المؤلمة وراجع حالتك قبل تكمل.</p>':''}
    ${loggedToday?`<p class="coach-success">✓ تم حفظ تمرينك اليوم (${setSummary(e,last.sets)})${comparisonNote?`<br><small>${esc(comparisonNote)}</small>`:''}</p>`:''}
-   <form class="workout-log" data-id="${e.id}" data-day="${day.dayIndex}" data-uses-kg="${weighted}" data-load-label="${loadLabel(e)}" data-step-kg="${stepKg}" data-default-kg="${suggestedKg}" data-default-reps="${suggestedReps}">
+   <form class="workout-log" data-diary-date="${todayStr}" data-id="${e.id}" data-day="${day.dayIndex}" data-uses-kg="${weighted}" data-load-label="${loadLabel(e)}" data-step-kg="${stepKg}" data-default-kg="${suggestedKg}" data-default-reps="${suggestedReps}">
     <input type="hidden" name="date" value="${todayStr}">
     <input type="hidden" name="effort_rir" value="${esc(defaultEffort)}">
     <div class="set-rows">
@@ -132,7 +132,7 @@ export function trainingView({state,editingExercises}){
      <label>اختار يوم بديل للتمرين خلال الأسبوعين الجايين <input name="toDate" type="date" min="${todayStr}" max="${dateOffset(todayStr,13)}" required></label>
      <button class="secondary">نقل موعد التمرينة</button>
     </form>
-    <form class="session-log" data-day="${d.dayIndex}" style="margin-top:8px">
+    <form class="session-log" data-diary-date="${todayStr}" data-day="${d.dayIndex}" style="margin-top:8px">
      <input type="hidden" name="date" value="${todayStr}">
      <input type="hidden" name="status" value="missed">
      <label>المدة الفعلية بالدقائق (اختياري)<input type="number" name="duration" min="1" max="240"></label>

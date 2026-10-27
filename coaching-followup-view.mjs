@@ -147,28 +147,31 @@ export function followupView({state,simulationMode,notes}){
    </article>`).join('')}
   `;
  }
- function recoveryHTML(){
+ function recoveryHTML(draftDates={}){
   const todayStr=state.serverDate||localDate();
-  const latest=state.checkins.find(c=>c.date===todayStr)||state.checkins.at(-1);
+  const recoveryDate=draftDates.recovery||todayStr,weightDate=draftDates.weight||todayStr;
+  const latest=state.checkins.find(c=>c.date===recoveryDate)||state.checkins.at(-1);
   const lastWeight=state.weights.at(-1)?.kg??state.profile?.weight??80;
-  const curSleep=latest?.date===todayStr?latest.sleepHours:7.5;
-  const curQual=latest?.date===todayStr?latest.sleepQuality:4;
-  const curFatigue=latest?.date===todayStr?latest.fatigue:2;
-  const curStress=latest?.date===todayStr?(latest.stress??2):2;
-  const hasPainOrSore=latest?.date===todayStr&&(latest.pain||(latest.soreness??0)>=7||Object.values(latest.sorenessByRegion||{}).some(v=>v>=7));
-  return `<form id="weight-log" class="coach-card">
-   <h3>⚖️ ميزان النهاردة (${todayStr})</h3>
+  const curSleep=latest?.date===recoveryDate?latest.sleepHours:7.5;
+  const curQual=latest?.date===recoveryDate?latest.sleepQuality:4;
+  const curFatigue=latest?.date===recoveryDate?latest.fatigue:2;
+  const curStress=latest?.date===recoveryDate?(latest.stress??2):2;
+  const hasPainOrSore=latest?.date===recoveryDate&&(latest.pain||(latest.soreness??0)>=7||Object.values(latest.sorenessByRegion||{}).some(v=>v>=7));
+  return `<form id="weight-log" data-diary-date="${weightDate}" class="coach-card">
+   <h3>⚖️ ${weightDate===todayStr?'ميزان النهاردة':'ميزان يوم'} (${weightDate})</h3>
+   ${weightDate!==todayStr?`<p id="weight-draft-day">دي مسودة وزنك ليوم ${weightDate}. <button type="button" data-start-draft="weight-log" class="secondary">ابدأ تسجيل اليوم ${todayStr} بدل المسودة</button></p>`:''}
    <p><small>فريق التغذية بيعتمد على متوسط الميزان خلال الأسبوعين مش تغير يوم واحد:</small></p>
-   <input type="hidden" name="date" value="${todayStr}">
+   <input type="hidden" name="date" value="${weightDate}">
    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
     <label style="flex:1;min-width:160px;margin:0">وزنك بالكيلوجرام <input name="kg" type="number" step="0.1" min="35" max="250" value="${lastWeight}" required></label>
     <button style="margin:0">✓ حفظ الميزان</button>
    </div>
    ${state.weights.length?`<div class="coach-tags" style="margin-top:10px">${state.weights.slice(-7).reverse().map(w=>`<span>${w.date}: <strong>${w.kg} كجم</strong></span>`).join('')}</div>`:''}
   </form>
-  <form id="recovery-log" data-diary-date="${todayStr}" class="coach-card">
-   <input type="hidden" name="date" value="${todayStr}">
-   <h3>😴 طمّن فريق المتابعة على نومك وطاقتك (${todayStr})</h3>
+  <form id="recovery-log" data-diary-date="${recoveryDate}" class="coach-card">
+   <input type="hidden" name="date" value="${recoveryDate}">
+   <h3>😴 طمّن فريق المتابعة على نومك وطاقتك (${recoveryDate})</h3>
+   ${recoveryDate!==todayStr?`<p id="recovery-draft-day">دي مسودة حالتك ليوم ${recoveryDate}. حفظها هيسجلها لليوم ده. <button type="button" id="recovery-start-today" data-start-draft="recovery-log" class="secondary">ابدأ متابعة اليوم ${todayStr} بدل المسودة</button></p>`:''}
    <p><small>اختار بلمسة واحدة علشان كابتن التدريب يظبط لك حمل التمرين:</small></p>
    <input type="hidden" name="sleepHours" value="${curSleep}">
    <input type="hidden" name="sleepQuality" value="${curQual}">
@@ -202,7 +205,7 @@ export function followupView({state,simulationMode,notes}){
     <label><input type="checkbox" name="illness"> عندي أعراض برد أو سخونية اليوم</label>
     <label><input type="checkbox" name="redFlags"> أشعر بدوخة شديدة أو ألم بالصدر</label>
    </details>
-   <button>✓ حفظ حالتي اليوم</button>
+   <button type="submit">✓ حفظ حالتي ليوم ${recoveryDate}</button>
   </form>`;
  }
  return {reviewHTML,recoveryHTML};

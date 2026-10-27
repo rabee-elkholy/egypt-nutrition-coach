@@ -43,6 +43,7 @@ export async function mountPlanner({root,toast}){
  const clearUncertain=key=>{uncertainWrite=null;if(session.uncertainWrite?.key===key)session.uncertainWrite=null;};
  let simulationMode=uncertainWrite?.simulationMode??(new URL(location.href).searchParams.get('simulation')==='1');
  const drafts=session.drafts;
+ const dailyDraftDates=session.dailyDraftDates||=new Map();
  const editingExercises=new Set();
  const formKey=form=>(form.id||[form.classList[0],form.dataset.day||'',form.dataset.id||form.dataset.meal||form.dataset.key||form.dataset.coachingFeedback||''].join('|'))+(form.dataset.diaryDate?'|'+form.dataset.diaryDate:'')+(simulationMode?'|sim-day:'+state?.simulation?.day:'');
  const {captureDrafts,restoreDrafts}=createDraftStore({root,formKey,drafts});
@@ -86,7 +87,8 @@ export async function mountPlanner({root,toast}){
    try{state=await api('commands',options);}catch(e){if(e instanceof TypeError)state=await api('commands',options);else throw e;}
    confirmed=true;clearUncertain(key);if(disposed)return false;
    const openDays=[...root.querySelectorAll('details[data-day][open]')].map(d=>d.dataset.day);
-   if(['generate','simulation_reset'].includes(action))drafts.clear();
+   if(['generate','simulation_reset'].includes(action)){drafts.clear();dailyDraftDates.clear();}
+   if(clearSubmitted&&dailyDraftDates.get(action+'-log')===payload.date)dailyDraftDates.delete(action+'-log');
    if(['simulation_reset','simulation_next'].includes(action))diaryDate=state.serverDate;
    if(action==='review'||(action==='simulation_fill'&&state.adaptations?.some(a=>a.status==='pending')))activeTab='review';
    render();for(const id of openDays)root.querySelector(`details[data-day="${id}"]`)?.setAttribute('open','');
@@ -101,7 +103,7 @@ export async function mountPlanner({root,toast}){
  async function switchSimulation(enabled){
   if(disposed||busy)return;if(uncertainWrite){notice('أكد العملية المعلقة قبل تبديل وضع التجربة.',true);retryUncertain();return;}
   client.invalidateReads();const before=simulationMode;busy=true;viewVersion++;simulationMode=enabled;
-  try{const next=await api('state');state=next;drafts.clear();diaryDate=state.serverDate;const url=new URL(location.href);if(enabled)url.searchParams.set('simulation','1');else url.searchParams.delete('simulation');history.replaceState(null,'',url);root.replaceChildren();busy=false;render();root.scrollIntoView({block:'start'});}
+  try{const next=await api('state');state=next;drafts.clear();dailyDraftDates.clear();diaryDate=state.serverDate;const url=new URL(location.href);if(enabled)url.searchParams.set('simulation','1');else url.searchParams.delete('simulation');history.replaceState(null,'',url);root.replaceChildren();busy=false;render();root.scrollIntoView({block:'start'});}
   catch(error){simulationMode=before;notice(error.message,true);}finally{busy=false;}
  }
  function wireSimulation(){
@@ -150,7 +152,7 @@ export async function mountPlanner({root,toast}){
  const singleWorkoutDayCard=(...args)=>trainingView({state,editingExercises}).singleWorkoutDayCard(...args);
  const workoutHTML=(...args)=>trainingView({state,editingExercises}).workoutHTML(...args);
  const reviewHTML=(...args)=>followupView({state,simulationMode,notes:selectBrief(state,state.serverDate||localDate())}).reviewHTML(...args);
- const recoveryHTML=(...args)=>followupView({state,simulationMode,notes:selectBrief(state,state.serverDate||localDate())}).recoveryHTML(...args);
+ const recoveryHTML=()=>followupView({state,simulationMode,notes:selectBrief(state,state.serverDate||localDate())}).recoveryHTML(simulationMode?{}:{recovery:dailyDraftDates.get('recovery-log'),weight:dailyDraftDates.get('weight-log')});
  function render(){
   if(!busy)captureDrafts();viewVersion++;
   if(simulationMode&&!state.simulation){root.innerHTML='<div class="coach-app" dir="rtl"><div id="coach-feedback" role="alert" class="coach-notice" hidden></div>'+simulationPanel(state,true)+'</div>';wireSimulation();return;}
@@ -382,6 +384,14 @@ export async function mountPlanner({root,toast}){
   });
 
   const recoveryForm=root.querySelector('#recovery-log');
+  for(const form of [weightForm,recoveryForm].filter(Boolean)){
+   const retainDate=()=>{if(!simulationMode)dailyDraftDates.set(form.id,form.dataset.diaryDate);};
+   form.addEventListener('input',retainDate);
+   form.addEventListener('click',e=>{if(e.target.closest('.sleep-preset,.energy-preset'))retainDate();});
+   form.querySelector('[data-start-draft]')?.addEventListener('click',()=>{
+    captureDrafts();drafts.delete(formKey(form));dailyDraftDates.delete(form.id);form.remove();render();
+   });
+  }
   if(recoveryForm)recoveryForm.onsubmit=e=>{
    e.preventDefault();const p=formData(e.target);p.sorenessByRegion={};p.painRegions=[];for(const key of Object.keys(p)){if(key.startsWith('sore:')){if(p[key]!=='')p.sorenessByRegion[key.slice(5)]=Number(p[key]);delete p[key];}else if(key.startsWith('pain:')){if(p[key])p.painRegions.push(key.slice(5));delete p[key];}}send('recovery',p);
   };

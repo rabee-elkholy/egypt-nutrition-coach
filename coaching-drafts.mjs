@@ -9,7 +9,14 @@ export function createDraftStore({root,formKey,drafts=new Map()}){
     for(let i=form.querySelectorAll('.set-row').length;i>count;i--)form.querySelector('[data-remove-set]')?.click();
    }
   }
-  for(const [name,value]of Object.entries(draft)){const field=form.elements.namedItem(name);if(field&&'value'in field){if(field.type==='checkbox')field.checked=!!value;else field.value=String(value);}}
+  for(const [name,value]of Object.entries(draft)){const field=form.elements.namedItem(name);if(field&&'value'in field){if(name==='date'&&field.type==='hidden'&&String(value)!==field.defaultValue)continue;if(field.type==='checkbox')field.checked=!!value;else field.value=String(value);}}
+  if(form.id==='recovery-log'){
+   const hours=Number(draft.sleepHours),fatigue=Number(draft.fatigue);
+   const sleepChoice=hours<6?5:hours<7?6.5:hours<=8?7.5:8.5;
+   const fatigueChoice=fatigue<=1?1:fatigue<=3?2:4;
+   form.querySelectorAll('.sleep-preset').forEach(button=>button.classList.toggle('active-chip',Number(button.dataset.sleep)===sleepChoice));
+   form.querySelectorAll('.energy-preset').forEach(button=>button.classList.toggle('active-chip',Number(button.dataset.fatigue)===fatigueChoice));
+  }
   if(form.matches('.workout-log')){const rir=Number(draft.effort_rir);form.querySelectorAll('.effort-chip').forEach(b=>b.classList.toggle('active-chip',Number(b.dataset.effort)===(rir>=3?3:rir<=1?0:2)));}
  }}
  return {captureDrafts,restoreDrafts};

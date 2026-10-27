@@ -1,0 +1,60 @@
+{
+  "status": "CLEAN_REPLACEMENT_RUNS_PENDING",
+  "groups": [
+    {
+      "discardedFromFinalEvidence": true,
+      "preservedDirectory": "/workspace/scratch/quality-evidence/failed-infrastructure/final-v4-shard-1",
+      "replacement": "/workspace/scratch/quality-evidence/final-v4/shard-1",
+      "reason": "The earlier environment interruption produced durable failed fetch records, then stale revisions/calendar dates. Rerun the complete affected shard from an empty local database; do not filter records or amend dates.",
+      "transportEvents": [
+        {
+          "eventId": "user-034-505",
+          "status": 599,
+          "error": "fetch failed"
+        },
+        {
+          "eventId": "user-034-506",
+          "status": 599,
+          "error": "fetch failed"
+        },
+        {
+          "eventId": "user-034-507",
+          "status": 599,
+          "error": "fetch failed"
+        }
+      ],
+      "dependentRevisionConflicts": [
+        "user-034-508",
+        "user-034-509",
+        "user-034-510",
+        "user-034-511",
+        "user-034-512"
+      ]
+    },
+    {
+      "discardedFromFinalEvidence": true,
+      "preservedDirectory": "/workspace/scratch/quality-evidence/failed-infrastructure/baseline-shards-shard-6",
+      "replacement": "/workspace/scratch/quality-evidence/baseline-shards/shard-6",
+      "reason": "The earlier environment interruption produced durable failed fetch records, then stale revisions/calendar dates. Rerun the complete affected shard from an empty local database; do not filter records or amend dates.",
+      "transportEvents": [
+        {
+          "eventId": "user-039-630",
+          "status": 599,
+          "error": "fetch failed"
+        },
+        {
+          "eventId": "user-039-631",
+          "status": 599,
+          "error": "fetch failed"
+        },
+        {
+          "eventId": "user-039-632",
+          "status": 599,
+          "error": "fetch failed"
+        }
+      ],
+      "dependentRevisionConflicts": []
+    }
+  ],
+  "policy": "Preserve failed evidence; rerun whole affected shards with empty local databases. No filtering failed records or changing dates."
+}
