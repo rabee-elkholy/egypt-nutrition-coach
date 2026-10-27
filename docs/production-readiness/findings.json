@@ -482,7 +482,19 @@
       "regressionTests": "Five frozen-source failures then five passes; full check 265 pass. Legacy hold fixture retains original valid reference quantities.",
       "status": "VERIFIED",
       "commitReference": "After 8ac9c4a; see NUTRITION_QUALITY_REPAIR.md and git log -- planner-core.mjs"
+    },
+    {
+      "id": "FOLLOWUP-005",
+      "severity": "P1",
+      "description": "Partial feedback could erase recent adverse hunger/energy evidence used by calorie-cut guards",
+      "affectedModules": "coaching-journey.mjs; personal-brief.mjs",
+      "evidence": "Six fail before / six pass after; full check 298 pass; local actual HTTP 52 requests / ten checks, reload and later accepted adjustment.",
+      "rootCause": "The newest feedback row replaced optional metric values from earlier recent reports.",
+      "fix": "Select latest explicit observation per metric within original domain/context/freshness window; preserve observation attribution.",
+      "regressionTests": "tests/coaching-feedback-memory.test.mjs; scripts/audit/feedback-memory-http.mjs",
+      "status": "VERIFIED",
+      "commitReference": "After fc6b8f6; deployed canonical version 8b1bbfd4-52f0-42fc-9c83-b49e5a58a3fa. See FEEDBACK_MEMORY_REPAIR.md."
     }
   ],
-  "updatedAt": "2026-10-26T14:02:42.309Z"
+  "updatedAt": "2026-10-27T07:00:34.801Z"
 }

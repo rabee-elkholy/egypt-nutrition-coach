@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-27",
+  "sourceBase": "fc6b8f60bd8fca07fbcdeeb45b2a21c84130f102",
+  "sourceHashes": {
+    "coaching-journey.mjs": "22ef6d01799831e323e1751326ed137efb42d2a5b8e30f0e1053763ef51bf275",
+    "personal-brief.mjs": "5e95938a852f5703c7efba18d609703cf3f69c7a4d555c485e68fe0ffe4470e3"
+  },
+  "tests": {
+    "tests": 298,
+    "suites": 0,
+    "pass": 298,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "regressions": {
+    "before": {
+      "pass": 0,
+      "fail": 6
+    },
+    "after": {
+      "pass": 6,
+      "fail": 0
+    }
+  },
+  "http": {
+    "scope": "PARTIAL_NUTRITION_FEEDBACK_HTTP_GUARD_AND_PERSISTENCE",
+    "passed": true,
+    "totals": {
+      "httpEvents": 52,
+      "checks": 10,
+      "failedChecks": 0,
+      "statuses": {
+        "200": 52
+      }
+    },
+    "eventsSha256": "bca3f1d6fae43548913bc56da161a901ea640aaa958e0a67d29f8b095ebdd929"
+  },
+  "browser": {
+    "widths": [
+      390,
+      1280
+    ],
+    "channel": "msedge",
+    "passed": true
+  },
+  "backup": {
+    "outsideGit": true,
+    "restoreIntegrity": "ok"
+  },
+  "migration": {
+    "name": "0004_coaching_journey.sql",
+    "applied": true
+  },
+  "live": {
+    "verifiedAt": "2026-10-27T06:59:51.978Z",
+    "origin": "https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev",
+    "deploymentVersionId": "8b1bbfd4-52f0-42fc-9c83-b49e5a58a3fa",
+    "scope": "READ_ONLY_LIVE_HEALTH_CAPABILITIES_INBOX_AND_EXACT_ASSET_BYTES",
+    "passed": true,
+    "checks": [
+      {
+        "endpoint": "/v1/health",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "endpoint": "/v1/capabilities",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "endpoint": "/v1/coaching/inbox",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "endpoint": "/coaching-journey.mjs",
+        "status": 200,
+        "sha256": "22ef6d01799831e323e1751326ed137efb42d2a5b8e30f0e1053763ef51bf275",
+        "expectedSha256": "22ef6d01799831e323e1751326ed137efb42d2a5b8e30f0e1053763ef51bf275",
+        "passed": true
+      },
+      {
+        "endpoint": "/personal-brief.mjs",
+        "status": 200,
+        "sha256": "5e95938a852f5703c7efba18d609703cf3f69c7a4d555c485e68fe0ffe4470e3",
+        "expectedSha256": "5e95938a852f5703c7efba18d609703cf3f69c7a4d555c485e68fe0ffe4470e3",
+        "passed": true
+      }
+    ]
+  }
+}

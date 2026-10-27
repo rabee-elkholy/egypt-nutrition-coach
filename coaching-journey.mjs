@@ -22,7 +22,19 @@ const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});}
 const active=c=>!terminal.has(c.status);
 export function coachingContext(s,domain){return domain==='nutrition'?JSON.stringify([s.active_plan_id,s.profile?.goal]):JSON.stringify([s.workoutPlan?.id,s.profile?.goal]);}
 function evidence(s,domain,date){return {date,basedOnRevision:s.revision+1,context:coachingContext(s,domain),source:'user_report'};}
-export function currentFeedback(s,domain,today){return (s.coachingFeedback||[]).filter(f=>f.domain===domain&&f.date<=today&&f.date>=dateOffset(today,-2)&&f.context===coachingContext(s,domain)).sort((a,b)=>a.at.localeCompare(b.at)).at(-1);}
+export function currentFeedback(s,domain,today){
+ const recent=(s.coachingFeedback||[]).filter(f=>f.domain===domain&&f.date<=today&&f.date>=dateOffset(today,-2)&&f.context===coachingContext(s,domain)).sort((a,b)=>a.at.localeCompare(b.at));
+ const latest=recent.at(-1);if(!latest)return undefined;
+ const result={...latest,metricEvidence:{}};
+ // Optional omissions are not reassessments. Each rating keeps its own source
+ // and original freshness window, even when a newer report changes the barrier.
+ for(const key of ['hunger','energy','satiety']){
+  const observed=recent.findLast(f=>Number.isInteger(f[key])&&f[key]>=1&&f[key]<=5);
+  result[key]=observed?.[key]??null;
+  if(observed)result.metricEvidence[key]={feedbackId:observed.id,date:observed.date,at:observed.at};
+ }
+ return result;
+}
 export function coachingSafetyHold(s,today){
  const f=(s.coachingFeedback||[]).filter(x=>x.domain==='training'&&x.barrier==='pain'&&x.date<=today).sort((a,b)=>a.at.localeCompare(b.at)).at(-1);
  return f?.barrier==='pain'&&!s.checkins?.some(c=>Date.parse(c.at)>Date.parse(f.at)&&!c.pain&&!c.illness&&!c.redFlags)?f:null;
