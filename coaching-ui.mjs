@@ -19,6 +19,7 @@ import {personalBrief} from './personal-brief.mjs';
 
 export async function mountPlanner({root,toast}){
  root._coachRefreshCleanup?.();
+ root.removeAttribute('aria-busy');
  const selectBrief=createBriefSelector(personalBrief);
  let tipOffset=0;
  const tipsHTML=(todayStr)=>{
@@ -39,6 +40,7 @@ export async function mountPlanner({root,toast}){
  const session=root._coachSession||={drafts:new Map(),uncertainWrite:null};
  let state,busy=false,diaryDate=localDate(),activeTab='nutrition',catalogQuery='',catalogOffset=0,viewVersion=0,catalogRequest=0,foodRequest=0,alternativeRequest=0,submittedForm=null,uncertainWrite=session.uncertainWrite;
  const setUncertain=value=>{uncertainWrite=value;session.uncertainWrite=value;};
+ const clearUncertain=key=>{uncertainWrite=null;if(session.uncertainWrite?.key===key)session.uncertainWrite=null;};
  let simulationMode=uncertainWrite?.simulationMode??(new URL(location.href).searchParams.get('simulation')==='1');
  const drafts=session.drafts;
  const editingExercises=new Set();
@@ -82,7 +84,7 @@ export async function mountPlanner({root,toast}){
   try{
    const options={method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':key},body};
    try{state=await api('commands',options);}catch(e){if(e instanceof TypeError)state=await api('commands',options);else throw e;}
-   confirmed=true;setUncertain(null);if(disposed)return true;
+   confirmed=true;clearUncertain(key);if(disposed)return false;
    const openDays=[...root.querySelectorAll('details[data-day][open]')].map(d=>d.dataset.day);
    if(['generate','simulation_reset'].includes(action))drafts.clear();
    if(['simulation_reset','simulation_next'].includes(action))diaryDate=state.serverDate;
@@ -90,10 +92,11 @@ export async function mountPlanner({root,toast}){
    render();for(const id of openDays)root.querySelector(`details[data-day="${id}"]`)?.setAttribute('open','');
    notice(action==='simulation_next'?`بدأ اليوم ${state.simulation?.day||''} في المحاكاة.`:action==='simulation_fill'?'تم تسجيل سيناريو اليوم ومراجعة الخطة.':action==='review'?state.lastReview?.message||'تمت مراجعة فريق المتابعة.':'تم الحفظ بنجاح ✓');return true;
   }catch(e){
+   if(disposed)return false;
    if(!confirmed&&(!e.status||e.status>=500)){setUncertain({key,body,fingerprint,action,payload,submitted,simulationMode,submittedData:uncertainWrite?.submittedData||rejectedDraft});notice('الاتصال انقطع أو الحفظ لم يتأكد. أعد المحاولة بنفس العملية علشان ما تتسجلش مرتين.',true);retryUncertain();}
-   else{setUncertain(null);if(submitted&&rejectedDraft)drafts.set(submitted,rejectedDraft);if(e.status===409){try{state=await api('state');render();}catch{}}notice(confirmed?'بياناتك اتحفظت؛ حدّث الصفحة لإعادة عرضها.':e.message,true);}return false;
+   else{clearUncertain(key);if(submitted&&rejectedDraft)drafts.set(submitted,rejectedDraft);if(e.status===409){try{state=await api('state');render();}catch{}}notice(confirmed?'بياناتك اتحفظت؛ حدّث الصفحة لإعادة عرضها.':e.message,true);}return false;
   }
-  finally{for(const {el,disabled}of controls)if(el.isConnected)el.disabled=disabled;busy=false;root.removeAttribute('aria-busy');}
+  finally{for(const {el,disabled}of controls)if(el.isConnected)el.disabled=disabled;busy=false;if(!disposed)root.removeAttribute('aria-busy');}
  }
  async function switchSimulation(enabled){
   if(disposed||busy)return;if(uncertainWrite){notice('أكد العملية المعلقة قبل تبديل وضع التجربة.',true);retryUncertain();return;}
@@ -125,7 +128,7 @@ export async function mountPlanner({root,toast}){
    if(target)target.scrollIntoView({block:'start',behavior:'smooth'});
   }));
  }
- function retryUncertain(){const feedback=root.querySelector('#coach-feedback');if(feedback&&uncertainWrite&&!feedback.querySelector('button')){const b=document.createElement('button');b.textContent='أعد محاولة العملية غير المؤكدة';b.id='retry-uncertain-write';b.onclick=()=>send(uncertainWrite.action,uncertainWrite.payload);feedback.append(' ',b);}}
+ function retryUncertain(){const feedback=root.querySelector('#coach-feedback');if(feedback&&uncertainWrite&&!feedback.querySelector('button')){feedback.hidden=false;if(!feedback.textContent.trim())feedback.textContent='في عملية حفظ لسه لم نتأكد من نتيجتها. أعد محاولة نفس العملية علشان ما تتسجلش مرتين.';const b=document.createElement('button');b.textContent='أعد محاولة العملية غير المؤكدة';b.id='retry-uncertain-write';b.onclick=()=>send(uncertainWrite.action,uncertainWrite.payload);feedback.append(' ',b);}}
  function onboarding(){
   if(busy)return;captureDrafts();viewVersion++;root.innerHTML='<div id="coach-feedback" role="alert" class="coach-notice" hidden></div><div class="coach-app">'+simulationPanel(state,simulationMode,{compact:true})+'</div><section id="coach-onboarding-section"></section>';
   wireSimulation();

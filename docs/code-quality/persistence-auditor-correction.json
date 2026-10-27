@@ -1,0 +1,31 @@
+{
+  "auditorVersion": 2,
+  "diagnosis": [
+    {
+      "event": "user-001-2",
+      "simulationRequest": false,
+      "plan": "plan-97947e10-9894-4fa3-a994-81369a9482c9",
+      "ordinaryFound": true,
+      "simulationFound": false
+    },
+    {
+      "event": "user-001-2",
+      "simulationRequest": false,
+      "plan": "392459b5-3824-4822-a724-568f362454fc",
+      "ordinaryFound": true,
+      "simulationFound": false
+    }
+  ],
+  "negativeControl": {
+    "passed": true,
+    "expectedAuditorExit": 1,
+    "actualAuditorExit": 1,
+    "mutation": "Moved one ordinary-account plan to an unrelated owner in an isolated database copy",
+    "detectedFailures": [
+      "user-001:plan:plan-97947e10-9894-4fa3-a994-81369a9482c9"
+    ],
+    "originalDatasetChanged": false
+  },
+  "cause": "Initial plans are created in the ordinary account before simulation_reset. The auditor incorrectly searched these archives in the simulation namespace. The corrected auditor derives the owner from each recorded request namespace and checks both.",
+  "readOnlyRuntime": "Version 2 opens the captured Worker and D1 directly, without rebuilding source or applying migrations."
+}

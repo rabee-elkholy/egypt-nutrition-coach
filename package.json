@@ -10,7 +10,7 @@
     "deploy": "npm run build && npx wrangler deploy --config wrangler.jsonc",
     "deploy:d1": "npx wrangler d1 migrations apply egypt-nutrition-coaching --remote --config wrangler.jsonc",
     "db:generate": "drizzle-kit generate",
-    "test:browser": "node scripts/browser-onboarding.mjs && node scripts/browser-smoke.mjs && node scripts/browser-audit.mjs && node scripts/browser-simulation.mjs && node scripts/browser-coaching-journey.mjs && node scripts/browser-message-timing.mjs && node scripts/browser-first-week.mjs && node scripts/browser-page-lifecycle.mjs",
+    "test:browser": "node scripts/browser-onboarding.mjs && node scripts/browser-smoke.mjs && node scripts/browser-audit.mjs && node scripts/browser-simulation.mjs && node scripts/browser-coaching-journey.mjs && node scripts/browser-message-timing.mjs && node scripts/browser-first-week.mjs && node scripts/browser-page-lifecycle.mjs && node scripts/browser-pending-ownership.mjs",
     "check": "npm run typecheck && node scripts/check-data-manifest.mjs && npm run build && node scripts/quality/check-modules.mjs && node scripts/quality/check-reference.mjs && npm test",
     "audit:matrix": "node scripts/audit-matrix.mjs",
     "benchmark": "node scripts/benchmark-load.mjs",
