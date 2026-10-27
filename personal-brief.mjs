@@ -1,3 +1,6 @@
+import {latestRecord,recentByDate} from './coaching-evidence.mjs';
+import {agreementMayReplaceFollowup} from './coaching-priority.mjs';
+import {withinElapsed} from './coaching-time.mjs';
 import {coachingInbox,currentFeedback} from './coaching-journey.mjs';
 import {firstWeekMessages} from './first-week-messages.mjs';
 import {usesKg} from './exercise-load.mjs';
@@ -7,8 +10,8 @@ import {matchingNutritionDecline} from './nutrition-decisions.mjs';
 const finite=n=>typeof n==='number'&&Number.isFinite(n);
 const num=n=>Math.round(n*10)/10;
 const mean=a=>a.reduce((s,x)=>s+x,0)/a.length;
-const recent=(items,today,days)=>items.filter(x=>x.date>=dateOffset(today,1-days)&&x.date<=today);
-const latest=items=>items.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(Date.parse(a.at)||0)-(Date.parse(b.at)||0)).at(-1);
+const recent=recentByDate;
+const latest=latestRecord;
 const voices={
  nutrition:['خلّينا نبص على أكلك بهدوء.', 'دي أهم ملاحظة من سجل أكلك.', 'ناخد التغذية خطوة خطوة.', 'عندي لك نقطة من بيانات الأكل.', 'خلّينا نسهل اختيارك الجاي.', 'نبني على اللي سجلته فعلًا.', 'متابعة أكلك تبدأ من الصورة دي.'],
  training:['خلّينا نختار مجهود مناسب ليك.', 'دي نقطة التدريب اللي تستحق انتباهك.', 'نبص على تمرينك من واقع السجل.', 'ناخد التمرين خطوة محسوبة.', 'المهم إن الجلسة تناسب حالتك.', 'خلّينا نرتب أولويتك في التمرين.', 'دي ملاحظتي على تدريبك.'],
@@ -51,7 +54,7 @@ export function personalBrief(state,today){
  }
  const ready=state.recovery||{status:'unknown',reasons:[]};
  const now=Date.parse(state.serverNow||today+'T23:59:59Z');
- const check=latest((state.checkins||[]).filter(x=>x.date<=today&&Date.parse(x.at)<=now&&now-Date.parse(x.at)<=86400000));
+ const check=latest((state.checkins||[]).filter(x=>x.date<=today&&withinElapsed(x.at,now)));
  if(state.workoutPlan){
   const p=state.workoutPlan;
   const session=latest((state.sessions||[]).filter(s=>s.date===today&&(p.programId?s.programId===p.programId:s.planId===p.id)));
@@ -96,7 +99,7 @@ export function personalBrief(state,today){
   add('followup',...seedPick(follow,seed+':followup-topic'));
  }
  const journey=coachingInbox(state,now).items.find(c=>!c.expired);
- if(journey&&!['hold','stop','high','caution'].includes(ready.status)&&!notes.some(n=>n.role==='followup'&&['short-sleep','tired'].includes(n.key))){
+ if(journey&&agreementMayReplaceFollowup(ready,notes.find(n=>n.role==='followup'))){
   const index=notes.findIndex(n=>n.role==='followup');
   const fact=journey.reviewDue?'وصل موعد متابعة الخطوة اللي اتفقنا عليها. هل ساعدتك؟':journey.status==='accepted'?'خطوتك المتفق عليها محفوظة؛ هنراجعها يوم '+journey.reviewOn+'.':journey.title;
   const note={role:'followup',key:'coaching-'+journey.status,priority:journey.reviewDue?'attention':'normal',text:fact,action:journey.reviewDue?'سجّل النتيجة: ساعدت، لم تساعد، أو لم أجربها.':journey.step,caseId:journey.id};

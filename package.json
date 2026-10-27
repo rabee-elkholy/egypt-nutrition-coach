@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test --test-concurrency=2 tests/*.test.mjs",
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",
     "deploy": "npm run build && npx wrangler deploy --config wrangler.jsonc",
     "deploy:d1": "npx wrangler d1 migrations apply egypt-nutrition-coaching --remote --config wrangler.jsonc",
     "db:generate": "drizzle-kit generate",
-    "test:browser": "node scripts/browser-onboarding.mjs && node scripts/browser-smoke.mjs && node scripts/browser-audit.mjs && node scripts/browser-simulation.mjs && node scripts/browser-coaching-journey.mjs",
-    "check": "node scripts/check-data-manifest.mjs && npm run build && npm test",
+    "test:browser": "node scripts/browser-onboarding.mjs && node scripts/browser-smoke.mjs && node scripts/browser-audit.mjs && node scripts/browser-simulation.mjs && node scripts/browser-coaching-journey.mjs && node scripts/browser-message-timing.mjs && node scripts/browser-first-week.mjs && node scripts/browser-page-lifecycle.mjs",
+    "check": "npm run typecheck && node scripts/check-data-manifest.mjs && npm run build && node scripts/quality/check-modules.mjs && node scripts/quality/check-reference.mjs && npm test",
     "audit:matrix": "node scripts/audit-matrix.mjs",
     "benchmark": "node scripts/benchmark-load.mjs",
     "data:manifest": "node scripts/check-data-manifest.mjs --write",
@@ -24,7 +24,10 @@
     "sim:browser": "node scripts/cohort/browser.mjs",
     "sim:compare": "node scripts/cohort/compare.mjs",
     "sim:fast": "node scripts/run-full-simulation.mjs",
-    "sim:fast:verify": "node scripts/verify-simulation.mjs"
+    "sim:fast:verify": "node scripts/verify-simulation.mjs",
+    "typecheck": "tsc -p tsconfig.quality.json",
+    "test:fast": "node scripts/quality/run-tests.mjs fast",
+    "test:worker": "node scripts/quality/run-tests.mjs worker"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
@@ -33,6 +36,7 @@
     "drizzle-orm": "0.45.4",
     "esbuild": "0.25.12",
     "miniflare": "4.20260730.0",
+    "typescript": "5.9.3",
     "yaml": "2.9.1"
   },
   "overrides": {

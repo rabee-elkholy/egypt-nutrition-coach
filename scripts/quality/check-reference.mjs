@@ -1,0 +1,3 @@
+import {mkdtempSync,writeFileSync,rmSync,readFileSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {gunzipSync} from 'node:zlib';import {execFileSync} from 'node:child_process';
+const dir=mkdtempSync(join(tmpdir(),'coaching-reference-'));
+try{const baseline=join(dir,'before.json'),after=join(dir,'after.json');writeFileSync(baseline,gunzipSync(readFileSync('docs/code-quality/reference-before.json.gz')));execFileSync(process.execPath,['scripts/quality/behavior-reference.mjs',after,baseline],{stdio:'inherit'});}finally{rmSync(dir,{recursive:true,force:true});}

@@ -9,7 +9,7 @@ let browser;
 const results=[];
 try{
  await migrateLocal(await mf.getD1Database('DB'));const origin=String(await mf.ready).replace(/\/$/,'');
- browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'msedge'});
+ browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{})});
  for(const width of [390,1280]){
   const context=await browser.newContext({viewport:{width,height:950},extraHTTPHeaders:{'oai-authenticated-user-id':'timing-'+crypto.randomUUID()}});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));

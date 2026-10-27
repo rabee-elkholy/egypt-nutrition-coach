@@ -1,18 +1,20 @@
+import {present,presentBootstrap,presentReceipt} from './presentation.mjs';
+import {requestJson,cursor,paginateDateCollection,wantsMinimalResponse} from './http.mjs';
 import {coachingInbox,reconcileCoaching} from '../coaching-journey.mjs';
-import {clockNow,clockDate,isoNow,withClock,simulationTime} from './clock.mjs';
-import {simulationCommand,simulationSummary} from './simulation.mjs';
-import {assertDietDay} from '../diet-patterns.mjs';
-import {nutritionQualityIssues} from '../planner-core.mjs';
-import {command,review,evaluateEligibility,progressSummary,dailyWaterTarget} from './coaching.mjs';
-import {catalog,workoutSafetyIssues,exerciseAlternatives,regionForMuscle,scheduledSessions} from './workouts.mjs';
-import {accountRecovery} from './recovery.mjs';
-import {loadAccount,saveAccount,canonicalCommandDigest,deriveSyncDeltas,exportFullAccountData,deleteFullAccountData,backfillAccountToNormalizedTables,sha256Hex} from './store.mjs';
-import {library,mealAlternatives,dayTotals} from './food.mjs';
+import {clockNow,isoNow,withClock,simulationTime} from './clock.mjs';
+import {simulationCommand} from './simulation.mjs';
+
+
+import {command,review,evaluateEligibility,progressSummary} from './coaching.mjs';
+import {catalog,exerciseAlternatives,regionForMuscle} from './workouts.mjs';
+
+import {loadAccount,saveAccount,canonicalCommandDigest,exportFullAccountData,deleteFullAccountData,backfillAccountToNormalizedTables,sha256Hex} from './store.mjs';
+import {mealAlternatives,dayTotals} from './food.mjs';
 import {searchFoodCatalog,getFoodCatalogItem,getFoodCatalogManifest,calculatePreparedBeverageOrRecipe} from './food-catalog.mjs';
 import {authenticateRequest,checkRateLimit} from './auth.mjs';
 import {formatErrorBody,createApiError,logEvent} from './logger.mjs';
 import {personalBrief} from '../personal-brief.mjs';
-import {localDate,integer,validDate,needsHealthConfirmation,needsScheduleConfirmation} from '../coaching-shared.mjs';
+import {localDate,integer,validDate} from '../coaching-shared.mjs';
 
 const SECURITY_HEADERS={
  'Cache-Control':'no-store',
@@ -36,127 +38,6 @@ const errorJson=(message,status=400,requestId=null,options={},headers={})=>json(
  headers,
  requestId
 );
-
-const present=s=>withClock(simulationTime(s),()=>{
- const tz=s.profile?.timezone||'Africa/Cairo';
- const currDate=localDate(clockNow(),tz);
- const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=accountRecovery(s,clockNow(),tz),needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
- const safety=workoutSafetyIssues(s),dietIssues=[];
- if(plan)for(const day of plan.days){try{assertDietDay(day.meals.map(m=>m.snapshot),s.preferences.diet,day.targets||plan.targets,s.profile);}catch(e){dietIssues.push({date:day.date,message:e.message});}}
- if(safety.length){ready.progressionAllowed=false;if(ready.status!=='stop'){ready.status='hold';ready.reasons=['الخطة القديمة تحتوي تمارين مستبعدة حسب إصابتك. استبدلها أو أعد إنشاء الخطة وراجع مختصًا.'];}}
- return {
-  ...s,
-  workoutSafetyIssues:safety,
-  dietVerificationIssues:dietIssues,
-  serverNow:isoNow(),
-  serverDate:currDate,
-  timezone:tz,
-  simulationToday:s.simulation?simulationSummary(s):null,
-  eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
-  planQuality:plan?.days.flatMap(d=>nutritionQualityIssues(d.summary,d.targets||plan.targets).map(message=>({date:d.date,message})))||[],
-  scheduledSessions:scheduledSessions(s,currDate),
-  progressSummary:progressSummary(s),
-  recovery:{...ready,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule}
- };
-});
-
-const presentBootstrap=s=>withClock(simulationTime(s),()=>{
- const tz=s.profile?.timezone||'Africa/Cairo';
- const currDate=localDate(clockNow(),tz);
- const plan=s.plans.find(p=>p.id===s.active_plan_id);
- const ready=accountRecovery(s,clockNow(),tz);
- const needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
- const safety=workoutSafetyIssues(s);
- const todayDiary=dayTotals(s,currDate);
- const wTarget=dailyWaterTarget(s,currDate);
- const todayWater=(s.waterLogs||[]).find(w=>w.date===currDate);
- const latestWeight=(s.weights||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)).at(-1)||null;
- return {
-  schemaVersion:s.schemaVersion||3,
-  revision:s.revision,
-  serverNow:isoNow(),
-  serverDate:currDate,
-  timezone:tz,
-  profile:s.profile,
-  preferences:s.preferences,
-  eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
-  activeNutritionPlanRef:plan?{id:plan.id,start_date:plan.start_date,end_date:plan.days.at(-1)?.date,effective_from:plan.effective_from,targets:plan.targets}:null,
-  activeWorkoutPlanRef:s.workoutPlan?{id:s.workoutPlan.id,version:s.workoutPlan.version,split:s.workoutPlan.split,daysCount:s.workoutPlan.days.length,weeklySets:s.workoutPlan.weeklySets,coverage:s.workoutPlan.coverage}:null,
-  todaySummary:{
-   date:currDate,
-   nutrition:{energy:todayDiary.totals.energy,protein:todayDiary.totals.protein,targetEnergy:todayDiary.planEnergy,complete:todayDiary.complete,entriesCount:todayDiary.entries.length},
-   hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters},
-   latestWeight,
-   recovery:{status:safety.length?(ready.status==='stop'?'stop':'hold'):ready.status,reasonCode:ready.reasonCode,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule&&!safety.length},
-   scheduledWorkout:scheduledSessions(s,currDate,1)[0]||null
-  },
-  pendingAdaptations:(s.adaptations||[]).filter(a=>a.status==='pending'),
-  workoutSafetyIssues:safety,
-  entitlements:s.entitlements||{tier:'free',features:['core_nutrition','core_workouts','offline_sync','arabic_food_search']},
-  notificationPreferences:s.notificationPreferences
- };
-});
-
-const presentReceipt=(s,action,payload={},replayed=false)=>withClock(simulationTime(s),()=>{
- const tz=s.profile?.timezone||'Africa/Cairo';
- const currDate=localDate(clockNow(),tz);
- const deltas=s._lastReceipt?.affected||deriveSyncDeltas(s,action,payload,isoNow());
- return {
-  ok:true,
-  revision:s.revision,
-  serverNow:isoNow(),
-  serverDate:currDate,
-  timezone:tz,
-  commandReceipt:{
-   revision:s.revision,
-   action,
-   replayed,
-   at:s._lastReceipt?.at||isoNow()
-  },
-  affected:deltas
- };
-});
-
-async function requestJson(request){
- const reader=request.body?.getReader();if(!reader)throw createApiError('محتوى JSON مطلوب.',400,{code:'EMPTY_BODY'});
- const chunks=[];let size=0;
- while(true){
-  const {done,value}=await reader.read();
-  if(done)break;
-  size+=value.byteLength;
-  if(size>40000){await reader.cancel();throw createApiError('الطلب أكبر من المسموح.',413,{code:'PAYLOAD_TOO_LARGE'});}
-  chunks.push(value);
- }
- const raw=new Uint8Array(size);let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.byteLength;}
- try{return new TextDecoder('utf-8',{fatal:true}).decode(raw);}catch{throw createApiError('ترميز JSON غير صالح.',400,{code:'INVALID_UTF8'});}
-}
-
-function cursor(value,label){return value==null?0:integer(value,0,Number.MAX_SAFE_INTEGER,label);}
-
-function paginateDateCollection(items,url,{defaultLimit=30,maxLimit=100}={}){
- const from=url.searchParams.get('from');
- const to=url.searchParams.get('to');
- if(from&&!validDate(from))throw createApiError('تاريخ البداية غير صالح.',400,{code:'INVALID_DATE_RANGE'});
- if(to&&!validDate(to))throw createApiError('تاريخ النهاية غير صالح.',400,{code:'INVALID_DATE_RANGE'});
- const offset=cursor(url.searchParams.get('offset'),'بداية الصفحة');
- const limit=url.searchParams.get('limit')==null?defaultLimit:integer(url.searchParams.get('limit'),1,maxLimit,'حجم الصفحة');
- const filtered=(items||[]).filter(x=>(!from||x.date>=from)&&(!to||x.date<=to)).slice().sort((a,b)=>b.date.localeCompare(a.date)||(b.at||'').localeCompare(a.at||''));
- return {
-  total:filtered.length,
-  offset,
-  limit,
-  nextOffset:offset+limit<filtered.length?offset+limit:null,
-  items:filtered.slice(offset,offset+limit)
- };
-}
-
-function wantsMinimalResponse(request,url){
- const view=url.searchParams.get('view')||url.searchParams.get('response');
- if(view==='receipt'||view==='minimal'||view==='delta')return true;
- const prefer=request.headers.get('Prefer')||'';
- if(/\breturn=minimal\b/i.test(prefer))return true;
- return false;
-}
 
 export default {async fetch(request,env){
  const url=new URL(request.url);

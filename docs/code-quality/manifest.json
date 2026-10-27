@@ -1,0 +1,11 @@
+{
+  "baselineCommit": "329fae6",
+  "seed": "quality-reference-v1",
+  "clock": "2026-10-27T12:00:00Z",
+  "referenceScenarios": 10,
+  "referenceSha256": "03e6236bc6f21d76edcdb9dcaf568250923eb49524038ddca71780429c841ee1",
+  "baselineTests": 315,
+  "candidateTests": 320,
+  "firstBaselineAttempt": "Interrupted test file under heavy parallel execution; full bounded retry passed. Original failed output preserved.",
+  "scope": "Behavior reference compares all recorded state and note fields exactly; random UUIDs are deterministic, not omitted. Local benchmarks are contended synthetic process measurements."
+}

@@ -1,0 +1,80 @@
+{
+  "node": "v24.19.0",
+  "iterationsPerSample": 100,
+  "repeats": 5,
+  "results": [
+    {
+      "days": 7,
+      "records": 49,
+      "noteBytes": 726,
+      "samplesMsPerTwoViews": {
+        "before": [
+          3.86817372,
+          2.316203909999999,
+          1.909754519999999,
+          2.6277686300000003,
+          2.517734670000002
+        ],
+        "after": [
+          1.664090990000001,
+          1.0318761300000006,
+          1.0632250299999988,
+          1.0595733800000016,
+          0.8966121199999998
+        ]
+      },
+      "medianBeforeMs": 2.517734670000002,
+      "medianAfterMs": 1.0595733800000016,
+      "semantics": "exact equality; two consumers of the same snapshot; no cross-request cache"
+    },
+    {
+      "days": 90,
+      "records": 630,
+      "noteBytes": 738,
+      "samplesMsPerTwoViews": {
+        "before": [
+          13.907348059999999,
+          11.608561129999998,
+          12.105482760000005,
+          8.639858069999992,
+          11.83494248000001
+        ],
+        "after": [
+          5.6426160599999955,
+          4.3303159300000065,
+          5.889263149999997,
+          4.971002940000008,
+          6.007117959999996
+        ]
+      },
+      "medianBeforeMs": 11.83494248000001,
+      "medianAfterMs": 5.6426160599999955,
+      "semantics": "exact equality; two consumers of the same snapshot; no cross-request cache"
+    },
+    {
+      "days": 365,
+      "records": 2555,
+      "noteBytes": 738,
+      "samplesMsPerTwoViews": {
+        "before": [
+          50.01150959,
+          38.937189180000026,
+          46.843455509999984,
+          48.19202914000002,
+          49.89906847999999
+        ],
+        "after": [
+          17.18549651000001,
+          13.877023300000001,
+          13.440026399999988,
+          21.73310518000002,
+          7.563826040000058
+        ]
+      },
+      "medianBeforeMs": 48.19202914000002,
+      "medianAfterMs": 13.877023300000001,
+      "semantics": "exact equality; two consumers of the same snapshot; no cross-request cache"
+    }
+  ],
+  "limitations": "In-process synthetic history, alternating order; no production/network capacity claim"
+}

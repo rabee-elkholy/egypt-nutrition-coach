@@ -13,10 +13,12 @@ export async function run(options=args()){
  const started=Date.now(),users=Number(options.users||100),days=Number(options.days||90),seed=String(options.seed||'egypt-100x90-v1'),output=path.resolve(String(options.output||'reports/simulation-100-users-90-days/baseline-v1'));
  if(!Number.isInteger(users)||users<1||users>1000||!Number.isInteger(days)||days<1||days>90)throw Error('Invalid users/days');
  if(options['from-day']&&!options.resume)throw Error('--from-day requires --resume and existing checkpoints; no future state injection');
- const cohort=personas(seed,users).filter(p=>!options['user-id']||[p.userId,String(Number(p.userId.slice(5)))].includes(String(options['user-id'])));
+ const shards=Number(options.shards||1),shard=Number(options.shard||0);
+ if(!Number.isInteger(shards)||shards<1||!Number.isInteger(shard)||shard<0||shard>=shards)throw Error('Invalid cohort shard');
+ const cohort=personas(seed,users).filter((p,index)=>index%shards===shard).filter(p=>!options['user-id']||[p.userId,String(Number(p.userId.slice(5)))].includes(String(options['user-id'])));
  if(!cohort.length)throw Error('Selected user is not in the preregistered cohort');
  mkdirSync(output,{recursive:true});
- const config={users:cohort.length,days,seed,startDate:'2026-10-24',messageEvidence:'BACKEND_BRIEF_API',versions:{persona:VERSION,behavior:VERSION,evaluation:VERSION,schema:1},localOnly:true,...(options['user-id']?{cohortGenerationUsers:users,selectedUserIds:cohort.map(p=>p.userId)}:{})};
+ const config={users:cohort.length,days,seed,startDate:'2026-10-24',messageEvidence:'BACKEND_BRIEF_API',versions:{persona:VERSION,behavior:VERSION,evaluation:VERSION,schema:1},localOnly:true,...(options['user-id']||shards>1?{cohortGenerationUsers:users,selectedUserIds:cohort.map(p=>p.userId)}:{}),shards,shard};
  if(existsSync(path.join(output,'simulation_config.json'))){if(!options.resume)throw Error('Output exists: choose a new directory or --resume');if(hash(read(path.join(output,'simulation_config.json')))!==hash(config))throw Error('Resume configuration mismatch');}
  else json(path.join(output,'simulation_config.json'),config);
  const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();

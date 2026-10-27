@@ -7,7 +7,7 @@ const mf=new Miniflare({modules:true,scriptPath:'dist/server/index.js',compatibi
 let browser;
 try{
  await migrateLocal(await mf.getD1Database('DB'));const origin=String(await mf.ready).replace(/\/$/,'');
- browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'msedge'});mkdirSync('outputs/audit/first-week-browser-20261027',{recursive:true});
+ browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{})});mkdirSync('outputs/audit/first-week-browser-20261027',{recursive:true});
  for(const width of [390,1280])for(const track of ['nutrition_only','workouts_only','nutrition_and_workouts']){
   const context=await browser.newContext({viewport:{width,height:950},extraHTTPHeaders:{'oai-authenticated-user-id':'first-week-'+crypto.randomUUID()}}),page=await context.newPage(),errors=[];
   page.on('pageerror',e=>errors.push(e.message));

@@ -1,9 +1,12 @@
+/** @typedef {import('../types/coaching').AccountSnapshot} AccountSnapshot */
+/** @typedef {import('../types/coaching').Adaptation} Adaptation */
+import {settingsActions,applySettingsCommand} from './coaching-settings.mjs';
 import {handleCoachingCommand,currentFeedback} from '../coaching-journey.mjs';
 import {usesKg} from '../exercise-load.mjs';
 import {clockNow,isoNow,clockDate,clockTimeZone} from './clock.mjs';
 import {makeWeek,scaleSnapshot,sumSnapshots,assessDay,validatePreferences,nutritionQualityIssues} from '../planner-core.mjs';
 import {FIXED_DIET_MEALS,assertDietDay} from '../diet-patterns.mjs';
-import {workoutPlan,workoutSafetyIssues,exerciseAlternatives,muscleRegions,weeklySetTotals,scheduledSessions,estimatedSessionMinutes,eachSide} from './workouts.mjs';
+import {workoutPlan,workoutSafetyIssues,exerciseAlternatives,muscleRegions,weeklySetTotals,scheduledSessions,estimatedSessionMinutes} from './workouts.mjs';
 import {recovery,accountRecovery,calorieReview,progression,hasPerformanceDrop,workoutProgressionSummary} from './recovery.mjs';
 import {library,activePlan,foodCommand,replaceMeal,plannedEnergyForDate} from './food.mjs';
 import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reconcileSessions} from './training-state.mjs';
@@ -182,44 +185,9 @@ export function command(input,action,p){
  if(!s.profile)throw Error('أكمل بياناتك أولًا.');
  if(['coaching_feedback','coaching_decision','coaching_outcome','coaching_ack'].includes(action))return handleCoachingCommand(s,action,p,clockNow());
  const tz=userTz(s),currDate=userToday(s);
+ if(settingsActions.has(action)){const result=applySettingsCommand(s,action,p);s.lastReview=null;if(['steps','activity'].includes(action))discardPending(s);return result;}
  if(action!=='review')s.lastReview=null;
  if(!['review','adaptation','timezone','notification_preferences'].includes(action))discardPending(s);
- if(action==='timezone'){
-  const nextTz=String(p.timezone||'').trim();
-  if(!validTimeZone(nextTz))throw Error('المنطقة الزمنية غير صالحة.');
-  const previousTz=s.profile.timezone||'Africa/Cairo';
-  s.profile.timezone=nextTz;
-  if(p.locale&&['ar-EG','ar-SA','en'].includes(p.locale))s.profile.locale=p.locale;
-  s.history.push({kind:'timezone_change',at:isoNow(),from:previousTz,to:nextTz});
-  return s;
- }
- if(action==='notification_preferences'){
-  const prefs=plainRecord(p,'تفضيلات الإشعارات');
-  for(const k of ['dailyReminder','workoutReminder','waterReminder','weeklyReviewReminder']){
-   if(prefs[k]!==undefined)s.notificationPreferences[k]=boolean(prefs[k],k);
-  }
-  if(prefs.quietHoursStart!==undefined){
-   if(typeof prefs.quietHoursStart!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(prefs.quietHoursStart))throw Error('وقت بداية الهدوء غير صالح.');
-   s.notificationPreferences.quietHoursStart=String(prefs.quietHoursStart);
-  }
-  if(prefs.quietHoursEnd!==undefined){
-   if(typeof prefs.quietHoursEnd!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(prefs.quietHoursEnd))throw Error('وقت نهاية الهدوء غير صالح.');
-   s.notificationPreferences.quietHoursEnd=String(prefs.quietHoursEnd);
-  }
-  return s;
- }
- if(action==='steps'||action==='activity'){
-  const date=dateForLog(p.date||currDate,s);
-  const steps=p.steps!=null?integer(p.steps,0,100000,'عدد الخطوات'):null;
-  const activeEnergyKcal=p.activeEnergyKcal!=null?number(p.activeEnergyKcal,0,5000,'الطاقة النشطة'):null;
-  const source=['manual','health_connect','apple_health','wearable'].includes(p.source)?p.source:'manual';
-  const externalRecordId=p.externalRecordId?String(p.externalRecordId).slice(0,120):null;
-  s.activityLogs||=[];
-  if(externalRecordId&&s.activityLogs.some(x=>x.externalRecordId===externalRecordId))return s;
-  s.activityLogs=s.activityLogs.filter(x=>!(x.date===date&&x.source===source&&!externalRecordId));
-  s.activityLogs.push({id:crypto.randomUUID(),date,steps,activeEnergyKcal,source,externalRecordId,at:isoNow()});
-  return s;
- }
  if(action==='confirm_schedule'){
   if(!needsScheduleConfirmation(s))throw Error('التقويم مؤكد بالفعل.');
   const map=plainRecord(p.dayMap,'توزيع أيام الجلسات'),before=s.workoutPlan;

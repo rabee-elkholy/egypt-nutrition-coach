@@ -1,3 +1,6 @@
+import {firstWeekEvidence} from './coaching-evidence.mjs';
+import {summarizeFirstWeek} from './coaching-summary.mjs';
+import {recoveryNeedsAttention,followupIsProtected,nutritionNeedsAttention} from './coaching-priority.mjs';
 import {validDate} from './coaching-shared.mjs';
 
 // Account age, not plan age: renewals/profile edits must not restart onboarding.
@@ -10,24 +13,16 @@ export function firstWeekDay(state,today){
 export function firstWeekMessages(state,today,notes){
  const day=firstWeekDay(state,today);if(!day)return notes;
  const start=state.onboarding.journeyStartedOn,now=Date.parse(state.serverNow||today+'T23:59:59Z');
- const within=x=>x.date>=start&&x.date<=today&&(!x.at||Date.parse(x.at)<=now);
- const food=(state.foodLogs||[]).filter(within),entries=(state.foodEntries||[]).filter(within);
- const checks=(state.checkins||[]).filter(within),water=(state.waterLogs||[]).filter(within),weights=(state.weights||[]).filter(within);
- const plan=state.workoutPlan;
- const sessions=(state.sessions||[]).filter(x=>within(x)&&(plan?.programId?x.programId===plan.programId:plan?.id&&x.planId===plan.id));
- const workout=(state.workoutLogs||[]).filter(x=>within(x)&&(plan?.id&&x.planId===plan.id||plan?.days?.some(d=>d.exercises?.some(e=>e.progressionKey&&e.progressionKey===x.progressionKey&&e.id===x.exerciseId))));
- const feedback=(state.coachingFeedback||[]).filter(within);
- const dates=[...new Set([...food,...entries,...checks,...water,...weights,...sessions,...workout,...feedback].map(x=>x.date))].sort();
- const todayRecorded=dates.includes(today),completedFood=new Set(food.filter(x=>x.complete).map(x=>x.date)).size;
- const completedSessions=new Set(sessions.filter(x=>x.status==='completed').map(x=>x.date+':'+x.dayIndex)).size;
- const freshCheck=checks.some(x=>Date.parse(x.at)<=now&&now-Date.parse(x.at)<=86400000);
+ const evidence=firstWeekEvidence(state,start,today,now);
+ const {plan,food,entries}=evidence;
+ const {dates,todayRecorded,completedFood,completedSessions,freshCheck}=summarizeFirstWeek(evidence,today,now);
  const nutrition=!!state.active_plan_id;
  const result=notes.map(n=>({...n}));
  const follow=result.find(n=>n.role==='followup');
  // Safety, adverse feedback, explicit agreements and actual returns take priority.
- const protectedFollow=follow&&(['safety-support','short-sleep','tired','return'].includes(follow.key)||follow.key.startsWith('coaching-'));
- if(protectedFollow||['stop','hold','high','caution'].includes(state.recovery?.status))return notes;
- if(result.some(n=>['high-hunger','plan-expired','maintenance-declined','calories-declined'].includes(n.key)))return notes;
+ const protectedFollow=followupIsProtected(follow);
+ if(protectedFollow||recoveryNeedsAttention(state.recovery?.status))return notes;
+ if(nutritionNeedsAttention(result))return notes;
  let text,action,actionTarget;
  const next=()=>{
   if(plan&&!freshCheck)return ['ابدأ بتسجيل حالتك','recovery'];

@@ -1,0 +1,27 @@
+import {pathToFileURL} from 'node:url';
+import {resolve} from 'node:path';
+import {writeFileSync,readFileSync,mkdirSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const load=p=>import(pathToFileURL(resolve(p)).href);
+let seq=0;crypto.randomUUID=()=>`00000000-0000-4000-8000-${String(++seq).padStart(12,'0')}`;
+const {empty,generate,command,progressSummary}=await load('server/coaching.mjs');
+const {accountRecovery}=await load('server/recovery.mjs');
+const {withClock}=await load('server/clock.mjs');
+const {scheduledSessions}=await load('server/workouts.mjs');
+const {personalBrief}=await load('personal-brief.mjs');
+const now=Date.parse('2026-10-27T12:00:00Z'),date='2026-10-27';
+const draft={name:'Reference',age:30,sex:'male',weight:80,height:175,goal:'lose',targetWeight:75,healthConfirmed:true,serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5]};
+const snapshots=[];
+withClock(now,()=>{
+ const s=generate(empty(),draft,'quality-reference-v1');
+ const record=(name,state,time=now)=>withClock(time,()=>{const day=new Date(time).toISOString().slice(0,10),view={...structuredClone(state),serverNow:new Date(time).toISOString(),serverDate:day,recovery:accountRecovery(state,time,'Africa/Cairo'),scheduledSessions:scheduledSessions(state,day),progressSummary:progressSummary(state)};snapshots.push({name,state:structuredClone(state),notes:personalBrief(view,day)});});
+ const run=(state,action,payload)=>{const next=command(structuredClone(state),action,payload);next.revision=state.revision+1;return next;};
+ record('new',s);let regular=run(s,'recovery',{sleepHours:8,sleepQuality:4,fatigue:1,pain:false,illness:false,redFlags:false});regular=run(regular,'water',{cups:3});regular=run(regular,'weight',{kg:79.8});record('regular',regular);
+ let poor=run(s,'recovery',{sleepHours:4,sleepQuality:1,fatigue:5,stress:5,soreness:8,pain:false,illness:false,redFlags:false});poor=run(poor,'review',{});record('fatigue',poor);
+ const proposal=poor.adaptations.find(a=>a.status==='pending');assert.ok(proposal);record('accept',run(poor,'adaptation',{id:proposal.id,accept:true}));record('decline',run(poor,'adaptation',{id:proposal.id,accept:false}));
+ record('pain',run(s,'recovery',{sleepHours:8,sleepQuality:4,fatigue:1,pain:true,illness:false,redFlags:false}));
+ let agreement=run(s,'coaching_feedback',{domain:'nutrition',barrier:'time'});agreement=run(agreement,'coaching_decision',{id:agreement.coachingCases[0].id,accept:true});record('agreement',agreement);record('agreement-due',agreement,now+3*86400000);
+ record('expired',s,now+8*86400000);withClock(now+8*86400000,()=>record('renewal',run(s,'renew_plan',{}),now+8*86400000));
+});
+const target=process.argv[2];if(!target)throw Error('Provide an output path');mkdirSync(resolve(target,'..'),{recursive:true});writeFileSync(target,JSON.stringify({clock:date,seed:'quality-reference-v1',snapshots},null,2)+'\n');
+if(process.argv[3]){assert.deepEqual(JSON.parse(readFileSync(target)),JSON.parse(readFileSync(process.argv[3])));console.log('Exact behavior match: '+snapshots.length+' scenarios');}else console.log('Reference recorded: '+snapshots.length+' scenarios');
