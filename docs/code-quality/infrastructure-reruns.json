@@ -54,6 +54,17 @@
         }
       ],
       "dependentRevisionConflicts": []
+    },
+    {
+      "discardedFromFinalEvidence": true,
+      "preservedDirectory": "/workspace/scratch/quality-evidence/failed-infrastructure/baseline-shards-shard-1-replayed-response",
+      "replacement": "/workspace/scratch/quality-evidence/baseline-shards/shard-1",
+      "eventId": "user-002-3",
+      "action": "simulation_reset",
+      "stateAndTruthIdentical": true,
+      "difference": "Reference request was an idempotent replay after interruption; original HTTP response envelopes differ. Repeat the complete reference shard from an empty database, preserving every failed artifact.",
+      "transportEvents": [],
+      "dependentRevisionConflicts": []
     }
   ],
   "policy": "Preserve failed evidence; rerun whole affected shards with empty local databases. No filtering failed records or changing dates."

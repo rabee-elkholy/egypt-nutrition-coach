@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
-import {build} from 'esbuild';
+import {runtimeProof} from './runtime-proof.mjs';
 
 const options=Object.fromEntries(process.argv.slice(2).map(value=>{const [key,...parts]=value.replace(/^--/,'').split('=');return [key,parts.join('=')];}));
 assert.ok(options.left&&options.right&&options.output,'Use --left=<baseline shards> --right=<candidate shards> --output=<report.json>');
@@ -14,8 +14,10 @@ const project=fileURLToPath(new URL('../../',import.meta.url));
 const left=path.resolve(options.left),right=path.resolve(options.right),output=path.resolve(options.output);
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const read=file=>JSON.parse(readFileSync(file,'utf8'));
-const bundle=await build({absWorkingDir:project,entryPoints:['scripts/cohort/local-worker.mjs'],outfile:'quality-runtime.js',bundle:true,format:'esm',platform:'browser',external:['node:async_hooks'],target:'es2022',minify:true,write:false,metafile:true});
-const runtimeSha256=digest(bundle.outputFiles[0].contents);
+const referenceCommit='329fae6a401c07eb5e7872a266514aa57a227581';
+const current=await runtimeProof({sourceRoot:project});
+const reference=await runtimeProof({sourceRoot:path.join(left,'shard-0','source'),referenceCommit,repositoryRoot:project});
+const runtimeSha256=current.bundleSha256;
 const allUsers={baseline:new Set(),candidate:new Set()},parts=[];
 const totals={baseline:{users:0,days:0,events:0,messages:0,normalizedRecords:0,archivedPlans:0,expectedValidationRejections:0,guardRejections:0},candidate:{users:0,days:0,events:0,messages:0,normalizedRecords:0,archivedPlans:0,expectedValidationRejections:0,guardRejections:0}};
 
@@ -60,8 +62,8 @@ for(let index=0;index<8;index++){
    }else guards.push(inspectGuard(root,error));
   }
   const runtimeHash=digest(readFileSync(root+'/.runtime/worker.js'));
-  if(kind==='candidate')assert.equal(runtimeHash,runtimeSha256,'Captured backend differs from the current Worker graph');
-  part[kind]={directory:root,seed:config.seed,counts:verification.counts,normalizedRecords:persistence.records,archivedPlans:persistence.plans,expectedValidationRejections,guardRejections:guards,manifestSha256:digest(readFileSync(root+'/manifest.json')),runtimeSha256:runtimeHash,sourceFiles:manifest.sourceSnapshot.files,verification,persistence};
+  assert.equal(runtimeHash,kind==='candidate'?runtimeSha256:reference.bundleSha256,'Captured backend differs from the verified '+kind+' Worker graph');
+  part[kind]={directory:root,recordedGitCommit:manifest.gitCommit,seed:config.seed,counts:verification.counts,normalizedRecords:persistence.records,archivedPlans:persistence.plans,expectedValidationRejections,guardRejections:guards,manifestSha256:digest(readFileSync(root+'/manifest.json')),runtimeSha256:runtimeHash,sourceFiles:manifest.sourceSnapshot.files,verification,persistence};
   const total=totals[kind];total.users+=cohort.length;total.days+=verification.counts.days;total.events+=verification.counts.events;total.messages+=verification.counts.messages;total.normalizedRecords+=persistence.records;total.archivedPlans+=persistence.plans;total.expectedValidationRejections+=expectedValidationRejections;total.guardRejections+=guards.length;
  }
  assert.equal(part.baseline.seed,part.candidate.seed);
@@ -72,6 +74,6 @@ for(let index=0;index<8;index++){
 }
 for(const kind of ['baseline','candidate']){assert.equal(allUsers[kind].size,100);assert.equal(totals[kind].users,100);assert.equal(totals[kind].days,9000);}
 assert.deepEqual([...allUsers.baseline].sort(),[...allUsers.candidate].sort());
-const report={passed:true,completedAt:new Date().toISOString(),baselineCommit:'329fae6a401c07eb5e7872a266514aa57a227581',currentCommit:execFileSync('git',['rev-parse','HEAD'],{cwd:project,encoding:'utf8'}).trim(),totals,comparedDays:9000,differences:0,runtimeSha256,runtimeInputs:Object.fromEntries(Object.keys(bundle.metafile.inputs).map(file=>[file,digest(readFileSync(path.resolve(project,file)))])),parts,limitations:['Synthetic 100-person cohort with 90 consecutive local calendar dates; not a clinical certification or retention measurement.','Real local Worker HTTP/D1, with harness-only deterministic time/UUID and trusted identity; public JWT/edge behavior is covered separately.','Frontend lifecycle and date-draft fixes are validated by separate real-browser tests; they do not enter this backend bundle.','Latency, diagnostic response size and run timestamps are excluded from comparisons; logical HTTP responses, state, messages and decisions are compared exactly.','Failed infrastructure attempts are preserved separately and replaced with full clean shard runs; no failed records or dates are removed from a completed run.']};
+const report={passed:true,completedAt:new Date().toISOString(),baselineCommit:'329fae6a401c07eb5e7872a266514aa57a227581',currentCommit:execFileSync('git',['rev-parse','HEAD'],{cwd:project,encoding:'utf8'}).trim(),totals,comparedDays:9000,differences:0,runtimeSha256,runtimeInputs:current.inputs,referenceRuntime:reference,parts,limitations:['Synthetic 100-person cohort with 90 consecutive local calendar dates; not a clinical certification or retention measurement.','Real local Worker HTTP/D1, with harness-only deterministic time/UUID and trusted identity; public JWT/edge behavior is covered separately.','Frontend lifecycle and date-draft fixes are validated by separate real-browser tests; they do not enter this backend bundle.','Git metadata in archived workspaces may follow main; every baseline runtime input is checked against the original reference Git object, and every captured baseline bundle must match that verified build.','Latency, diagnostic response size and run timestamps are excluded from comparisons; logical HTTP responses, state, messages and decisions are compared exactly.','Failed infrastructure attempts are preserved separately and replaced with full clean shard runs; no failed records or dates are removed from a completed run.']};
 mkdirSync(path.dirname(output),{recursive:true});writeFileSync(output,JSON.stringify(report,null,2)+'\n');
 console.log(JSON.stringify({passed:true,totals,comparedDays:9000,differences:0,output}));
