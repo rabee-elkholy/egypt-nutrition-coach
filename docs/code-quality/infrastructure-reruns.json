@@ -1,5 +1,5 @@
 {
-  "status": "CLEAN_REPLACEMENT_RUNS_PENDING",
+  "status": "CLEAN_REPLACEMENTS_VERIFIED",
   "groups": [
     {
       "discardedFromFinalEvidence": true,
@@ -65,7 +65,130 @@
       "difference": "Reference request was an idempotent replay after interruption; original HTTP response envelopes differ. Repeat the complete reference shard from an empty database, preserving every failed artifact.",
       "transportEvents": [],
       "dependentRevisionConflicts": []
+    },
+    {
+      "discardedFromFinalEvidence": true,
+      "preservedDirectory": "/workspace/scratch/quality-evidence/failed-infrastructure/final-v4-shard-6-before-exclusive-run",
+      "replacement": "/workspace/scratch/quality-evidence/final-v4/shard-6",
+      "reason": "Local SQLITE_BUSY and SQLITE_BUSY_SNAPSHOT errors from overlapping access to one test database; dependent calendar/revision divergence. Fresh exclusive run required.",
+      "errors": [
+        {
+          "eventId": "user-023-134",
+          "status": 503,
+          "code": "SERVICE_UNAVAILABLE",
+          "error": "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0633\u062c\u0644\u0627\u062a\u061b \u0644\u0645 \u0646\u063a\u064a\u0651\u0631 \u0628\u064a\u0627\u0646\u0627\u062a\u0643."
+        },
+        {
+          "eventId": "user-023-135",
+          "status": 503,
+          "code": "AUTH_SESSION_CHECK_UNAVAILABLE",
+          "error": "\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u062d\u0627\u0644\u0629 \u0627\u0644\u062d\u0633\u0627\u0628."
+        },
+        {
+          "eventId": "user-023-136",
+          "status": 503,
+          "code": "SERVICE_UNAVAILABLE",
+          "error": "\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0645\u062e\u0632\u0646 \u0627\u0644\u0633\u062c\u0644\u0627\u062a."
+        },
+        {
+          "eventId": "user-023-137",
+          "status": 409,
+          "code": "REVISION_CONFLICT",
+          "error": "\u062a\u0645 \u062a\u062d\u062f\u064a\u062b \u0627\u0644\u062d\u0633\u0627\u0628\u061b \u062d\u062f\u0651\u062b \u0627\u0644\u0635\u0641\u062d\u0629 \u0648\u062d\u0627\u0648\u0644 \u062a\u0627\u0646\u064a."
+        },
+        {
+          "eventId": "user-023-139",
+          "status": 503,
+          "code": "DATABASE_ERROR",
+          "error": "\u062a\u0639\u0630\u0631 \u062d\u0641\u0638 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u062d\u0627\u0644\u064a\u064b\u0627\u061b \u062d\u0627\u0648\u0644 \u062a\u0627\u0646\u064a \u0628\u0639\u062f \u0644\u062d\u0638\u0627\u062a."
+        },
+        {
+          "eventId": "user-023-140",
+          "status": 503,
+          "code": "AUTH_SESSION_CHECK_UNAVAILABLE",
+          "error": "\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u062d\u0627\u0644\u0629 \u0627\u0644\u062d\u0633\u0627\u0628."
+        },
+        {
+          "eventId": "user-023-141",
+          "status": 503,
+          "code": "DATABASE_ERROR",
+          "error": "\u062a\u0639\u0630\u0631 \u062d\u0641\u0638 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u062d\u0627\u0644\u064a\u064b\u0627\u061b \u062d\u0627\u0648\u0644 \u062a\u0627\u0646\u064a \u0628\u0639\u062f \u0644\u062d\u0638\u0627\u062a."
+        },
+        {
+          "eventId": "user-023-142",
+          "status": 503,
+          "code": "AUTH_SESSION_CHECK_UNAVAILABLE",
+          "error": "\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u062d\u0627\u0644\u0629 \u0627\u0644\u062d\u0633\u0627\u0628."
+        },
+        {
+          "eventId": "user-023-143",
+          "status": 503,
+          "code": "DATABASE_ERROR",
+          "error": "\u062a\u0639\u0630\u0631 \u062d\u0641\u0638 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u062d\u0627\u0644\u064a\u064b\u0627\u061b \u062d\u0627\u0648\u0644 \u062a\u0627\u0646\u064a \u0628\u0639\u062f \u0644\u062d\u0638\u0627\u062a."
+        },
+        {
+          "eventId": "user-023-144",
+          "status": 503,
+          "code": "DATABASE_ERROR",
+          "error": "\u062a\u0639\u0630\u0631 \u062d\u0641\u0638 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u062d\u0627\u0644\u064a\u064b\u0627\u061b \u062d\u0627\u0648\u0644 \u062a\u0627\u0646\u064a \u0628\u0639\u062f \u0644\u062d\u0638\u0627\u062a."
+        },
+        {
+          "eventId": "user-023-145",
+          "status": 503,
+          "code": "AUTH_SESSION_CHECK_UNAVAILABLE",
+          "error": "\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u062d\u0627\u0644\u0629 \u0627\u0644\u062d\u0633\u0627\u0628."
+        },
+        {
+          "eventId": "user-023-147",
+          "status": 503,
+          "code": "SERVICE_UNAVAILABLE",
+          "error": "\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0645\u062e\u0632\u0646 \u0627\u0644\u0633\u062c\u0644\u0627\u062a."
+        },
+        {
+          "eventId": "user-023-150",
+          "status": 409,
+          "code": "REVISION_CONFLICT",
+          "error": "\u062a\u0645 \u062a\u062d\u062f\u064a\u062b \u0627\u0644\u062d\u0633\u0627\u0628\u061b \u062d\u062f\u0651\u062b \u0627\u0644\u0635\u0641\u062d\u0629 \u0648\u062d\u0627\u0648\u0644 \u062a\u0627\u0646\u064a."
+        }
+      ]
+    },
+    {
+      "discardedFromFinalEvidence": true,
+      "preservedDirectory": "/workspace/scratch/quality-evidence/failed-infrastructure/final-v4-shard-7-before-exclusive-run",
+      "replacement": "/workspace/scratch/quality-evidence/final-v4/shard-7",
+      "reason": "Interrupted local fetches at user-048 day 78; later responses differ. Fresh exclusive run required.",
+      "errors": [
+        {
+          "eventId": "user-048-854",
+          "status": 599,
+          "code": null,
+          "error": "fetch failed"
+        },
+        {
+          "eventId": "user-048-855",
+          "status": 599,
+          "code": null,
+          "error": "fetch failed"
+        },
+        {
+          "eventId": "user-048-856",
+          "status": 599,
+          "code": null,
+          "error": "fetch failed"
+        }
+      ]
     }
   ],
-  "policy": "Preserve failed evidence; rerun whole affected shards with empty local databases. No filtering failed records or changing dates."
+  "policy": "Preserve failed evidence; rerun whole affected shards with empty local databases. No filtering failed records or changing dates.",
+  "finalEvidence": "cohort-verification.json",
+  "exclusiveRunLockControl": [
+    {
+      "shard": 6,
+      "secondWriterRejected": true
+    },
+    {
+      "shard": 7,
+      "secondWriterRejected": true
+    }
+  ]
 }

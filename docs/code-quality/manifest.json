@@ -7,5 +7,15 @@
   "baselineTests": 315,
   "candidateTests": 320,
   "firstBaselineAttempt": "Interrupted test file under heavy parallel execution; full bounded retry passed. Original failed output preserved.",
-  "scope": "Behavior reference compares all recorded state and note fields exactly; random UUIDs are deterministic, not omitted. Local benchmarks are contended synthetic process measurements."
+  "scope": "Behavior reference compares all recorded state and note fields exactly; random UUIDs are deterministic, not omitted. Local benchmarks are contended synthetic process measurements.",
+  "cohortVerification": {
+    "passed": true,
+    "users": 100,
+    "daysPerUser": 90,
+    "comparedDays": 9000,
+    "differences": 0,
+    "codeCommit": "bc64b46d235f17383a2275f477603f29ca91a407",
+    "ciRun": 40576212058,
+    "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c"
+  }
 }

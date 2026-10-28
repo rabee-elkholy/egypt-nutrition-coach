@@ -1,0 +1,3215 @@
+{
+  "passed": true,
+  "completedAt": "2026-10-28T05:56:21.762Z",
+  "baselineCommit": "329fae6a401c07eb5e7872a266514aa57a227581",
+  "currentCommit": "bc64b46d235f17383a2275f477603f29ca91a407",
+  "totals": {
+    "baseline": {
+      "users": 100,
+      "days": 9000,
+      "events": 37852,
+      "messages": 8814,
+      "normalizedRecords": 11154,
+      "archivedPlans": 1730,
+      "expectedValidationRejections": 243,
+      "guardRejections": 3
+    },
+    "candidate": {
+      "users": 100,
+      "days": 9000,
+      "events": 37852,
+      "messages": 8814,
+      "normalizedRecords": 11154,
+      "archivedPlans": 1730,
+      "expectedValidationRejections": 243,
+      "guardRejections": 3
+    }
+  },
+  "comparedDays": 9000,
+  "differences": 0,
+  "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+  "runtimeInputs": {
+    "coaching-shared.mjs": "79aa78131060f2c982d41474a733b1096483ef6bef566c27de92e510fd36b789",
+    "server/clock.mjs": "0ff7954635ad9550f802d6ecd39056fc7b96f7093fa96a1222ba48300b548aeb",
+    "exercise-load.mjs": "dc9a48b79d9695af14819deda568b5a8e7fb09851ed8d6bcc440c23b4facfc25",
+    "server/coaching-settings.mjs": "75afb3d99ffa981586f84a91c75bb736f47d7120a1d911582bcbee809a31266d",
+    "coaching-journey.mjs": "8e576fabfd6f2b6ca48a933e599a0774a92141702bca09817bbf9b3894bb8782",
+    "diet-patterns.mjs": "f149f65f3b3354c77ce7cc7cf6caa6d88f969114f77adfe95ca6082cdb084ec8",
+    "sports.mjs": "3aca6ec95034a77cb9c1bca981f91289d4f2f9e0b261904d3d91ac5c6b82ca9d",
+    "planner-household.mjs": "c3d18dde795fc9efa13540cf1ffd604d227b70a8781b88c55e8a7c171fddd2b9",
+    "calculator.mjs": "3b2c017ea415bf6bbc1b21f208080bbfcdc82ea8ed1291da9c81042c91a953fb",
+    "portions.mjs": "e10b1c1f239b2bee2b08bb3cee32f9ddb93a789491b4bf04f57f5a7e09709879",
+    "planner-exclusions.mjs": "6c1fd58787bd82474a13183c13fe4c4eb92c57fe45fbf3fa92279e0ee9ec3b9e",
+    "egyptian-menu.mjs": "8651c4506096ca72902b9454f5332ebab8f1dd396a2e49ef715a9de809d7883d",
+    "meal-name-labels.mjs": "72b577aaff1abf589bfaa03d66ae9b033c24a29734c0ff15b234d5b892b13beb",
+    "meal-presentation.mjs": "4951feeb52d78a9885e3b99c6499a524a8a29772c68c41abee66427e34ca2dc5",
+    "egyptian-meals.mjs": "6a0ef234308c4ea886e8571727e411d4476fc8817eb28498f71da254437b906e",
+    "planner-core.mjs": "4355fa07d51d24d42df675063b95d3a30d2a1bd93a451fadca8f18902ea25f3c",
+    "data/exercises.json": "b75bd86a2773c96aadfd3ba2624947a29c5a9192f52e10795413b13693282859",
+    "server/workouts.mjs": "cbb15ea264f2380e414f6326c9d8f4cf7045403a0b2250bec1dbdd2a16481da4",
+    "server/recovery.mjs": "19fb43e92fb0f3f2dc398b7a3fa47aa7be1ba323e9eae14a35e76f70e64676c8",
+    "data/planning-library.json": "74fd1c5e2ae417af3c9b13d55b8402b436e9d5ee38a35a3617deb3314d634536",
+    "data/index.json": "92fa3b546e2d61b264b0b2d84a69f9b0e429f08f58f7d56219964f948bd6b054",
+    "data/egypt_catalog.json": "9faee6807c45a428462356335873831b50e808bdc2511bbfeaa6d079f685d536",
+    "data/recipe_estimates.json": "369002c832dddbf1c919692d5b311d0a5931236b9ef5622992df9793aa38bb6a",
+    "data/meta.json": "d902c7290b2f2ee39dcd4220b8ce669e0035170016cece6d025d43656da1ad2e",
+    "core.mjs": "f6896fc94ebf4a0719c359515136877ee1fb2aebff30efaa19a7742595fd8f79",
+    "server/food-catalog.mjs": "15ba4671d07b44be5cc6faed9e5a962485edfb1bb886bb627d79e129e7d6310e",
+    "server/food.mjs": "b37447d46237951c980b240f3bb50895ccddc776817f5bebbd80d6edc3b8b706",
+    "server/training-state.mjs": "34afcbb712ce91664becfd62d147ba689a6324db0f14bcb62aef00eb168c9355",
+    "server/training-review.mjs": "645b0e5387d25e36c0fb4a4bb4a51d93398d4bfcf569dd31c7a9cae62dc096db",
+    "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+    "server/coaching.mjs": "b18ae450b5e50d5501b68f6b84d3a61de0d6bb2182b5aa6507539f2e9274478a",
+    "server/simulation.mjs": "d205cd6fc8b5065f1ea3582dd9fd692f44dc67538caf65d6516e635e0b6012c3",
+    "server/store.mjs": "24a15e6b8c4bbbdabc8b5b90a734e82953dda9d0f6f11a40c62780b2ec6d78a1",
+    "server/presentation.mjs": "d7f79648da6816d7e45fb194731f0dcb32cc6b3c6cac9250c39f4172c7aec443",
+    "server/logger.mjs": "d472afc1b9904779c088633c2dfaf1de514cfbb341dd195feb679314e65febc9",
+    "server/http.mjs": "6e87aae827c250068cbc50b7ef4d5c8cd84ae3658b597111a2054686804ea616",
+    "server/auth.mjs": "415d8c207663c9b05ad7921cce46087d2e1bb00ca85d2b04a3110789ef93829f",
+    "coaching-time.mjs": "20085dea1c21d803bbe6972c60d81e763addda14a9373dab42cd238c2c829dc5",
+    "coaching-evidence.mjs": "f703e0134432a2a19bab05113c7f2d6d864897ec35d05223497f05c008436959",
+    "coaching-priority.mjs": "67e1076f9062b6d7facbadf3aa75f14831feddc6ad75ce1e24c26305e60c76c9",
+    "coaching-summary.mjs": "09b463e4385b74c30afc09c8ae0f3dcf6e0cc230664a083079f9ee8a1278f907",
+    "first-week-messages.mjs": "57cf229f05700c79c0691321464ca258bb210cc362790901d89cf7253c83e805",
+    "coach-messages.mjs": "91047f8ddc5e772f6ded6fdbc7315e1c121d8c6206aad8fc34cea02c23def682",
+    "personal-brief.mjs": "0776bc299a25284017b10dba668a6c9a043da5fd91cdb0d4edb4003af7c4c87f",
+    "server/worker.mjs": "8cdc28070996355765c77107139fc75e71b1b67a12ef90865383d797f4a2ddf9",
+    "scripts/cohort/local-worker.mjs": "44bc2ddd6d6430c7a9e4f216b3ec14680a115e31dda783306cb804e18a68f9ac"
+  },
+  "referenceRuntime": {
+    "bundleSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+    "inputs": {
+      "coaching-shared.mjs": "79aa78131060f2c982d41474a733b1096483ef6bef566c27de92e510fd36b789",
+      "coaching-journey.mjs": "8e576fabfd6f2b6ca48a933e599a0774a92141702bca09817bbf9b3894bb8782",
+      "server/clock.mjs": "0ff7954635ad9550f802d6ecd39056fc7b96f7093fa96a1222ba48300b548aeb",
+      "exercise-load.mjs": "dc9a48b79d9695af14819deda568b5a8e7fb09851ed8d6bcc440c23b4facfc25",
+      "diet-patterns.mjs": "f149f65f3b3354c77ce7cc7cf6caa6d88f969114f77adfe95ca6082cdb084ec8",
+      "sports.mjs": "3aca6ec95034a77cb9c1bca981f91289d4f2f9e0b261904d3d91ac5c6b82ca9d",
+      "planner-household.mjs": "c3d18dde795fc9efa13540cf1ffd604d227b70a8781b88c55e8a7c171fddd2b9",
+      "calculator.mjs": "3b2c017ea415bf6bbc1b21f208080bbfcdc82ea8ed1291da9c81042c91a953fb",
+      "portions.mjs": "e10b1c1f239b2bee2b08bb3cee32f9ddb93a789491b4bf04f57f5a7e09709879",
+      "planner-exclusions.mjs": "6c1fd58787bd82474a13183c13fe4c4eb92c57fe45fbf3fa92279e0ee9ec3b9e",
+      "egyptian-menu.mjs": "8651c4506096ca72902b9454f5332ebab8f1dd396a2e49ef715a9de809d7883d",
+      "meal-name-labels.mjs": "72b577aaff1abf589bfaa03d66ae9b033c24a29734c0ff15b234d5b892b13beb",
+      "meal-presentation.mjs": "4951feeb52d78a9885e3b99c6499a524a8a29772c68c41abee66427e34ca2dc5",
+      "egyptian-meals.mjs": "6a0ef234308c4ea886e8571727e411d4476fc8817eb28498f71da254437b906e",
+      "planner-core.mjs": "4355fa07d51d24d42df675063b95d3a30d2a1bd93a451fadca8f18902ea25f3c",
+      "data/exercises.json": "b75bd86a2773c96aadfd3ba2624947a29c5a9192f52e10795413b13693282859",
+      "server/workouts.mjs": "cbb15ea264f2380e414f6326c9d8f4cf7045403a0b2250bec1dbdd2a16481da4",
+      "server/recovery.mjs": "19fb43e92fb0f3f2dc398b7a3fa47aa7be1ba323e9eae14a35e76f70e64676c8",
+      "data/planning-library.json": "74fd1c5e2ae417af3c9b13d55b8402b436e9d5ee38a35a3617deb3314d634536",
+      "data/index.json": "92fa3b546e2d61b264b0b2d84a69f9b0e429f08f58f7d56219964f948bd6b054",
+      "data/egypt_catalog.json": "9faee6807c45a428462356335873831b50e808bdc2511bbfeaa6d079f685d536",
+      "data/recipe_estimates.json": "369002c832dddbf1c919692d5b311d0a5931236b9ef5622992df9793aa38bb6a",
+      "data/meta.json": "d902c7290b2f2ee39dcd4220b8ce669e0035170016cece6d025d43656da1ad2e",
+      "core.mjs": "f6896fc94ebf4a0719c359515136877ee1fb2aebff30efaa19a7742595fd8f79",
+      "server/food-catalog.mjs": "15ba4671d07b44be5cc6faed9e5a962485edfb1bb886bb627d79e129e7d6310e",
+      "server/food.mjs": "b37447d46237951c980b240f3bb50895ccddc776817f5bebbd80d6edc3b8b706",
+      "server/training-state.mjs": "34afcbb712ce91664becfd62d147ba689a6324db0f14bcb62aef00eb168c9355",
+      "server/training-review.mjs": "645b0e5387d25e36c0fb4a4bb4a51d93398d4bfcf569dd31c7a9cae62dc096db",
+      "nutrition-decisions.mjs": "363dc78f0b4d097b8ba66512c52c4e7aa846e157c2736a0ebebf3d62dccdb833",
+      "server/coaching.mjs": "519a35fed0c427e02c302fa566af1bcc4d77973e350f20eac40c612ff044b14e",
+      "server/simulation.mjs": "d205cd6fc8b5065f1ea3582dd9fd692f44dc67538caf65d6516e635e0b6012c3",
+      "server/store.mjs": "24a15e6b8c4bbbdabc8b5b90a734e82953dda9d0f6f11a40c62780b2ec6d78a1",
+      "server/logger.mjs": "d472afc1b9904779c088633c2dfaf1de514cfbb341dd195feb679314e65febc9",
+      "server/auth.mjs": "415d8c207663c9b05ad7921cce46087d2e1bb00ca85d2b04a3110789ef93829f",
+      "first-week-messages.mjs": "55646d7b2e7194d14f023bbdde6a9b503e04abffe26c0c73277b7077d8a58658",
+      "coach-messages.mjs": "91047f8ddc5e772f6ded6fdbc7315e1c121d8c6206aad8fc34cea02c23def682",
+      "personal-brief.mjs": "ea3fa370fceb6db7bf7fcff9a378941ceb6ef97e46f1cbb9e5746a6691f69049",
+      "server/worker.mjs": "1fa312f834966c11d5e837b861f19b3b09e954555316e6aa56e051657ee02aa7",
+      "scripts/cohort/local-worker.mjs": "44bc2ddd6d6430c7a9e4f216b3ec14680a115e31dda783306cb804e18a68f9ac"
+    },
+    "referenceCommit": "329fae6a401c07eb5e7872a266514aa57a227581",
+    "referenceInputsVerified": true
+  },
+  "parts": [
+    {
+      "shard": 0,
+      "baseline": {
+        "directory": "/workspace/scratch/quality-evidence/baseline-shards/shard-0",
+        "recordedGitCommit": "329fae6a401c07eb5e7872a266514aa57a227581",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 13,
+          "days": 1170,
+          "events": 5222,
+          "messages": 1317,
+          "foodMissingDays": 913
+        },
+        "normalizedRecords": 1625,
+        "archivedPlans": 228,
+        "expectedValidationRejections": 25,
+        "guardRejections": [
+          {
+            "eventId": "user-065-273",
+            "date": "2027-01-04",
+            "action": "workout",
+            "status": 400,
+            "reason": "The harness retained an exercise from before regeneration; the API correctly rejected an exercise outside the current day."
+          }
+        ],
+        "manifestSha256": "20c65054c26da144cbc4dcb6d8105f61b2fb00099a7bf18ca0ec7628822ed8a2",
+        "runtimeSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+        "sourceFiles": 471,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T18:49:45.828Z",
+          "counts": {
+            "users": 13,
+            "days": 1170,
+            "events": 5222,
+            "messages": 1317,
+            "foodMissingDays": 913
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-001": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-009": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-017": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-025": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-033": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-041": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-049": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-057": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-065": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-073": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-081": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-089": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-097": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1170,
+                "expected": 1170
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 13,
+          "records": 1625,
+          "plans": 228,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "candidate": {
+        "directory": "/workspace/scratch/quality-evidence/final-v4/shard-0",
+        "recordedGitCommit": "2c9cefe68f905f232d8de2a393ea2a4620223dc5",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 13,
+          "days": 1170,
+          "events": 5222,
+          "messages": 1317,
+          "foodMissingDays": 913
+        },
+        "normalizedRecords": 1625,
+        "archivedPlans": 228,
+        "expectedValidationRejections": 25,
+        "guardRejections": [
+          {
+            "eventId": "user-065-273",
+            "date": "2027-01-04",
+            "action": "workout",
+            "status": 400,
+            "reason": "The harness retained an exercise from before regeneration; the API correctly rejected an exercise outside the current day."
+          }
+        ],
+        "manifestSha256": "1143b5a20e8c25d2f1f13b57c2dabce2cd764d3589fdfe95fe28eaa2a6aa3455",
+        "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+        "sourceFiles": 493,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T19:39:09.683Z",
+          "counts": {
+            "users": 13,
+            "days": 1170,
+            "events": 5222,
+            "messages": 1317,
+            "foodMissingDays": 913
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-001": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-009": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-017": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-025": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-033": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-041": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-049": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-057": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-065": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-073": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-081": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-089": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-097": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1170,
+                "expected": 1170
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 13,
+          "records": 1625,
+          "plans": 228,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "comparison": {
+        "passed": true,
+        "comparedDays": 1170,
+        "differences": [],
+        "missing": [],
+        "left": "/workspace/scratch/quality-evidence/baseline-shards/shard-0",
+        "right": "/workspace/scratch/quality-evidence/final-v4/shard-0",
+        "excluded": "Measured latency, response size diagnostics and run timestamps. Original logical responses otherwise compared exactly."
+      }
+    },
+    {
+      "shard": 1,
+      "baseline": {
+        "directory": "/workspace/scratch/quality-evidence/baseline-shards/shard-1",
+        "recordedGitCommit": "c1defec0ba2d0a51749e054fe2b3e924637e9e05",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 13,
+          "days": 1170,
+          "events": 4716,
+          "messages": 1032,
+          "foodMissingDays": 950
+        },
+        "normalizedRecords": 1367,
+        "archivedPlans": 223,
+        "expectedValidationRejections": 29,
+        "guardRejections": [],
+        "manifestSha256": "f9605226115be1bce075f73492de54d66d6a636fdf140f5b764f57cafdd14886",
+        "runtimeSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+        "sourceFiles": 471,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:25:43.813Z",
+          "counts": {
+            "users": 13,
+            "days": 1170,
+            "events": 4716,
+            "messages": 1032,
+            "foodMissingDays": 950
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-002": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-010": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-018": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-026": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-034": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-042": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-050": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-058": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-066": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-074": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-082": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-090": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-098": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1170,
+                "expected": 1170
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 13,
+          "records": 1367,
+          "plans": 223,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "candidate": {
+        "directory": "/workspace/scratch/quality-evidence/final-v4/shard-1",
+        "recordedGitCommit": "0fbbb1efab29a18f679a42f47670e0821c7af35b",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 13,
+          "days": 1170,
+          "events": 4716,
+          "messages": 1032,
+          "foodMissingDays": 950
+        },
+        "normalizedRecords": 1367,
+        "archivedPlans": 223,
+        "expectedValidationRejections": 29,
+        "guardRejections": [],
+        "manifestSha256": "7d5e374820c5f52e823db72e46298917814894a51f7b9f0027c9313ac6bf4f5e",
+        "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+        "sourceFiles": 493,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:06:06.076Z",
+          "counts": {
+            "users": 13,
+            "days": 1170,
+            "events": 4716,
+            "messages": 1032,
+            "foodMissingDays": 950
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-002": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-010": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-018": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-026": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-034": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-042": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-050": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-058": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-066": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-074": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-082": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-090": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-098": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1170,
+                "expected": 1170
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 13,
+          "records": 1367,
+          "plans": 223,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "comparison": {
+        "passed": true,
+        "comparedDays": 1170,
+        "differences": [],
+        "missing": [],
+        "left": "/workspace/scratch/quality-evidence/baseline-shards/shard-1",
+        "right": "/workspace/scratch/quality-evidence/final-v4/shard-1",
+        "excluded": "Measured latency, response size diagnostics and run timestamps. Original logical responses otherwise compared exactly."
+      }
+    },
+    {
+      "shard": 2,
+      "baseline": {
+        "directory": "/workspace/scratch/quality-evidence/baseline-shards/shard-2",
+        "recordedGitCommit": "329fae6a401c07eb5e7872a266514aa57a227581",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 13,
+          "days": 1170,
+          "events": 4654,
+          "messages": 1098,
+          "foodMissingDays": 959
+        },
+        "normalizedRecords": 1253,
+        "archivedPlans": 221,
+        "expectedValidationRejections": 33,
+        "guardRejections": [],
+        "manifestSha256": "771d85756fb400c8882865287b01fc65d1f883466145c7cf1c0f379c54274bec",
+        "runtimeSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+        "sourceFiles": 471,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:09:54.446Z",
+          "counts": {
+            "users": 13,
+            "days": 1170,
+            "events": 4654,
+            "messages": 1098,
+            "foodMissingDays": 959
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-003": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-011": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-019": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-027": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-035": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-043": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-051": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-059": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-067": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-075": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-083": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-091": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-099": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1170,
+                "expected": 1170
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 13,
+          "records": 1253,
+          "plans": 221,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "candidate": {
+        "directory": "/workspace/scratch/quality-evidence/final-v4/shard-2",
+        "recordedGitCommit": "0fbbb1efab29a18f679a42f47670e0821c7af35b",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 13,
+          "days": 1170,
+          "events": 4654,
+          "messages": 1098,
+          "foodMissingDays": 959
+        },
+        "normalizedRecords": 1253,
+        "archivedPlans": 221,
+        "expectedValidationRejections": 33,
+        "guardRejections": [],
+        "manifestSha256": "1b61deb4b4ce7338af661f5c6355dad538a1d3aaaa1e030619e8f5200a8b77ff",
+        "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+        "sourceFiles": 493,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:10:42.025Z",
+          "counts": {
+            "users": 13,
+            "days": 1170,
+            "events": 4654,
+            "messages": 1098,
+            "foodMissingDays": 959
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-003": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-011": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-019": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-027": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-035": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-043": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-051": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-059": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-067": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-075": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-083": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-091": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-099": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1170,
+                "expected": 1170
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 13,
+          "records": 1253,
+          "plans": 221,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "comparison": {
+        "passed": true,
+        "comparedDays": 1170,
+        "differences": [],
+        "missing": [],
+        "left": "/workspace/scratch/quality-evidence/baseline-shards/shard-2",
+        "right": "/workspace/scratch/quality-evidence/final-v4/shard-2",
+        "excluded": "Measured latency, response size diagnostics and run timestamps. Original logical responses otherwise compared exactly."
+      }
+    },
+    {
+      "shard": 3,
+      "baseline": {
+        "directory": "/workspace/scratch/quality-evidence/baseline-shards/shard-3",
+        "recordedGitCommit": "329fae6a401c07eb5e7872a266514aa57a227581",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 13,
+          "days": 1170,
+          "events": 5447,
+          "messages": 1263,
+          "foodMissingDays": 871
+        },
+        "normalizedRecords": 1781,
+        "archivedPlans": 232,
+        "expectedValidationRejections": 36,
+        "guardRejections": [
+          {
+            "eventId": "user-044-928",
+            "date": "2027-01-11",
+            "action": "food_complete",
+            "status": 400,
+            "reason": "The harness tried to close a date without recorded food; the API correctly required food first."
+          }
+        ],
+        "manifestSha256": "de330dff244a601e8d7dbbf6f254d24758a26752a520adcabe755f9bec333903",
+        "runtimeSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+        "sourceFiles": 471,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:15:01.545Z",
+          "counts": {
+            "users": 13,
+            "days": 1170,
+            "events": 5447,
+            "messages": 1263,
+            "foodMissingDays": 871
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-004": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-012": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-020": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-028": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-036": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-044": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-052": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-060": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-068": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-076": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-084": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-092": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-100": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1170,
+                "expected": 1170
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 13,
+          "records": 1781,
+          "plans": 232,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "candidate": {
+        "directory": "/workspace/scratch/quality-evidence/final-v4/shard-3",
+        "recordedGitCommit": "0fbbb1efab29a18f679a42f47670e0821c7af35b",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 13,
+          "days": 1170,
+          "events": 5447,
+          "messages": 1263,
+          "foodMissingDays": 871
+        },
+        "normalizedRecords": 1781,
+        "archivedPlans": 232,
+        "expectedValidationRejections": 36,
+        "guardRejections": [
+          {
+            "eventId": "user-044-928",
+            "date": "2027-01-11",
+            "action": "food_complete",
+            "status": 400,
+            "reason": "The harness tried to close a date without recorded food; the API correctly required food first."
+          }
+        ],
+        "manifestSha256": "2d2e466a83f56cb6f26da3c6802f109c8c252e2d705f6a4da7416b38c87cfbba",
+        "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+        "sourceFiles": 493,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:16:02.898Z",
+          "counts": {
+            "users": 13,
+            "days": 1170,
+            "events": 5447,
+            "messages": 1263,
+            "foodMissingDays": 871
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-004": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-012": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-020": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-028": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-036": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-044": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-052": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-060": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-068": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-076": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-084": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-092": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-100": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1170,
+                "expected": 1170
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 13,
+          "records": 1781,
+          "plans": 232,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "comparison": {
+        "passed": true,
+        "comparedDays": 1170,
+        "differences": [],
+        "missing": [],
+        "left": "/workspace/scratch/quality-evidence/baseline-shards/shard-3",
+        "right": "/workspace/scratch/quality-evidence/final-v4/shard-3",
+        "excluded": "Measured latency, response size diagnostics and run timestamps. Original logical responses otherwise compared exactly."
+      }
+    },
+    {
+      "shard": 4,
+      "baseline": {
+        "directory": "/workspace/scratch/quality-evidence/baseline-shards/shard-4",
+        "recordedGitCommit": "329fae6a401c07eb5e7872a266514aa57a227581",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 12,
+          "days": 1080,
+          "events": 3984,
+          "messages": 960,
+          "foodMissingDays": 912
+        },
+        "normalizedRecords": 937,
+        "archivedPlans": 208,
+        "expectedValidationRejections": 30,
+        "guardRejections": [],
+        "manifestSha256": "9f3e9ceba06e4fd664658699e89bfb584358aa8c18046b138c58773c27734002",
+        "runtimeSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+        "sourceFiles": 471,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:19:55.209Z",
+          "counts": {
+            "users": 12,
+            "days": 1080,
+            "events": 3984,
+            "messages": 960,
+            "foodMissingDays": 912
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-005": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-013": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-021": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-029": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-037": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-045": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-053": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-061": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-069": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-077": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-085": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-093": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1080,
+                "expected": 1080
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 12,
+          "records": 937,
+          "plans": 208,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "candidate": {
+        "directory": "/workspace/scratch/quality-evidence/final-v4/shard-4",
+        "recordedGitCommit": "c1defec0ba2d0a51749e054fe2b3e924637e9e05",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 12,
+          "days": 1080,
+          "events": 3984,
+          "messages": 960,
+          "foodMissingDays": 912
+        },
+        "normalizedRecords": 937,
+        "archivedPlans": 208,
+        "expectedValidationRejections": 30,
+        "guardRejections": [],
+        "manifestSha256": "dc3510cf1c12ae190ded4563ca1b33e1cc37629da8785ee83abdefdf7c93fd1b",
+        "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+        "sourceFiles": 493,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:20:29.973Z",
+          "counts": {
+            "users": 12,
+            "days": 1080,
+            "events": 3984,
+            "messages": 960,
+            "foodMissingDays": 912
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-005": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-013": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-021": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-029": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-037": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-045": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-053": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-061": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-069": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-077": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-085": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-093": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1080,
+                "expected": 1080
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 12,
+          "records": 937,
+          "plans": 208,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "comparison": {
+        "passed": true,
+        "comparedDays": 1080,
+        "differences": [],
+        "missing": [],
+        "left": "/workspace/scratch/quality-evidence/baseline-shards/shard-4",
+        "right": "/workspace/scratch/quality-evidence/final-v4/shard-4",
+        "excluded": "Measured latency, response size diagnostics and run timestamps. Original logical responses otherwise compared exactly."
+      }
+    },
+    {
+      "shard": 5,
+      "baseline": {
+        "directory": "/workspace/scratch/quality-evidence/baseline-shards/shard-5",
+        "recordedGitCommit": "329fae6a401c07eb5e7872a266514aa57a227581",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 12,
+          "days": 1080,
+          "events": 4394,
+          "messages": 927,
+          "foodMissingDays": 880
+        },
+        "normalizedRecords": 1267,
+        "archivedPlans": 209,
+        "expectedValidationRejections": 29,
+        "guardRejections": [
+          {
+            "eventId": "user-070-92",
+            "date": "2026-11-21",
+            "action": "food_complete",
+            "status": 400,
+            "reason": "The harness tried to close a date without recorded food; the API correctly required food first."
+          }
+        ],
+        "manifestSha256": "9f0321ec532c5ff0bdc1b64390839b79205e4339e247601b9284f04bc5cc88a1",
+        "runtimeSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+        "sourceFiles": 471,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:23:20.435Z",
+          "counts": {
+            "users": 12,
+            "days": 1080,
+            "events": 4394,
+            "messages": 927,
+            "foodMissingDays": 880
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-006": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-014": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-022": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-030": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-038": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-046": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-054": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-062": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-070": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-078": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-086": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-094": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1080,
+                "expected": 1080
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 12,
+          "records": 1267,
+          "plans": 209,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "candidate": {
+        "directory": "/workspace/scratch/quality-evidence/final-v4/shard-5",
+        "recordedGitCommit": "c1defec0ba2d0a51749e054fe2b3e924637e9e05",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 12,
+          "days": 1080,
+          "events": 4394,
+          "messages": 927,
+          "foodMissingDays": 880
+        },
+        "normalizedRecords": 1267,
+        "archivedPlans": 209,
+        "expectedValidationRejections": 29,
+        "guardRejections": [
+          {
+            "eventId": "user-070-92",
+            "date": "2026-11-21",
+            "action": "food_complete",
+            "status": 400,
+            "reason": "The harness tried to close a date without recorded food; the API correctly required food first."
+          }
+        ],
+        "manifestSha256": "4be15ef2abbfb7e9d12aa9ce8731f5aa46330d12da34506f6b6d8d354e05a046",
+        "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+        "sourceFiles": 493,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:23:58.177Z",
+          "counts": {
+            "users": 12,
+            "days": 1080,
+            "events": 4394,
+            "messages": 927,
+            "foodMissingDays": 880
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-006": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-014": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-022": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-030": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-038": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-046": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-054": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-062": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-070": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-078": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-086": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-094": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1080,
+                "expected": 1080
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 12,
+          "records": 1267,
+          "plans": 209,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "comparison": {
+        "passed": true,
+        "comparedDays": 1080,
+        "differences": [],
+        "missing": [],
+        "left": "/workspace/scratch/quality-evidence/baseline-shards/shard-5",
+        "right": "/workspace/scratch/quality-evidence/final-v4/shard-5",
+        "excluded": "Measured latency, response size diagnostics and run timestamps. Original logical responses otherwise compared exactly."
+      }
+    },
+    {
+      "shard": 6,
+      "baseline": {
+        "directory": "/workspace/scratch/quality-evidence/baseline-shards/shard-6",
+        "recordedGitCommit": "0fbbb1efab29a18f679a42f47670e0821c7af35b",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 12,
+          "days": 1080,
+          "events": 4668,
+          "messages": 1107,
+          "foodMissingDays": 837
+        },
+        "normalizedRecords": 1428,
+        "archivedPlans": 205,
+        "expectedValidationRejections": 33,
+        "guardRejections": [],
+        "manifestSha256": "dec9b6e0e9bfb5916fcf2d6d81d2af509a8b0c2934736f160c26d49d59ef68cd",
+        "runtimeSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+        "sourceFiles": 471,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:26:15.694Z",
+          "counts": {
+            "users": 12,
+            "days": 1080,
+            "events": 4668,
+            "messages": 1107,
+            "foodMissingDays": 837
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-007": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-015": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-023": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-031": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-039": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-047": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-055": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-063": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-071": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-079": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-087": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-095": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1080,
+                "expected": 1080
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 12,
+          "records": 1428,
+          "plans": 205,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "candidate": {
+        "directory": "/workspace/scratch/quality-evidence/final-v4/shard-6",
+        "recordedGitCommit": "bc64b46d235f17383a2275f477603f29ca91a407",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 12,
+          "days": 1080,
+          "events": 4668,
+          "messages": 1107,
+          "foodMissingDays": 837
+        },
+        "normalizedRecords": 1428,
+        "archivedPlans": 205,
+        "expectedValidationRejections": 33,
+        "guardRejections": [],
+        "manifestSha256": "60b0bf54e1a940a0e81277d0113fc448f5f4ab629f6abb7f6de25d7f68d8e261",
+        "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+        "sourceFiles": 493,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-28T05:54:20.614Z",
+          "counts": {
+            "users": 12,
+            "days": 1080,
+            "events": 4668,
+            "messages": 1107,
+            "foodMissingDays": 837
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-007": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-015": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-023": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-031": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-039": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-047": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-055": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-063": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-071": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-079": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-087": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-095": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1080,
+                "expected": 1080
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 12,
+          "records": 1428,
+          "plans": 205,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "comparison": {
+        "passed": true,
+        "comparedDays": 1080,
+        "differences": [],
+        "missing": [],
+        "left": "/workspace/scratch/quality-evidence/baseline-shards/shard-6",
+        "right": "/workspace/scratch/quality-evidence/final-v4/shard-6",
+        "excluded": "Measured latency, response size diagnostics and run timestamps. Original logical responses otherwise compared exactly."
+      }
+    },
+    {
+      "shard": 7,
+      "baseline": {
+        "directory": "/workspace/scratch/quality-evidence/baseline-shards/shard-7",
+        "recordedGitCommit": "329fae6a401c07eb5e7872a266514aa57a227581",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 12,
+          "days": 1080,
+          "events": 4767,
+          "messages": 1110,
+          "foodMissingDays": 818
+        },
+        "normalizedRecords": 1496,
+        "archivedPlans": 204,
+        "expectedValidationRejections": 28,
+        "guardRejections": [],
+        "manifestSha256": "c650db9c6f6a6e5f62a8568520f7ca5a70bedffbfc6ba63fdf591039fd9a77dc",
+        "runtimeSha256": "0d34cb96048ba6385d3dc7d4cb41ca6af94367bf6440f1022fec125d5b444457",
+        "sourceFiles": 471,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-27T20:28:40.552Z",
+          "counts": {
+            "users": 12,
+            "days": 1080,
+            "events": 4767,
+            "messages": 1110,
+            "foodMissingDays": 818
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-008": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-016": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-024": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-032": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-040": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-048": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-056": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-064": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-072": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-080": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-088": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-096": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1080,
+                "expected": 1080
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 12,
+          "records": 1496,
+          "plans": 204,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "candidate": {
+        "directory": "/workspace/scratch/quality-evidence/final-v4/shard-7",
+        "recordedGitCommit": "bc64b46d235f17383a2275f477603f29ca91a407",
+        "seed": "quality-329fae6-v1",
+        "counts": {
+          "users": 12,
+          "days": 1080,
+          "events": 4767,
+          "messages": 1110,
+          "foodMissingDays": 818
+        },
+        "normalizedRecords": 1496,
+        "archivedPlans": 204,
+        "expectedValidationRejections": 28,
+        "guardRejections": [],
+        "manifestSha256": "9a7e79e10af7a40daefd4449d0d6a2024173418aca72934fe02d105a722e9c32",
+        "runtimeSha256": "39a426dbbc4e8f2c2919a9d6e07b55fc42dad178b734eab28ee2d3c5bd93224c",
+        "sourceFiles": 493,
+        "verification": {
+          "passed": true,
+          "checkedAt": "2026-10-28T05:54:21.780Z",
+          "counts": {
+            "users": 12,
+            "days": 1080,
+            "events": 4767,
+            "messages": 1110,
+            "foodMissingDays": 818
+          },
+          "checks": {
+            "run_complete": {
+              "passed": true,
+              "evidence": null
+            },
+            "all_source_files_unchanged": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            },
+            "unique_user_ids": {
+              "passed": true,
+              "evidence": null
+            },
+            "unique_profiles": {
+              "passed": true,
+              "evidence": null
+            },
+            "preregistered_cohort": {
+              "passed": true,
+              "evidence": null
+            },
+            "holdout_preassigned": {
+              "passed": true,
+              "evidence": null
+            },
+            "engine_files_unchanged": {
+              "passed": true,
+              "evidence": null
+            },
+            "days:user-008": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-016": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-024": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-032": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-040": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-048": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-056": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-064": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-072": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-080": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-088": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "days:user-096": {
+              "passed": true,
+              "evidence": {
+                "actual": 90,
+                "expected": 90
+              }
+            },
+            "total_days": {
+              "passed": true,
+              "evidence": {
+                "actual": 1080,
+                "expected": 1080
+              }
+            },
+            "derived_daily_count": {
+              "passed": true,
+              "evidence": null
+            },
+            "file_sha256": {
+              "passed": true,
+              "evidence": {
+                "mismatches": []
+              }
+            }
+          },
+          "failures": [],
+          "limitations": [
+            "Source checking establishes provenance, not clinical correctness",
+            "No ground-truth payload fields passed; this is a structural boundary audit, not a formal information-flow proof",
+            "Raw generated messages always start rendered=false; independent DOM checks may promote exact sampled messages in derived reports"
+          ]
+        },
+        "persistence": {
+          "passed": true,
+          "users": 12,
+          "records": 1496,
+          "plans": 204,
+          "failures": [],
+          "auditorVersion": 2,
+          "scope": "Request-namespace-scoped ordinary and simulation plans, owner-scoped normalized rows and immutable nutrition/workout prescriptions vs original HTTP responses. Three transient workout suggestion fields excluded explicitly."
+        }
+      },
+      "comparison": {
+        "passed": true,
+        "comparedDays": 1080,
+        "differences": [],
+        "missing": [],
+        "left": "/workspace/scratch/quality-evidence/baseline-shards/shard-7",
+        "right": "/workspace/scratch/quality-evidence/final-v4/shard-7",
+        "excluded": "Measured latency, response size diagnostics and run timestamps. Original logical responses otherwise compared exactly."
+      }
+    }
+  ],
+  "limitations": [
+    "Synthetic 100-person cohort with 90 consecutive local calendar dates; not a clinical certification or retention measurement.",
+    "Real local Worker HTTP/D1, with harness-only deterministic time/UUID and trusted identity; public JWT/edge behavior is covered separately.",
+    "Frontend lifecycle and date-draft fixes are validated by separate real-browser tests; they do not enter this backend bundle.",
+    "Git metadata in archived workspaces may follow main; every baseline runtime input is checked against the original reference Git object, and every captured baseline bundle must match that verified build.",
+    "Latency, diagnostic response size and run timestamps are excluded from comparisons; logical HTTP responses, state, messages and decisions are compared exactly.",
+    "Failed infrastructure attempts are preserved separately and replaced with full clean shard runs; no failed records or dates are removed from a completed run."
+  ],
+  "codeVerification": {
+    "commit": "bc64b46d235f17383a2275f477603f29ca91a407",
+    "ciRun": 40576212058,
+    "url": "https://github.com/rabee-elkholy/egypt-nutrition-coach/actions/runs/40576212058"
+  },
+  "seed": "quality-329fae6-v1",
+  "startDate": "2026-10-24",
+  "driverProvenance": {
+    "identicalAcrossAll16Groups": true,
+    "files": 19,
+    "fileHashes": {
+      "scripts/cohort/AUDIT.md": "ea88551701b805020e62a22507a3c6d45af0b0b3d7dea51c94ce54b00b9b3649",
+      "scripts/cohort/README.md": "9f382611f8aaf86508e7993c9564ba34f9e8fde950c1d4bfd4e7b54b7b358f0f",
+      "scripts/cohort/behavior.mjs": "08e29113f80abb435baf1a44a0bb6c0d0369350438824590d2665bab1864e231",
+      "scripts/cohort/browser.mjs": "30007f5fc800c7433e7bce183d1fc325927b2e773e5df185ac8904bb3ce2bcb3",
+      "scripts/cohort/common.mjs": "bd8c91b14129b7c39550ecefaa306c044b9dc689b0253027bc69ac50d9c55f81",
+      "scripts/cohort/compare.mjs": "b8ba0c030b1a8490d0a7aab328abf9eb2e26c74611fef0657ae99a8717996a73",
+      "scripts/cohort/evaluate.mjs": "86699ff4dab2963c4084ea548061bf10c35263e5c6e9a3db57461f6662dc91fe",
+      "scripts/cohort/evidence-checks.mjs": "473844af019ce5b2f609d36c9c40b02f59db8b0122295ef395f42c4b51508139",
+      "scripts/cohort/local-worker.mjs": "44bc2ddd6d6430c7a9e4f216b3ec14680a115e31dda783306cb804e18a68f9ac",
+      "scripts/cohort/messages.mjs": "479147a3cf6cf6b00b1d9312bf8f4e0cfe1862a4b9c97e0d2f0241261aa3ad6d",
+      "scripts/cohort/personas.mjs": "e35a44b59a1e40b5ad11fbeb2becffc2c998a5b0b0d512c3119941a101adc014",
+      "scripts/cohort/report.mjs": "70218220d07a776c198fddd23e0e240abcb598e9761cfa4db705fb332417569b",
+      "scripts/cohort/run.mjs": "a85a49142edb72b61b5848acde1bb26d7e881654a9094c18cef1e4ccd7ad76cb",
+      "scripts/cohort/runtime.mjs": "dc502c0dbfb5c1845f5467a57f709d86cf3066dfd19c616afee8731e25dd211f",
+      "scripts/cohort/serve.mjs": "052cac0e9afddad42ce8510f4b2d1d8bd7ce8cefa175e74d4fd24018194a38cf",
+      "scripts/cohort/stress.mjs": "37f30015913acd41cc632cf8f4f7139f2ec40fb72a66852cf9399dd61df67c29",
+      "scripts/cohort/verify.mjs": "9733cf00970e615a7b42b1376817b29f04be55b7779856ec428b83ea3fd9e028",
+      "scripts/cohort/viewer.mjs": "feca16b1f94542dcc996ec353c50b8e0c60592bccbff70194423cdb6a547384f",
+      "tests/cohort-harness.test.mjs": "75894eb806ca370013495ee2e9ba03a3445dedb08b67975b3bbf364b83aabb38"
+    }
+  }
+}
