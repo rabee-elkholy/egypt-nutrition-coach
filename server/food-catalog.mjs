@@ -1,3 +1,5 @@
+import { REGIONAL_RECIPES } from '../regional-foods.mjs';
+import { snapshotTemplate } from '../planner-core.mjs';
 // Food Catalog Adapter & Egyptian Nutrition Search Engine
 // Decouples `/v1/foods` and `/v1/beverages` from the 86-ingredient meal planner library,
 // indexing the full reference dataset (`data/index.json`, `data/egypt_catalog.json`, `data/recipe_estimates.json`, `data/meta.json`)
@@ -177,6 +179,22 @@ const CATALOG_ITEMS = rawIndex.map(item => {
   };
 });
 
+// Regional entries share the planner's component calculations and stable IDs.
+for (const recipe of REGIONAL_RECIPES) {
+  const snapshot = snapshotTemplate(recipe, recipe.items, library);
+  const grams = recipe.items.reduce((sum, p) => sum + Number(p.grams), 0);
+  const values = Object.fromEntries(Object.entries(snapshot.values).map(([key,value]) => [key,value == null ? null : String(Number(value) * 100 / grams)]));
+  const names = [recipe.name, recipe.id.split('-').slice(2).join(' ')];
+  CATALOG_ITEMS.push({id:recipe.id,key:recipe.id,planningKey:null,name:recipe.name,name_ar:recipe.name,name_en:null,
+    aliases:names,status:'estimated',reviewStatus:'Pending Review',qualityTier:'Editorial Regional Serving Estimate',modelKind:recipe.model_kind,
+    approvedForPlanning:false,isApproximate:true,kind:'recipe',beverage:false,state:'ready_to_eat',categories:['regional_recipe'],
+    region:recipe.country || 'MENA',regions:recipe.regions,source:'regional-serving-models-v1',
+    sourceMeta:{title:'Culinary identity source; nutrient values are editorial estimates',url:recipe.source_url},
+    basis:'100g',basis_label:'لكل 100 جم من نموذج الحصة',quantity_basis:{amount:100,unit:'g',grams_available:true},
+    portion_units:[],portions:[],values,ingredients:snapshot.ingredients,notes:recipe.notes,servingGrams:grams,
+    _searchPairs:names.map(raw=>{const norm=normalizeAr(raw),baseWords=norm.split(' ');return {raw,norm,baseWords,words:new Set(baseWords)};})});
+}
+
 const CATALOG_BY_ID = new Map();
 for (const c of CATALOG_ITEMS) {
   CATALOG_BY_ID.set(c.id, c);
@@ -214,6 +232,10 @@ export function getFoodCatalogManifest() {
       beverages: meta.beverage_count,
       estimatedBeverages: meta.estimated_beverage_count,
       egyptCatalogEntities: meta.catalog_count,
+      regionalServingModels: REGIONAL_RECIPES.length,
+      regionalDishModels: REGIONAL_RECIPES.filter(r=>r.model_kind==='dish_serving').length,
+      regionalMealCombinations: REGIONAL_RECIPES.filter(r=>r.model_kind==='meal_combination').length,
+      regionalServingModelsByRegion: Object.fromEntries(['egypt','gulf','levant','maghreb'].map(r=>[r,REGIONAL_RECIPES.filter(x=>x.regions.includes(r)).length])),
       totalIndexed: CATALOG_ITEMS.length
     },
     externalDatabaseAdapter: {
@@ -278,7 +300,7 @@ export function searchFoodCatalog(options = {}) {
 
   let pool = CATALOG_ITEMS;
   if (scope === 'planning') {
-    pool = pool.filter(x => x.planningKey != null);
+    pool = pool.filter(x => x.planningKey != null || x.source === 'regional-serving-models-v1');
   } else if (scope === 'beverages' || kindFilter === 'beverage') {
     pool = pool.filter(x => x.beverage);
   }
@@ -332,6 +354,7 @@ export function searchFoodCatalog(options = {}) {
     approvedForPlanning: item.approvedForPlanning,
     isApproximate: item.isApproximate,
     region: item.region,
+    ...(item.modelKind ? {modelKind:item.modelKind,regions:item.regions} : {}),
     basis: item.basis,
     basis_label: item.basis_label,
     portion_units: item.portion_units,

@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-03",
+  "tests": 325,
+  "passed": 325,
+  "failed": 0,
+  "referenceScenarios": 10,
+  "onboardingJourneys": 6,
+  "browserSmoke": "passed",
+  "models": 906,
+  "dishModels": 300,
+  "mealCombinations": 606,
+  "totalIndexedFoods": 4197,
+  "dryRun": "passed",
+  "liveDeployment": false,
+  "deploymentBlocker": "Cloudflare API token unavailable",
+  "old9000DayCampaignRerun": false
+}

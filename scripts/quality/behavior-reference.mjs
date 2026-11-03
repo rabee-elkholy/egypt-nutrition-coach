@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util';
 import {pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
 import {writeFileSync,readFileSync,mkdirSync} from 'node:fs';
@@ -24,4 +25,4 @@ withClock(now,()=>{
  record('expired',s,now+8*86400000);withClock(now+8*86400000,()=>record('renewal',run(s,'renew_plan',{}),now+8*86400000));
 });
 const target=process.argv[2];if(!target)throw Error('Provide an output path');mkdirSync(resolve(target,'..'),{recursive:true});writeFileSync(target,JSON.stringify({clock:date,seed:'quality-reference-v1',snapshots},null,2)+'\n');
-if(process.argv[3]){assert.deepEqual(JSON.parse(readFileSync(target)),JSON.parse(readFileSync(process.argv[3])));console.log('Exact behavior match: '+snapshots.length+' scenarios');}else console.log('Reference recorded: '+snapshots.length+' scenarios');
+if(process.argv[3]){assert.ok(isDeepStrictEqual(JSON.parse(readFileSync(target)),JSON.parse(readFileSync(process.argv[3]))),'Behavior reference differs; compare the two JSON artifacts before accepting a new baseline');console.log('Exact behavior match: '+snapshots.length+' scenarios');}else console.log('Reference recorded: '+snapshots.length+' scenarios');

@@ -82,6 +82,10 @@ export function independentPlanIssues(plan,library){
      total+=Number(item.grams)*Number(v)/100;
     }
     if(total==null){if(['energy','protein'].includes(metric))issues.push('MISSING_'+metric);sums[metric]=null;continue;}
+    if(metric==='sodium'&&meal.snapshot.quality==='editorial_regional_serving_estimate'){
+     if(meal.snapshot.values.sodium!==null)issues.push('REGIONAL_SODIUM_UNCERTAINTY_LOST');
+     sums.sodium=null;continue;
+    }
     const declared=meal.snapshot.values[metric];if(declared==null||Math.abs(total-Number(declared))>1e-5)issues.push('MEAL_ARITHMETIC_'+metric);
     if(sums[metric]!=null)sums[metric]+=total;
    }

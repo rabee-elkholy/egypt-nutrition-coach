@@ -165,7 +165,7 @@ paths:
   /v1/foods:
     get:
       operationId: searchFoods
-      summary: Search the Egyptian & reference food catalog with Arabic normalization, synonyms, and provenance metadata
+      summary: Search regional and reference foods with Arabic normalization and provenance metadata
       parameters:
         - name: q
           in: query
@@ -1477,6 +1477,7 @@ components:
         qualityTier:
           type: string
         approvedForPlanning:
+          description: True for an approved reference ingredient; estimated regional serving models remain false and expose isApproximate even when available in general meal plans.
           type: boolean
         isApproximate:
           type: boolean

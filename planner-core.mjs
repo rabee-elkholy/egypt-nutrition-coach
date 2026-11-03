@@ -1,3 +1,4 @@
+import { regionalFoodTemplates } from './regional-foods.mjs';
 import {DIETS,FIXED_DIET_MEALS,dietIngredientAllowed,medicalContraindicatedKeys,isDietUnsafeForProfile,dietTemplates,assertDietDay,fastingTimes} from './diet-patterns.mjs';
 import {sportsEnergy} from './sports.mjs';
 import {practicalParts,roundedHouseholdGrams} from './planner-household.mjs';
@@ -417,9 +418,9 @@ export function prepareTemplate(t, lib, p, profile = null) {
 }
 // Substitution can make distinct templates identical. Preserve all supported
 // meal slots when deduplicating so a valid lunch/dinner does not disappear.
-function preparePool(lib, prefs, profile = null) {
+function preparePool(lib, prefs, profile = null, includeRegional = true, selectionSeed = null) {
   const pool = new Map();
-  for (const template of planningTemplates(lib, prefs)) {
+  for (const template of planningTemplates(lib, prefs, includeRegional)) {
     const t = prepareTemplate(template, lib, prefs, profile);
     if (!t) continue;
     const key = JSON.stringify(t.items.map((i) => [i.key, Number(i.grams)]).sort());
@@ -427,9 +428,20 @@ function preparePool(lib, prefs, profile = null) {
     if (previous) previous.meal_slots = [...new Set([...previous.meal_slots, ...t.meal_slots])];
     else pool.set(key, t);
   }
-  return [...pool.values()];
+  const prepared=[...pool.values()];
+  if(selectionSeed==null)return prepared;
+  // Filter all constraints before taking a rotating shortlist per combination
+  // family. All named dishes remain eligible; alternatives expose the full pool.
+  const named=prepared.filter(t=>t.model_kind!=='meal_combination'),groups=new Map();
+  for(const t of prepared.filter(t=>t.model_kind==='meal_combination')){
+    const key=t.selection_family+'|'+t.meal_slots.join(',');
+    if(!groups.has(key))groups.set(key,[]);groups.get(key).push(t);
+  }
+  const rank=id=>{let n=2166136261;for(const c of String(selectionSeed)+'|'+id)n=Math.imul(n^c.charCodeAt(0),16777619);return n>>>0;};
+  for(const group of groups.values())named.push(...group.sort((a,b)=>rank(a.id)-rank(b.id)||a.id.localeCompare(b.id)).slice(0,4));
+  return named;
 }
-export function planningTemplates(lib, prefs) {
+export function planningTemplates(lib, prefs, includeRegional = true) {
   const region = prefs.region ?? 'egypt';
   let base;
   if (region === 'egypt') {
@@ -440,6 +452,7 @@ export function planningTemplates(lib, prefs) {
   } else {
     base = lib.templates;
   }
+  base = [...base, ...(!includeRegional || prefs.diet === 'dash' ? [] : regionalFoodTemplates(lib, region))];
   return dietTemplates(base, lib, prefs.diet ?? 'balanced', region);
 }
 function ingredientIdentity(snapshot) {
@@ -514,13 +527,14 @@ export function snapshotTemplate(template, parts, lib) {
     name: template.name,
     budget_tier: template.budget_tier,
     regions: copy(template.regions || []),
-    quality: "planned_assembly_from_reference_ingredients",
+    quality: template.quality || "planned_assembly_from_reference_ingredients",
+    ...(template.nutrition_confidence ? {is_approximate:true,nutrition_confidence:template.nutrition_confidence,model_kind:template.model_kind,review_status:template.review_status,source_url:template.source_url,country:template.country} : {}),
     data_version: lib.data_version,
     engine_version: ENGINE_VERSION,
     ...(template.editorial_policy_version ? { editorial_policy_version: template.editorial_policy_version } : {}),
     notes: template.notes,
     carb_ids: totals.carb_ids,
-    values: totals.values,
+    values: template.nutrition_confidence ? {...totals.values,sodium:null} : totals.values,
     estimated_values: totals.estimated_values,
     fruit_veg_g: totals.fruit_veg_g,
     ingredients: parts
@@ -551,7 +565,7 @@ export function snapshotTemplate(template, parts, lib) {
     result.components = template.component_definitions.map(c=>{
       const selected=parts.filter(p=>p.component_id===c.id&&Number(p.grams)>0);
       if(!selected.length)return null;
-      const child=snapshotTemplate({id:null,name:c.name,regions:template.regions,budget_tier:template.budget_tier,notes:template.notes},selected,lib);
+      const child=snapshotTemplate({id:null,name:c.name,regions:template.regions,budget_tier:template.budget_tier,notes:template.notes,...(template.nutrition_confidence?{quality:template.quality,nutrition_confidence:template.nutrition_confidence,model_kind:template.model_kind,review_status:template.review_status,source_url:template.source_url,country:template.country}:{})},selected,lib);
       return {...child,component_role:c.role};
     }).filter(Boolean);
   }
@@ -769,21 +783,41 @@ function planCoverageError(stage,message){
  return Object.assign(Error(message),{status:400,code:'PLAN_CONSTRAINTS_UNMET',retryable:false,fieldErrors:[{field:'preferences',code:stage,message}]});
 }
 export function makeWeek(profile, prefs, lib, startDate, seed = "1", acceptedEnergy = null) {
-  let lastError;
+  let lastError, bestPlan = null, bestScore = Infinity;
   for(let attempt=0;attempt<4;attempt++){
     try{
       const plan=buildWeek(profile,prefs,lib,startDate,attempt?String(seed)+':restart:'+attempt:seed,acceptedEnergy);
       plan.id='plan-'+String(seed);
-      return plan;
+      // A larger catalog can change greedy choices. Spend the existing bounded
+      // restart budget on quality too; retain the best valid week if no tighter fit exists.
+      const score=plan.days.reduce((sum,day)=>sum+repairObjective(day.summary,day.targets),0);
+      if(score<bestScore){bestPlan=plan;bestScore=score;}
+      if(plan.days.every(day=>!needsNutritionImprovement(day.summary,day.targets)))return plan;
     }catch(error){
       const stage=error.fieldErrors?.[0]?.code;
       if(error.code!=='PLAN_CONSTRAINTS_UNMET'||!['NUTRIENT_TARGETS_UNMET','NO_CANDIDATE_WITHIN_DIET_LIMITS'].includes(stage))throw error;
       lastError=error;
     }
   }
+  // Keep the established regional library as a fallback when new serving models
+  // make a constrained vegan/low-budget search settle at a weaker local optimum.
+  // This never relaxes exclusions or accepts a failed week.
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      const plan=buildWeek(profile,prefs,lib,startDate,attempt?String(seed)+':restart:'+attempt:seed,acceptedEnergy,false);
+      plan.id='plan-'+String(seed);
+      if(plan.days.every(day=>!needsNutritionImprovement(day.summary,day.targets)))return plan;
+      const score=plan.days.reduce((sum,day)=>sum+repairObjective(day.summary,day.targets),0);
+      if(score<bestScore){bestPlan=plan;bestScore=score;}
+    }catch(error){
+      if(error.code!=='PLAN_CONSTRAINTS_UNMET')throw error;
+      lastError=error;
+    }
+  }
+  if(bestPlan)return bestPlan;
   throw lastError;
 }
-function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy) {
+function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, includeRegional = true) {
   const targets = estimateNeeds(profile),
     p = validatePreferences(prefs, lib),
     slots = daySlots(p.meals, p.diet);
@@ -821,7 +855,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy) {
   const schedule=fastingTimes(p,slots.length);
   validDate(startDate);
   validDate(addDays(startDate, 6));
-  const pool = preparePool(lib, p, profile),
+  const pool = preparePool(lib, p, profile, includeRegional, seed),
     counts = new Map(),
     templateCounts = new Map(),
     previousSlotFamily = new Map(),

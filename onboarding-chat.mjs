@@ -1,3 +1,4 @@
+import { REGION_COUNTRIES } from './regional-foods.mjs';
 import { DIETS, FIXED_DIET_MEALS, isDietUnsafeForProfile } from './diet-patterns.mjs';
 import { REGIONS, GOALS, estimateNeeds } from './planner-core.mjs';
 import {
@@ -256,7 +257,7 @@ function defaultTrainingDaysIncludingToday(count = 3) {
 }
 
 export function createInitialOnboardingDraft(savedState = null) {
-  const detectedRegion = savedState?.preferences?.region || detectUserRegion();
+  const detectedRegion = (Object.hasOwn(REGIONS, savedState?.preferences?.region) ? savedState.preferences.region : detectUserRegion());
   const p = savedState?.profile || {};
   const prefs = savedState?.preferences || {};
   const wp = savedState?.onboarding?.workoutPrefs || {};
@@ -1530,6 +1531,10 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
             <h3>خطة الكوتش الذكي لـ ${esc(draft.name || 'بطل')} 🌟</h3>
           </div>
           <div class="summary-region-picker">
+            <p>اختار المطبخ الأقرب لأكلك اليومي. الاقتراح من إعدادات الجهاز قابل للتغيير، ولا يغيّر احتياج الماء تلقائيًا.</p>
+            <div class="chat-quick-replies" role="group" aria-label="اختيار منطقة الطعام">
+              ${Object.entries(REGION_COUNTRIES).map(([key,countries])=>`<button type="button" class="outline-btn chat-choice-btn ${draft.region===key?'is-selected':''}" data-region-choice="${key}" aria-pressed="${draft.region===key}"><strong>${esc(REGIONS[key])}</strong><small>${esc(countries)}</small></button>`).join('')}
+            </div>
             <label>منطقتك وأكلك:
               <select id="summary-region-select" aria-label="منطقتك">
                 ${Object.entries(REGIONS).map(([k, label]) => `<option value="${k}" ${draft.region === k ? 'selected' : ''}>${esc(label)}</option>`).join('')}
@@ -2106,6 +2111,13 @@ export function mountOnboardingChat({ container, getState, onRestoreExisting, on
       modalView = null;
       clearPersistedDraft();
       onCompleteOnboarding(draft);
+      return;
+    }
+
+    if (btn.dataset.regionChoice && Object.hasOwn(REGION_COUNTRIES, btn.dataset.regionChoice)) {
+      draft.region = btn.dataset.regionChoice;
+      savePersistedDraft();
+      render();
       return;
     }
 

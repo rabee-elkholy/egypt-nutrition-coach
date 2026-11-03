@@ -43,12 +43,12 @@ export function foodCommand(s,action,p){
   }else if(p.source==='ingredient'){
    const i=typeof p.key==='string'&&Object.hasOwn(library.ingredients,p.key)?library.ingredients[p.key]:null;
    const catItem=!i&&typeof p.key==='string'?getFoodCatalogItem(p.key):null;
-   if(!i&&(!catItem||catItem.status!=='approved'||!catItem.quantity_basis?.grams_available))throw Error('الصنف غير موجود.');
+   if(!i&&(!catItem||(catItem.status!=='approved'&&catItem.source!=='regional-serving-models-v1')||!catItem.quantity_basis?.grams_available))throw Error('الصنف غير موجود.');
    quantity=number(p.grams,1,2000,'الكمية بالجرام');
    if(i){
     snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
    }else{
-    snapshot={name:catItem.name,values:Object.fromEntries(metrics.map(k=>[k,catItem.values[k]==null?null:String(Number(catItem.values[k])*quantity/100)])),ingredients:[{key:catItem.id,name:catItem.name,grams:String(quantity),state:catItem.state,food_id:catItem.id,source:catItem.source,values_per_100g:catItem.values}]};
+    snapshot={name:catItem.name,is_approximate:catItem.isApproximate,values:Object.fromEntries(metrics.map(k=>[k,catItem.values[k]==null?null:String(Number(catItem.values[k])*quantity/100)])),ingredients:[{key:catItem.id,name:catItem.name,grams:String(quantity),state:catItem.state,food_id:catItem.id,source:catItem.source,values_per_100g:catItem.values}]};
    }
   }else{
    const name=typeof p.name==='string'?p.name.trim():'';if(!name||name.length>120)throw Error('اكتب اسم الوجبة في حدود 120 حرف.');

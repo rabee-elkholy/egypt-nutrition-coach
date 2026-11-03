@@ -1,0 +1,32 @@
+{
+  "version": "regional-menu-1",
+  "totalModels": 906,
+  "dishServingModels": 300,
+  "mealCombinations": 606,
+  "uniqueIds": 906,
+  "uniqueIngredientQuantityCombinations": 906,
+  "byRegion": {
+    "egypt": 441,
+    "gulf": 417,
+    "levant": 417,
+    "maghreb": 417
+  },
+  "namedModelsByCountry": {
+    "EG": 75,
+    "SA": 26,
+    "QA": 10,
+    "AE": 10,
+    "OM": 10,
+    "KW": 11,
+    "BH": 8,
+    "LB": 32,
+    "SY": 19,
+    "PS": 13,
+    "JO": 11,
+    "MA": 32,
+    "TN": 18,
+    "DZ": 14,
+    "LY": 11
+  },
+  "scope": "Editorial dish servings/preparation variants and menu combinations; shared combinations count once globally. Not an exhaustive census or laboratory measured recipes"
+}

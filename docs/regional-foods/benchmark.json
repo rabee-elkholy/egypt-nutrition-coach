@@ -1,0 +1,80 @@
+{
+  "at": "2026-11-03T07:20:35.623Z",
+  "node": "v24.19.0",
+  "models": 906,
+  "results": [
+    {
+      "region": "egypt",
+      "dietType": "balanced",
+      "milliseconds": 789,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 22,
+      "combinationSelections": 10
+    },
+    {
+      "region": "egypt",
+      "dietType": "vegan",
+      "milliseconds": 99,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 13,
+      "combinationSelections": 8
+    },
+    {
+      "region": "gulf",
+      "dietType": "balanced",
+      "milliseconds": 800,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 18,
+      "combinationSelections": 10
+    },
+    {
+      "region": "gulf",
+      "dietType": "vegan",
+      "milliseconds": 80,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 13,
+      "combinationSelections": 12
+    },
+    {
+      "region": "levant",
+      "dietType": "balanced",
+      "milliseconds": 732,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 22,
+      "combinationSelections": 10
+    },
+    {
+      "region": "levant",
+      "dietType": "vegan",
+      "milliseconds": 89,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 14,
+      "combinationSelections": 11
+    },
+    {
+      "region": "maghreb",
+      "dietType": "balanced",
+      "milliseconds": 801,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 17,
+      "combinationSelections": 4
+    },
+    {
+      "region": "maghreb",
+      "dietType": "vegan",
+      "milliseconds": 33,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 14,
+      "combinationSelections": 13
+    }
+  ],
+  "limitations": "Local in-process measurements under test load, not a production latency or capacity guarantee"
+}
