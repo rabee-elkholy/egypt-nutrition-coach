@@ -189,7 +189,7 @@ for (const recipe of REGIONAL_RECIPES) {
     aliases:names,status:'estimated',reviewStatus:'Pending Review',qualityTier:'Editorial Regional Serving Estimate',modelKind:recipe.model_kind,
     approvedForPlanning:false,isApproximate:true,kind:'recipe',beverage:false,state:'ready_to_eat',categories:['regional_recipe'],
     region:recipe.country || 'MENA',regions:recipe.regions,source:'regional-serving-models-v1',
-    sourceMeta:{title:'Culinary identity source; nutrient values are editorial estimates',url:recipe.source_url},
+    sourceMeta:{title:recipe.source_scope,url:recipe.source_url},
     basis:'100g',basis_label:'لكل 100 جم من نموذج الحصة',quantity_basis:{amount:100,unit:'g',grams_available:true},
     portion_units:[],portions:[],values,ingredients:snapshot.ingredients,notes:recipe.notes,servingGrams:grams,
     _searchPairs:names.map(raw=>{const norm=normalizeAr(raw),baseWords=norm.split(' ');return {raw,norm,baseWords,words:new Set(baseWords)};})});

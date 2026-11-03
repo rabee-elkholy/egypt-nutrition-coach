@@ -9,12 +9,12 @@ import {withClock} from '../server/clock.mjs';
 import {getFoodCatalogItem,searchFoodCatalog} from '../server/food-catalog.mjs';
 import {createInitialOnboardingDraft} from '../onboarding-chat.mjs';
 const date='2026-11-02',now=Date.parse(date+'T12:00:00Z');
-test('2405 unique regional models cover every requested country with usable ingredient references',()=>{
- assert.equal(REGIONAL_RECIPES.length,2405);assert.equal(new Set(REGIONAL_RECIPES.map(r=>r.id)).size,2405);
- assert.equal(new Set(REGIONAL_RECIPES.map(r=>JSON.stringify(r.items.map(i=>[i.key,i.grams]).sort()))).size,2405);
+test('2429 unique regional models cover every requested country with usable ingredient references',()=>{
+ assert.equal(REGIONAL_RECIPES.length,2429);assert.equal(new Set(REGIONAL_RECIPES.map(r=>r.id)).size,2429);
+ assert.equal(new Set(REGIONAL_RECIPES.map(r=>JSON.stringify(r.items.map(i=>[i.key,i.grams]).sort()))).size,2429);
  assert.equal(new Set(REGIONAL_RECIPES.filter(r=>r.country).map(r=>r.country)).size,15);
  for(const region of Object.keys(REGION_COUNTRIES)){
-  const recipes=regionalFoodTemplates(library,region);assert.equal(recipes.length,({egypt:1461,gulf:1230,levant:1406,maghreb:1406})[region]);
+  const recipes=regionalFoodTemplates(library,region);assert.equal(recipes.length,({egypt:1467,gulf:1236,levant:1412,maghreb:1412})[region]);
   for(const r of recipes){assert.match(r.source_url,/^https:\/\//);for(const i of r.items){assert.ok(library.ingredients[i.key]);assert.ok(Number(i.grams)>0);assert.ok(library.ingredients[i.key].regions.includes(region));}}
  }
 });
@@ -74,4 +74,30 @@ test('new ingredients retain exact approved source nutrients, identity and porti
  const prefs=validatePreferences({region:'levant',budget:'high',proteins:['chicken','meat','fish','eggs','dairy','legumes','nuts']},library);
  const eligible=regionalFoodTemplates(library,'levant').map(t=>prepareTemplate(t,library,prefs,{diseases:['ibs']})).filter(Boolean);
  assert.ok(eligible.every(t=>t.items.every(i=>!['mushrooms','cauliflower'].includes(i.key))));
+});
+
+test('regional country placement and culinary source scope are explicit',()=>{
+ for(const r of REGIONAL_RECIPES){
+  if(r.country)assert.ok(({egypt:['EG'],gulf:['SA','AE','KW','QA','BH','OM'],levant:['LB','SY','JO','PS'],maghreb:['MA','DZ','TN','LY']})[r.regions[0]].includes(r.country),r.id);
+  assert.ok(r.source_scope,r.id);
+  if(r.model_kind==='meal_combination'){
+   assert.equal(r.country,null);
+   assert.match(r.source_url,/github.com\/rabee-elkholy/);
+  }
+ }
+});
+test('legacy regional menu names match stored ingredients and generated definitions',async()=>{
+ const {regionalMenus}=await import('../egyptian-menu.mjs');
+ for(const region of ['gulf','levant','maghreb'])assert.deepEqual(library.regional_menus[region],regionalMenus(library,region));
+ const all=Object.values(library.regional_menus).flat();
+ for(const id of ['gulf-menu-halloumi-cottage-gulf','levant-menu-halloumi-tomato-levant'])assert.doesNotMatch(all.find(t=>t.id===id).name,/حلوم/);
+ assert.doesNotMatch(all.find(t=>t.id==='levant-menu-freekeh-chicken-levant').name,/فريكة/);
+ assert.doesNotMatch(all.find(t=>t.id==='maghreb-menu-harira-chickpea-meat').name,/حريرة|عدس|حمص/);
+ assert.doesNotMatch(all.find(t=>t.id==='gulf-menu-masoub-fit').name,/معصوب|موز/);
+ assert.doesNotMatch(all.find(t=>t.id==='levant-menu-labneh-zaatar-levant').name,/لبنة/);
+ const required={harira:['lentils','chickpeas','tomatocooked'],lablabi:['chickpeas','wholebread'],mbakbaka:['pasta','tomatocooked'],mdardara:['lentils','rice','onion']};
+ for(const [id,keys] of Object.entries(required)){
+  const r=REGIONAL_RECIPES.find(r=>r.id==='regional-'+(id==='mdardara'?'levant':'maghreb')+'-'+id);assert.ok(r,id);
+  for(const key of keys)assert.ok(r.items.some(i=>i.key===key),id+':'+key);
+ }
 });

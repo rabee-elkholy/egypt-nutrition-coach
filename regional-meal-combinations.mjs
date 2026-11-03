@@ -83,7 +83,7 @@ const recipes=[];
 function add(id,name,regions,slots,parts,family){
  recipes.push({id:'regional-combo-'+id,name,regions:[...regions],country:null,meal_slots:slots,
   items:merge(parts),model_kind:'meal_combination',selection_family:family,
-  source_url:'https://www.langmedia.fivecolleges.edu/resources/arab-levant/food/well-known-dishes',
+  source_url:'https://github.com/rabee-elkholy/egypt-nutrition-coach/blob/main/regional-meal-combinations.mjs',
   source_scope:'Culinary context only; this combination and its serving weights are authored editorially',
   quality:'editorial_regional_serving_estimate',nutrition_confidence:'estimated',review_status:'pending_specialist_review',
   notes:'تركيبة وجبة مقترحة وليست اسم طبق تراثي جديد. الحساب تقديري من مكونات جاهزة للأكل والزيت الموضح. الملح والتوابل غير محددين؛ الصوديوم غير مؤكد. اختر الكمية التي أكلتها فعليًا.'});

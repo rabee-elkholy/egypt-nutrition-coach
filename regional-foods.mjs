@@ -1,6 +1,7 @@
+import {REVIEWED_REGIONAL_ROWS,REVIEWED_DISH_SOURCES} from './regional-foods-reviewed.mjs';
 import {REGIONAL_MEAL_COMBINATIONS} from './regional-meal-combinations.mjs';
 import {EXPANDED_REGIONAL_ROWS} from './regional-foods-expanded.mjs';
-// Culinary sources establish dish identity, not measured nutrient composition.
+// Sources provide culinary context, not independent validation of every serving.
 export const REGION_COUNTRIES = {
   egypt: 'مصر', gulf: 'السعودية، الإمارات، الكويت، قطر، البحرين، عُمان',
   levant: 'الأردن، لبنان، سوريا، فلسطين', maghreb: 'المغرب، الجزائر، تونس، ليبيا'
@@ -25,7 +26,7 @@ export const REGIONAL_SOURCES = {
 const rows = {
  egypt: [
  ['koshari','كشري مصري','EG','lunch dinner','rice:100 lentils:90 pasta:70 chickpeas:40 tomatocooked:80 onion:30 sunfloweroil:10'],
- ['fatta','فتة لحم بالخل والثوم','EG','lunch dinner','beef:120 rice:130 bread:40 tomatocooked:70 garlic:4 sunfloweroil:8'],
+ ['fatta','فتة لحم بالصلصة والثوم — الخل غير محسوب','EG','lunch dinner','beef:120 rice:130 bread:40 tomatocooked:70 garlic:4 sunfloweroil:8'],
  ['hawawshi','حواوشي مخبوز','EG','lunch dinner','beef:110 bread:80 onion:35 pepper:40 sunfloweroil:5'],
  ['liver','كبدة إسكندراني بالعيش','EG','lunch dinner','liver:120 bread:70 pepper:60 garlic:4 sunfloweroil:8'],
  ['bessara','بصارة بالفول والبصل','EG','lunch dinner','fava:220 onion:50 parsley:20 garlic:4 olive:8 wholebread:50'],
@@ -132,18 +133,20 @@ const rows = {
  ['sharba','شربة ليبية — نموذج مكرونة ولحم','LY','lunch dinner','pasta:100 beef:90 chickpeas:70 tomatocooked:130 onion:40 parsley:15 olive:8']
  ]
 };
-for (const region of Object.keys(rows)) rows[region].push(...EXPANDED_REGIONAL_ROWS[region]);
+for (const region of Object.keys(rows)) rows[region].push(...EXPANDED_REGIONAL_ROWS[region],...REVIEWED_REGIONAL_ROWS[region]);
 
 const DISH_SOURCES={
+ ...REVIEWED_DISH_SOURCES,
  'egypt-taro-beef':'https://english.ahram.org.eg/NewsContent/50/1208/399179/AlAhram-Weekly/Features/Cooking-taro.aspx',
  'levant-arnabit-tahini':'https://food-heritage.org/cauliflower-in-tahini-sauce-arnabit-b-thineh/',
  'levant-beetroot-tahini':'https://www.discoverlebanon.com/en/recipes/beetroot_tahinah_salad.php',
- 'maghreb-couscous-pumpkin':'https://tasteofmaroc.com/moroccan-pureed-vegetable-soup/'
 };
 export const REGIONAL_RECIPES = Object.entries(rows).flatMap(([region, list]) => list.map(([id,name,country,slots,parts]) => ({
  id:`regional-${region}-${id}`, name, country, regions:[region], meal_slots:slots.split(' '),
  items:parts.split(' ').map(pair=>{const [key,grams]=pair.split(':');return {key,grams};}),
  source_url:DISH_SOURCES[region+'-'+id] || REGIONAL_SOURCES[country], quality:'editorial_regional_serving_estimate',
+ country_role:'menu_placement_not_exclusive_origin',
+ source_scope:DISH_SOURCES[region+'-'+id] ? 'Dish context; serving weights and adaptations are editorial' : 'Country cuisine context only; individual serving not independently verified',
  model_kind:'dish_serving', nutrition_confidence:'estimated', review_status:'pending_specialist_review',
  notes:'نموذج حصة تقديري من أوزان مكونات جاهزة للأكل، وليس تحليلًا معمليًا للطبق. الزيت ضمن المكونات؛ الملح والتوابل غير محددين، لذلك الصوديوم غير مؤكد. يختلف التحضير بين البيوت والمطاعم.'
 })));
