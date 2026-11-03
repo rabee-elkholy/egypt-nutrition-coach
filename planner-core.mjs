@@ -1099,7 +1099,9 @@ export function assessDay(summary, targets) {
     );
   return out;
 }
-export function alternatives(meal, prefs, lib, limit = 8, profile = null) {
+export function alternatives(meal, prefs, lib, limit = 8, profile = null, accept = () => true) {
+  if (!Number.isInteger(limit) || limit < 0 || limit > 100) throw new Error("عدد البدائل غير صالح.");
+  if (limit === 0) return [];
   if (
     meal.snapshot.values.energy == null ||
     meal.snapshot.values.protein == null
@@ -1109,7 +1111,7 @@ export function alternatives(meal, prefs, lib, limit = 8, profile = null) {
     e = Number(meal.snapshot.values.energy),
     protein = Number(meal.snapshot.values.protein);
   const seen = new Set([ingredientIdentity(meal.snapshot)]);
-  return preparePool(lib, p, profile)
+  const ranked = preparePool(lib, p, profile)
     .filter(
       (t) =>
         t.meal_slots.includes(meal.slot) && t.id !== meal.snapshot.template_id,
@@ -1129,13 +1131,17 @@ export function alternatives(meal, prefs, lib, limit = 8, profile = null) {
         Math.abs(b.energy_delta) / Math.max(e, 1) -
         Math.abs(b.protein_delta) / Math.max(protein, 10),
     )
-    .filter((alternative) => {
-      const key = ingredientIdentity(alternative.snapshot);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, limit);
+    ;
+  // Apply day-level rules before limiting results, stopping after enough valid choices.
+  const result = [];
+  for (const alternative of ranked) {
+    const key = ingredientIdentity(alternative.snapshot);
+    if (seen.has(key) || !accept(alternative)) continue;
+    seen.add(key);
+    result.push(alternative);
+    if (result.length === limit) break;
+  }
+  return result;
 }
 // Recalculate from frozen reference observations; never rewrite actual-intake history.
 export function simplifyPlannedSnapshot(snapshot){

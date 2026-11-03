@@ -75,9 +75,9 @@ export function foodCommand(s,action,p){
 }
 export function mealAlternatives(s,mealId){
  const {plan,day,meal}=plannedMeal(s,mealId);
- return alternatives(meal,s.preferences,library,30,s.profile).filter(a=>{
+ return alternatives(meal,s.preferences,library,6,s.profile,a=>{
   try{const snapshots=day.meals.map(m=>m.id===mealId?a.snapshot:m.snapshot);assertDietDay(snapshots,s.preferences.diet,day.targets||plan.targets,s.profile);return !nutritionQualityIssues(sumSnapshots(snapshots),day.targets||plan.targets).length;}catch{return false;}
- }).slice(0,6);
+ });
 }
 export function replaceMeal(s,p){
  const tz=s?.profile?.timezone||clockTimeZone();

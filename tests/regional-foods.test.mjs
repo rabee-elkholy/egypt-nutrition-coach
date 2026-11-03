@@ -9,12 +9,12 @@ import {withClock} from '../server/clock.mjs';
 import {getFoodCatalogItem,searchFoodCatalog} from '../server/food-catalog.mjs';
 import {createInitialOnboardingDraft} from '../onboarding-chat.mjs';
 const date='2026-11-02',now=Date.parse(date+'T12:00:00Z');
-test('2429 unique regional models cover every requested country with usable ingredient references',()=>{
- assert.equal(REGIONAL_RECIPES.length,2429);assert.equal(new Set(REGIONAL_RECIPES.map(r=>r.id)).size,2429);
- assert.equal(new Set(REGIONAL_RECIPES.map(r=>JSON.stringify(r.items.map(i=>[i.key,i.grams]).sort()))).size,2429);
+test('2437 unique regional models cover every requested country with usable ingredient references',()=>{
+ assert.equal(REGIONAL_RECIPES.length,2437);assert.equal(new Set(REGIONAL_RECIPES.map(r=>r.id)).size,2437);
+ assert.equal(new Set(REGIONAL_RECIPES.map(r=>JSON.stringify(r.items.map(i=>[i.key,i.grams]).sort()))).size,2437);
  assert.equal(new Set(REGIONAL_RECIPES.filter(r=>r.country).map(r=>r.country)).size,15);
  for(const region of Object.keys(REGION_COUNTRIES)){
-  const recipes=regionalFoodTemplates(library,region);assert.equal(recipes.length,({egypt:1467,gulf:1236,levant:1412,maghreb:1412})[region]);
+  const recipes=regionalFoodTemplates(library,region);assert.equal(recipes.length,({egypt:1469,gulf:1238,levant:1414,maghreb:1414})[region]);
   for(const r of recipes){assert.match(r.source_url,/^https:\/\//);for(const i of r.items){assert.ok(library.ingredients[i.key]);assert.ok(Number(i.grams)>0);assert.ok(library.ingredients[i.key].regions.includes(region));}}
  }
 });

@@ -1,15 +1,15 @@
 {
   "date": "2026-11-03",
-  "tests": 328,
-  "passed": 328,
+  "tests": 330,
+  "passed": 330,
   "failed": 0,
   "referenceScenarios": 10,
   "onboardingJourneys": 6,
   "browserSmoke": "passed",
-  "models": 2429,
-  "dishModels": 344,
+  "models": 2437,
+  "dishModels": 352,
   "mealCombinations": 2085,
-  "totalIndexedFoods": 5720,
+  "totalIndexedFoods": 5728,
   "dryRun": "passed",
   "liveDeployment": false,
   "deploymentBlocker": "Cloudflare API token unavailable",
@@ -17,7 +17,7 @@
   "planningIngredients": 94,
   "newPlanningIngredients": 0,
   "ingredientImportReproducible": true,
-  "newServingModels": 24,
-  "correctedLegacyMenuNames": 14,
-  "verificationNote": "Final sequential npm run check: 328/328; previous concurrent-build artifact race corrected and rerun successfully."
+  "newServingModels": 8,
+  "correctedLegacyMenuNames": 0,
+  "verificationNote": "330/330 npm run check. Six onboarding journeys and browser smoke passed on retry after a transient local socket hang-up."
 }

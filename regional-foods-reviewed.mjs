@@ -2,6 +2,8 @@
 // Country means menu placement, never an exclusive claim of culinary origin.
 export const REVIEWED_REGIONAL_ROWS = {
  egypt: [
+ ['eggplant-whitebeans','باذنجان بالفاصوليا البيضاء والصلصة — وجبة منزلية','EG','lunch dinner','eggplant:180 whitebeans:180 tomatocooked:150 garlic:5 sunfloweroil:10 bread:65'],
+ ['pumpkin-oat-bowl','قرع عسل بالشوفان والحليب — وجبة منزلية','EG','breakfast snack','pumpkin:180 oats:45 milk:180 walnuts:12'],
  ['ads-gebba','عدس بجبة بالصلصة والثوم','EG','lunch dinner','lentils:230 tomatocooked:160 onion:60 garlic:5 sunfloweroil:9 bread:55'],
  ['whitebeans-rice','فاصوليا بيضاء بالصلصة مع الأرز','EG','lunch dinner','whitebeans:210 tomatocooked:150 rice:140 garlic:4 sunfloweroil:9'],
  ['peas-potato','بسلة بالبطاطس والجزر مع الأرز','EG','lunch dinner','peas:180 potato:100 carrotcooked:80 tomatocooked:130 rice:110 sunfloweroil:8'],
@@ -10,6 +12,8 @@ export const REVIEWED_REGIONAL_ROWS = {
  ['zucchini-bechamel-model','كوسة باللحم والحليب — دون بشاميل','EG','lunch dinner','zucchini:240 beef:120 wholemilk:100 onion:50 sunfloweroil:8 rice:110']
  ],
  gulf: [
+ ['saloona-chickpea-pumpkin','صالونة قرع وحمص مع الأرز — نسخة نباتية','AE','lunch dinner','pumpkin:180 chickpeas:180 tomatocooked:140 onion:50 basmati:110 olive:10'],
+ ['egg-potato-rob','بيض وبطاطس مع الروب وخبز البر — وجبة منزلية','SA','breakfast dinner','egg:100 potato:140 yogurt:120 wholebread:55 cucumber:90 olive:7'],
  ['rice-milk-chicken','أرز بالحليب ودجاج — مستوحى من السليق دون زبدة','SA','lunch dinner','rice:210 wholemilk:180 chickenboiled:150 sunfloweroil:6'],
  ['saloona-okra','صالونة بامية باللحم مع خبز القمح','AE','lunch dinner','okra:200 beef:140 tomatocooked:160 onion:60 wholebread:65 olive:10'],
  ['saloona-whitebeans','يخنة فاصوليا بيضاء بالدجاج — وجبة منزلية','QA','lunch dinner','whitebeans:180 chicken:130 tomatocooked:150 onion:45 basmati:100 olive:8'],
@@ -18,6 +22,8 @@ export const REVIEWED_REGIONAL_ROWS = {
  ['rob-cucumber-egg','روب بالخيار مع البيض وخبز البر','BH','breakfast dinner','yogurt:180 cucumber:130 egg:100 wholebread:70 olive:6']
  ],
  levant: [
+ ['bulgur-mushroom-chickpea','برغل بالمشروم والحمص — وجبة منزلية','LB','lunch dinner','bulgur:170 mushrooms:120 chickpeas:160 onion:60 olive:12'],
+ ['whitebeans-lemon-salad','سلطة فاصوليا بيضاء بالليمون والبقدونس','SY','lunch dinner','whitebeans:220 parsley:30 tomato:110 onion:40 lemon:30 olive:12 wholebread:50'],
  ['lentil-pasta-soup','شوربة عدس بالمكرونة والبصل — وجبة منزلية','LB','lunch dinner','lentils:190 pasta:120 onion:90 lemon:25 olive:12'],
  ['loubieh-bzeit','لوبية بزيت مع خبز القمح','LB','lunch dinner','greenbeans:260 tomatocooked:170 onion:65 garlic:5 olive:16 wholebread:75'],
  ['batata-harra-model','بطاطا بالثوم والليمون والبقدونس — نسخة دون كزبرة','LB','lunch dinner','potato:240 garlic:6 lemon:25 parsley:25 olive:13 yogurt:140'],
@@ -26,6 +32,8 @@ export const REVIEWED_REGIONAL_ROWS = {
  ['spinach-chickpeas','سبانخ بالحمص والليمون مع الأرز — وجبة منزلية','PS','lunch dinner','spinach:210 chickpeas:170 lemon:25 garlic:5 rice:110 olive:10']
  ],
  maghreb: [
+ ['couscous-cauliflower-chickpea','كسكس بالقرنبيط والحمص — وجبة منزلية','MA','lunch dinner','couscous:170 cauliflower:180 chickpeas:150 carrotcooked:80 olive:12'],
+ ['egg-potato-peas-bake','طاجين تونسي بالبطاطا والبازلاء — نسخة منزلية','TN','lunch dinner','egg:150 potato:160 peas:130 parsley:25 onion:40 olive:10'],
  ['khizou-lemon','جزر بالثوم والليمون والبقدونس — مستوحى من الجزر المشرمل','MA','lunch dinner','carrotcooked:240 garlic:5 lemon:30 parsley:20 olive:13 wholebread:65'],
  ['carrot-orange','سلطة جزر وبرتقال — دون ماء زهر أو سكر مضاف','MA','snack','carrot:150 orange:180 lemon:15'],
  ['zaalouk-cauliflower-model','قرنبيط بالثوم والطماطم — وجبة منزلية','MA','lunch dinner','cauliflower:250 tomatocooked:150 garlic:6 olive:14 wholebread:80'],

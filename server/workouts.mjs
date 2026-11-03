@@ -41,8 +41,15 @@ export function equipmentAllowed(exercise,prefs,location){
  return exercise.equipment.length>0&&exercise.equipment.every(q=>allowed.has(q.equipment_id));
 }
 function score(e,location){return (/\b(squat|push-up|push up|bench press|row|lat pulldown|deadlift|curl|calf raise)\b/i.test(e.name)?-20:0)+(e.loadMode==='assisted'?10:0)+e.equipment.length+(location==='gym'&&e.loadMode==='external'?-5:0);}
+// Immutable catalog index; user equipment, level and injury filters stay request-local.
+const patternIndex=new Map();
+for(const exercise of catalog.exercises){
+ if(!patternIndex.has(exercise.pattern))patternIndex.set(exercise.pattern,[]);
+ patternIndex.get(exercise.pattern).push(exercise);
+}
 function candidates(pattern,prefs,location,exclude=[]){
- const base=catalog.exercises.filter(e=>e.modality==='strength'&&e.pattern===pattern&&['weight_reps','bodyweight_reps'].includes(e.tracking)&&(prefs.fitnessLevel==='advanced'||e.difficulty!=='advanced')&&(prefs.fitnessLevel!=='beginner'||e.difficulty==='beginner')&&!exclude.includes(e.id)&&equipmentAllowed(e,prefs,location)).sort((a,b)=>score(a,location)-score(b,location)||a.id.localeCompare(b.id));
+ const excluded=new Set(exclude);
+ const base=(patternIndex.get(pattern)||[]).filter(e=>e.modality==='strength'&&e.pattern===pattern&&['weight_reps','bodyweight_reps'].includes(e.tracking)&&(prefs.fitnessLevel==='advanced'||e.difficulty!=='advanced')&&(prefs.fitnessLevel!=='beginner'||e.difficulty==='beginner')&&!excluded.has(e.id)&&equipmentAllowed(e,prefs,location)).sort((a,b)=>score(a,location)-score(b,location)||a.id.localeCompare(b.id));
  const injuries=Array.isArray(prefs.injuries)?canonicalInjuries(prefs.injuries):[];
  if(!injuries.length)return base;
  const friendly=base.filter(e=>isFriendlyForInjuries(e,injuries));
@@ -147,7 +154,7 @@ export function exerciseAlternatives(s,dayIndex,exerciseId){
  const day=s.workoutPlan?.days.find(d=>d.dayIndex===index),exercise=day?.exercises.find(e=>e.id===exerciseId);
  if(!exercise)throw Error('التمرين غير موجود في اليوم ده.');
  const primary=primaryRegions(exercise);
- return candidates(exercise.pattern,s.onboarding?.workoutPrefs||{},day.location,day.exercises.map(e=>e.id)).filter(e=>primaryRegions(e).some(r=>primary.includes(r))).filter(e=>{
+ return candidates(exercise.pattern,s.onboarding?.workoutPrefs||{},day.location,day.exercises.map(e=>e.id)).filter(e=>primary.length>0&&primary.every(r=>primaryRegions(e).includes(r))).filter(e=>{
   const next={...day,exercises:day.exercises.map(x=>x===exercise?{...e,sets:exercise.sets,repMax:exercise.repMax,restSeconds:exercise.restSeconds}:x)};
   return estimatedSessionMinutes(next)<=(day.duration??s.onboarding?.workoutPrefs?.sessionDuration??45);
  }).slice(0,6);
