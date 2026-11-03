@@ -3,6 +3,13 @@
 const all=['egypt','gulf','levant','maghreb'];
 const parse=s=>s.split(' ').map(pair=>{const [key,grams]=pair.split(':');return {key,grams};});
 const mains=[
+ ['salmon','سلمون مشوي','salmon:160 lemon:20 olive:5'],
+ ['turkey','ديك رومي مطهو','turkey:150 olive:5'],
+ ['liver-pepper','كبدة بالفلفل','liver:140 pepper:70 onion:40 sunfloweroil:6'],
+ ['soy-tomato','فول صويا بالصلصة','soybeans:180 tomatocooked:100 olive:5'],
+ ['chicken-mushroom','دجاج بالمشروم','chicken:140 mushrooms:100 olive:8'],
+ ['beef-mushroom','لحم بالمشروم','beef:140 mushrooms:100 olive:8'],
+ ['eggs-spinach','بيض بالسبانخ','egg:150 spinach:100 sunfloweroil:5'],
  ['chicken-lemon','دجاج مشوي بالليمون','chicken:150 lemon:20 olive:6'],
  ['chicken-thigh','ورك دجاج مشوي','chickenthigh:160 olive:5'],
  ['chicken-boiled','دجاج مسلوق','chickenboiled:160'],
@@ -20,6 +27,8 @@ const mains=[
  ['fava','فول بالليمون','fava:220 lemon:20 olive:8']
 ];
 const starches=[
+ ['corn','ذرة حلوة','corn:160',all],
+ ['taro','قلقاس مطبوخ','taro:180',['egypt','levant','maghreb']],
  ['rice','أرز أبيض','rice:150',['egypt','levant']],
  ['basmati','أرز بسمتي','basmati:150',['gulf']],
  ['bulgur','برغل','bulgur:170',['gulf','levant']],
@@ -30,12 +39,19 @@ const starches=[
  ['potato','بطاطس مسلوقة','potato:200',all]
 ];
 const sides=[
+ ['cauliflower','قرنبيط بالطحينة','cauliflower:140 tahini:12 lemon:15'],
+ ['beetroot','سلطة بنجر','beetroot:120 parsley:15 lemon:15 olive:4'],
+ ['pumpkin','قرع بالجزر','pumpkin:130 carrotcooked:70 olive:4'],
+ ['mushrooms','مشروم بالسبانخ','mushrooms:100 spinach:100 olive:4'],
  ['salad','سلطة طماطم وخيار','tomato:100 cucumber:100 parsley:15'],
  ['vegetables','خضار مطهوة','zucchini:110 carrotcooked:80 tomatocooked:60'],
  ['yogurt','زبادي بالخيار','yogurt:130 cucumber:80 garlic:3'],
  ['greens','سلطة خضراء بالليمون','lettuce:80 pepper:70 cucumber:80 lemon:20']
 ];
 const breakfastMains=[
+ ['egg-mushroom','بيض بالمشروم','egg:100 mushrooms:80 sunfloweroil:5'],
+ ['cheese-spinach','جبنة بالسبانخ','cottage:130 spinach:100 olive:5'],
+ ['bean-tahini','فاصوليا بيضاء بالطحينة','whitebeans:170 tahini:15 lemon:15'],
  ['cottage','جبنة قريش','cottage:160 olive:5'],
  ['feta','جبنة بيضاء','feta:75'],
  ['eggs','بيض مسلوق','egg:100'],
@@ -51,12 +67,14 @@ const breakfastBreads=[
  ['toast','توست','toast:65',all]
 ];
 const breakfastSides=[
+ ['beetroot','بنجر بالليمون','beetroot:100 lemon:15'],
+ ['corn','ذرة وطماطم','corn:70 tomato:70'],
  ['tomato','طماطم','tomato:120'],['cucumber','خيار وخس','cucumber:100 lettuce:60'],
  ['pepper','فلفل وبقدونس','pepper:100 parsley:20']
 ];
-const fruits=[['banana','موز','banana:110'],['apple','تفاح','apple:140'],['mango','مانجو','mango:130'],['strawberry','فراولة','strawberry:160'],['dates','تمر','dates:35'],['fig','تين','fig:130']];
-const dairy=[['yogurt','زبادي','yogurt:170'],['greek','زبادي يوناني','greekyogurt:150'],['milk-oats','شوفان بالحليب','milk:150 oats:30']];
-const nuts=[['almonds','لوز','almonds:15'],['walnuts','جوز','walnuts:15'],['peanuts','فول سوداني','peanuts:18']];
+const fruits=[['pear','كمثرى','pear:140'],['guava','جوافة','guava:130'],['grape','عنب','grape:120'],['orange','برتقال','orange:150'],['banana','موز','banana:110'],['apple','تفاح','apple:140'],['mango','مانجو','mango:130'],['strawberry','فراولة','strawberry:160'],['dates','تمر','dates:35'],['fig','تين','fig:130']];
+const dairy=[['cottage-fruit','جبنة قريش','cottage:130'],['yogurt','زبادي','yogurt:170'],['greek','زبادي يوناني','greekyogurt:150'],['milk-oats','شوفان بالحليب','milk:150 oats:30']];
+const nuts=[['cashews','كاجو','cashews:15'],['almonds','لوز','almonds:15'],['walnuts','جوز','walnuts:15'],['peanuts','فول سوداني','peanuts:18']];
 function merge(parts){
  const amounts=new Map();for(const text of parts)for(const p of parse(text))amounts.set(p.key,(amounts.get(p.key)||0)+Number(p.grams));
  return [...amounts].map(([key,grams])=>({key,grams:String(grams)}));

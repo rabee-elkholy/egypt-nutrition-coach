@@ -1,4 +1,10 @@
 const FALLBACK_UNITS={
+ taro:["كوب",132,0.25,"92637116-4f64-4035-a13c-051ab2314dac","1 cup, sliced undetermined"],
+ corn:["كوب",149,0.25,"04a9b514-92c7-4381-9f18-55298543b792","1 cup cut undetermined"],
+ mushrooms:["كوب",156,0.25,"5db09ce6-6489-43fc-be75-b3ca64ee5a38","1 cup pieces undetermined"],
+ cauliflower:["كوب",124,0.25,"f34f3f10-6563-45e9-9ccf-4acf5454e078","0.5 cup (1\" pieces) undetermined"],
+ beetroot:["كوب",170,0.25,"972e636f-5407-4aeb-82a8-147cee1fdbcc","0.5 cup slices undetermined"],
+ pumpkin:["كوب",245,0.25,"dc8a6456-7cd4-4468-989f-47c7c2c7e266","1 cup, mashed undetermined"],
  soybeans:['كوب',172,.25,'6ef6a66f-c0c8-400f-b846-9abe3d39b058','1 cup undetermined'],
  sunfloweroil:['ملعقة صغيرة',4.5,.5,'64744054-d657-434c-9e68-92c8123bc2cc','1 tsp undetermined'],
  fava:['كوب',170,.25,'ae4eade3-1b20-4bb2-a26c-f2e772c4d2fb','1 cup undetermined'],

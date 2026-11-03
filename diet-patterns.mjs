@@ -61,7 +61,7 @@ export function medicalContraindicatedKeys(profile={}){
     for(const k of ['liver','shrimp','lamb','beef','shawarma_beef','fava'])out.add(k);
   }
   if(diseases.has('ibs')){
-    for(const k of ['fava','kidney','whitebeans','chickpeas','falafel','cabbage','onion','garlic'])out.add(k);
+    for(const k of ['fava','kidney','whitebeans','chickpeas','falafel','cabbage','onion','garlic','mushrooms','cauliflower'])out.add(k);
   }
   if(diseases.has('hypertension')){
     for(const k of ['feta','bread','shawarma_chicken','shawarma_beef','tabbouleh','fattoush','babaghanouj'])out.add(k);

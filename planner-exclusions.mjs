@@ -19,6 +19,12 @@ const row = (id, label, section, keys, aliases = []) => ({
   aliases: [label, ...aliases],
 });
 export const EXCLUSIONS = [
+  row('taro','القلقاس','الخضار',['taro']),
+  row('corn','الذرة','الخضار',['corn'],['درة']),
+  row('mushrooms','المشروم','الخضار',['mushrooms'],['فطر','عيش الغراب']),
+  row('cauliflower','القرنبيط','الخضار',['cauliflower'],['زهرة']),
+  row('beetroot','البنجر','الخضار',['beetroot'],['شمندر']),
+  row('pumpkin','القرع','الخضار',['pumpkin'],['يقطين','قرعة']),
   row(
     "legumes",
     "كل البقوليات",

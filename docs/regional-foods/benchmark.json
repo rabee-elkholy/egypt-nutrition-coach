@@ -1,75 +1,75 @@
 {
-  "at": "2026-11-03T07:20:35.623Z",
+  "at": "2026-11-03T07:54:10.116Z",
   "node": "v24.19.0",
-  "models": 906,
+  "models": 2405,
   "results": [
     {
       "region": "egypt",
       "dietType": "balanced",
-      "milliseconds": 789,
+      "milliseconds": 295,
       "days": 7,
       "meals": 28,
-      "regionalSelections": 22,
-      "combinationSelections": 10
+      "regionalSelections": 24,
+      "combinationSelections": 14
     },
     {
       "region": "egypt",
       "dietType": "vegan",
-      "milliseconds": 99,
-      "days": 7,
-      "meals": 28,
-      "regionalSelections": 13,
-      "combinationSelections": 8
-    },
-    {
-      "region": "gulf",
-      "dietType": "balanced",
-      "milliseconds": 800,
-      "days": 7,
-      "meals": 28,
-      "regionalSelections": 18,
-      "combinationSelections": 10
-    },
-    {
-      "region": "gulf",
-      "dietType": "vegan",
-      "milliseconds": 80,
-      "days": 7,
-      "meals": 28,
-      "regionalSelections": 13,
-      "combinationSelections": 12
-    },
-    {
-      "region": "levant",
-      "dietType": "balanced",
-      "milliseconds": 732,
-      "days": 7,
-      "meals": 28,
-      "regionalSelections": 22,
-      "combinationSelections": 10
-    },
-    {
-      "region": "levant",
-      "dietType": "vegan",
-      "milliseconds": 89,
+      "milliseconds": 40,
       "days": 7,
       "meals": 28,
       "regionalSelections": 14,
+      "combinationSelections": 9
+    },
+    {
+      "region": "gulf",
+      "dietType": "balanced",
+      "milliseconds": 311,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 20,
+      "combinationSelections": 12
+    },
+    {
+      "region": "gulf",
+      "dietType": "vegan",
+      "milliseconds": 46,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 13,
       "combinationSelections": 11
+    },
+    {
+      "region": "levant",
+      "dietType": "balanced",
+      "milliseconds": 301,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 21,
+      "combinationSelections": 14
+    },
+    {
+      "region": "levant",
+      "dietType": "vegan",
+      "milliseconds": 45,
+      "days": 7,
+      "meals": 28,
+      "regionalSelections": 15,
+      "combinationSelections": 12
     },
     {
       "region": "maghreb",
       "dietType": "balanced",
-      "milliseconds": 801,
+      "milliseconds": 381,
       "days": 7,
       "meals": 28,
-      "regionalSelections": 17,
-      "combinationSelections": 4
+      "regionalSelections": 21,
+      "combinationSelections": 15
     },
     {
       "region": "maghreb",
       "dietType": "vegan",
-      "milliseconds": 33,
+      "milliseconds": 28,
       "days": 7,
       "meals": 28,
       "regionalSelections": 14,

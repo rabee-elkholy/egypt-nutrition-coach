@@ -134,10 +134,16 @@ const rows = {
 };
 for (const region of Object.keys(rows)) rows[region].push(...EXPANDED_REGIONAL_ROWS[region]);
 
+const DISH_SOURCES={
+ 'egypt-taro-beef':'https://english.ahram.org.eg/NewsContent/50/1208/399179/AlAhram-Weekly/Features/Cooking-taro.aspx',
+ 'levant-arnabit-tahini':'https://food-heritage.org/cauliflower-in-tahini-sauce-arnabit-b-thineh/',
+ 'levant-beetroot-tahini':'https://www.discoverlebanon.com/en/recipes/beetroot_tahinah_salad.php',
+ 'maghreb-couscous-pumpkin':'https://tasteofmaroc.com/moroccan-pureed-vegetable-soup/'
+};
 export const REGIONAL_RECIPES = Object.entries(rows).flatMap(([region, list]) => list.map(([id,name,country,slots,parts]) => ({
  id:`regional-${region}-${id}`, name, country, regions:[region], meal_slots:slots.split(' '),
  items:parts.split(' ').map(pair=>{const [key,grams]=pair.split(':');return {key,grams};}),
- source_url:REGIONAL_SOURCES[country], quality:'editorial_regional_serving_estimate',
+ source_url:DISH_SOURCES[region+'-'+id] || REGIONAL_SOURCES[country], quality:'editorial_regional_serving_estimate',
  model_kind:'dish_serving', nutrition_confidence:'estimated', review_status:'pending_specialist_review',
  notes:'نموذج حصة تقديري من أوزان مكونات جاهزة للأكل، وليس تحليلًا معمليًا للطبق. الزيت ضمن المكونات؛ الملح والتوابل غير محددين، لذلك الصوديوم غير مؤكد. يختلف التحضير بين البيوت والمطاعم.'
 })));

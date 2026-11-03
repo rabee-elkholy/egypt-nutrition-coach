@@ -1,17 +1,20 @@
 {
   "date": "2026-11-03",
-  "tests": 325,
-  "passed": 325,
+  "tests": 326,
+  "passed": 326,
   "failed": 0,
   "referenceScenarios": 10,
   "onboardingJourneys": 6,
   "browserSmoke": "passed",
-  "models": 906,
-  "dishModels": 300,
-  "mealCombinations": 606,
-  "totalIndexedFoods": 4197,
+  "models": 2405,
+  "dishModels": 320,
+  "mealCombinations": 2085,
+  "totalIndexedFoods": 5696,
   "dryRun": "passed",
   "liveDeployment": false,
   "deploymentBlocker": "Cloudflare API token unavailable",
-  "old9000DayCampaignRerun": false
+  "old9000DayCampaignRerun": false,
+  "planningIngredients": 94,
+  "newPlanningIngredients": 6,
+  "ingredientImportReproducible": true
 }

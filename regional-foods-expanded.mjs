@@ -1,6 +1,11 @@
 // Additional editorial ready-to-eat servings; names identify meaningful ingredients.
 export const EXPANDED_REGIONAL_ROWS = {
  egypt: [
+ ['taro-beef','قلقاس باللحمة والسبانخ — بدل السلق','EG','lunch dinner','taro:180 beef:130 spinach:80 garlic:4 olive:8'],
+ ['cauliflower-egg','قرنبيط بالبيض في الفرن','EG','lunch dinner','cauliflower:200 egg:150 wholebread:60 sunfloweroil:10'],
+ ['taro-chicken','قلقاس بالفراخ والصلصة','EG','lunch dinner','taro:180 chicken:140 tomatocooked:100 garlic:4 sunfloweroil:8'],
+ ['beetroot-cottage','سلطة بنجر بالجبنة القريش','EG','breakfast dinner','beetroot:150 cottage:160 cucumber:100 bread:60 olive:8'],
+ ['pumpkin-milk','قرع عسل بالحليب والعسل','EG','snack','pumpkin:200 wholemilk:150 honey:20 walnuts:15'],
  ['falafel-sandwich','ساندوتش طعمية بالطحينة','EG','breakfast dinner','falafel:90 bread:70 tomato:60 lettuce:30 tahini:15'],
  ['fava-sandwich','ساندوتش فول بالخضار','EG','breakfast dinner','fava:140 bread:80 tomato:60 cucumber:60 olive:5'],
  ['eggplant-sandwich','ساندوتش باذنجان بالبيض','EG','breakfast dinner','eggplant:120 egg:100 bread:70 tahini:10 sunfloweroil:8'],
@@ -53,6 +58,11 @@ export const EXPANDED_REGIONAL_ROWS = {
  ['chickpea-tahini','سلطة حمص وطحينة بالخضار','EG','lunch dinner','chickpeas:180 tahini:20 tomato:100 cucumber:100 lemon:25 wholebread:45']
  ],
  gulf: [
+ ['rice-chicken-mushroom','أرز بسمتي بالدجاج والمشروم — وجبة منزلية','SA','lunch dinner','basmati:160 chicken:150 mushrooms:100 onion:40 olive:8'],
+ ['corn-chicken','دجاج بالذرة والحليب — وجبة منزلية','AE','lunch dinner','chicken:140 corn:150 milk:120 wholebread:50 olive:6'],
+ ['fish-cauliflower','سمك مشوي بالقرنبيط والأرز','OM','lunch dinner','fish:180 cauliflower:180 basmati:130 olive:10 lemon:20'],
+ ['beef-pumpkin','صالونة لحم بالقرع والجزر','AE','lunch dinner','beef:140 pumpkin:180 carrotcooked:90 tomatocooked:100 wholebread:60 olive:10'],
+ ['corn-egg','بيض بالذرة والجبن وخبز البر','SA','breakfast dinner','egg:100 corn:100 feta:40 wholebread:70 tomato:80'],
  ['mandi-lamb','مندي لحم بالأرز','SA','lunch dinner','lamb:150 basmati:190 onion:35 sunfloweroil:7'],
  ['mandi-chicken','مندي دجاج بالأرز','SA','lunch dinner','chickenthigh:160 basmati:190 onion:35 sunfloweroil:7'],
  ['bukhari','رز بخاري بالدجاج والجزر','SA','lunch dinner','chicken:150 basmati:180 carrotcooked:70 tomatocooked:60 sunfloweroil:8'],
@@ -105,6 +115,11 @@ export const EXPANDED_REGIONAL_ROWS = {
  ['bean-salad','سلطة لوبيا حمراء بالدجاج','KW','lunch dinner','kidney:160 chicken:120 tomato:100 cucumber:100 olive:10']
  ],
  levant: [
+ ['arnabit-tahini','قرنبيط بالطحينة مع حمص وخبز','LB','lunch dinner','cauliflower:220 tahini:25 chickpeas:100 lemon:25 garlic:4 wholebread:60'],
+ ['maqluba-cauliflower','مقلوبة دجاج وقرنبيط','PS','lunch dinner','chicken:150 cauliflower:180 rice:150 tomatocooked:70 olive:12'],
+ ['taro-tahini','قلقاس بالطحينة والحمص','LB','lunch dinner','taro:180 tahini:25 chickpeas:130 lemon:25 garlic:4'],
+ ['beetroot-tahini','شمندر بالطحينة واللبن مع خبز','LB','breakfast dinner','beetroot:180 tahini:25 yogurt:120 wholebread:60 lemon:20'],
+ ['mushroom-yogurt','دجاج بالمشروم واللبن والأرز','SY','lunch dinner','chicken:150 mushrooms:130 yogurt:140 rice:130 olive:8'],
  ['hummus-meat','حمص باللحمة والمكسرات','LB','lunch dinner','chickpeas:160 beef:100 tahini:20 almonds:15 lemon:20 wholebread:50'],
  ['hummus-beiruti','حمص بيروتي بالخضار','LB','breakfast dinner','chickpeas:190 tahini:20 tomato:70 parsley:25 garlic:4 lemon:25 wholebread:60'],
  ['msabbaha','مسبحة حمص بالطحينة','SY','breakfast dinner','chickpeas:200 tahini:25 lemon:25 olive:8 wholebread:60'],
@@ -157,6 +172,11 @@ export const EXPANDED_REGIONAL_ROWS = {
  ['chicken-salad','سلطة دجاج بالفتوش','LB','lunch dinner','chicken:150 fattoush:200 wholebread:50 olive:5']
  ],
  maghreb: [
+ ['couscous-pumpkin','كسكس بالقرع والحمص','MA','lunch dinner','couscous:180 pumpkin:180 chickpeas:150 carrotcooked:70 olive:10'],
+ ['tagine-cauliflower','طاجين لحم بالقرنبيط','MA','lunch dinner','beef:150 cauliflower:220 tomatocooked:130 wholebread:60 olive:12'],
+ ['beetroot-orange','سلطة بنجر بالبرتقال والحمص','MA','lunch dinner','beetroot:150 orange:120 chickpeas:160 lemon:20 olive:10 wholebread:40'],
+ ['pumpkin-lentils','يخنة قرع وعدس بالخضار','DZ','lunch dinner','pumpkin:180 lentils:200 carrotcooked:80 tomatocooked:100 wholebread:50 olive:10'],
+ ['corn-tuna','سلطة ذرة بالتونة والبيض','TN','lunch dinner','corn:160 tuna:120 egg:50 tomato:100 cucumber:100 olive:8'],
  ['couscous-chickpea','كسكس بالحمص والزبيب — نموذج بالتمر','MA','lunch dinner','couscous:200 chickpeas:140 dates:25 onion:90 olive:10'],
  ['tfaya','كسكس تفاية — بصل وتمر بدل الزبيب','MA','lunch dinner','couscous:180 chicken:130 onion:140 dates:35 almonds:15 olive:10'],
  ['seffa','سفة كسكس بالعسل واللوز','MA','breakfast snack','couscous:160 honey:20 almonds:25 wholemilk:80'],
