@@ -42,7 +42,7 @@ As a new or returning mobile user launching the app, I want the app to automatic
 **PRECONDITIONS**
 
 - The mobile app is launched (cold start or foreground resume).
-- Local storage (`AsyncStorage` / `SharedPreferences` / `MMKV`) and the authentication token store are accessible.
+- KMM local storage (**SQLDelight** / **DataStore**) and platform-secure authentication token storage (**iOS Keychain** / **Android EncryptedSharedPreferences**) are accessible.
 - The user has not already completed onboarding with an active synced plan on this device (`onboardingCompleted == false`), OR has just authenticated via Passwordless Social Sign-In (`EPIC-02`).
 
 ---
@@ -51,7 +51,7 @@ As a new or returning mobile user launching the app, I want the app to automatic
 
 **1. Auto-Region Detection & Header Switcher**
 
-- On first launch, inspect device timezone and locale (`Intl.DateTimeFormat().resolvedOptions().timeZone` & device locale) and map silently to one of 4 supported regions:
+- On first launch, inspect device timezone and locale (`kotlinx.datetime.TimeZone.currentSystemDefault()` & platform `Locale`) and map silently to one of 4 supported regions:
   - `egypt`: `Africa/Cairo` or `*-EG` -> Header Badge: `Egypt`
   - `gulf`: `Asia/Riyadh`, `Asia/Dubai`, `Asia/Kuwait`, `Asia/Qatar`, `Asia/Bahrain`, `Asia/Muscat` -> Header Badge: `Gulf (GCC)`
   - `levant`: `Asia/Amman`, `Asia/Beirut`, `Asia/Damascus`, `Asia/Gaza`, `Asia/Hebron` -> Header Badge: `Levant`
@@ -83,7 +83,7 @@ As a new or returning mobile user launching the app, I want the app to automatic
 **RULES & ROUTING LOGIC**
 
 1. **App Launch Decision Tree (**`resolveStartupDestination()`):
-  - **State 1 — Active Completed User:** `onboardingCompleted == true` AND valid synced plan exists -> Navigate directly to **Home Screen** (`HomeScreen`).
+  - **State 1 — Active Completed User (`signed_in_active`):** `onboardingCompleted == true` AND valid synced plan exists -> Navigate directly to **Home Screen** (`HomeScreen`).
   - **State 2 — Mid-Onboarding Resume (App Killed & Reopened):** `onboardingCompleted == false` AND `onboardingDraft.lastActiveStepId != null` AND at least 1 step answered -> Navigate to **Onboarding Chat Screen**, render all previously answered Q&A bubbles from `onboardingDraft`, and scroll smoothly to `lastActiveStepId` with a resume banner (*"Welcome back! Let's pick up right where you left off."*).
   - **State 3 — Fresh Install / No Draft:** `onboardingDraft` is empty -> Navigate to **Onboarding Chat Screen** and start at Step 0 (`account_check`).
 2. **First Question (**`account_check`) Routing:
@@ -93,17 +93,17 @@ As a new or returning mobile user launching the app, I want the app to automatic
   - If user selects `Yes` (`"yes"`):
     - Navigate to **Passwordless Social Sign-In (`EPIC-02`)** (`entrySource = "onboarding_account_check"`).
 3. **Post-Sign-In Routing Matrix (When returning from Passwordless Social Sign-In (`EPIC-02`)):**
-  - **Scenario 3A — Signed-in Account is NEW (**`GET /v1/bootstrap` returns `data.profile == null`):
-    - Keep user authenticated (`isAuthenticated = true`, store `accessToken`, `refreshToken`, & `userId`).
+  - **Scenario 3A — Signed-in Account is NEW (**`GET /v1/bootstrap` returns `data.profile == null`, canonical auth state `signed_in_needs_onboarding`):
+    - Keep user authenticated (`isAuthenticated = true`, auth state `signed_in_needs_onboarding`, store `accessToken`, `refreshToken`, & `userId`).
     - Return user automatically to **Onboarding Chat Screen**.
-    - Mark `account_check` as completed (`"signed_in_new_account"`), pre-fill `name` as a 1-tap suggestion if available from the Google/Apple OIDC profile, and continue the onboarding chat from the first unanswered question.
+    - Mark `account_check` as completed (`"signed_in_needs_onboarding"`), pre-fill `name` as a 1-tap suggestion if available from the Google/Apple OIDC profile, and continue the onboarding chat from the first unanswered question.
     - Show coach confirmation bubble: *"You're signed in! Since your account is new and hasn't completed setup yet, let's finish a few quick questions to build your custom plan."*
-  - **Scenario 3B — Signed-in Account has OLD Saved Data (**`GET /v1/bootstrap` returns `data.profile != null`):
+  - **Scenario 3B — Signed-in Account has OLD Saved Data (**`GET /v1/bootstrap` returns `data.profile != null`, canonical auth state `signed_in_active`):
     - Present the **Data Recovery Prompt** (`restore_data` vs. `start_fresh`):
       - If user selects `Restore saved data` (`restore_data`):
-        - Hydrate local storage from `GET /v1/bootstrap`, set `onboardingCompleted = true`, and navigate directly to **Home Screen**.
+        - Hydrate local SQLDelight storage from `GET /v1/bootstrap`, set `onboardingCompleted = true` (`signed_in_active`), and navigate directly to **Home Screen**.
       - If user selects `Start fresh` (`start_fresh`):
-        - Keep user authenticated (`isAuthenticated = true`), clear local `onboardingDraft` answers (except `accountCheck = "signed_in_restart"`), and start the onboarding chat from the `name` question. Upon completion, clicking "Start Plan" on the Summary screen runs the canonical `POST /v1/commands?view=full` (`action: "generate"`) sequence to replace the old server plan.
+        - Keep user authenticated (`isAuthenticated = true`, auth state `signed_in_needs_onboarding`), clear local `onboardingDraft` answers, and start the onboarding chat from the `name` question. Upon completion, tapping "Start Plan" on the Summary screen runs the canonical `POST /v1/commands?view=full` (`action: "generate"`, `overwriteExisting: true`) sequence to replace the old server plan.
   - **Scenario 3C — User Presses Back on Passwordless Social Sign-In without Signing In:**
     - Return to **Onboarding Chat Screen** at the `account_check` step so the user can choose `"No, I'm a new user"` or try signing in again.
 
@@ -115,8 +115,8 @@ As a new or returning mobile user launching the app, I want the app to automatic
 2. System detects region automatically (e.g., `egypt`) and opens the Onboarding Chat Screen.
 3. Coach asks the first question (`account_check`): *"Do you already have an account with us?"*
 4. **Path A (New User):** User taps *"No, I'm a new user"* -> Chat records the answer and immediately displays the `name` question.
-5. **Path B (Existing Account — New/Incomplete):** User taps *"Yes, I already have an account"* -> Authenticates via **Passwordless Social Sign-In (`EPIC-02`)** -> `GET /v1/bootstrap` returns `data.profile == null` -> App returns to Onboarding Chat authenticated and continues from `name`.
-6. **Path C (Existing Account — Has Saved Data):** User taps *"Yes, I already have an account"* -> Authenticates via **Passwordless Social Sign-In (`EPIC-02`)** -> `GET /v1/bootstrap` returns `data.profile != null` -> Coach asks *"Restore saved data or start fresh?"* -> User chooses either **Home Screen** (Restore) or **Onboarding Chat** (Start fresh).
+5. **Path B (Existing Account — New/Incomplete):** User taps *"Yes, I already have an account"* -> Authenticates via **Passwordless Social Sign-In (`EPIC-02`)** -> `GET /v1/bootstrap` returns `data.profile == null` (`signed_in_needs_onboarding`) -> App returns to Onboarding Chat authenticated and continues from `name`.
+6. **Path C (Existing Account — Has Saved Data):** User taps *"Yes, I already have an account"* -> Authenticates via **Passwordless Social Sign-In (`EPIC-02`)** -> `GET /v1/bootstrap` returns `data.profile != null` (`signed_in_active`) -> Coach asks *"Restore saved data or start fresh?"* -> User chooses either **Home Screen** (Restore) or **Onboarding Chat** (Start fresh).
 
 ---
 
@@ -141,11 +141,11 @@ As a new or returning mobile user launching the app, I want the app to automatic
   - **Then** the answer bubble is appended to the chat and the coach immediately asks the `name` question without requiring sign-in.
 - **Scenario 3: Selecting "Yes" and signing into a new account (never completed onboarding)**
   - **Given** the user taps `"Yes, I already have an account"` and authenticates via Passwordless Social Sign-In (`EPIC-02`)
-  - **When** `GET /v1/bootstrap` returns `data.profile == null`
+  - **When** `GET /v1/bootstrap` returns `data.profile == null` (`signed_in_needs_onboarding`)
   - **Then** the app keeps the user authenticated, navigates back to the Onboarding Chat screen, and continues from the first unanswered onboarding question.
 - **Scenario 4: Selecting "Yes" and signing into an account with existing saved data**
   - **Given** the user authenticates via Passwordless Social Sign-In (`EPIC-02`)
-  - **When** `GET /v1/bootstrap` returns `data.profile != null`
+  - **When** `GET /v1/bootstrap` returns `data.profile != null` (`signed_in_active`)
   - **Then** the app prompts the user to choose between **Restore saved data** (which hydrates local state and navigates directly to Home) or **Start fresh** (which keeps them authenticated and starts the onboarding questions from the beginning).
 - **Scenario 5: Resuming incomplete onboarding after closing the app**
   - **Given** a user answered 6 onboarding questions and closed the app before completing onboarding
@@ -158,7 +158,7 @@ As a new or returning mobile user launching the app, I want the app to automatic
 
 - `onboarding_started` (`auto_detected_region`, `has_existing_draft`)
 - `onboarding_account_check_selected` (`choice`: `"yes"` | `"no"`)
-- `onboarding_login_return` (`account_state`: `"new_account"` | `"has_saved_data"` | `"cancelled"`)
+- `onboarding_login_return` (`account_state`: `"signed_in_needs_onboarding"` | `"signed_in_active"` | `"cancelled"`)
 - `onboarding_data_recovery_decision` (`decision`: `"restore_data"` | `"start_fresh"`)
 - `onboarding_resumed` (`resumed_at_step_id`, `completed_steps_count`)
 
@@ -177,7 +177,7 @@ As a user going through the conversational onboarding, I want a fast, natural ch
 **PRECONDITIONS**
 
 - User is on the **Onboarding Chat Screen** (`US-MOB-01`).
-- Local persistence engine (`onboardingDraft` store) is initialized.
+- Local persistence engine (`onboardingDraft` store in SQLDelight / DataStore) is initialized.
 
 ---
 
@@ -191,13 +191,13 @@ As a user going through the conversational onboarding, I want a fast, natural ch
   - `Y` (`totalActiveSteps`) dynamically recalculates whenever conditional branching changes (e.g., `male` vs. `female`, `nutrition_only` vs. `nutrition_and_workouts`, `home_only` vs. `gym_only`).
 - **Region Badge (**`Egypt` / `Gulf` / `Levant` / `Maghreb`) + **Reset Action (**`Start Over`) with confirmation modal.
 
-**2. Chat Stream Area (**`ScrollView` / `FlatList`)
+**2. Chat Stream Area (Jetpack Compose `LazyColumn` / SwiftUI `LazyVStack`)**
 
 - **Coach Message Bubbles:** Coach-side aligned, rounded corners, optional subtitle/helper hint.
 - **Typing Indicator:** Animated 3-dot bubble shown for `250ms–400ms` max before rendering the next question.
 - **User Answer Bubbles (Interactive & Editable):**
   - User-side aligned with distinct brand accent background.
-  - Every user answer bubble includes a visible `Edit` (`✏️`) badge/icon and is tappable (`onPress -> openEditStep(stepId)`).
+  - Every user answer bubble includes a visible `Edit` (`✏️`) badge/icon and is tappable (`onClick -> openEditStep(stepId)`).
 
 **3. Sticky Bottom Dynamic Input Dock**
 
@@ -277,11 +277,12 @@ Never wipe all downstream answers blindly. Apply these exact rules:
 
 **3. Local State Persistence (**`saveDraft()`):
 
-- Save the full `onboardingDraft` object to local storage immediately after every step confirmation and after every edit:
+- Save the full `onboardingDraft` object to local SQLDelight / DataStore immediately after every step confirmation and after every edit:
 ```json
 {
   "version": 2,
   "region": "egypt",
+  "unitSystem": "metric",
   "lastActiveStepId": "workout_location",
   "updatedAt": "2026-10-21T12:00:00Z",
   "answers": { ... }
@@ -368,7 +369,7 @@ As a user starting the onboarding questions, I want to enter my name and age qui
   - *"Nice to meet you, {name}! How old are you?"*
 - **Input Control (**`number-with-chips`):
   - Quick-select chips: `[18]`, `[22]`, `[25]`, `[30]`, `[35]`, `[40]`, `[50]`.
-  - Numeric input field (`keyboardType = "number-pad"`, placeholder `"e.g. 28"`) + `[Confirm]` button.
+  - Numeric input field (Compose `KeyboardType.Number` / SwiftUI `.numberPad`, placeholder `"e.g. 28"`) + `[Confirm]` button.
 
 **3. Conditional Blocking Step: **`underage_gate` (Triggered when `10 <= age < 18`)
 
@@ -488,14 +489,14 @@ As a user completing my physical profile, I want to specify my biological sex, m
   - `pregnant_t3`: `Pregnant — 3rd Trimester (Months 7–9)` — Subtitle: `"Adds +450 kcal/day and +25g protein/day"`
   - `breastfeeding`: `Breastfeeding` — Subtitle: `"Adds +400 kcal/day, +20g protein/day, and +600 ml water/day"`
 
-**3. Step: **`height` (Height in cm)
+**3. Step: **`height` (Height in cm — or ft/in when `unitSystem == "imperial"`)
 
-- **Coach Bubble:** *"What is your height in centimeters (cm)?"*
+- **Coach Bubble:** *"What is your height in centimeters (cm)?"* (includes a compact `[Metric (cm/kg) | Imperial (ft/lb)]` unit toggle persisting `unitSystem: "metric" | "imperial"`, converting imperial inputs deterministically to canonical metric `cm`/`kg` on wire!).
 - **Input Control (**`number-with-chips`):
   - Quick-select chips: `[155]`, `[160]`, `[165]`, `[170]`, `[175]`, `[180]`, `[185]`.
   - Numeric input (`120` to `230` cm) + `[Confirm]`.
 
-**4. Step: **`current_weight` (Current Body Weight in kg)
+**4. Step: **`current_weight` (Current Body Weight in kg — or lb when `unitSystem == "imperial"`)
 
 - **Coach Bubble:** *"And what is your current weight in kilograms (kg)?"*
 - **Input Control (**`number-with-chips`):
@@ -507,20 +508,21 @@ As a user completing my physical profile, I want to specify my biological sex, m
 **CALCULATIONS, RULES & MEDICAL LOGIC**
 
 1. **Maternal Routing & Clinical Overrides (**`maternal_status`):
-  - If `gender == 'male'` OR `age > 50`: Automatically set `maternal_status = 'none'` and skip the step.
+  - If `gender == 'male'` OR `age > 50`: Automatically set `maternal_status = 'none'` and skip the step (backend strictly rejects non-`'none'` `maternalStatus` for males or `age > 50` with `400 INVALID_MATERNAL_PROFILE`).
   - **Pregnancy (**`pregnant_t1`, `pregnant_t2`, `pregnant_t3`):
-    - **Calorie & Protein Add-ons:**
-      - `pregnant_t1`: `+0 kcal/day`, `+0g protein/day`, `+300 ml water/day`.
-      - `pregnant_t2`: `+340 kcal/day`, `+15g protein/day`, `+300 ml water/day`.
-      - `pregnant_t3`: `+450 kcal/day`, `+25g protein/day`, `+300 ml water/day`.
+    - **Calorie & Protein Calibration (Does NOT stack on `gain` / `muscle_gain` surplus):**
+      - `pregnant_t1`: `+0 kcal/day` above maintenance (`TDEE`), `+0g protein/day`, `+300 ml water/day`.
+      - `pregnant_t2`: `+340 kcal/day` above maintenance (`TDEE`), `+15g protein/day`, `+300 ml water/day`.
+      - `pregnant_t3`: `+450 kcal/day` above maintenance (`TDEE`), `+25g protein/day`, `+300 ml water/day`.
     - **Hard Safety Blocks during Pregnancy:**
-      - Weight loss (`goal = 'lose'`) is **hidden/blocked** in the next step (`US-MOB-05`).
-      - `keto` and `intermittent_fasting` diets are **hidden/blocked** (`US-MOB-08`).
-      - High-fall-risk, supine (after T1), and heavy intra-abdominal pressure exercises are excluded (`US-MOB-07`).
+      - Weight loss (`goal = 'lose'`) is **hidden/blocked** in the next step (`US-MOB-05`, `422 MATERNAL_CALORIE_CUT_BLOCKED`).
+      - `keto` and `intermittent_fasting` diets are **hidden/blocked** (`US-MOB-08`, `400 MEDICAL_DIET_CONFLICT`).
+      - `pregnant_t1` excludes high-impact, plyometric, crunch, and deadlift movements (`PREGNANCY_ALL_TRIMESTERS_UNSAFE_RE`); `pregnant_t2` and `pregnant_t3` additionally exclude supine / flat-bench abdominal-compression movements (`PREGNANCY_POST_T1_SUPINE_RE`) (`US-MOB-07`).
   - **Breastfeeding (**`breastfeeding`):
-    - **Add-ons:** `+400 kcal/day`, `+20g protein/day` (or min `1.4 g/kg` effective weight), `+600 ml (+0.6L) water/day`.
-    - **Safety Caps:** If user selects weight loss (`goal = 'lose'`), maximum allowed daily calorie deficit is capped at `-300 kcal/day` (`slow` pace only, to protect milk supply), and both `keto` and `intermittent_fasting` diets are blocked.
-2. **Height & Weight Validation:**
+    - **Add-ons:** `+400 kcal/day`, `+20g protein/day` (with min `1.4 g/kg` effective weight, unless capped by `kidney` at `<= 1.1 g/kg`), `+600 ml (+0.6L) water/day`.
+    - **Safety Caps:** If user selects weight loss (`goal = 'lose'`), daily calorie deficit is capped at `-300 kcal/day` **before** adding `+400 kcal/day` (`slow` pace only, to protect milk supply), and both `keto` and `intermittent_fasting` diets are blocked.
+2. **Height, Weight & Unit System Validation:**
+  - `unitSystem`: `"metric"` (default) or `"imperial"` (`400 INVALID_UNIT_SYSTEM` if invalid); all heights and weights are stored and transmitted canonically in `cm` and `kg`.
   - `height`: Integer or decimal between `120` and `230` cm. If user enters meters by mistake (e.g., `1.75` where `1.20 <= val <= 2.30`), auto-convert to cm (`Math.round(val * 100) -> 175`) and confirm in the bubble (`175 cm`).
   - `current_weight`: Number between `35` and `250` kg (round to 1 decimal place: `Math.round(val * 10) / 10`).
 3. **Core Anthropometric Equations (Executed immediately after **`current_weight`):
@@ -679,12 +681,12 @@ As a user setting my body transformation goal, I want the coach to recommend the
       - `fast`: $+\min(TDEE \times 0.15, 400)$
     - **When **`goal == 'maintain'` OR `weightDiff < 0.5`:
       - `dailyCalorieDelta = 0 kcal`
-  - **Expected Duration Range (`estimated_weeks_min..estimated_weeks_max`, using `7700 kcal/kg`):**
+  - **Expected Duration Range (`estimated_weeks_min..estimated_weeks_max`, using `7700 kcal/kg`, matching `planner-core.mjs`):**
     - Compute effective daily delta after calorie floor/ceiling clamping: `effectiveDeltaAbs = Math.abs(targetCalories - TDEE)`.
     - Weekly weight change rate:
-$$weeklyKg = \frac{effectiveDeltaAbs \times 7}{7700}$$
-$$baseWeeks = \frac{weightDiff}{weeklyKg}$$
-$$estimated\_weeks\_min = \max(1, \text{floor}(baseWeeks \times 0.85)), \quad estimated\_weeks\_max = \max(estimated\_weeks\_min + 1, \text{ceil}(baseWeeks \times 1.15))$$
+$$weeklyKg = \text{round2}\left(\frac{effectiveDeltaAbs \times 7}{7700}\right)$$
+$$centerWeeks = \max\left(1,\ \text{ceil}\left(\frac{weightDiff}{\max(0.1,\ weeklyKg)}\right)\right)$$
+$$estimated\_weeks\_min = \max(1,\ \text{floor}(centerWeeks \times 0.85)), \quad estimated\_weeks\_max = \text{ceil}(centerWeeks \times 1.25)$$
     - *(For quick inline pace preview cards before `activity` is selected, estimate `TDEE` with `1.375x` light activity and finalize exact numbers on the Summary Screen via `POST /v1/plans/preview`.)*
 
 ---
@@ -769,9 +771,9 @@ As a user customizing my coaching program, I want to choose whether I want Nutri
 
 - **Coach Bubble:** *"What is your current fitness and training experience level?"*
 - **Input Control (**`single-select` — 3 Cards):
-  - `beginner`: `Beginner` — Subtitle: `"New to training or returning after a long break (0.8x volume multiplier)"`
-  - `intermediate`: `Intermediate ⭐` — Subtitle: `"Training consistently for several months with good form (1.0x volume multiplier)"`
-  - `advanced`: `Advanced` — Subtitle: `"Training consistently for 1+ years with high intensity (1.2x volume multiplier)"`
+  - `beginner`: `Beginner` — Subtitle: `"New to training or returning after a long break (2 sets/exercise, RIR 3, Simple Mode default)"`
+  - `intermediate`: `Intermediate ⭐` — Subtitle: `"Training consistently for several months with good form (3 sets/exercise, RIR 2)"`
+  - `advanced`: `Advanced` — Subtitle: `"Training consistently for 1+ years with high intensity (4 sets on compound movements when sessionDuration >= 45m, falling back to 3 if time-constrained)"`
 
 **3. Conditional Step: **`workout_location` (Asked BEFORE Days & Split; Shown ONLY if `service_track != 'nutrition_only'`)
 
@@ -827,15 +829,17 @@ As a user customizing my coaching program, I want to choose whether I want Nutri
   - Asking `workout_location` first ensures that if the user chooses `home_only`, the flow immediately knows to ask `home_equipment` and **skip** the gym-oriented `workout_split` question (`US-MOB-07`), keeping the conversation concise and logical.
 2. **Service Track Branching:**
   - If `service_track == 'nutrition_only'`: Skip all Workout steps (`fitness_level`, `workout_location`, `workout_days`, `workout_day_split`, `home_equipment`, `workout_split`, `session_duration`, `injuries`) and jump directly to `activity` (`US-MOB-08`).
-  - **Nutrition-Only + Muscle Gain (`service_track == 'nutrition_only' && goal == 'muscle_gain'`):** Supports an optional `externalTrainingDays` count (`0..7`, for users who train independently outside CuraFit so workout-day hydration/coaching notes stay accurate), or defaults cleanly without blocking onboarding while attaching an informational coaching note that muscle hypertrophy relies on external resistance training.
+  - **Nutrition-Only + Muscle Gain (`service_track == 'nutrition_only' && goal == 'muscle_gain'`):** Supports an optional `externalTrainingDays` count/array (`0..7`, for users who train independently outside CuraFit so workout-day hydration `+500 ml` boost and coaching notes stay accurate), or defaults cleanly without blocking onboarding while attaching an informational coaching note that muscle hypertrophy relies on external resistance training.
 3. **Exact Weekday Indexing:**
-  - Store `workout_days` as a sorted array of day indices `0..6` where `0 = Saturday`, `1 = Sunday`, ..., `6 = Friday`.
+  - Store `workout_days` as a sorted array of day indices `0..6` where `0 = Saturday`, `1 = Sunday`, ..., `6 = Friday` (sent with `weekdayConvention: "saturday_0"` so backend `normalizeWeekdayDraft` converts cleanly to `js_sunday_0`).
   - Any day index in `0..6` NOT in `workout_days` is rendered as a scheduled Rest/Recovery day (`Rest & Recovery`) in the 7-day workout schedule.
 4. **Mutual Exclusion on **`home_equipment`:
   - Tapping `none` (`Bodyweight Only`) deselects `dumbbells`, `resistance_bands`, `pullup_bar`, `kettlebell`, `bench`.
   - Tapping any equipment item automatically deselects `none`.
-5. **Fitness Level Volume Multiplier:**
-  - `beginner` = `0.8x` set volume; `intermediate` = `1.0x` set volume; `advanced` = `1.2x` set volume.
+5. **Fitness Level Set Prescription (`server/workouts.mjs`):**
+  - `beginner`: `2` sets per exercise (`RIR 3`), beginner-difficulty movements only.
+  - `intermediate`: `3` sets per exercise (`RIR 2`), beginner + intermediate movements.
+  - `advanced`: `4` sets on compound movements (`squat`, `hinge`, `horizontal_push`, `horizontal_pull`, `vertical_push`, `vertical_pull`, `lunge`) when `sessionDuration >= 45` (gracefully falling back to `3` sets if the session time budget would be exceeded), and `3` sets on isolation movements (`RIR 2`).
 
 ---
 
@@ -911,26 +915,26 @@ As a user whose program includes workouts, I want the app to ask me for my prefe
 - **Coach Bubble:**
   - *"For your ****{workout_days.length} training days/week****, how would you like to structure your workout split?"*
 - **Input Control (**`single-select` — Dynamically Filtered by `daysCount = workout_days.length`):
-  - `auto`: `Coach's Smart Choice ⭐ (Recommended)` — *Always shown. Automatically assigns the scientifically optimal split for *`daysCount` and `fitness_level`:
-    - Subtitle dynamically shows what it resolves to (e.g., for 3 days: `"Push / Pull / Legs (or Full Body for beginners)"`; for 4 days: `"Upper / Lower Split (2x/week frequency)"`; for 5 days: `"Push / Pull / Legs + Upper / Lower"`).
+  - `auto`: `Coach's Smart Choice ⭐ (Recommended)` — *Always shown. Automatically assigns the scientifically optimal split for *`daysCount`:
+    - Subtitle dynamically shows what it resolves to (`<= 3` days: `"Full Body Split"`; `4` days: `"Upper / Lower Split (2x/week frequency)"`; `>= 5` days: `"Push / Pull / Legs (PPL)"`).
   - `full_body`: `Full Body Split` — *Shown ONLY when *`1 <= daysCount <= 4`
     - Subtitle: `"Trains all major muscle groups in each session — Ideal for 2 to 3 days/week"`
   - `upper_lower`: `Upper / Lower Split` — *Shown ONLY when *`2 <= daysCount <= 6`
     - Subtitle: `"Alternates upper-body and lower-body sessions — Ideal for 4 days/week"`
   - `ppl`: `Push / Pull / Legs (PPL)` — *Shown ONLY when *`3 <= daysCount <= 7`
     - Subtitle: `"Separates pushing, pulling, and leg muscles — Ideal for 3, 5, or 6 days/week"`
-  - `bro_split`: `Body-Part Split (Bro Split)` — *Shown ONLY when *`3 <= daysCount <= 6`
+  - `bro_split`: `Body-Part Split (Bro Split)` — *Shown ONLY when *`5 <= daysCount <= 6` *(backend auto-falls back to `full_body` if `< 5` days)*
     - Subtitle: `"Focuses on 1–2 specific muscle groups per day (Chest, Back, Shoulders, Arms, Legs)"`
 
 **2. Conditional Step: **`session_duration` (Shown ONLY if `service_track != 'nutrition_only'`)
 
 - **Coach Bubble:** *"How many minutes would you like each workout session to last?"*
 - **Input Control (**`single-select` — 5 Cards):
-  - `20`: `20 Minutes (Express — 4 exercises)`
-  - `30`: `30 Minutes (Compact — 5 exercises)`
-  - `45`: `45 Minutes ⭐ (Recommended — 6 exercises)`
-  - `60`: `60 Minutes (Full Session — 7 exercises)`
-  - `90`: `90 Minutes (Extended — 8 exercises)`
+  - `20`: `20 Minutes (Express)`
+  - `30`: `30 Minutes (Compact)`
+  - `45`: `45 Minutes ⭐ (Recommended)`
+  - `60`: `60 Minutes (Full Session)`
+  - `90`: `90 Minutes (Extended)`
 
 **3. Conditional Step: **`injuries` (Shown ONLY if `service_track != 'nutrition_only'`)
 
@@ -954,26 +958,26 @@ As a user whose program includes workouts, I want the app to ask me for my prefe
 1. **When **`workout_split` is Automatically Skipped:
   - **Condition A (**`workout_location == 'home_only'`): Skipped automatically (`workout_split = 'auto'`), because home workouts are structured around available home equipment and full-body/upper-lower metabolic templates rather than gym machine splits.
   - **Condition B (**`workout_days.length <= 2`): Skipped automatically (`workout_split = 'full_body'`), because training 1–2 days/week scientifically requires Full Body sessions to hit every muscle group weekly.
-2. `auto` Split Resolution Algorithm (`resolveWorkoutSplit(workoutSplit, daysCount, fitnessLevel, workoutLocation)`):
-  - If `workoutSplit != 'auto'` and valid for `daysCount`, use `workoutSplit`.
+2. `auto` Split Resolution Algorithm (`server/workouts.mjs` & `previewPlan`):
+  - If `workoutSplit != 'auto'` and valid for `daysCount`, use `workoutSplit` (backend falls back to `'full_body'` if `upper_lower` with `< 2` days, `ppl` with `< 3` days, or `bro_split` with `< 5` days).
   - If `workoutSplit == 'auto'`:
-    - `daysCount <= 2` -> `'full_body'`
-    - `daysCount == 3` -> If `fitnessLevel == 'beginner'` OR `workoutLocation == 'home_only'` then `'full_body'`, else `'ppl'`
+    - `daysCount <= 3` -> `'full_body'`
     - `daysCount == 4` -> `'upper_lower'`
-    - `daysCount >= 5` -> `'ppl'` (For 5 days: Push, Pull, Legs, Upper, Lower; For 6 days: Push, Pull, Legs, Push, Pull, Legs)
-3. **Session Duration to Exercise Count Mapping (**`getExerciseCountForDuration(minutes)`):
-  - `20 min` -> `4` exercises/session
-  - `30 min` -> `5` exercises/session
-  - `45 min` -> `6` exercises/session
-  - `60 min` -> `7` exercises/session
-  - `90 min` -> `8` exercises/session
-4. **Injury Contraindication & Safe Substitution Matrix:**
-  - `knee`: Excludes deep barbell squats, jumping lunges, leg extensions, box jumps -> Substitutes with glute bridges, hip thrusts, Romanian deadlifts, supported box squats.
-  - `lower_back`: Excludes conventional deadlifts, bent-over barbell rows, good mornings, unsupported sit-ups -> Substitutes with chest-supported rows, lat pulldowns, machine leg press/bridges, bird-dogs.
-  - `shoulder`: Excludes upright rows, behind-the-neck presses, heavy overhead barbell presses, dips -> Substitutes with neutral-grip dumbbell presses, lateral raises in scapular plane, face pulls.
-  - `wrist`: Excludes straight-bar curls, front squats, standard flat-palm push-ups -> Substitutes with neutral-grip hammer curls, knuckle/handle push-ups, machine/cable variations.
-  - `ankle`: Excludes jump rope, plyometrics, standing calf raises, walking lunges -> Substitutes with seated exercises, machine leg curl/extension, floor core work.
-  - `diastasis_recti` (or `maternal_status` is `pregnant_*`): Excludes crunches, sit-ups, leg raises, front planks, heavy Valsalva maneuvers -> Substitutes with transverse abdominis breathing, pelvic tilts, heel slides, bird-dogs.
+    - `daysCount >= 5` -> `'ppl'`
+3. **Session Duration Time-Budget Engine (`server/workouts.mjs`):**
+  - Every session reserves `300s` (`5 min`) dynamic warm-up plus per-exercise working/rest/transition time (`sets * repMax * 3 * (unilateral ? 2 : 1) + (sets - 1) * restSeconds + 60`) strictly capped at `sessionDuration * 60` seconds (`20`, `30`, `45`, `60`, or `90` minutes).
+4. **Injury, Senior & Trimester-Aware Pregnancy Contraindication Matrix (`server/workouts.mjs`):**
+  - `knee`: Excludes squat/lunge/knee_extension patterns and plyometric/jump/split-squat names.
+  - `lower_back`: Excludes hinge pattern and deadlift/good-morning/back-squat/sit-up names.
+  - `shoulder`: Excludes vertical_push/shoulder_abduction patterns and upright-row/behind-neck/dip/overhead names.
+  - `wrist`: Excludes elbow_flexion pattern and barbell-curl/close-grip-bench/handstand/push-up names.
+  - `ankle`: Excludes plantar_flexion/lunge patterns and jump/hop/sprint/plyo/calf-raise names.
+  - `elbow`: Excludes skull-crusher/french-press/preacher-curl/close-grip/dip/behind-head names while keeping neutral-grip/machine alternatives.
+  - `neck` / `hip`: Excludes scapular_elevation / neck/shrug and wide-stance/sumo/split-squat/lunge movements respectively.
+  - `diastasis_recti`: Excludes spinal_flexion/hip_flexion patterns and crunch/sit-up/v-up/leg-raise names.
+  - **`pregnant_t1`:** Excludes unsafe high-impact, plyometric, crunch, sit-up, v-up, leg-raise, and deadlift movements (`PREGNANCY_ALL_TRIMESTERS_UNSAFE_RE`).
+  - **`pregnant_t2` & `pregnant_t3`:** Excludes all `pregnant_t1` movements **plus** supine / flat-bench / barbell-bench movements (`PREGNANCY_POST_T1_SUPINE_RE`).
+  - **`seniorMode` (`age >= 70`):** Excludes high-impact plyometrics, box jumps, barbell back squats, conventional deadlifts, Olympic lifts, and behind-the-neck presses (`SENIOR_UNSAFE_RE`).
 
 ---
 
@@ -1268,7 +1272,7 @@ As a user who has answered all onboarding questions, I want to review a comprehe
 
 **COMPLETE MATHEMATICAL EQUATIONS & UNIFIED ENGINE SPECIFICATION**
 
-`POST /v1/plans/preview`, `POST /v1/commands?view=full` (`action: "generate"`), and the KMM client preview MUST implement these exact deterministic unified backend formulas:
+`POST /v1/plans/preview`, `POST /v1/commands?view=full` (`action: "generate"`), and the KMM client preview MUST implement these exact deterministic unified backend formulas (`planner-core.mjs` & `server/coaching.mjs`):
 
 **1. Resting Energy Expenditure (**`REE` — Mifflin–St Jeor Equation):
 
@@ -1280,76 +1284,79 @@ $$REE = (10 \times currentWeight) + (6.25 \times heightCm) - (5 \times age) - 16
 
 **2. Total Daily Energy Expenditure (**`TDEE`):
 
-- **Activity Multiplier (**`activityMultiplier`) — NO separate TDEE workout bonus:**
+- **Activity Multiplier (**`activityMultiplier`) — NO separate TDEE workout bonus (unless `exerciseMode: "separate"` with explicit sports rows):**
   - `sedentary` = $1.2$, `light` = $1.375$, `moderate` = $1.55$, `active` = $1.725$
-$$TDEE = \text{round}(REE \times activityMultiplier)$$
+$$TDEE = REE \times activityMultiplier$$
+  *(Reported rounded to 1 decimal place in `targets.tdee`.)*
 
-**3. Percentage-of-TDEE Capped Calorie Delta, Daily Target Calories (**`targetCalories`) & Clinical Safety Bounds:
+**3. Percentage-of-TDEE Capped Calorie Delta, Maternal Non-Stacking Calibration & Clinical Safety Bounds:**
 
-- **Percentage-of-TDEE Capped Daily Delta (`dailyCalorieDelta`):**
+- **Base Daily Delta (`change`):**
   - `goal == 'lose'`:
-    - `slow`: $-\min(TDEE \times 0.10, 500)$ *(breastfeeding hard-capped at `<= 300 kcal` deficit)*
-    - `moderate`: $-\min(TDEE \times 0.15, 500)$
-    - `fast`: $-\min(TDEE \times 0.20, 500)$
+    - `maxDeficit = seniorMode ? 400 : 500` (`seniorMode` active for `age >= 70`)
+    - `slow`: $-\min(TDEE \times 0.10,\ maxDeficit)$
+    - `moderate`: $-\min(TDEE \times 0.15,\ maxDeficit)$
+    - `fast`: $-\min(TDEE \times 0.20,\ maxDeficit)$
   - `goal == 'muscle_gain'`:
-    - Recomposition (`target_weight == current_weight` or `abs(target_weight - current_weight) < 0.5`): `0 kcal`
-    - `slow`: $+\min(TDEE \times 0.05, 250)$
-    - `moderate`: $+\min(TDEE \times 0.08, 250)$
-    - `fast`: $+\min(TDEE \times 0.10, 250)$
+    - Recomposition (`targetWeight != null` and `abs(targetWeight - currentWeight) < 0.5`): `change = 0 kcal`
+    - `slow`: $+\min(TDEE \times 0.05,\ 250)$
+    - `moderate`: $+\min(TDEE \times 0.08,\ 250)$
+    - `fast`: $+\min(TDEE \times 0.10,\ 250)$
   - `goal == 'gain'`:
-    - `slow`: $+\min(TDEE \times 0.08, 400)$
-    - `moderate`: $+\min(TDEE \times 0.12, 400)$
-    - `fast`: $+\min(TDEE \times 0.15, 400)$
-  - `goal == 'maintain'`: `0 kcal`
-- Start with:
-$$rawCalories = TDEE + dailyCalorieDelta + maternalCalorieAddon$$
-*(where *`maternalCalorieAddon` is `+340` for `pregnant_t2`, `+450` for `pregnant_t3`, `+400` for `breastfeeding`, `0` otherwise).
+    - `slow`: $+\min(TDEE \times 0.08,\ 400)$
+    - `moderate`: $+\min(TDEE \times 0.12,\ 400)$
+    - `fast`: $+\min(TDEE \times 0.15,\ 400)$
+  - `goal == 'maintain'`: `change = 0 kcal`
+- **Maternal Calibration Override (Pregnancy NEVER stacks `gain`/`muscle_gain` surplus on top of trimester add-ons):**
+  - `pregnant_t1`: `change = 0`
+  - `pregnant_t2`: `change = +340`
+  - `pregnant_t3`: `change = +450`
+  - `breastfeeding`: `boundedOffset = (goal == 'lose') ? max(-300, change) : change`; `change = boundedOffset + 400`
 - **Enforce Upgraded Clinical Calorie Floors (`minCalorieFloor`) & Maximum Ceiling (`4200 kcal`):**
   - `gender == 'male'`: **$1500\text{ kcal/day}$**
   - `gender == 'female'` (non-pregnant/non-breastfeeding): **$1200\text{ kcal/day}$**
   - `pregnant_t1` / `pregnant_t2` / `pregnant_t3`: **$1800\text{ kcal/day}$**
   - `breastfeeding`: **$1600\text{ kcal/day}$**
-  - Maximum Safe Calorie Ceiling: **$4200\text{ kcal/day}$**
-$$targetCalories = \text{clamp}(\text{roundToNearest10}(rawCalories),\ minCalorieFloor,\ 4200)$$
+  - Maximum Safe Calorie Ceiling: **$4200\text{ kcal/day}$** (`> 4200` throws `400 ENERGY_CHANGE_OUT_OF_RANGE`)
+$$targetCalories = \max\left(minCalorieFloor,\ \text{roundToNearest10}(TDEE + change)\right)$$
 
-**4. Macronutrient Calculation (**`proteinGrams`, `fatsGrams`, `carbsGrams` — Total Carbs):
+**4. Macronutrient Calculation (`proteinGrams`, `fatsGrams`, `carbsGrams` — Total Carbs):**
 
-- **Effective Reference Weight for Protein (**`effectiveWeight` via ABW when `currentBmi > 30`):
+- **Effective Reference Weight for Protein (`effectiveWeight` via ABW when `currentBmi > 30`):**
   - If $currentBmi > 30$:
 $$IBW = 24 \times heightM^2, \quad effectiveWeight = IBW + 0.35 \times (currentWeight - IBW)$$
   - Else: $effectiveWeight = currentWeight$.
-- **Protein Factor (`1.0..1.8 g/kg` of `effectiveWeight`):**
-  - Base protein factor is selected by goal/diet/track within `1.0..1.8 g/kg` (e.g., `high_protein` / `muscle_gain` / `lose`: `1.8 g/kg`, `gain` / `keto`: `1.6 g/kg`, `maintain`: `1.4 g/kg`, floor `1.0 g/kg`).
+- **Base Protein Factor (`planner-core.mjs`):**
+  - If `trainingDays > 0`: `1.4 g/kg` for `maintain`, `1.6 g/kg` for `lose` / `gain` / `muscle_gain`.
+  - If `trainingDays == 0`: `1.4 g/kg` for `lose`, `1.3 g/kg` for `gain`, `1.0 g/kg` for `maintain`.
   - **Clinical Overrides on Protein Factor:**
-    - If `seniorMode == true` (`age >= 70`): $\ge 1.2\text{ g/kg}$.
-    - If `conditions` includes `'kidney'`: $\le 1.1\text{ g/kg}$.
-    - If `conditions` includes `'gout'`: $\le 1.4\text{ g/kg}$.
-  - **Maternal Protein Requirement:** Add `+0g` (`pregnant_t1`), `+15g` (`pregnant_t2`), `+25g` (`pregnant_t3`), or `+20g` (`breastfeeding`), with a maternal minimum floor of `1.4 g/kg` of `effectiveWeight` (subject to renal clinical cap if `kidney` is present):
-$$proteinGrams = \max\left(\text{round}(effectiveWeight \times proteinFactor) + maternalProteinAddon,\ maternalMinProtein\right)$$
-$$proteinCalories = proteinGrams \times 4$$
-- **Fats & Total Carbohydrates Split (always Total Carbs, never Net Carbs):**
-  - **If **`diet_type == 'keto'`:
-    - $carbsGrams = \min(50,\ \text{round}((targetCalories \times 0.05) / 4))$ *(strict `<= 50g` total carbs/day)*
-    - $fatsGrams = \text{round}((targetCalories - proteinCalories - (carbsGrams \times 4)) / 9)$
-  - **If **`diet_type == 'low_carb'`:
-    - $carbsGrams = \min(130,\ \max(60,\ \text{round}((targetCalories - proteinCalories - fatsCalories) / 4)))$ *(capped at `<= 130g` total carbs/day, with `fatsCalories = targetCalories * 0.40`)*
-    - $fatsGrams = \text{round}((targetCalories - proteinCalories - (carbsGrams \times 4)) / 9)$
-  - **All Other Diets (**`balanced`, `high_protein`, `intermittent_fasting`, `mediterranean`, `dash`, `vegetarian`, `vegan`):
-    - $fatsRatio = 0.30$ ($0.35$ for `mediterranean`, $0.27$ for `dash` / `high_protein`)
-    - $fatsGrams = \max(\text{round}(effectiveWeight \times 0.8), \text{round}((targetCalories \times fatsRatio) / 9))$
-    - $carbsGrams = \max(50, \text{round}((targetCalories - proteinCalories - (fatsGrams \times 9)) / 4))$
+    - If `seniorMode == true` (`age >= 70`): `factor = max(factor, 1.2)`.
+    - If `maternalStatus != 'none'`: `factor = max(factor, 1.4)`.
+    - If `conditions` includes `'gout'`: `factor = min(factor, 1.4)`.
+    - If `conditions` includes `'kidney'`: `factor = min(factor, 1.1)` (and maternal protein add-on is omitted for renal safety).
+  - **Maternal Protein Add-On:** `+0g` (`pregnant_t1`), `+15g` (`pregnant_t2`), `+25g` (`pregnant_t3`), or `+20g` (`breastfeeding`) when `'kidney'` is not declared:
+$$proteinGrams = \text{round1}(effectiveWeight \times factor + maternalProteinAddon)$$
+- **Base Fats & Total Carbohydrates Split (`planner-core.mjs` — always Total Carbs, never Net Carbs):**
+  - `fatShare = conditions.includes('cholesterol') ? 0.25 : 0.30`
+  - `fatGrams = round1((targetCalories * fatShare) / 9)`
+  - `carbGrams = round1(max(0, targetCalories - proteinGrams * 4 - fatGrams * 9) / 4)`
+  - **Glycemic Support Calibration (`diabetes*`, `insulin_resistance`, `pcos`):** Caps carbohydrate energy at `<= 38%` of `targetCalories`, rebalancing protein (up to `maxProtFactor`: `1.1` kidney / `1.4` gout / `1.8` default) and fats cleanly.
+- **Diet-Specific Macro Overrides (`applyDietMacroPreview` in `server/coaching.mjs`):**
+  - **`high_protein`:** Raises `protein_factor` to `min(max_protein_factor, max(protein_factor, 1.6))`, sets `protein = round(effectiveWeight * resolvedFactor)`, and allocates remaining calories to carbs.
+  - **`low_carb`:** Targets `carbs = 100 g` (total carbs ceiling `<= 130 g/day`), with `fat = round(max(0, targetCalories - protein * 4 - 400) / 9)`.
+  - **`keto`:** Targets `carbs = 30 g` (strict total carbs ceiling `<= 50 g/day`, never net carbs), with `fat = round(max(0, targetCalories - protein * 4 - 120) / 9)`.
 
 **5. Expected Timeline Range (`estimated_weeks_min..max`, `7700 kcal/kg`):**
 
-- When `goal != 'maintain'` and `weightDiff >= 0.5` and `effectiveDeltaAbs = Math.abs(targetCalories - TDEE) > 0`:
-$$weeklyKg = \frac{effectiveDeltaAbs \times 7}{7700}, \quad baseWeeks = \frac{weightDiff}{weeklyKg}$$
-$$estimated\_weeks\_min = \max(1, \text{floor}(baseWeeks \times 0.85)), \quad estimated\_weeks\_max = \max(estimated\_weeks\_min + 1, \text{ceil}(baseWeeks \times 1.15))$$
+- When `targetWeight != null` and `abs(targetWeight - currentWeight) >= 0.2` and `actualChange = targetCalories - TDEE != 0`:
+$$weeklyKg = \text{round2}\left(\frac{|actualChange| \times 7}{7700}\right), \quad centerWeeks = \max\left(1,\ \text{ceil}\left(\frac{|targetWeight - currentWeight|}{\max(0.1,\ weeklyKg)}\right)\right)$$
+$$estimated\_weeks\_min = \max(1,\ \text{floor}(centerWeeks \times 0.85)), \quad estimated\_weeks\_max = \text{ceil}(centerWeeks \times 1.25)$$
 
 **6. Daily Hydration Equation (**`waterLiters` & `waterCups`):
 
 - Base water (ml): $baseWaterMl = currentWeight \times 35$
 - Daily activity addition: `+350 ml` if `activity == 'moderate'`, `+500 ml` if `activity == 'active'` (`0 ml` for `sedentary` / `light`).
-- Workout-day addition: `+500 ml` on scheduled training days (or external training days when `externalTrainingDays > 0`).
+- Training-day addition: `+500 ml` on scheduled training days (or external training days when `externalTrainingDays` includes today).
 - Maternal addition: `+300 ml` if pregnant (`pregnant_t1`/`t2`/`t3`), `+600 ml` if `breastfeeding`.
 - Gout addition: `+500 ml` if `conditions` includes `'gout'`.
 - Hot climate / region addition: `+200 ml` for `'gulf'` and `'egypt'`.
@@ -1364,22 +1371,22 @@ $$waterCups = \text{round}\left(\frac{waterLiters \times 1000}{250}\right)$$
 When the Summary Screen loads and when the user taps the primary `[Start My Plan]` button:
 
 1. **Stateless Preview on Summary Load (`POST /v1/plans/preview`):**
-   - Call `[NEW BACKEND] POST /v1/plans/preview` with the draft onboarding answers to obtain authoritative targets (`REE`, `TDEE`, `targetCalories`, macros, hydration, `estimated_weeks_min..max`) and a sample day preview without requiring authentication.
+   - Call `POST /v1/plans/preview` (public, IP rate-limited) with the draft onboarding answers to obtain authoritative `dailyCalories`, `macros`, `waterTarget` / `waterTargetLiters` (including `externalTrainingDays` boost), `estimatedWeeksMin`, `estimatedWeeksMax`, `recommendedSplit`, `seniorMode`, `warnings`, `clinicalBlocks`, `workoutUiModeDefault`, and `eligibility` without requiring authentication.
    - Persist the draft onboarding answers locally (`onboardingDraft`) so zero input is ever lost.
 2. **Canonical CuraFit API v1 Commit Sequence (Mandatory Online Completion Before Home):**
    - Full sequence:
      1. `POST /v1/plans/preview` *(already called on Summary load / edit)*
      2. **OAuth (`EPIC-02`):** If `isAuthenticated == false`, navigate to **Passwordless Social Sign-In (`EPIC-02`)** (`POST /v1/auth/oauth/google` or `POST /v1/auth/oauth/apple`).
      3. **`POST /v1/account/consents`:** If `bootstrap.consents` indicates required health/terms consents are not yet accepted, present `HealthConsentModal` and record explicit acceptance.
-     4. **`POST /v1/eligibility`:** Validate clinical, age (`>= 18`), BMI, and maternal safety gates on the server (`status: "eligible"` or `"eligible_with_cautions"`).
-     5. **`POST /v1/commands?view=full`** with `{ action: "generate", payload: { profile, onboardingAnswers } }` and a stable `Idempotency-Key` header.
-     6. **`GET /v1/bootstrap`:** Hydrate the authoritative user workspace, `revision`, `consents`, `entitlements`, `todaySummary`, and `scheduledSessions`.
+     4. **`POST /v1/eligibility`:** Validate clinical, age (`18..95`), BMI, and maternal safety gates on the server (`status: "eligible"` or `"eligible_with_cautions"`).
+     5. **`POST /v1/commands?view=full`** with `{ revision, action: "generate", payload: { ... } }` (including `unitSystem`, `workoutUiMode`, and `overwriteExisting: true` when replacing an existing profile; passing `overwriteExisting: false` on an existing profile returns `409 PROFILE_ALREADY_EXISTS`) and a stable `Idempotency-Key` header.
+     6. **`GET /v1/bootstrap`:** Hydrate the authoritative user workspace, smart `ETag` (`W/"boot-..."`), `revision`, `onboardingCompleted`, `consents`, `entitlements`, `todaySummary`, and `scheduledSessions`.
 3. **Path 1 — User IS Already Signed In (`isAuthenticated == true`):**
    - *(Happens when the user signed in at Step 0 `account_check` with a new account or chose `Start fresh` after sign-in).*
    - Show loading state on button (`"Building & syncing your custom plan..."`).
    - Execute steps 3–6 of the canonical sequence (`POST /v1/account/consents` -> `POST /v1/eligibility` -> `POST /v1/commands?view=full` `action: "generate"` -> `GET /v1/bootstrap`).
    - **On API Success (`200 OK`):**
-     - Set `onboardingCompleted = true`, `syncStatus = "synced"`, clear temporary `onboardingDraft`, and navigate to **Home Screen** (`replace` navigation stack so pressing Back on Home does not return to onboarding).
+     - Set `onboardingCompleted = true` (`signed_in_active`), `syncStatus = "synced"`, clear temporary `onboardingDraft`, and navigate to **Home Screen** (`replace` navigation stack so pressing Back on Home does not return to onboarding).
    - **On Network / Offline Error (NO Offline Home Entry Before Initial `generate` Succeeds):**
      - Keep `onboardingDraft` persisted safely on-device, stay on the **Summary Screen**, display a clear inline connectivity message (*"An internet connection is required to generate and save your initial plan. Your answers are safely saved — tap Retry once you are back online."*), and keep `[Retry]` enabled.
      - Do **NOT** set `onboardingCompleted = true` or navigate to the **Home Screen** until `POST /v1/commands?view=full` (`action: "generate"`) succeeds on the server.
@@ -1389,13 +1396,13 @@ When the Summary Screen loads and when the user taps the primary `[Start My Plan
    - Navigate to **Passwordless Social Sign-In (`EPIC-02`)** (`entrySource = "onboarding_summary_start_plan"`).
    - **Once Authentication Succeeds via Passwordless Social Sign-In (`EPIC-02`):**
      - Call `GET /v1/bootstrap` to inspect `data.profile`:
-     - **Subcase 2A — Newly Created Account OR Existing Account with No Prior Server Plan (`data.profile == null`):**
+     - **Subcase 2A — Newly Created Account OR Existing Account with No Prior Server Plan (`data.profile == null`, `signed_in_needs_onboarding`):**
        - Automatically execute steps 3–6 (`POST /v1/account/consents` -> `POST /v1/eligibility` -> `POST /v1/commands?view=full` `action: "generate"` -> `GET /v1/bootstrap`).
-       - Mark `onboardingCompleted = true`, `syncStatus = "synced"`, clear `onboardingDraft`, and navigate directly to **Home Screen**.
-     - **Subcase 2B — User Signs Into an Existing Account That Already Has an Old Plan (`data.profile != null`):**
+       - Mark `onboardingCompleted = true` (`signed_in_active`), `syncStatus = "synced"`, clear `onboardingDraft`, and navigate directly to **Home Screen**.
+     - **Subcase 2B — User Signs Into an Existing Account That Already Has an Old Plan (`data.profile != null`, `signed_in_active`):**
        - Show conflict resolution prompt:
          - *"This account already has a previously saved plan. Would you like to save and activate the new plan you just created, or restore your old saved plan?"*
-         - Option A (Primary): `[Use My New Plan (Overwrite Old Data)]` -> Runs `POST /v1/account/consents` (if needed) -> `POST /v1/eligibility` -> `POST /v1/commands?view=full` (`action: "generate"`) -> `GET /v1/bootstrap` and navigates to **Home Screen**.
+         - Option A (Primary): `[Use My New Plan (Overwrite Old Data)]` -> Runs `POST /v1/account/consents` (if needed) -> `POST /v1/eligibility` -> `POST /v1/commands?view=full` (`action: "generate"`, `overwriteExisting: true`) -> `GET /v1/bootstrap` and navigates to **Home Screen**.
          - Option B (Secondary): `[Restore My Old Saved Plan]` -> Hydrates local state directly from `GET /v1/bootstrap` and navigates to **Home Screen**.
 
 ---
@@ -1403,7 +1410,7 @@ When the Summary Screen loads and when the user taps the primary `[Start My Plan
 **MAIN FLOW**
 
 1. User completes the final question (`allergies` or `injuries`) and lands on the `summary` screen; the app calls `POST /v1/plans/preview`.
-2. User reviews their calculated calories (`2,100 kcal`), macros (`153g P / 215g C / 70g F`), hydration (`3.2 L` rest / `3.7 L` workout day), workout split (`4 Days Upper/Lower`), and timeline range (`25–34 weeks`).
+2. User reviews their calculated calories (`2,100 kcal`), macros (`136g P / 231.5g C / 70g F`), hydration (`3.2 L` rest / `3.7 L` workout day), workout split (`4 Days Upper/Lower`), and timeline range (`25–38 weeks`).
 3. User taps `[Start My Plan]`.
 4. **If already signed in:** App executes `POST /v1/account/consents` -> `POST /v1/eligibility` -> `POST /v1/commands?view=full` (`action: "generate"`) -> `GET /v1/bootstrap` and opens the **Home Screen**.
 5. **If not signed in:** App opens **Passwordless Social Sign-In (`EPIC-02`)**, user signs in with Google or Apple, app executes the canonical consent/eligibility/generate/bootstrap sequence, and opens the **Home Screen**.
@@ -1424,13 +1431,13 @@ When the Summary Screen loads and when the user taps the primary `[Start My Plan
 **ACCEPTANCE CRITERIA**
 
 - **Scenario 1: Live numerical preview matches exact unified backend equations**
-  - **Given** a 30-year-old male, `175 cm`, `85 kg`, `goal = "lose"`, `target_weight = 75 kg`, `goal_pace = "moderate"`, `activity = "light"` (`1.375x`), `4 workout days`
+  - **Given** a 30-year-old male, `175 cm`, `85 kg`, `goal = "lose"`, `target_weight = 75 kg`, `goal_pace = "moderate"`, `activity = "light"` (`1.375x`), `diet_type = "balanced"`, `region = "egypt"`, `4 workout days`
   - **When** the Summary Screen renders (`POST /v1/plans/preview`)
-  - **Then** `REE = 1,799 kcal`, `TDEE = 2,473 kcal` (no separate workout TDEE bonus), `dailyCalorieDelta = -371 kcal`, `targetCalories = 2,100 kcal`, `protein = 153g` (`1.8 g/kg`), total carbs/fats, hydration (`3.2 L` base / `3.7 L` workout day in Egypt), and timeline range (`25–34 weeks` via `7700 kcal/kg`) are displayed identically to the backend.
+  - **Then** `REE = 1,798.8 kcal`, `TDEE = 2,473.3 kcal` (no separate workout TDEE bonus), `targetCalories = 2,100 kcal` (`energy_change = -373.3 kcal`), `protein = 136g` (`1.6 g/kg`), `carbs = 231.5g`, `fat = 70g`, hydration (`3.2 L` base / `3.7 L` workout day, `15 cups` in Egypt), `recommendedSplit = "upper_lower"`, and timeline range (`25–38 weeks` via `7700 kcal/kg`) are displayed identically to the backend.
 - **Scenario 2: Signed-in user clicking "Start Plan" runs canonical API v1 sequence and goes to Home**
   - **Given** `isAuthenticated == true` and network connectivity is available
   - **When** the user taps `[Start My Plan & Sync to Account]`
-  - **Then** the app runs `POST /v1/account/consents` -> `POST /v1/eligibility` -> `POST /v1/commands?view=full` (`action: "generate"`) -> `GET /v1/bootstrap`, sets `onboardingCompleted = true`, clears the back stack, and navigates to the Home Screen.
+  - **Then** the app runs `POST /v1/account/consents` -> `POST /v1/eligibility` -> `POST /v1/commands?view=full` (`action: "generate"`) -> `GET /v1/bootstrap`, sets `onboardingCompleted = true` (`signed_in_active`), clears the back stack, and navigates to the Home Screen.
 - **Scenario 3: Unauthenticated user clicking "Start Plan" routes to Passwordless Social Sign-In (`EPIC-02`) and then commits**
   - **Given** `isAuthenticated == false`
   - **When** the user taps `[Continue to Sign In & Start My Plan]`

@@ -138,6 +138,13 @@ CREATE INDEX IF NOT EXISTS `idx_activity_logs_user_date` ON `coaching_activity_l
 CREATE TABLE IF NOT EXISTS `coaching_streak_freezes` (
 	`user_id` text NOT NULL,
 	`date` text NOT NULL,
+	`auto_applied` integer DEFAULT 0 NOT NULL,
 	`created_at` text NOT NULL,
 	PRIMARY KEY(`user_id`, `date`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `coaching_trial_tombstones` (
+	`identity_hash` text PRIMARY KEY NOT NULL,
+	`provider` text NOT NULL,
+	`recorded_at` text NOT NULL
 );

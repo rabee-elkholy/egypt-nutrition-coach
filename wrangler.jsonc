@@ -8,9 +8,9 @@
   "triggers": {
     "crons": ["0 * * * *"]
   },
-  // Create private R2 buckets (`wrangler r2 bucket create curafit-media` & `curafit-media-dev`)
+  // Create private R2 buckets (`wrangler r2 bucket create curafit-media-prod` & `curafit-media-dev`)
   // and uncomment `r2_buckets` below to attach live R2 media storage on Cloudflare:
-  // "r2_buckets": [{ "binding": "CURAFIT_MEDIA_BUCKET", "bucket_name": "curafit-media" }],
+  // "r2_buckets": [{ "binding": "CURAFIT_MEDIA_BUCKET", "bucket_name": "curafit-media-prod" }],
   "d1_databases": [
     {
       "binding": "DB",

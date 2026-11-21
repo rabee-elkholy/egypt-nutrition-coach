@@ -94,6 +94,9 @@ export async function handleSignedMediaRequest(request, env, token) {
   const bucket = requireBucket(env);
 
   if (request.method === 'GET' && claims.m === 'get') {
+    if (claims.u && !claims.k.startsWith(`users/${claims.u}/`) && !claims.k.startsWith(`avatars/${claims.u}/`)) {
+      throw createApiError('Signed media token is invalid or expired.', 403, { code: 'INVALID_MEDIA_TOKEN' });
+    }
     const obj = await bucket.get(claims.k);
     if (!obj) {
       throw createApiError('Progress photo record not found.', 404, { code: 'PHOTO_NOT_FOUND' });
@@ -128,6 +131,16 @@ export async function handleSignedMediaRequest(request, env, token) {
   throw createApiError('Only GET or PUT matching token mode is allowed.', 405, { code: 'METHOD_NOT_ALLOWED' });
 }
 
+export async function signAvatarUrlIfNeeded(origin, avatarValue, userId, env) {
+  if (!avatarValue) return null;
+  if (/^https?:\/\//i.test(avatarValue)) return avatarValue;
+  if (avatarValue.startsWith(`avatars/${userId}/`) && origin) {
+    const signed = await buildSignedMediaUrl(origin, avatarValue, 'get', env, 900, { u: userId });
+    return signed.url;
+  }
+  return null;
+}
+
 export async function uploadProfileAvatar(request, env, db, userId, origin) {
   const bucket = requireBucket(env);
   const ct = request.headers.get('Content-Type') || '';
@@ -159,7 +172,7 @@ export async function uploadProfileAvatar(request, env, db, userId, origin) {
   const ext = detected === 'image/png' ? 'png' : detected === 'image/webp' ? 'webp' : 'jpg';
   const key = `avatars/${userId}/${crypto.randomUUID()}.${ext}`;
   await bucket.put(key, bytes, { httpMetadata: { contentType: detected } });
-  const signed = await buildSignedMediaUrl(origin, key, 'get', env, 3600);
+  const signed = await buildSignedMediaUrl(origin, key, 'get', env, 900, { u: userId });
   try {
     await db.prepare('UPDATE coaching_users SET avatar_url=?, updated_at=? WHERE user_id=?').bind(key, new Date().toISOString(), userId).run();
   } catch {}
@@ -202,7 +215,7 @@ export async function createProgressPhotoUploadUrl(env, userId, origin, body = {
   const photoId = `photo_${crypto.randomUUID()}`;
   const ext = contentType === 'image/png' ? 'png' : contentType === 'image/jpeg' ? 'jpg' : 'webp';
   const objectKey = `users/${userId}/photos/${photoId}.${ext}`;
-  const signed = await buildSignedMediaUrl(origin, objectKey, 'put', env, 600, { maxBytes: PHOTO_MAX_BYTES, userId, photoId });
+  const signed = await buildSignedMediaUrl(origin, objectKey, 'put', env, 600, { maxBytes: PHOTO_MAX_BYTES, u: userId, photoId });
   return { photoId, objectKey, uploadUrl: signed.url, maxBytes: PHOTO_MAX_BYTES, expiresAt: signed.expiresAt };
 }
 
@@ -215,7 +228,6 @@ export async function confirmProgressPhoto(db, env, userId, origin, body = {}) {
     throw createApiError('photoId, valid YYYY-MM-DD date, and pose (front|side|back) are required.', 400, { code: 'VALIDATION_ERROR' });
   }
   const weightKgSnapshot = body?.weightKgSnapshot == null ? null : number(body.weightKgSnapshot, 35, 250, 'weightKgSnapshot');
-  // Locate uploaded R2 object under user's namespace
   let objectKey = body?.objectKey && String(body.objectKey).startsWith(`users/${userId}/photos/${photoId}.`) ? String(body.objectKey) : null;
   if (!objectKey) {
     for (const ext of ['webp', 'jpg', 'png']) {
@@ -231,7 +243,7 @@ export async function confirmProgressPhoto(db, env, userId, origin, body = {}) {
   await db.prepare(
     'INSERT OR REPLACE INTO coaching_progress_photos(user_id,photo_id,date,pose,r2_object_key,weight_kg_snapshot,created_at) VALUES(?,?,?,?,?,?,?)'
   ).bind(userId, photoId, date, pose, objectKey, weightKgSnapshot, nowIso).run();
-  const signed = await buildSignedMediaUrl(origin, objectKey, 'get', env, 900);
+  const signed = await buildSignedMediaUrl(origin, objectKey, 'get', env, 900, { u: userId });
   return { id: photoId, date, pose, weightKgSnapshot, downloadUrl: signed.url, expiresAt: signed.expiresAt, createdAt: nowIso };
 }
 
@@ -240,7 +252,7 @@ export async function listProgressPhotos(db, env, userId, origin, { offset = 0, 
     'SELECT photo_id, date, pose, r2_object_key, weight_kg_snapshot, created_at FROM coaching_progress_photos WHERE user_id=? ORDER BY date DESC, created_at DESC LIMIT ? OFFSET ?'
   ).bind(userId, limit, offset).all();
   const items = await Promise.all((rows?.results || []).map(async r => {
-    const signed = await buildSignedMediaUrl(origin, r.r2_object_key, 'get', env, 900);
+    const signed = await buildSignedMediaUrl(origin, r.r2_object_key, 'get', env, 900, { u: userId });
     return {
       id: r.photo_id,
       date: r.date,
@@ -252,6 +264,33 @@ export async function listProgressPhotos(db, env, userId, origin, { offset = 0, 
     };
   }));
   return { items, offset, limit, nextOffset: items.length === limit ? offset + limit : null };
+}
+
+export async function exportSignedMediaRefs(db, env, userId, origin) {
+  let avatarUrl = null;
+  let progressPhotos = [];
+  try {
+    const userRow = await db.prepare('SELECT avatar_url FROM coaching_users WHERE user_id=?').bind(userId).first();
+    avatarUrl = await signAvatarUrlIfNeeded(origin, userRow?.avatar_url, userId, env);
+  } catch {}
+  try {
+    const rows = await db.prepare(
+      'SELECT photo_id, date, pose, r2_object_key, weight_kg_snapshot, created_at FROM coaching_progress_photos WHERE user_id=? ORDER BY date DESC, created_at DESC'
+    ).bind(userId).all();
+    progressPhotos = await Promise.all((rows?.results || []).map(async r => {
+      const signed = origin ? await buildSignedMediaUrl(origin, r.r2_object_key, 'get', env, 900, { u: userId }) : null;
+      return {
+        photoId: r.photo_id,
+        date: r.date,
+        pose: r.pose,
+        weightKgSnapshot: r.weight_kg_snapshot,
+        createdAt: r.created_at,
+        downloadUrl: signed?.url || null,
+        expiresAt: signed?.expiresAt || null
+      };
+    }));
+  } catch {}
+  return { avatarUrl, progressPhotos };
 }
 
 export async function deleteProgressPhoto(db, env, userId, photoId) {
@@ -268,20 +307,28 @@ export async function deleteProgressPhoto(db, env, userId, photoId) {
   return { deleted: true, id: photoId };
 }
 
-export async function purgeUserMedia(db, env, userId) {
-  const bucket = env?.CURAFIT_MEDIA_BUCKET;
-  let objectsDeleted = 0;
-  if (!bucket) return { objectsDeleted };
+export async function collectUserMediaKeys(db, userId) {
+  const keys = [];
   try {
     const photoRows = await db.prepare('SELECT r2_object_key FROM coaching_progress_photos WHERE user_id=?').bind(userId).all();
-    for (const r of photoRows?.results || []) {
-      if (r.r2_object_key) { await bucket.delete(r.r2_object_key); objectsDeleted++; }
-    }
+    for (const r of photoRows?.results || []) if (r.r2_object_key) keys.push(r.r2_object_key);
     const userRow = await db.prepare('SELECT avatar_url FROM coaching_users WHERE user_id=?').bind(userId).first();
-    if (userRow?.avatar_url && userRow.avatar_url.startsWith(`avatars/${userId}/`)) {
-      await bucket.delete(userRow.avatar_url);
-      objectsDeleted++;
-    }
+    if (userRow?.avatar_url && userRow.avatar_url.startsWith(`avatars/${userId}/`)) keys.push(userRow.avatar_url);
   } catch {}
+  return keys;
+}
+
+export async function purgeMediaKeys(env, keys = []) {
+  const bucket = env?.CURAFIT_MEDIA_BUCKET;
+  let objectsDeleted = 0;
+  if (!bucket || !keys.length) return { objectsDeleted };
+  for (const k of keys) {
+    try { await bucket.delete(k); objectsDeleted++; } catch {}
+  }
   return { objectsDeleted };
+}
+
+export async function purgeUserMedia(db, env, userId) {
+  const keys = await collectUserMediaKeys(db, userId);
+  return await purgeMediaKeys(env, keys);
 }

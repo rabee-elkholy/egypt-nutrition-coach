@@ -805,6 +805,295 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       assert.equal(prMock.summaryByExercise['oedb:Assisted_Pull_Up'].heaviestWeightKg, 20);
       assert.ok(prMock.items.some((e) => e.exerciseId === 'oedb:Assisted_Pull_Up' && e.prType === 'weight' && e.value === 20 && e.previousValue === 30));
     });
+
+    // 10. Deep Audit P0/P1 Fixes: Pro Gating, Engine Math, Atomic Edits/Deletes, OAuth Link/Unlink, Consent Lock, Wearables Resilience & Billing/Tombstone Edge Cases
+    await t.test('P0/P1 audit fixes: consistent Pro gating, engine math, atomic edits/deletes, OAuth linking, consent lock, billing states & trial tombstones', async () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const enforce = { ENFORCE_PRO_ENTITLEMENTS: 'true' };
+
+      // 10a. Engine math & previewPlan upgrades
+      const previewKeto = await okJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Keto Preview', age: 30, sex: 'male', weight: 82, height: 178,
+          goal: 'lose', targetWeight: 75, activity: 'active', dietType: 'keto',
+          serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5],
+          externalTrainingDays: [2, 4], healthConfirmed: true,
+        }),
+      }));
+      assert.ok(previewKeto.dailyCalories > 0);
+      assert.ok(previewKeto.macros && previewKeto.macros.carbs <= 60, 'Keto preview must apply low-carb macro override');
+      assert.ok(previewKeto.recommendedSplit);
+      assert.ok(Array.isArray(previewKeto.warnings));
+      assert.ok(Array.isArray(previewKeto.clinicalBlocks));
+      assert.ok(previewKeto.estimatedWeeksMin > 0);
+
+      // Pregnancy + gain must NOT stack +400 on top of +340 (T2)
+      const pregMaintain = await okJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'PregM', age: 29, sex: 'female', weight: 65, height: 165,
+          goal: 'maintain', maternalStatus: 'pregnant_t2', activity: 'light', dietType: 'balanced',
+          serviceTrack: 'nutrition_only', healthConfirmed: true,
+        }),
+      }));
+      const pregGain = await okJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'PregG', age: 29, sex: 'female', weight: 65, height: 165,
+          goal: 'gain', maternalStatus: 'pregnant_t2', activity: 'light', dietType: 'balanced',
+          serviceTrack: 'nutrition_only', healthConfirmed: true,
+        }),
+      }));
+      assert.equal(pregGain.dailyCalories, pregMaintain.dailyCalories, 'Pregnancy T2 gain must not double-stack +400 surplus');
+
+      // Male + maternal status rejected
+      await errJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'BadMat', age: 30, sex: 'male', weight: 80, height: 175,
+          goal: 'maintain', maternalStatus: 'pregnant_t2', serviceTrack: 'nutrition_only', healthConfirmed: true,
+        }),
+      }), 400, 'INVALID_MATERNAL_PROFILE');
+
+      // 10b. Create fresh Google OAuth user for OAuth linking + P0/P1 lifecycle
+      const p1GoogleJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com',
+        aud: 'curafit-android-client-id',
+        sub: 'google-sub-p1-user',
+        email: 'p1.audit@curafit.app',
+        email_verified: true,
+        name: 'Audit Athlete',
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const p1Auth = await okJson(await call('/v1/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: p1GoogleJwt, deviceId: 'p1-device-1' }),
+      }), 201);
+      const p1Token = p1Auth.accessToken;
+      const p1Hdr = { Authorization: `Bearer ${p1Token}` };
+      let p1Rev = 0;
+
+      // OAuth providers: list -> cannot unlink last -> link Apple -> unlink Apple succeeds
+      const prov1 = await okJson(await call('/v1/auth/oauth/providers', { headers: p1Hdr }));
+      assert.equal(prov1.items.length, 1);
+      assert.equal(prov1.items[0].provider, 'google');
+      await errJson(await call('/v1/auth/oauth/google', { method: 'DELETE', headers: p1Hdr }), 409, 'CANNOT_UNLINK_LAST_AUTH_METHOD');
+
+      const p1AppleJwt = await appleSigner.signJwt({
+        iss: 'https://appleid.apple.com',
+        aud: 'com.curafit.ios',
+        sub: 'apple-sub-p1-link',
+        email: 'p1.audit@curafit.app',
+        email_verified: true,
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const linked = await okJson(await call('/v1/auth/oauth/link', {
+        method: 'POST',
+        headers: { ...p1Hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'apple', identityToken: p1AppleJwt }),
+      }));
+      assert.equal(linked.linked, true);
+      const prov2 = await okJson(await call('/v1/auth/oauth/providers', { headers: p1Hdr }));
+      assert.equal(prov2.items.length, 2);
+
+      const unlinked = await okJson(await call('/v1/auth/oauth/apple', { method: 'DELETE', headers: p1Hdr }));
+      assert.equal(unlinked.unlinked, true);
+      await errJson(await call('/v1/auth/oauth/apple', { method: 'DELETE', headers: p1Hdr }), 404, 'OAUTH_PROVIDER_NOT_LINKED');
+
+      // 10c. Generate plan honoring activity + overwriteExisting guard
+      const p1Gen = await okJson(await postCmd(p1Token, p1Rev, 'generate', {
+        name: 'Audit Athlete', age: 30, sex: 'male', weight: 82, height: 178,
+        goal: 'lose', targetWeight: 75, activity: 'active', dietType: 'intermittent_fasting',
+        serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5],
+        injuries: ['lower_back_pain'], unitSystem: 'imperial', healthConfirmed: true,
+      }));
+      p1Rev = p1Gen.revision;
+      const p1PlanId = p1Gen.active_plan_id;
+      const p1Today = p1Gen.serverDate;
+      assert.equal(p1Gen.profile.activity, 'active', 'generate must honor activity alias');
+      assert.equal(p1Gen.profile.unitSystem, 'imperial');
+
+      // overwriteExisting: false must fail with 409 PROFILE_ALREADY_EXISTS
+      await errJson(await postCmd(p1Token, p1Rev, 'generate', {
+        name: 'Overwrite Blocked', age: 30, sex: 'male', weight: 82, height: 178,
+        goal: 'maintain', serviceTrack: 'nutrition_only', overwriteExisting: false, healthConfirmed: true,
+      }), 409, 'PROFILE_ALREADY_EXISTS');
+
+      // 10d. Consistent Pro gating for Free user vs Free features (pantry & ramadan)
+      await errJson(await call(`/v1/plans/${encodeURIComponent(p1PlanId)}/grocery-list`, { headers: p1Hdr }, enforce), 402, 'PRO_ENTITLEMENT_REQUIRED');
+      await errJson(await call('/v1/foods/barcode/6221000123456', { headers: p1Hdr }, enforce), 402, 'PRO_ENTITLEMENT_REQUIRED');
+      await errJson(await call('/v1/foods/barcode', {
+        method: 'POST', headers: { ...p1Hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: '6221000888888', nameEn: 'Gated Bar', valuesPer100g: { energy: 200, protein: 10, carbs: 20, fat: 8 } }),
+      }, enforce), 402, 'PRO_ENTITLEMENT_REQUIRED');
+      await errJson(await call('/v1/progress/analytics?range=90d', { headers: p1Hdr }, enforce), 402, 'PRO_ENTITLEMENT_REQUIRED');
+      await errJson(await call('/v1/progress/analytics?range=all', { headers: p1Hdr }, enforce), 402, 'PRO_ENTITLEMENT_REQUIRED');
+      await errJson(await call('/v1/progress/analytics?range=7d', { headers: p1Hdr }, enforce), 400, 'INVALID_DATE_RANGE');
+
+      // Free features remain 200 even under ENFORCE_PRO_ENTITLEMENTS=true
+      await okJson(await call('/v1/progress/analytics?range=30d', { headers: p1Hdr }, enforce));
+      await okJson(await call('/v1/pantry/catalog', { headers: p1Hdr }, enforce));
+      await okJson(await call('/v1/nutrition/fasting-state', { headers: p1Hdr }, enforce));
+
+      // Ramadan mode ON then OFF restores 16:8 intermittent fasting window
+      p1Rev = (await okJson(await postCmd(p1Token, p1Rev, 'ramadan_mode', { enabled: true, iftarTime: '18:15', suhoorCutoffTime: '04:00', endDate: '2026-12-20' }, { minimal: true, envExtra: enforce }))).revision;
+      p1Rev = (await okJson(await postCmd(p1Token, p1Rev, 'ramadan_mode', { enabled: false }, { minimal: true, envExtra: enforce }))).revision;
+      const postRamFasting = await okJson(await call('/v1/nutrition/fasting-state', { headers: p1Hdr }));
+      assert.equal(postRamFasting.ramadanMode?.enabled, false);
+      assert.equal(postRamFasting.mode, 'if_16_8', 'Disabling Ramadan mode must restore if_16_8 mode');
+      assert.equal(postRamFasting.windowStart, '12:00');
+      assert.equal(postRamFasting.windowEnd, '20:00');
+
+      // Notification preference exemptSuhoorFromQuietHours
+      p1Rev = (await okJson(await postCmd(p1Token, p1Rev, 'notification_preferences', { exemptSuhoorFromQuietHours: true }, { minimal: true }))).revision;
+      const nPrefs = await okJson(await call('/v1/notifications/preferences', { headers: p1Hdr }));
+      assert.equal(nPrefs.exemptSuhoorFromQuietHours, true);
+
+      // 10e. Atomic food_entry_update, workout_delete, session_delete, body_measurement merge & earlyRenew
+      const addEntry = await okJson(await postCmd(p1Token, p1Rev, 'food_entry', {
+        date: p1Today, slot: 'lunch', source: 'manual', name: 'Grilled Chicken Plate', energy: 450, protein: 40, carbs: 30, fat: 12,
+      }, { minimal: true }));
+      p1Rev = addEntry.revision;
+      const createdEntryId = addEntry.affected.find((a) => a.entityType === 'food_entry')?.entityId;
+      assert.ok(createdEntryId);
+      const updEntry = await okJson(await postCmd(p1Token, p1Rev, 'food_entry_update', {
+        id: createdEntryId, slot: 'dinner', energy: 520, protein: 46,
+      }, { minimal: true }));
+      p1Rev = updEntry.revision;
+      const diaryAfterUpd = await okJson(await call(`/v1/food-diary?date=${p1Today}`, { headers: p1Hdr }));
+      const edited = diaryAfterUpd.entries.find((e) => e.id === createdEntryId);
+      assert.equal(edited?.slot, 'dinner');
+      assert.equal(Number(edited?.snapshot?.values?.energy), 520);
+
+      // Workout log + session -> workout_delete & session_delete
+      const p1Day = p1Gen.workoutPlan.days[0];
+      const p1Ex = p1Day.exercises[0];
+      p1Rev = (await okJson(await postCmd(p1Token, p1Rev, 'workout', {
+        date: p1Today, dayIndex: p1Day.dayIndex, exerciseId: p1Ex.id, sets: [{ kg: 20, reps: 10, rir: 2 }], autoSession: true,
+      }, { minimal: true }))).revision;
+      p1Rev = (await okJson(await postCmd(p1Token, p1Rev, 'workout_delete', {
+        date: p1Today, dayIndex: p1Day.dayIndex, exerciseId: p1Ex.id,
+      }, { minimal: true }))).revision;
+      p1Rev = (await okJson(await postCmd(p1Token, p1Rev, 'session_delete', {
+        date: p1Today, dayIndex: p1Day.dayIndex, deleteWorkouts: true,
+      }, { minimal: true }))).revision;
+      const wLogsAfterDel = await okJson(await call('/v1/workout-logs', { headers: p1Hdr }));
+      assert.equal(wLogsAfterDel.items.length, 0);
+
+      // Body measurement same-date merge preserves omitted fields
+      p1Rev = (await okJson(await postCmd(p1Token, p1Rev, 'body_measurement', { date: p1Today, waistCm: 84 }, { minimal: true }))).revision;
+      p1Rev = (await okJson(await postCmd(p1Token, p1Rev, 'body_measurement', { date: p1Today, chestCm: 101 }, { minimal: true }))).revision;
+      const mergedMeas = await okJson(await call('/v1/measurements', { headers: p1Hdr }));
+      assert.equal(mergedMeas.items[0].waistCm, 84);
+      assert.equal(mergedMeas.items[0].chestCm, 101);
+
+      // Early plan renewal (earlyRenew: true) regenerates without PLAN_STILL_ACTIVE error
+      const earlyRen = await okJson(await postCmd(p1Token, p1Rev, 'renew_plan', { earlyRenew: true }, { minimal: true }));
+      p1Rev = earlyRen.revision;
+
+      // Wearables partial-success batch (1 valid + 1 invalid record)
+      const partialWear = await okJson(await call('/v1/wearables/ingest', {
+        method: 'POST',
+        headers: { ...p1Hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          records: [
+            { type: 'activity', date: p1Today, steps: 7500, activeEnergyKcal: 310, source: 'health_connect', externalRecordId: 'hc-partial-1' },
+            { type: 'weight', date: p1Today, kg: 9999, source: 'health_connect', externalRecordId: 'hc-bad-weight' },
+          ],
+        }),
+      }));
+      p1Rev = partialWear.revision;
+      assert.equal(partialWear.ingested, 1);
+      assert.equal(partialWear.skippedCount, 1);
+      assert.ok(Array.isArray(partialWear.skippedRecords) && partialWear.skippedRecords.length === 1);
+
+      // 10f. Withdrawn health_data_processing consent lock + Bootstrap ETag invalidation
+      const bootBeforeConsent = await call('/v1/bootstrap', { headers: p1Hdr });
+      const etagBeforeConsent = bootBeforeConsent.headers.get('ETag');
+      await okJson(await call('/v1/account/consents', {
+        method: 'POST',
+        headers: { ...p1Hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consentType: 'health_data_processing', version: '1.0.0', accepted: false }),
+      }));
+      const bootAfterConsent = await call('/v1/bootstrap', { headers: { ...p1Hdr, 'If-None-Match': etagBeforeConsent } });
+      assert.equal(bootAfterConsent.status, 200, 'Bootstrap ETag must invalidate when consents change');
+      await errJson(await postCmd(p1Token, p1Rev, 'review', {}, { minimal: true }), 403, 'HEALTH_CONSENT_REQUIRED');
+      // Re-grant consent unlocks review
+      await okJson(await call('/v1/account/consents', {
+        method: 'POST',
+        headers: { ...p1Hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consentType: 'health_data_processing', version: '1.0.0', accepted: true }),
+      }));
+
+      // 10g. Billing edge cases: cross-store 409, account_hold & paused suspending Pro, restore conflict, GDPR trial tombstone
+      await okJson(await call('/v1/subscriptions/verify', {
+        method: 'POST',
+        headers: { ...p1Hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'android', productId: 'curafit_pro.monthly', purchaseToken: 'p1-gp-tok-001', isTrial: true }),
+      }));
+      // Cross-store double-billing guard
+      await errJson(await call('/v1/subscriptions/verify', {
+        method: 'POST',
+        headers: { ...p1Hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'ios', productId: 'curafit_pro.monthly', originalTransactionId: 'p1-apple-tx-001' }),
+      }), 409, 'ACTIVE_SUBSCRIPTION_ON_OTHER_PLATFORM');
+
+      // Google RTDN notificationType 5 (ON_HOLD) suspends Pro cleanly
+      await okJson(await call('/v1/webhooks/google-play', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': 'test-webhook-secret-123' },
+        body: JSON.stringify({ subscriptionNotification: { notificationType: 5, purchaseToken: 'p1-gp-tok-001' } }),
+      }));
+      const entHold = await okJson(await call('/v1/entitlements', { headers: p1Hdr }));
+      assert.equal(entHold.tier, 'free', 'account_hold must suspend Pro tier');
+      assert.equal(entHold.isOnHold, true);
+
+      // Google RTDN notificationType 10 (PAUSED) keeps Pro suspended with isPaused: true
+      await okJson(await call('/v1/webhooks/google-play', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': 'test-webhook-secret-123' },
+        body: JSON.stringify({ subscriptionNotification: { notificationType: 10, purchaseToken: 'p1-gp-tok-001' } }),
+      }));
+      const entPaused = await okJson(await call('/v1/entitlements', { headers: p1Hdr }));
+      assert.equal(entPaused.tier, 'free', 'paused must suspend Pro tier');
+      assert.equal(entPaused.isPaused, true);
+
+      // Restore conflict when another user passes p1's purchaseToken
+      await errJson(await call('/v1/subscriptions/restore', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${googleToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'android', tokens: ['p1-gp-tok-001'] }),
+      }), 409, 'SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT');
+
+      // GDPR Export contains oauthIdentities & live entitlements
+      const p1Export = await okJson(await call('/v1/account/export', { headers: p1Hdr }));
+      assert.ok(Array.isArray(p1Export.oauthIdentities) && p1Export.oauthIdentities.length === 1);
+      assert.ok(p1Export.entitlements);
+
+      // GDPR Delete writes anonymized trial tombstone -> re-signing-up with same Google sub/email has trialEligible: false
+      await okJson(await call('/v1/account/delete', {
+        method: 'DELETE',
+        headers: { ...p1Hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      }));
+      const p1ReReg = await okJson(await call('/v1/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: p1GoogleJwt, deviceId: 'p1-device-2' }),
+      }), 201);
+      const postDelOfferings = await okJson(await call('/v1/subscriptions/offerings?platform=android', {
+        headers: { Authorization: `Bearer ${p1ReReg.accessToken}` },
+      }));
+      assert.equal(postDelOfferings.trialEligible, false, 'Trial tombstone must survive GDPR delete to prevent trial abuse');
+    });
   } finally {
     await mf.dispose();
   }

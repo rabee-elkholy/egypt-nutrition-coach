@@ -31,7 +31,7 @@
 | **Labels** | `production`, `mobile`, `progress`, `analytics`, `charts` |
 | **Target Screens** | `ProgressAnalyticsScreen` (Accessible from Coach Hub, Today Weight Card & Profile) |
 | **Entitlement** | `Freemium` (`Free`: `14D` & `30D` weight/adherence charts; `Pro`: `90D` / `All-Time` trends, strength 1RM curve & trajectory overlay) |
-| **Backend Status** | `Mixed` (`[EXISTING]` `/v1/progress/summary`, `/v1/weight-logs`, `/v1/workout-logs` + `[NEW BACKEND] GET /v1/progress/analytics`) |
+| **Backend Status** | `Implemented` (`GET /v1/progress/summary`, `GET /v1/weight-logs`, `GET /v1/workout-logs`, `GET /v1/progress/analytics`) |
 
 ### STORY
 As a user working toward a body transformation goal over months, I want an interactive analytics dashboard showing my smoothed 7-day weight trend against my expected goal trajectory (so normal daily water fluctuations don't discourage me), my calorie/macro consistency, and my strength progression per exercise.
@@ -54,15 +54,16 @@ As a user working toward a body transformation goal over months, I want an inter
 5. **Card 4 — Hydration & Sleep/Recovery Consistency:** Compact 14-day visual dot matrix (`water-logs` & `checkins`).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] GET /v1/progress/summary`** -> 14-day `weightTrend`, `foodCompleteness`, `hydration`, `workoutSummary`.
-2. **`[EXISTING] GET /v1/weight-logs?from={date}&to={date}&limit=100`** & **`GET /v1/workout-logs?from={date}&to={date}&limit=100`**.
-3. **`[NEW BACKEND] GET /v1/progress/analytics?range=14d|30d|90d|all&exerciseId={optional}`**
-   - Returns server-aggregated series (`weightSeries[]`, `weightMovingAvg7d[]`, `calorieAdherence[]`, `weeklyVolume[]`, `exercise1RmSeries[]`, `estimatedWeeksRemaining`) so heavy 90d+ aggregation never lags old mobile CPUs!
-   - Error Codes: `400 INVALID_DATE_RANGE`, `402 PRO_ENTITLEMENT_REQUIRED` (for `90d`/`all` if Free).
+1. **`GET /v1/progress/summary`** -> 14-day `weightTrend`, `foodCompleteness`, `hydration`, `workoutSummary`.
+2. **`GET /v1/weight-logs?from={date}&to={date}&limit=100`** & **`GET /v1/workout-logs?from={date}&to={date}&limit=100`**.
+3. **`GET /v1/progress/analytics?range=14d|30d|90d|all&exerciseId={optional}`**
+   - Accepts `range` enum `["14d", "30d", "90d", "all"]` (invalid `range` returns `400 INVALID_DATE_RANGE`; `90d` and `all` return `402 PRO_ENTITLEMENT_REQUIRED` for Free users when `ENFORCE_PRO_ENTITLEMENTS=true`).
+   - Returns server-aggregated series (`weightSeries[]`, `weightMovingAvg7d[]`, `calorieAdherence[]`, `weeklyVolume[]`, `exercise1RmSeries[]`, `estimatedWeeksRemaining`) so heavy 90d+ aggregation never lags mobile CPUs.
+   - Error Codes: `400 INVALID_DATE_RANGE`, `402 PRO_ENTITLEMENT_REQUIRED` (for `90d`/`all` if Free when enforcement is enabled).
 
 ### RULES & BUSINESS LOGIC
-1. **Pregnancy Weight Gain Guidance:** When `maternalStatus` is `pregnant_t1|t2|t3`, chart suppresses weight-loss downward trajectory lines and displays healthy trimester weight-tracking context instead.
-2. **Estimated 1RM Formula (Client/Server Consistency):** Epley formula `kg * (1 + reps / 30)` for working sets with `1 <= reps <= 15`, ignoring warm-up and pain-flagged sets!
+1. **Pregnancy Weight Gain Guidance:** When `maternalStatus` is `pregnant_t1 | pregnant_t2 | pregnant_t3`, the backend suppresses weight-loss forecast projection (`estimatedWeeksRemaining: null`) and the chart suppresses downward trajectory lines, displaying healthy trimester weight-tracking context instead.
+2. **Estimated 1RM Formula (Client/Server Consistency):** Epley formula `kg * (1 + reps / 30)` for working sets with `1 <= reps <= 15`, strictly excluding warm-up sets (`setType: "warmup"`), pain-flagged sets (`pain: true`), sets with `reps > 15`, and assisted exercises (`loadMode === "assisted"`).
 3. **Zero-Log Empty States:** If `< 2` weigh-ins logged, display clean onboarding starting point dot with `[+ Log Today's Weight]` button instead of broken empty axes.
 
 ### MAIN FLOW
@@ -84,14 +85,14 @@ As a user working toward a body transformation goal over months, I want an inter
 - **Scenario 2: Pro analytics range enforces entitlement gating cleanly**
   - **Given** a Free user selects `[90D]` (or `[All Time]`)
   - **When** tapping the range chip
-  - **Then** a non-intrusive Soft Paywall teaser (`US-MON-01`) appears without crashing or losing the `14D`/`30D` view.
-- **Scenario 3: Pregnancy mode hides weight-loss projection slope**
+  - **Then** `GET /v1/progress/analytics` returns `402 PRO_ENTITLEMENT_REQUIRED` (when `ENFORCE_PRO_ENTITLEMENTS=true`) and a non-intrusive Soft Paywall teaser (`US-MON-01`) appears without losing the `14D`/`30D` view.
+- **Scenario 3: Pregnancy mode suppresses weight-loss forecast projection**
   - **Given** `profile.maternalStatus == "pregnant_t2"`
-  - **When** Weight Trend chart renders
-  - **Then** downward loss trajectory overlays are suppressed cleanly with trimester tracking context instead.
+  - **When** `GET /v1/progress/analytics` returns and Weight Trend chart renders
+  - **Then** `estimatedWeeksRemaining` is `null` and downward loss trajectory overlays are suppressed cleanly with trimester tracking context instead.
 
 ### ANALYTICS
-- `progress_analytics_viewed` (`range`: `"14d" | "30d" | "90d" | "all"`, `entitlement`: `"free" | "premium"`)
+- `progress_analytics_viewed` (`range`: `"14d" | "30d" | "90d" | "all"`, `entitlement`: `"free" | "pro"`)
 - `progress_exercise_chart_changed` (`exercise_id`: `string`)
 
 ---
@@ -107,7 +108,7 @@ As a user working toward a body transformation goal over months, I want an inter
 | **Labels** | `production`, `mobile`, `progress`, `measurements` |
 | **Target Screens** | `BodyMeasurementsScreen`, `LogMeasurementSheet` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `New` (`GET /v1/measurements`, `action: "body_measurement"`) |
+| **Backend Status** | `Implemented` (`GET /v1/measurements`, `action: "body_measurement"`) |
 
 ### STORY
 As a user undergoing body recomposition or fat loss where the scale sometimes stalls while clothes fit looser, I want to track body circumferences (waist, chest, hips, arms, thighs, neck) and optional body fat percentage over time so I can see real centimeter changes.
@@ -126,9 +127,9 @@ As a user undergoing body recomposition or fat loss where the scale sometimes st
    - Subtle `"How to measure consistently?"` guide diagram (same time of day, relaxed tape).
 
 ### API & BACKEND CONTRACT
-1. **`[NEW BACKEND] GET /v1/measurements?from={date}&to={date}&offset=0&limit=30`**
+1. **`GET /v1/measurements?from={date}&to={date}&offset=0&limit=30`**
    - Returns paginated `{ id, date, waistCm, hipsCm, chestCm, neckCm, leftArmCm, rightArmCm, leftThighCm, rightThighCm, bodyFatPct, notes }`.
-2. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "body_measurement"`)
+2. **`POST /v1/commands?view=receipt`** (`action: "body_measurement"`)
    - Payload: `{ "date": "2026-11-21", "waistCm": 84.5, "chestCm": 101.0, "hipsCm": 96.0, "rightArmCm": 35.5, "bodyFatPct": 18.2, "notes": "Morning fasted" }`.
    - Error Codes: `NUMBER_OUT_OF_RANGE` (`20..250 cm`, `bodyFatPct` `3..65%`), `EMPTY_MEASUREMENT_RECORD`.
 
@@ -178,7 +179,7 @@ As a user undergoing body recomposition or fat loss where the scale sometimes st
 | **Labels** | `production`, `mobile`, `progress`, `photos`, `privacy`, `pro-feature` |
 | **Target Screens** | `ProgressPhotosVaultScreen`, `GuidedPhotoCaptureScreen`, `PhotoCompareSliderScreen` |
 | **Entitlement** | `Freemium` (`Free`: Local-only device storage up to 6 photos; `Pro`: Unlimited encrypted R2 cloud vault + cross-device sync + Before/After export; downgraded users retain full `GET`/`DELETE` access to existing cloud photos) |
-| **Backend Status** | `New` (`GET /v1/progress/photos`, `POST /v1/progress/photos/upload-url`, `POST /v1/progress/photos/confirm`, `DELETE /v1/progress/photos/{id}`, `GET /v1/media/signed/{token}`) |
+| **Backend Status** | `Implemented` (`GET /v1/progress/photos`, `POST /v1/progress/photos/upload-url`, `POST /v1/progress/photos/confirm`, `DELETE /v1/progress/photos/{photoId}`, `GET` / `PUT /v1/media/signed/{token}`) |
 
 ### STORY
 As a user documenting my visual physique changes, I want a private, passcode/biometric-protected Progress Photos Vault with guided Front/Side/Back alignment frames, a strict choice between Local-Only storage (never leaves my phone) or Encrypted Cloud backup, and a Before & After comparison slider so I can see subtle visual changes safely and privately.
@@ -191,7 +192,7 @@ As a user documenting my visual physique changes, I want a private, passcode/bio
    - Optional **Biometric / Face ID / Fingerprint Lock Toggle** (`"Require Face ID / Fingerprint to open Photos Vault"` — blurred preview cards in app switcher!).
    - Explicit Storage Choice Toggle:
      - `Device-Only (Private Local Vault)`: Zero photos leave the device (encrypted in app sandbox).
-     - `Encrypted Cloud Backup (Pro)`: Synced via private Worker-proxied HMAC-signed R2 URLs (`/v1/media/signed/{token}` — private bucket, never public URLs!).
+     - `Encrypted Cloud Backup (Pro)`: Synced via private user-bound Worker-proxied HMAC-signed R2 URLs (`/v1/media/signed/{token}` — private bucket, never public URLs!).
 2. **Timeline Gallery (`ProgressPhotosVaultScreen`):**
    - Grouped by date (`Nov 21 • 81.4 kg` | `Oct 15 • 85.0 kg`) with Pose tags (`Front`, `Side`, `Back`).
    - `[+ Add Photo]` and `[Compare Two Dates ↔]` buttons.
@@ -202,32 +203,32 @@ As a user documenting my visual physique changes, I want a private, passcode/bio
    - Optional `[Save / Share Comparison]` (offers clean `"Blur Face"` privacy toggle before exporting!).
 
 ### API & BACKEND CONTRACT
-1. **`[NEW BACKEND] POST /v1/progress/photos/upload-url`** (Pro Cloud Sync only — **only endpoint gated by `402 PRO_ENTITLEMENT_REQUIRED`**)
-   - Request: `{ "date": "2026-11-21", "pose": "front" | "side" | "back", "contentType": "image/webp" | "image/jpeg", "byteSize": 245000 }`.
-   - Response: `{ "photoId": "ph_<uuid>", "uploadUrl": "/v1/media/signed/<hmac-put-token>", "maxBytes": 2097152 }`.
-2. **`[NEW BACKEND] POST /v1/progress/photos/confirm`** -> Finalizes metadata (`photoId`, `date`, `pose`, `weightKgSnapshot`) in D1 (`coaching_progress_photos`).
-3. **`[NEW BACKEND] GET /v1/progress/photos?offset=0&limit=30`** -> Returns metadata + short-lived (`15m`) Worker-proxied HMAC-signed download URLs (`/v1/media/signed/{token}`). **Always accessible even if a former Pro user downgraded to Free!**
-4. **`[NEW BACKEND] DELETE /v1/progress/photos/{id}`** -> Deletes from both R2 object storage AND D1 metadata immediately (**always accessible to downgraded Free users**).
-5. **`[NEW BACKEND] GET /v1/media/signed/{token}`** (and `PUT /v1/media/signed/{token}`) -> Worker-proxied HMAC-SHA256 signed R2 media streaming & upload endpoint (`15m` TTL, zero raw R2 credentials exposed).
-   - Error Codes: `402 PRO_ENTITLEMENT_REQUIRED` (`upload-url` only), `404 PHOTO_NOT_FOUND`, `413 PHOTO_TOO_LARGE` (`> 2 MB`).
+1. **`POST /v1/progress/photos/upload-url`** (Pro Cloud Sync only — **only photos endpoint gated by `402 PRO_ENTITLEMENT_REQUIRED`** when `ENFORCE_PRO_ENTITLEMENTS=true`)
+   - Required Request Fields: `{ "date": "2026-11-21", "pose": "front" | "side" | "back", "contentType": "image/webp" | "image/jpeg" | "image/png", "byteSize": 245000 }` (max **5 MB / `5242880` bytes**).
+   - Response: `{ "photoId": "photo_<uuid>", "objectKey": "users/{userId}/photos/photo_<uuid>.webp", "uploadUrl": "/v1/media/signed/<hmac-put-token>", "maxBytes": 5242880, "expiresAt": "<iso8601>" }`.
+2. **`POST /v1/progress/photos/confirm`** -> Finalizes metadata in D1 (`coaching_progress_photos`). Required fields: `[photoId, pose, date]`; `objectKey` and `weightKgSnapshot` are optional.
+3. **`GET /v1/progress/photos?offset=0&limit=30`** -> Returns metadata + short-lived (`15m` / `900s`) user-bound Worker-proxied HMAC-signed download URLs (`/v1/media/signed/{token}`). **ALWAYS accessible even after a Pro user downgrades to Free.**
+4. **`DELETE /v1/progress/photos/{photoId}`** -> Deletes from both R2 object storage AND D1 metadata immediately (**ALWAYS accessible even after Pro downgrade**).
+5. **`GET` / `PUT /v1/media/signed/{token}`** -> User-bound Worker-proxied HMAC-SHA256 signed R2 media streaming & upload endpoint (`15m` GET / `10m` PUT TTL, zero raw R2 credentials exposed), returning **`403 INVALID_MEDIA_TOKEN`** on invalid, mismatched-user, or expired tokens.
+   - Error Codes: `402 PRO_ENTITLEMENT_REQUIRED` (`upload-url` only when enforcement enabled), `403 INVALID_MEDIA_TOKEN`, `404 PHOTO_NOT_FOUND`, `413 PHOTO_TOO_LARGE` (`> 5 MB`), `415 UNSUPPORTED_IMAGE_FORMAT`.
 
 ### RULES & BUSINESS LOGIC
 1. **Never Expose Photos to OS Public Gallery:** Photos taken in-app save strictly inside private app internal directory (`Context.filesDir` / iOS `Application Support`) with `.nomedia` on Android so personal physique photos never appear in Google Photos / Apple Photos or WhatsApp attachments!
-2. **GDPR Complete Erasure:** `DELETE /v1/account/delete` (`US-PRF-06`) also purges all R2 objects under `users/{userId}/photos/*` atomically.
+2. **GDPR Complete Erasure:** `DELETE /v1/account/delete` (`US-PRF-06`) also purges all R2 objects under `users/{userId}/photos/*` after atomic D1 deletion.
 3. **Biometric Gate:** If `"Vault Lock"` is active, require OS BiometricPrompt / `LAContext` before revealing thumbnails.
-4. **Non-Hostage Downgrade Policy:** If a Pro user cancels and reverts to Free, `402 PRO_ENTITLEMENT_REQUIRED` ONLY gates new `POST /v1/progress/photos/upload-url` requests; existing cloud photos remain 100% viewable (`GET /v1/progress/photos`) and deletable (`DELETE /v1/progress/photos/{id}`).
+4. **Non-Hostage Downgrade Policy:** If a Pro user cancels and reverts to Free, `402 PRO_ENTITLEMENT_REQUIRED` ONLY gates new `POST /v1/progress/photos/upload-url` requests; existing cloud photos remain 100% viewable (`GET /v1/progress/photos`) and deletable (`DELETE /v1/progress/photos/{photoId}`).
 
 ### MAIN FLOW
 1. User opens `Progress` -> `Photos Vault`, authenticates with Face ID, and taps `[+ Add Photo]`.
 2. User picks `Front` pose, enables `5s` timer + `Ghost Overlay`, snaps photo (`310 KB` WebP), and reviews.
-3. Since Pro Cloud Backup is enabled, client gets a Worker-proxied HMAC-signed upload URL via `POST /v1/progress/photos/upload-url`, uploads to `/v1/media/signed/{token}`, and calls `confirm`.
+3. Since Pro Cloud Backup is enabled, client gets a Worker-proxied HMAC-signed upload URL via `POST /v1/progress/photos/upload-url`, uploads via `PUT /v1/media/signed/{token}`, and calls `POST /v1/progress/photos/confirm`.
 4. User taps `[Compare]` -> Selects Oct 15 vs Nov 21 and drags slider cleanly across the visual progress.
 
 ### EDGE CASES
 - **Upload Fails Offline While Cloud Backup Enabled:** Store photo securely in local pending vault queue (`syncStatus: "pending_upload"`) and upload automatically once online.
 - **Biometrics Unavailable / Failed 3 Times:** Fall back gracefully to device passcode (`DEVICE_CREDENTIAL`) via OS biometric API.
 - **Free User Attempts to Add 7th Photo (`> 6` Local Vault Cap):** Displays Soft Paywall value prompt (`[Unlock Unlimited Encrypted Cloud Vault]`) while keeping all 6 existing photos completely accessible & deletable!
-- **Signed Worker Media URL Expires (`15m` TTL) While Gallery Stays Open:** Client transparently refreshes metadata via `GET /v1/progress/photos` on `403/404` signed-URL expiration without breaking image tiles.
+- **Signed Worker Media URL Expires (`15m` TTL) While Gallery Stays Open:** Client transparently refreshes metadata via `GET /v1/progress/photos` on `403 INVALID_MEDIA_TOKEN` expiration without breaking image tiles.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Device-only storage prevents any cloud photo upload**
@@ -236,8 +237,8 @@ As a user documenting my visual physique changes, I want a private, passcode/bio
   - **Then** zero calls are made to `/v1/progress/photos/upload-url` and the photo is excluded from OS public gallery.
 - **Scenario 2: Deleting a cloud photo removes both D1 record and R2 asset**
   - **Given** an uploaded cloud progress photo
-  - **When** user deletes it via `DELETE /v1/progress/photos/{id}`
-  - **Then** it disappears immediately from UI and subsequent `GET /v1/progress/photos` lists.
+  - **When** user deletes it via `DELETE /v1/progress/photos/{photoId}`
+  - **Then** it disappears immediately from UI and subsequent `GET /v1/progress/photos` lists (even if the user later downgraded to Free).
 - **Scenario 3: Vault lock hides thumbnails until biometric/passcode authentication passes**
   - **Given** `"Require Face ID / Fingerprint"` is enabled in Photos Vault
   - **When** user opens `ProgressPhotosVaultScreen`
@@ -260,7 +261,7 @@ As a user documenting my visual physique changes, I want a private, passcode/bio
 | **Labels** | `production`, `mobile`, `retention`, `streaks`, `gamification` |
 | **Target Screens** | `StreaksAndBadgesSheet`, `WeeklyWrappedModal` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `New` (`GET /v1/progress/weekly-wrapped`, `action: "streak_freeze"`, extended `bootstrap.streakSummary`) |
+| **Backend Status** | `Implemented` (`GET /v1/progress/weekly-wrapped`, `action: "streak_freeze"`, `bootstrap.streakSummary`) |
 
 ### STORY
 As a user building sustainable healthy habits, I want a motivating but forgiving **Gentle Streak** system (including 1 automatic or manual **Streak Freeze Day** per week so a single busy day never resets my hard work to zero), achievement badges, and a visual weekly recap card ("Weekly Wrapped") celebrating my consistency.
@@ -273,20 +274,20 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
    - **Current Streak Counter:** `"🔥 12-Day Active Streak • Best: 21 Days"`
    - **Qualifying Daily Activities Explained Clearly:** *"Any of: Logging >= 1 meal, finishing a workout (or active Rest day check-in), reaching 80% water, or submitting a recovery check-in keeps your streak alive!"*
    - **Streak Freeze Shield (`❄️ 1 Freeze Available This Week`):**
-     - Allows manually pausing a scheduled missed day OR auto-protects 1 inactive day per 7-day rolling window without breaking the streak!
-   - **Milestone Badges Grid (8 Clean Unlockable Badges):**
+     - Allows manually pausing a scheduled missed day OR auto-protects 1 inactive day per 7-day rolling window without breaking the streak (`coaching_streak_freezes.auto_applied` in consolidated `drizzle/0006_production_features.sql`).
+   - **Milestone Badges Grid (Up to 8 Unlockable Badges):**
      - `First Step (Day 1)`, `7-Day Rhythm`, `30-Day Warrior`, `Hydration Master (7d 80%+)`, `First Double Progression PR`, `10-Day Food Evidence Unlock`, `Consistency Hero (4 Weeks)`, `Goal Milestone Reached`.
 2. **Weekly Wrapped Card (`WeeklyWrappedModal` — Triggered Every Friday/Saturday Morning or Accessible Anytime):**
    - Story-style clean summary cards for the past 7 days:
-     - Card 1: `Weekly Adherence Score: 88%` (Meals logged + Workouts completed + Hydration days)
+     - Card 1: `Weekly Adherence Score: 88%` (multi-track `adherenceScorePct` accurately computed for `nutrition_only`, `workouts_only`, and `nutrition_and_workouts`)
      - Card 2: `Training Summary: 4 Workouts • 14,250 kg Lifted • 2 New PRs`
      - Card 3: `Nutrition & Weight: Avg 1,840 kcal • 142g Protein/day • -0.5 kg Trend`
      - Card 4: `[Share Weekly Recap]` (privacy-safe image without raw clinical flags) + `[Plan Next Week]`.
 
 ### API & BACKEND CONTRACT
-1. **`[MODIFIED BACKEND] GET /v1/bootstrap`** -> Returns compact `streakSummary`: `{ currentDays, longestDays, freezeAvailable, freezeUsedDates[], todayQualified }`.
-2. **`[NEW BACKEND] GET /v1/progress/weekly-wrapped?weekEnd={YYYY-MM-DD}`** -> Returns aggregated 7-day scorecard + unlocked badges array.
-3. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "streak_freeze"`) -> `{ "date": "2026-11-21" }` (max 1 freeze per 7 calendar days).
+1. **`GET /v1/bootstrap`** -> Returns compact `streakSummary`: `{ currentDays, longestDays, freezeAvailable, freezeUsedDates[], todayQualified }`.
+2. **`GET /v1/progress/weekly-wrapped?weekEnd={YYYY-MM-DD}`** -> Computes multi-track `adherenceScorePct` (works accurately across `nutrition_only`, `workouts_only`, and `nutrition_and_workouts`) and returns aggregated 7-day scorecard + up to 8 unlocked milestone badges (`badgesUnlocked[]`).
+3. **`POST /v1/commands?view=receipt`** (`action: "streak_freeze"`) -> `{ "date": "2026-11-21" }` (max 1 freeze per 7 calendar days; stored in `coaching_streak_freezes` with `auto_applied` column).
    - Error Codes: `409 STREAK_FREEZE_UNAVAILABLE` (weekly freeze quota already used).
 
 ### RULES & BUSINESS LOGIC
@@ -302,7 +303,7 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
 - **First Week (< 7 Days Since Onboarding):** Weekly Wrapped waits until `>= 5` days after `journeyStartedOn` before prompting proactively, while remaining viewable manually.
 - **Free User Already Used Weekly Streak Freeze (`STREAK_FREEZE_UNAVAILABLE`):** Disables extra freeze activation for the remaining 7-day window and displays clear countdown (`"Next freeze unlocks in 4 days"`).
 - **Timezone Travel Across Midnight Border (`Cairo -> London`):** Streak date calculation locks cleanly to `profile.timezone` (`US-PRF-05`) so flying late at night never falsely breaks a streak!
-- **Weekly Wrapped With `nutrition_only` or `workouts_only` Track:** Automatically omits inactive-domain metrics (e.g., `nutrition_only` hides lifted `kg` volume card and celebrates full diet & hydration adherence cleanly).
+- **Weekly Wrapped With `nutrition_only` or `workouts_only` Track:** Computes multi-track `adherenceScorePct` accurately for the active domain and omits inactive-domain metrics (e.g., `nutrition_only` hides lifted `kg` volume card while `workouts_only` celebrates full training & hydration adherence cleanly).
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Streak Freeze preserves active streak across one missed day**
@@ -313,10 +314,10 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
   - **Given** `freezeAvailable == false`
   - **When** user inspects `StreaksAndBadgesSheet`
   - **Then** the `[Use Freeze]` control is disabled with next unlock date (`STREAK_FREEZE_UNAVAILABLE`).
-- **Scenario 3: Weekly Wrapped summarizes single-track users without blank or zeroed training cards**
-  - **Given** `serviceTrack == "nutrition_only"` and user had 85% diet/hydration adherence
+- **Scenario 3: Weekly Wrapped summarizes single-track users without blank or zeroed cards**
+  - **Given** `serviceTrack == "nutrition_only"` (or `"workouts_only"`) and user had 85% adherence in their active domain
   - **When** `WeeklyWrappedModal` opens
-  - **Then** nutrition and hydration highlights display cleanly and training volume cards are omitted.
+  - **Then** `adherenceScorePct` reflects active-track consistency cleanly, up to 8 eligible milestone badges award properly, and inactive-domain cards are omitted.
 
 ### ANALYTICS
 - `streak_sheet_viewed` (`current_days`: `integer`, `freeze_available`: `boolean`)
@@ -336,7 +337,7 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
 | **Labels** | `production`, `mobile`, `widgets`, `android-glance`, `ios-widgetkit` |
 | **Target Screens** | OS Home Screen / Lock Screen Widgets (Small `2x2` & Medium `4x2`) |
 | **Entitlement** | `Free` *(Core daily glanceability drives massive retention)* |
-| **Backend Status** | `New` (`GET /v1/widgets/snapshot`) + `Existing` (`water` command for interactive +1 Cup) |
+| **Backend Status** | `Implemented` (`GET /v1/widgets/snapshot`, `action: "water"`) |
 
 ### STORY
 As a busy phone user checking my home screen dozens of times a day, I want lightweight Android (Jetpack Glance) and iOS (WidgetKit) widgets showing my remaining calories & macros, 1-tap `+1 Cup` water counter, today's scheduled workout status, and live fasting timer without even opening the full app.
@@ -354,9 +355,9 @@ As a busy phone user checking my home screen dozens of times a day, I want light
 3. **Logged-Out / Stale State:** Clean placeholder `"Tap to sign in to CuraFit"`.
 
 ### API & BACKEND CONTRACT
-1. **`[NEW BACKEND] GET /v1/widgets/snapshot`**
+1. **`GET /v1/widgets/snapshot`**
    - Ultra-compact `< 1.5 KB` endpoint returning strictly `{ date, timezone, serviceTrack, caloriesRemaining, caloriesTarget, proteinGrams, carbsGrams, fatGrams, waterCups, waterTargetCups, fastingPhase, fastingEndsAt, nextWorkoutFocus, workoutStatus }` with short ETag caching for background widget refreshes.
-2. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "water"`, `addCups: 1`) -> Invoked directly by iOS AppIntent / Android BroadcastReceiver when user taps `+1 Cup` on the home screen!
+2. **`POST /v1/commands?view=receipt`** (`action: "water"`, `addCups: 1`) -> Invoked directly by iOS AppIntent / Android BroadcastReceiver when user taps `+1 Cup` on the home screen!
 
 ### RULES & BUSINESS LOGIC
 1. **Midnight Stale Reset:** If `snapshot.date != deviceLocalDate()`, widget renders fresh day baseline (`0` consumed, full target, or background timeline entry at `00:01`) so yesterday's calories never linger at `8:00 AM`!

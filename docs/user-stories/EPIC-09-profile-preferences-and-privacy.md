@@ -33,17 +33,17 @@
 | **Labels** | `production`, `mobile`, `profile`, `avatar` |
 | **Target Screens** | `ProfileOverviewScreen`, `EditNameAndAvatarSheet` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `New` (`POST /v1/profile/avatar`, `DELETE /v1/profile/avatar`, `action: "profile_update"`) |
+| **Backend Status** | `Implemented` (`POST /v1/profile/avatar`, `DELETE /v1/profile/avatar`, `action: "profile_update"`, `GET /v1/auth/oauth/providers`, `POST /v1/auth/oauth/link`, `DELETE /v1/auth/oauth/{provider}`) |
 
 ### STORY
-As a logged-in user opening the Profile tab, I want to see my name, avatar photo, subscription tier badge, current program summary, quick shortcuts to Analytics/Measurements/Photos/Connected Apps, and easily update my display name or profile photo so my account feels personal and organized.
+As a logged-in user opening the Profile tab, I want to see my name, avatar photo, connected Google/Apple sign-in methods, subscription tier badge, current program summary, quick shortcuts to Analytics/Measurements/Photos/Connected Apps, and easily update my display name or profile photo so my account feels personal and organized.
 
 ### PRECONDITIONS
-- User is authenticated with `onboardingCompleted == true`.
+- User is authenticated with `onboardingCompleted == true` (mobile authentication uses **Google Sign-In and Apple Sign-In OAuth ONLY** — no email/password login, Forgot Password, or Change Password UI exists in the mobile app).
 
 ### SCREEN AND UI DETAILS
 1. **Profile Header Card:**
-   - Circular Avatar (`72dp`) showing uploaded photo, Google/Apple avatar, or styled monogram initials + subtle camera edit badge.
+   - Circular Avatar (`72dp`) showing uploaded photo (hydrated via short-lived 900s signed `avatarUrl` in `GET /v1/bootstrap` and auth responses), Google/Apple avatar, or styled monogram initials + subtle camera edit badge.
    - Display Name (`profile.name`), Linked Sign-In Email & Provider pill (`Google` / `Apple`), and Entitlement Pill (`Free Plan` -> `[Upgrade to Pro]` OR `CuraFit Pro ✓` -> `[Manage]`).
 2. **Active Program Summary Strip:**
    - Quick KPIs: `Weight: 81.4 kg`, `Goal: Lose Fat -> 75 kg`, `Calories: 1,850 kcal/d`, `Track: Nutrition + Workouts (4d/wk)`.
@@ -51,21 +51,29 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
    - **My Progress & Body Tools:** `Weight & Analytics` (`US-PRG-01`), `Body Measurements` (`US-PRG-02`), `Private Photos Vault` (`US-PRG-03`), `Streaks & Badges` (`US-PRG-04`).
    - **My Plan & Coaching Preferences:** `Body Metrics & Goal` (`US-PRF-02`), `Training & Dual-Mode Setup` (`US-PRF-03`), `Nutrition & Food Exclusions` (`US-PRF-04`).
    - **App & Integrations:** `Apple Health / Health Connect` (`US-INT-01`), `Notifications & Quiet Hours` (`US-INT-02`), `Language, Region & Units` (`US-PRF-05`).
-   - **Account & Privacy:** `Subscription & Billing` (`US-MON-04`), `Privacy, Consents & Export` (`US-PRF-06`), `Help, Legal & App Info` (`US-PRF-07`).
+   - **Account & Privacy:** `Connected Sign-In Methods (Google / Apple)`, `Subscription & Billing` (`US-MON-04`), `Privacy, Consents & Export` (`US-PRF-06`), `Help, Legal & App Info` (`US-PRF-07`).
 4. **Edit Name & Avatar Bottom Sheet (`EditNameAndAvatarSheet`):**
-   - Photo options: `[Take Photo]`, `[Choose from Gallery]`, `[Remove Photo]` (compresses to square `512x512` WebP/JPEG `< 200 KB`).
+   - Photo options: `[Take Photo]`, `[Choose from Gallery]`, `[Remove Photo]` (compresses to square `512x512` JPEG/PNG/WebP `<= 512 KB` / `524288` bytes).
    - Name input field (`2..50` alphabetic chars + spaces/hyphens, matching `US-MOB-03` validation!) + `[Save Changes]`.
+5. **Connected Sign-In Methods Sheet (`ConnectedAuthMethodsSheet`):**
+   - Lists linked providers from `GET /v1/auth/oauth/providers` (Google, Apple).
+   - Allows linking a second provider (`[Link Google]` / `[Link Apple]` -> `POST /v1/auth/oauth/link`) or unlinking a secondary provider (`DELETE /v1/auth/oauth/{provider}` — prevents unlinking the last remaining sign-in method via `409 CANNOT_UNLINK_LAST_AUTH_METHOD`).
 
 ### API & BACKEND CONTRACT
-1. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "profile_update"`)
-   - Lightweight profile metadata command (`name`, optional `workoutUiMode`) that updates `s.profile` **without** regenerating meal/workout plans!
-   - Payload: `{ "name": "Ahmed Hassan" }`.
-2. **`[NEW BACKEND] POST /v1/profile/avatar`** (Multipart image `<= 512 KB` -> stored in private Cloudflare R2, returns `{ avatarUrl }` using Worker-proxied HMAC-signed `/v1/media/signed/{token}`) & **`DELETE /v1/profile/avatar`**.
-   - Error Codes: `400 INVALID_PROFILE_NAME`, `413 PHOTO_TOO_LARGE`, `415 UNSUPPORTED_IMAGE_FORMAT`.
+1. **`POST /v1/commands?view=receipt`** (`action: "profile_update"`)
+   - Lightweight profile metadata command (`name`, optional `workoutUiMode`, optional `unitSystem: "metric" | "imperial"`) that updates `s.profile` **without** regenerating meal/workout plans!
+   - Payload: `{ "name": "Ahmed Hassan", "unitSystem": "metric" }`.
+2. **`POST /v1/profile/avatar`** (JPEG/PNG/WebP up to **512 KB / `524288` bytes** stored in private Cloudflare R2; returns short-lived signed `avatarUrl` with 900s TTL via `/v1/media/signed/{token}`, also hydrated automatically on `GET /v1/bootstrap` and auth responses) & **`DELETE /v1/profile/avatar`**.
+   - Error Codes: `400 INVALID_PROFILE_NAME`, `400 INVALID_UNIT_SYSTEM`, `413 PHOTO_TOO_LARGE` (`> 512 KB`), `415 UNSUPPORTED_IMAGE_FORMAT`.
+3. **Connected OAuth Linking Endpoints (Google & Apple Only):**
+   - **`GET /v1/auth/oauth/providers`** -> Lists linked Google/Apple identities for the signed-in account.
+   - **`POST /v1/auth/oauth/link`** -> `{ "provider": "google" | "apple", "idToken"?, "identityToken"?, "authorizationCode"? }`.
+   - **`DELETE /v1/auth/oauth/{provider}`** -> Unlinks provider; returns `409 CANNOT_UNLINK_LAST_AUTH_METHOD` if it is the user's last remaining sign-in method.
 
 ### RULES & BUSINESS LOGIC
-1. **Non-Destructive Name Edit:** Editing `name` or uploading an avatar uses `profile_update` (or avatar endpoint) and NEVER triggers unnecessary meal/workout plan regeneration or resets active streaks.
+1. **Non-Destructive Name Edit:** Editing `name`, `unitSystem`, or uploading an avatar uses `profile_update` (or avatar endpoint) and NEVER triggers unnecessary meal/workout plan regeneration or resets active streaks.
 2. **Name Validation Parity (`US-MOB-03`):** Enforce identical `2..50` char validation rejecting digits-only, symbols-only, or emoji-only strings.
+3. **Last Sign-In Method Protection:** Disable or confirm against unlinking the sole remaining OAuth provider (`409 CANNOT_UNLINK_LAST_AUTH_METHOD`) so users can never lock themselves out of their account.
 
 ### MAIN FLOW
 1. User taps Tab 5 (`Profile`), then taps the `Edit ✏️` icon on the Profile Header.
@@ -76,26 +84,28 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 - **Offline Name Edit:** Queues `profile_update` into outbox and updates UI immediately; avatar photo upload shows `"Connect to internet to upload photo"` gracefully.
 - **Permission Denied for Camera/Gallery:** Show rationale dialog + `[Open System Settings]` without crashing.
 - **Name Fails Validation (`< 2` chars, Digits-Only `"12345"`, or Symbols `"@@"`):** Inline localized error matching `INVALID_PROFILE_NAME` (`US-MOB-03`) blocks submission safely.
-- **Avatar Exceeds `512 KB` Raw Gallery Image (`> 10 MB` DSLR Photo):** Client automatically crops to `512x512` and compresses JPEG/WebP `< 200 KB` prior to multipart upload so `413 PHOTO_TOO_LARGE` never blocks normal users.
+- **Avatar Exceeds `512 KB` Raw Gallery Image (`> 10 MB` DSLR Photo):** Client automatically crops to `512x512` and compresses JPEG/PNG/WebP `<= 512 KB` prior to upload so `413 PHOTO_TOO_LARGE` never blocks normal users.
+- **Attempting to Unlink Last OAuth Provider (`409 CANNOT_UNLINK_LAST_AUTH_METHOD`):** Shows clear inline explanation *"Link another sign-in method (Google or Apple) before removing your only sign-in method."*
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Editing display name updates profile without regenerating active plans**
   - **Given** user is on `ProfileOverviewScreen` with active plan `plan-123`
   - **When** user changes `name` to `"Sara Karim"` and saves
   - **Then** `profile_update` commits, Today greeting updates to `"Sara Karim"`, and `activeNutritionPlanRef.id` remains `plan-123`.
-- **Scenario 2: Selecting a large phone gallery photo compresses under limit cleanly**
+- **Scenario 2: Selecting a large phone gallery photo compresses under 512 KB cleanly**
   - **Given** user picks an `8 MB` portrait photo from the phone gallery
   - **When** user crops and confirms upload
-  - **Then** client compresses to `<= 200 KB` WebP/JPEG and `POST /v1/profile/avatar` returns `200 OK` with `avatarUrl`.
-- **Scenario 3: Offline name edit persists locally and queues for sync**
-  - **Given** the phone is offline
-  - **When** user updates `name` from `"Ahmed"` to `"Ahmed Ali"`
-  - **Then** Header updates immediately and `outbox_commands` enqueues `profile_update` cleanly.
+  - **Then** client compresses to `<= 512 KB` JPEG/PNG/WebP and `POST /v1/profile/avatar` returns `200 OK` with a short-lived signed `avatarUrl` (900s TTL).
+- **Scenario 3: Unlinking the last remaining sign-in method is blocked cleanly**
+  - **Given** user has only Google linked
+  - **When** attempting `DELETE /v1/auth/oauth/google`
+  - **Then** server returns `409 CANNOT_UNLINK_LAST_AUTH_METHOD` and keeps Google linked.
 
 ### ANALYTICS
-- `profile_overview_viewed` (`entitlement`: `"free" | "premium"`)
+- `profile_overview_viewed` (`entitlement`: `"free" | "pro"`)
 - `profile_name_updated` (`length`: `integer`)
 - `profile_avatar_updated` (`action`: `"upload" | "remove"`)
+- `oauth_provider_link_updated` (`provider`: `"google" | "apple"`, `action`: `"link" | "unlink"`)
 
 ---
 
@@ -110,7 +120,7 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 | **Labels** | `production`, `mobile`, `profile`, `goals`, `recalculation` |
 | **Target Screens** | `EditBodyAndGoalScreen` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Modified` (`POST /v1/eligibility`, `action: "generate"` preserving historical logs on profile update) |
+| **Backend Status** | `Implemented` (`POST /v1/eligibility`, `POST /v1/plans/preview`, `action: "generate"`) |
 
 ### STORY
 As a user whose goals, age, maternal status, or target weight evolve over time, I want to edit my body measurements, maternal status, primary fitness goal, target weight, and pace with live calorie/macro recalculation preview and clinical safety guards — while preserving 100% of my past food, weight, and workout history.
@@ -134,16 +144,16 @@ As a user whose goals, age, maternal status, or target weight evolve over time, 
    - Primary CTA: `[Recalculate & Update Plan]`.
 
 ### API & BACKEND CONTRACT
-1. **`[MODIFIED BACKEND] POST /v1/eligibility`** -> Pre-screens updated demographics/goal/maternal status.
-2. **`[MODIFIED BACKEND] POST /v1/commands?view=full`** (`action: "generate"`)
+1. **`POST /v1/eligibility`** -> Pre-screens updated demographics/goal/maternal status.
+2. **`POST /v1/commands?view=full`** (`action: "generate"`)
    - Sends complete merged preferences + new biometrics/goal with current server `revision`.
    - Server automatically archives previous profile into `s.history`, archives old plans into `s.plans`/`s.workoutArchives`, generates new active plans effective `currDate`, resets `s.nutritionContextStartedOn = currDate`, and **retains all historical `foodEntries`, `waterLogs`, `weights`, `workoutLogs`, `sessions`, and `checkins`**!
    - **Note on Existing Today Logs (`FUTURE_FOOD_ENTRIES_CONFLICT` protection):** If user already logged food today (`date == currDate`), notify clearly *"Today's logged meals stay safe in your diary; updated targets apply from this moment onward."*
-   - Error Codes: `INVALID_TARGET_WEIGHT`, `WEIGHT_LOSS_UNDERWEIGHT_UNSAFE`, `CLINICAL_REVIEW_REQUIRED`, `BMI_OUT_OF_RANGE`.
+   - Error Codes: `403 HEALTH_CONSENT_REQUIRED`, `INVALID_TARGET_WEIGHT`, `WEIGHT_LOSS_UNDERWEIGHT_UNSAFE`, `CLINICAL_REVIEW_REQUIRED`, `BMI_OUT_OF_RANGE`.
 
 ### RULES & BUSINESS LOGIC
 1. **Strict Maternal Safety Consistency:** If user switches `maternalStatus` to `pregnant_*` or `breastfeeding` while current `dietType` is `keto` or `intermittent_fasting`, automatically alert user inside the form *"Keto / Intermittent Fasting is blocked for your maternal status — your diet style will update to Balanced (or choose another safe style) before saving."*
-2. **Zero Historical Erasure:** Never delete past food, weight, or training logs when regenerating plans (`coaching.mjs` line 86).
+2. **Zero Historical Erasure:** `coaching.mjs` preserves all past food, weight, and training logs when regenerating plans on an existing account.
 3. **Senior Mode Auto-Enforcement:** Changing `age` to `>= 70` enables `seniorMode = true`, hides `fast` pace, raises protein floor `>= 1.2 g/kg`, and updates workout exclusions immediately.
 
 ### MAIN FLOW
@@ -188,7 +198,7 @@ As a user whose goals, age, maternal status, or target weight evolve over time, 
 | **Labels** | `production`, `mobile`, `profile`, `workouts`, `injuries` |
 | **Target Screens** | `EditTrainingSetupScreen` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Modified` (`action: "generate"` + `action: "workout_ui_mode"`) |
+| **Backend Status** | `Implemented` (`action: "generate"`, `action: "workout_ui_mode"`) |
 
 ### STORY
 As a user whose gym membership, free schedule, injuries, or coaching track changed (for instance, switching from Home Only to Gym, upgrading from Nutrition Only to Nutrition + Workouts, or reporting a new knee injury), I want to edit my complete training setup in one clean screen so my workout schedule and safety exclusions update safely.
@@ -216,9 +226,9 @@ As a user whose gym membership, free schedule, injuries, or coaching track chang
    - Changed schedule/equipment/injuries/track -> `[Update Workout Program]` (calls `generate` -> forks/creates workout plan + refreshes daily water workout-day boost if schedule changed).
 
 ### API & BACKEND CONTRACT
-1. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "workout_ui_mode"`) -> When only UI mode changed.
-2. **`[MODIFIED BACKEND] POST /v1/commands?view=full`** (`action: "generate"`) -> Rebuilds workout plan (and nutrition plan if `serviceTrack` changed).
-   - Error Codes: `WORKOUT_INFEASIBLE`, `NO_ELIGIBLE_EXERCISES`, `HEALTH_CONFIRMATION_REQUIRED`.
+1. **`POST /v1/commands?view=receipt`** (`action: "workout_ui_mode"`) -> When only UI mode changed.
+2. **`POST /v1/commands?view=full`** (`action: "generate"`) -> Rebuilds workout plan (and nutrition plan if `serviceTrack` changed).
+   - Error Codes: `403 HEALTH_CONSENT_REQUIRED`, `WORKOUT_INFEASIBLE`, `NO_ELIGIBLE_EXERCISES`, `HEALTH_CONFIRMATION_REQUIRED`.
 
 ### RULES & BUSINESS LOGIC
 1. **Immediate Contraindication Audit:** Adding an injury (e.g., `lower_back`) immediately excludes contraindicated exercises (`deadlift`, `good morning`, `back squat`) and clears `workoutSafetyIssues`.
@@ -266,7 +276,7 @@ As a user whose gym membership, free schedule, injuries, or coaching track chang
 | **Labels** | `production`, `mobile`, `profile`, `nutrition`, `medical-safety` |
 | **Target Screens** | `EditNutritionPrefsScreen` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Modified` (`action: "generate"` with full dietary/clinical fields) |
+| **Backend Status** | `Implemented` (`POST /v1/eligibility`, `action: "generate"`) |
 
 ### STORY
 As a user whose daily activity, health conditions, grocery budget, region, food dislikes, or preferred diet school changed, I want to update my nutrition preferences with live medical diet filtering and zero-compromise ingredient exclusion validation so my meal plan stays appetizing, affordable, and medically safe.
@@ -286,8 +296,8 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 2. **Primary CTA:** `[Generate Updated Meal Plan]` (`POST /v1/eligibility` -> `POST /v1/commands?view=full` `generate`).
 
 ### API & BACKEND CONTRACT
-1. **`[MODIFIED BACKEND] POST /v1/eligibility`** + **`POST /v1/commands?view=full`** (`action: "generate"`).
-   - Error Codes: `PLAN_CONSTRAINTS_UNMET`, `LIBRARY_INSUFFICIENT_FOR_DIET_GOALS`, `NO_ELIGIBLE_MEAL_FOR_SLOT`, `KETO_REQUIRES_CONFIRMATION`, `FASTING_REQUIRES_CONFIRMATION`.
+1. **`POST /v1/eligibility`** + **`POST /v1/commands?view=full`** (`action: "generate"`).
+   - Error Codes: `403 HEALTH_CONSENT_REQUIRED`, `PLAN_CONSTRAINTS_UNMET`, `LIBRARY_INSUFFICIENT_FOR_DIET_GOALS`, `NO_ELIGIBLE_MEAL_FOR_SLOT`, `KETO_REQUIRES_CONFIRMATION`, `FASTING_REQUIRES_CONFIRMATION`.
 
 ### RULES & BUSINESS LOGIC
 1. **Constraint Integrity (`IMPLEMENTATION.md`):** Never silently clear an allergy or raise budget to make an infeasible meal plan pass (`LIBRARY_INSUFFICIENT_FOR_DIET_GOALS`); instead, display a clear helpful prompt identifying which combination (e.g., *Vegan + No Legumes + No Soy + No Nuts*) narrowed available protein templates too far.
@@ -324,7 +334,7 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 
 ---
 
-## US-PRF-05: App Language (`Arabic` RTL / `English` LTR Instant Live Switch), Digit Style & Automatic Timezone Sync
+## US-PRF-05: App Language (`Arabic` RTL / `English` LTR Instant Live Switch), Unit System, Digit Style & Automatic Timezone Sync
 
 ### METADATA
 | Field | Value |
@@ -332,13 +342,13 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 | **Story ID** | `US-PRF-05` |
 | **Epic** | `EPIC-09` |
 | **Priority** | `Highest` |
-| **Labels** | `production`, `mobile`, `profile`, `localization`, `rtl`, `timezone` |
+| **Labels** | `production`, `mobile`, `profile`, `localization`, `rtl`, `timezone`, `units` |
 | **Target Screens** | `LanguageAndRegionSettingsScreen`, `LanguagePickerSheet` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Existing` (`action: "timezone"` + localized `/v1/catalog/muscles` / `/v1/foods`) |
+| **Backend Status** | `Implemented` (`action: "timezone"`, `action: "profile_update"`, `POST /v1/devices/push-token`) |
 
 ### STORY
-As a bilingual user in the Middle East, I want to switch the entire app between **Arabic (RTL)** and **English (LTR)** instantaneously without restarting the app, choose my digit display style (Western `123` default vs Eastern Arabic), and keep my IANA timezone & regional cuisine aligned accurately when I travel.
+As a bilingual user in the Middle East, I want to switch the entire app between **Arabic (RTL)** and **English (LTR)** instantaneously without restarting the app, choose my unit system (`Metric` vs `Imperial`) and digit display style (Western `123` default vs Eastern Arabic), and keep my IANA timezone & regional cuisine aligned accurately when I travel.
 
 ### PRECONDITIONS
 - Available both inside `Profile -> Language, Region & Units` AND via the compact language pill on `SocialLoginScreen` / Onboarding header (`KAN-33` parity).
@@ -348,26 +358,31 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
    - Native Arabic script label *(Arabic — Right-to-Left layout)*
    - `English` *(English — Left-to-Right layout)*
    - Current choice marked with `✓`.
-2. **Digit Preference Toggle:** `Western Numerals (0–9) — Recommended` (Default) vs `Eastern Arabic Numerals (U+0660..U+0669)` *(Note: Input fields always accept both cleanly via `normalizeDigits`!)*.
-3. **Measurement Units Info:** Metric standard (`kg`, `cm`, `grams`, `ml / L`, `kcal`) clearly displayed (with optional display-only `lb` weight preview toggle if desired, keeping API `kg`).
+2. **Unit System Selector (`unitSystem`):**
+   - `Metric (kg, cm, ml / L)` (Default) vs `Imperial (lb, in, fl oz)` — synced via `action: "profile_update"` (`unitSystem: "metric" | "imperial"`) and hydrated in `bootstrap.profile.unitSystem` and `bootstrap.preferences.unitSystem` while keeping canonical SI metric values (`kg`, `cm`) on the API wire.
+3. **Digit Preference Toggle:** `Western Numerals (0–9) — Recommended` (Default) vs `Eastern Arabic Numerals (U+0660..U+0669)` *(Note: Input fields always accept both cleanly via `normalizeDigits`!)*.
 4. **Timezone Row:** Shows active `profile.timezone` (e.g. `Africa/Cairo (GMT+2)`) + `[Auto-Detect from Device]` switch + searchable MENA IANA timezone picker (`Cairo`, `Riyadh`, `Dubai`, `Kuwait`, `Doha`, `Manama`, `Muscat`, `Amman`, `Beirut`, `Casablanca`, `Tunis`, `Algiers`).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "timezone"`)
+1. **`POST /v1/commands?view=receipt`** (`action: "timezone"`)
    - Payload: `{ "timezone": "Asia/Riyadh", "locale": "ar-SA" }` (supports `ar-EG`, `ar-SA`, `en`, and any valid IANA timezone via `validTimeZone`).
-   - Error Codes: `400 INVALID_TIMEZONE`.
-2. **`[NEW BACKEND] POST /v1/devices/push-token`** (Re-syncs push `locale` & `timezone` whenever language/timezone updates!).
+   - Error Codes: `400 INVALID_TIMEZONE`, `400 INVALID_LOCALE`.
+2. **`POST /v1/commands?view=receipt`** (`action: "profile_update"`)
+   - Payload: `{ "unitSystem": "metric" | "imperial" }` (exposed in `bootstrap.profile` and `bootstrap.preferences`).
+   - Error Codes: `400 INVALID_UNIT_SYSTEM`.
+3. **`POST /v1/devices/push-token`** (Re-syncs push `locale` & `timezone` whenever language/timezone updates!).
 
 ### RULES & BUSINESS LOGIC
 1. **Zero-Restart Live Layout Mirroring:** Switching language updates Compose `LayoutDirection` / SwiftUI `environment(\.layoutDirection)` immediately across every active screen without losing scroll state or unsaved inputs! User-typed text (`profile.name`, manual meal names) stays untouched.
 2. **Notification Re-Scheduling (`US-INT-02`):** Immediately rewrites all local scheduled notification strings into the newly chosen language.
 3. **Offline Language Switching:** All UI strings (`ar` / `en`) live in bundled KMM string resources (`Compose Resources` / `Localizable.xcstrings`), so switching works 100% offline, queuing `timezone` (`locale`) sync cleanly into outbox if online status is unavailable.
-4. **Error & Coaching Code Localization Guarantee:** All server error codes (`contracts/error-codes.json`) and coaching/brief/review codes (`contracts/coaching-codes.json`) map `(code, params)` into the active app language cleanly on KMM.
+4. **Error & Coaching Code Localization Guarantee:** All server error codes (`contracts/error-codes.json` — 282 codes) and coaching/brief/review codes (`contracts/coaching-codes.json` — 83 codes) map `(code, params)` into the active app language cleanly on KMM.
 
 ### MAIN FLOW
-1. User opens `Profile -> Language & Region`.
+1. User opens `Profile -> Language, Region & Units`.
 2. User taps `English` -> Entire UI switches instantaneously to English & LTR without restarting, keeping `"Ahmed"` intact.
-3. App sends `POST /v1/commands` (`action: "timezone"`, `locale: "en"`) in background and updates local notifications to English.
+3. User toggles `Imperial (lb, in)` -> `profile_update` (`unitSystem: "imperial"`) syncs preference across devices while keeping canonical metric API wire payloads.
+4. App sends `POST /v1/commands` (`action: "timezone"`, `locale: "en"`) in background and updates local notifications to English.
 
 ### EDGE CASES
 - **User Signs In on a Second Phone Whose OS Language Differs From Server Profile:** Upon login restore (`US-AUTH-02`), adopt `serverProfile.locale` (if previously chosen) OR allow instant 1-tap switch if user prefers device locale.
@@ -380,10 +395,10 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
   - **Given** user's name is `"Ahmed"` and app is currently Arabic (RTL)
   - **When** user selects `English`
   - **Then** every tab, header, and error message switches to English (LTR) immediately without restarting, and `profile.name` remains `"Ahmed"`.
-- **Scenario 2: Timezone update commits via `timezone` command**
-  - **Given** user travels from Cairo to Dubai
-  - **When** user confirms timezone update to `Asia/Dubai`
-  - **Then** `POST /v1/commands` (`action: "timezone"`) sets `profile.timezone = "Asia/Dubai"` and recalculates `serverDate`.
+- **Scenario 2: Unit system persists across devices via `profile_update`**
+  - **Given** user selects `Imperial` in `LanguageAndRegionSettingsScreen`
+  - **When** `POST /v1/commands` (`action: "profile_update"`, `{ "unitSystem": "imperial" }`) commits
+  - **Then** `bootstrap.profile.unitSystem` and `bootstrap.preferences.unitSystem` return `"imperial"`.
 - **Scenario 3: Eastern Arabic numeral input parses consistently regardless of display digit preference**
   - **Given** user displays Western digits (`0–9`) but types Eastern Arabic numerals on an Arabic keyboard
   - **When** entering weight or gram weights anywhere in the app
@@ -391,6 +406,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 
 ### ANALYTICS
 - `app_language_changed` (`from_locale`: `string`, `to_locale`: `string`)
+- `unit_system_changed` (`unit_system`: `"metric" | "imperial"`)
 - `timezone_updated` (`from_tz`: `string`, `to_tz`: `string`)
 
 ---
@@ -406,7 +422,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 | **Labels** | `production`, `mobile`, `profile`, `privacy`, `gdpr`, `security`, `compliance` |
 | **Target Screens** | `PrivacyAndSecurityScreen`, `DeleteAccountConfirmModal` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Mixed` (`[EXISTING]` export/logout/POST consents + `[NEW BACKEND]` `GET /v1/account/consents`, `DELETE /v1/devices/push-token` + `[MODIFIED BACKEND]` `DELETE` & `POST /v1/account/delete` + `bootstrap.consents`) |
+| **Backend Status** | `Implemented` (`GET`/`POST /v1/account/consents`, `GET /v1/account/export`, `POST /v1/auth/logout`, `POST /v1/auth/revoke`, `DELETE /v1/devices/push-token`, `DELETE`/`POST /v1/account/delete`, `bootstrap.consents`) |
 
 ### STORY
 As a privacy-conscious user (and per Apple App Store & Google Play mandatory account deletion policies), I want a transparent Privacy Center where I can review/update my health data consents, download a complete machine-readable export of my data (GDPR), sign out of this device or all active devices, or permanently erase my account and every stored record irreversibly.
@@ -416,31 +432,33 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 
 ### SCREEN AND UI DETAILS
 1. **Privacy & Consents Section:**
-   - Displays `Health Data Processing Consent (v1.0.0 — Accepted on {date})` (hydrated from `GET /v1/bootstrap` `data.consents` and `GET /v1/account/consents`) + Optional `Product Analytics & Crash Telemetry` toggle (`POST /v1/account/consents`).
-   - Clear explanation: *"Note: Withdrawing Health Data Processing consent stops personalized plan calculations; you can also export or delete your data anytime."*
+   - Displays `Health Data Processing Consent (v1.0.0 — Accepted on {recordedAt})` (hydrated from `GET /v1/bootstrap` `data.consents` and `GET /v1/account/consents`) + Optional `Product Analytics & Crash Telemetry` toggle (`POST /v1/account/consents`).
+   - Clear explanation: *"Note: Withdrawing Health Data Processing consent locks personalized plan generation, renewals, and coaching reviews (`403 HEALTH_CONSENT_REQUIRED`) until re-granted; you can also export or delete your data anytime."*
 2. **Data Portability (`[Download My Complete Data (JSON)]`):**
-   - Calls `GET /v1/account/export` and opens the OS Share Sheet (`Files`, `Email`, `Drive`) with `curafit-export-{date}.json` containing profile, logs, archived plans, and consents!
+   - Calls `GET /v1/account/export` and opens the OS Share Sheet (`Files`, `Email`, `Drive`) with `curafit-export-{date}.json` containing profile, logs, archived plans, consents, `oauthIdentities`, `registeredDevices`, `aiMessages`, live `entitlements`, and short-lived signed URLs for avatar & progress photos!
 3. **Session & Security Controls:**
-   - `[Sign Out This Device]` -> Confirmation alert *"Sign out? Unsynced offline logs will finish syncing first (or stay saved until you sign back in)."* -> `POST /v1/auth/logout` (`allDevices: false`).
-   - `[Sign Out All Devices]` -> For lost/shared phones -> `POST /v1/auth/logout` (`allDevices: true`) or `POST /v1/auth/revoke` (`allDevices: true`).
+   - `[Sign Out This Device]` -> Confirmation alert *"Sign out? Unsynced offline logs will finish syncing first (or stay saved until you sign back in)."* -> `POST /v1/auth/logout` (`allDevices: false`, which also automatically clears the device push token).
+   - `[Sign Out All Devices]` -> For lost/shared phones -> `POST /v1/auth/logout` (`allDevices: true`) or `POST /v1/auth/revoke` (`allDevices: true`) — both automatically clear all server-side push tokens for the user so signed-out devices stop receiving pushes.
 4. **Danger Zone — `[Delete My Account Permanently]` (Mandatory Apple Guideline 5.1.1(v) & Google Play Compliance):**
    - Step 1: Warning sheet listing everything erased permanently (`profile`, `OAuth login links`, `all nutrition & workout plans`, `food/weight/workout/recovery logs`, `R2 avatars & progress photos`, `push tokens`, `all sessions`). Also warns: *"Deleting your CuraFit account does not automatically cancel an active Apple/Google subscription — manage billing in App Store / Play Store if subscribed."* with direct `[Manage Store Subscription]` link!
    - Step 2: User must type `"DELETE"` (or tap explicit confirmation switch) -> Primary destructive red button `[Permanently Delete Everything]` (`DELETE /v1/account/delete` — or `POST /v1/account/delete` fallback for HTTP clients that strip bodies on `DELETE` — with `{ "confirm": true }`).
 
 ### API & BACKEND CONTRACT
-1. **`[NEW BACKEND] GET /v1/account/consents`** (plus `consents` returned in `GET /v1/bootstrap`) -> Lists recorded consent types, versions, accepted status, and timestamps.
-2. **`[EXISTING] POST /v1/account/consents`** -> `{ "consentType": "analytics_telemetry", "version": "1.0.0", "accepted": false }`.
-3. **`[EXISTING] GET /v1/account/export`** -> Full JSON archive (`schemaVersion`, `exportedAt`, `userId`, `profile`, `logs`, `archivedNutritionPlans`, `archivedWorkoutPlans`, `consents`).
-4. **`[EXISTING] POST /v1/auth/logout`** -> `{ "allDevices": false | true }` (and `POST /v1/auth/revoke` for remote session invalidation).
-5. **`[NEW BACKEND] DELETE /v1/devices/push-token`** -> Unregisters device push notifications on sign-out/delete.
-6. **`[MODIFIED BACKEND] DELETE /v1/account/delete`** *(also accepts **`POST /v1/account/delete`** fallback for mobile/proxy stacks that disallow `DELETE` request bodies)* -> Request Body: `{ "confirm": true }`.
-   - Server atomically clears all D1 tables (`coaching_accounts`, `coaching_plans`, `coaching_workout_plans`, `coaching_users`, `coaching_refresh_tokens`, `coaching_oauth_identities`, all normalized logs), deletes Cloudflare R2 objects (`avatars/{userId}/*`, `users/{userId}/photos/*`), revokes the stored encrypted **Apple Sign-In refresh token** server-side via Apple's `https://appleid.apple.com/auth/revoke` endpoint *(mandatory per App Store Review Guideline 5.1.1(v))*, and writes a permanent `__deleted__` tombstone (`ACCOUNT_DELETED`) for the erased `userId`.
+1. **`GET /v1/account/consents`** (plus `consents` returned in `GET /v1/bootstrap`) -> Lists recorded consent types, versions, accepted status, and `recordedAt` timestamps.
+2. **`POST /v1/account/consents`** -> `{ "consentType": "health_data_processing" | "analytics_telemetry" | "terms_and_privacy", "version": "1.0.0", "accepted": true | false }` -> Persists `recordedAt` timestamp. Withdrawing `health_data_processing` (`accepted: false`) blocks `generate`, `review`, `adaptation`, and `renew_plan` with `403 HEALTH_CONSENT_REQUIRED` until re-granted.
+3. **`GET /v1/account/export`** -> Full GDPR JSON archive (`schemaVersion`, `exportedAt`, `userId`, `profile`, `logs`, `archivedNutritionPlans`, `archivedWorkoutPlans`, `consents`, `oauthIdentities`, `registeredDevices`, `aiMessages`, live `entitlements`, and short-lived signed URLs for avatar & progress photos).
+4. **`POST /v1/auth/logout`** -> `{ "allDevices": false | true }` (and `POST /v1/auth/revoke` with `{ "allDevices": true }` for remote session invalidation — both automatically clear push tokens on the server).
+5. **`DELETE /v1/devices/push-token?deviceId={id}`** -> Unregisters device push notifications cleanly.
+6. **`DELETE /v1/account/delete`** *(also accepts **`POST /v1/account/delete`** fallback for mobile/proxy stacks that disallow `DELETE` request bodies)* -> Request Body: `{ "confirm": true }`.
+   - **Safe Two-Phase Deletion Order:**
+     1. **Phase 1 (Atomic D1 Batch FIRST):** Snapshots R2 keys, Apple token, and anonymized SHA-256 `coaching_trial_tombstones` (zero PII, prevents free-trial reset abuse), then atomically erases all D1 tables (`coaching_accounts`, `coaching_plans`, `coaching_workout_plans`, `coaching_users`, `coaching_refresh_tokens`, `coaching_oauth_identities`, `coaching_push_tokens`, all normalized logs) and writes the `__deleted__` tombstone (`ACCOUNT_DELETED`).
+     2. **Phase 2 (External Cleanup AFTER D1 Commit):** Purges Cloudflare R2 objects (`avatars/{userId}/*`, `users/{userId}/photos/*`) and revokes the stored encrypted **Apple Sign-In refresh token** server-side via Apple's `https://appleid.apple.com/auth/revoke` endpoint *(mandatory per App Store Review Guideline 5.1.1(v))*.
    - Error Codes: `DELETE_CONFIRMATION_REQUIRED`, `INVALID_CONSENT_PAYLOAD`, `ACCOUNT_DELETION_MIGRATION_REQUIRED`.
 
 ### RULES & BUSINESS LOGIC
 1. **Pre-Logout Outbox Check:** If `outbox_commands` has unsent items when user taps `[Sign Out This Device]`, offer `[Sync & Sign Out]` (if online) or explicit warning *"You have {N} unsynced changes offline. Signing out now will discard unsynced local changes."*
 2. **Complete Client Wipe on Logout / Delete:**
-   - On `logout`: Delete tokens in Keychain/Keystore, unregister push token (`DELETE /v1/devices/push-token`), clear local notifications, wipe cached SQLDelight user data, and navigate to Onboarding Step 0 (`US-MOB-01`) or `SocialLoginScreen`.
+   - On `logout`: Delete tokens in Keychain / EncryptedSharedPreferences, unregister push token (`DELETE /v1/devices/push-token?deviceId=...`), clear local notifications, wipe cached SQLDelight user data, and navigate to Onboarding Step 0 (`US-MOB-01`) or `SocialLoginScreen`.
    - On `account/delete`: Perform identical full wipe INCLUDING local-only progress photos vault and any `pendingSyncPlan`, returning cleanly to Onboarding Step 0 (`US-MOB-01`).
 
 ### MAIN FLOW
@@ -453,26 +471,26 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 - **Active Pro Subscription When Deleting Account (`US-MON-04` Cross-Link):** Prompt explicitly warns *"Deleting your CuraFit account does NOT cancel Apple App Store or Google Play recurring billing"* and provides a 1-tap `[Open Store Subscriptions]` button before final deletion confirmation!
 - **Network Error During `DELETE /v1/account/delete`:** Do NOT clear tokens prematurely; keep user authenticated and display `[Retry Deletion]` so user isn't stranded thinking their server data was deleted when it wasn't.
 - **Offline Sign Out With Queued Outbox Items:** Offers clear warning showing exact `{N}` pending unsynced changes before wiping local cache, preventing silent data loss!
-- **Re-Signing In After Permanent Deletion:** Because deletion unlinks `coaching_oauth_identities` while tombstoning the old `userId`, any old JWT or refresh token from the deleted account fails with `401 ACCOUNT_DELETED`, whereas signing in fresh with Google or Apple creates a **brand-new empty account** (`isNewUser: true`, `profile: null`) without resurrecting any erased logs.
+- **Re-Signing In After Permanent Deletion:** Because deletion unlinks `coaching_oauth_identities` while tombstoning the old `userId` (and recording anonymized SHA-256 `coaching_trial_tombstones`), any old JWT or refresh token from the deleted account fails with `401 ACCOUNT_DELETED`, whereas signing in fresh with Google or Apple creates a **brand-new empty account** (`isNewUser: true`, `profile: null`) without resurrecting any erased logs (and without resetting free-trial eligibility if a trial was previously used).
 
 ### ACCEPTANCE CRITERIA
-- **Scenario 1: Full GDPR export generates shareable JSON file**
+- **Scenario 1: Full GDPR export generates shareable JSON file with identities, devices, and signed media links**
   - **Given** user taps `[Download My Complete Data]`
   - **When** `GET /v1/account/export` succeeds (`200 OK`)
-  - **Then** client writes valid UTF-8 JSON to a temp share file and launches the OS Share Sheet.
-- **Scenario 2: Permanent deletion clears server account and resets mobile app cleanly**
+  - **Then** payload includes `oauthIdentities`, `registeredDevices`, `aiMessages`, live `entitlements`, and short-lived signed URLs for avatar & progress photos, and client launches the OS Share Sheet.
+- **Scenario 2: Permanent deletion executes atomic D1 batch first, then R2 & Apple cleanup, and resets app**
   - **Given** user confirms `"DELETE"` on `DeleteAccountConfirmModal`
   - **When** `DELETE /v1/account/delete` (`{ "confirm": true }`) returns `200 OK`
-  - **Then** Keychain/Keystore tokens, SQLDelight caches, and local photos are erased and app navigates to `US-MOB-01`.
-- **Scenario 3: Sign out on all devices invalidates refresh tokens globally**
-  - **Given** user taps `[Sign Out All Devices]`
-  - **When** `POST /v1/auth/logout` (`{ "allDevices": true }`) succeeds
-  - **Then** all other devices fail cleanly to `SessionExpiredAlert` (`AUTH_ALL_SESSIONS_REVOKED`) on their next API call.
+  - **Then** server completes atomic D1 wipe (recording anonymized trial tombstones), purges R2 objects & revokes Apple refresh token, and client erases Keychain / EncryptedSharedPreferences tokens, SQLDelight caches, and local photos.
+- **Scenario 3: Withdrawing `health_data_processing` consent locks plan/coaching mutations**
+  - **Given** user posts `POST /v1/account/consents` with `{ "consentType": "health_data_processing", "version": "1.0.0", "accepted": false }`
+  - **When** attempting `generate`, `review`, `adaptation`, or `renew_plan`
+  - **Then** server returns `403 HEALTH_CONSENT_REQUIRED` until consent is re-granted.
 
 ### ANALYTICS
 - `account_gdpr_exported` (`archived_plans_count`: `integer`)
 - `account_signed_out` (`all_devices`: `boolean`, `had_pending_outbox`: `boolean`)
-- `account_deleted_completed` (`entitlement`: `string`)
+- `account_deleted_completed` (`entitlement`: `"free" | "pro"`)
 
 ---
 
@@ -487,7 +505,7 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 | **Labels** | `production`, `mobile`, `profile`, `support`, `legal`, `compliance` |
 | **Target Screens** | `HelpAndLegalScreen`, `ReportBugFeedbackSheet` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Mixed` (`[EXISTING] GET /v1/health`, `GET /v1/capabilities`, `GET /v1/catalog/manifest` + `[NEW BACKEND] POST /v1/support/feedback`) |
+| **Backend Status** | `Implemented` (`GET /v1/health`, `GET /v1/capabilities`, `GET /v1/catalog/manifest`, `POST /v1/support/feedback`) |
 
 ### STORY
 As a user wanting answers to common questions, transparent scientific/medical disclaimers, legal privacy/terms documents, or a way to report a bug/food data issue with diagnostic context, I want an accessible Help & App Info center inside Profile.
@@ -512,10 +530,10 @@ As a user wanting answers to common questions, transparent scientific/medical di
    - App Version (`1.0.0 (Build ...)`), Engine Version (`capabilities.engineVersion`), Food Catalog Version (`foodCatalogVersion`), Exercise Catalog Version (`catalogVersion`), OpenExerciseDB manifest provenance (`GET /v1/catalog/manifest`), and live Server Health indicator (`GET /v1/health`).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] GET /v1/health`** -> `{ status, apiVersion, engineVersion, requestId }`.
-2. **`[EXISTING] GET /v1/capabilities`** -> `{ apiVersion, schemaVersion, engineVersion, catalogVersion, foodCatalogVersion, features[] }`.
-3. **`[EXISTING] GET /v1/catalog/manifest`** -> Pinned OpenExerciseDB & food catalog provenance manifest.
-4. **`[NEW BACKEND] POST /v1/support/feedback`** -> `{ category, message, foodOrExerciseId?, includeDiagnostics, appVersion, platform, lastRequestId }` -> Returns `{ ticketId, receivedAt }`.
+1. **`GET /v1/health`** -> `{ status, apiVersion, engineVersion, requestId }`.
+2. **`GET /v1/capabilities`** -> `{ apiVersion, schemaVersion, engineVersion, catalogVersion, foodCatalogVersion, features[] }`.
+3. **`GET /v1/catalog/manifest`** -> Pinned OpenExerciseDB & food catalog provenance manifest.
+4. **`POST /v1/support/feedback`** -> `{ category, message, foodOrExerciseId?, includeDiagnostics, appVersion, platform, lastRequestId }` -> Returns `{ ticketId, receivedAt }`.
 
 ### RULES & BUSINESS LOGIC
 1. **Diagnostic Privacy Guard:** Support tickets automatically attach ONLY `appVersion`, `platform`, `locale`, `engineVersion`, and `lastRequestId` — NEVER attach body weight, medical conditions, photos, or JWT tokens!

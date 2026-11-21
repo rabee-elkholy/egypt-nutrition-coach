@@ -80,7 +80,13 @@ async function verifySignature(alg, rawHeaderPayload, signatureBytes, env, kid) 
       if (cached && cached.expiresAt > Date.now()) {
         jwks = cached.jwks;
       } else {
-        const res = await fetch(env.AUTH_JWKS_URI);
+        let res;
+        try {
+          const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8000) : undefined;
+          res = await fetch(env.AUTH_JWKS_URI, signal ? { signal } : undefined);
+        } catch {
+          throw createApiError('Unable to fetch JWKS verification keys.', 503, { code: 'AUTH_JWKS_UNAVAILABLE', retryable: true });
+        }
         if (!res.ok) throw createApiError('Unable to fetch JWKS verification keys.', 503, { code: 'AUTH_JWKS_UNAVAILABLE', retryable: true });
         jwks = await res.json();
         JWKS_CACHE.set(env.AUTH_JWKS_URI, { jwks, expiresAt: Date.now() + 300_000 });

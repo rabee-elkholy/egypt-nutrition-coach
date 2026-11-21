@@ -8,10 +8,10 @@ import {catalog,exerciseAlternatives,regionForMuscle,workoutSafetyIssues} from '
 import {enrichExercise,matchesExerciseQuery,enrichMuscleCatalog,computeWorkoutPrs} from './workouts-insights.mjs';
 import {getPantryCatalog,getPantryAlternatives,getPlanGroceryList,lookupBarcode,submitBarcode,getFastingState} from './nutrition-tools.mjs';
 import {computeProgressAnalytics,computeWeeklyWrapped,buildWidgetSnapshot} from './progress-analytics.mjs';
-import {authenticateSocialOAuth,revokeAppleTokenOnDelete} from './oauth.mjs';
-import {handleSignedMediaRequest,uploadProfileAvatar,deleteProfileAvatar,createProgressPhotoUploadUrl,confirmProgressPhoto,listProgressPhotos,deleteProgressPhoto,purgeUserMedia} from './media.mjs';
-import {resolveEntitlements,requireProOrConsumeQuota,getSubscriptionOfferings,verifyStoreSubscription,restoreStoreSubscriptions,handleStoreWebhook,isoWeekKeyForDate} from './subscriptions.mjs';
-import {registerPushToken,deletePushToken} from './push.mjs';
+import {authenticateSocialOAuth,linkOAuthProvider,unlinkOAuthProvider,listLinkedProviders,revokeAppleTokenOnDelete} from './oauth.mjs';
+import {handleSignedMediaRequest,signAvatarUrlIfNeeded,uploadProfileAvatar,deleteProfileAvatar,createProgressPhotoUploadUrl,confirmProgressPhoto,listProgressPhotos,deleteProgressPhoto,exportSignedMediaRefs,collectUserMediaKeys,purgeMediaKeys} from './media.mjs';
+import {resolveEntitlements,requireProOrConsumeQuota,getSubscriptionOfferings,verifyStoreSubscription,restoreStoreSubscriptions,handleStoreWebhook,isoWeekKeyForDate,recordTrialTombstones} from './subscriptions.mjs';
+import {registerPushToken,deletePushToken,deleteAllPushTokens} from './push.mjs';
 
 import {loadAccount,saveAccount,canonicalCommandDigest,exportFullAccountData,deleteFullAccountData,backfillAccountToNormalizedTables,sha256Hex} from './store.mjs';
 import {mealAlternatives,dayTotals} from './food.mjs';
@@ -62,11 +62,27 @@ function compareSemver(a,b){
 async function listUserConsents(db,userId){
  try{
   const rows=await db.prepare('SELECT consent_type,version,accepted,at FROM coaching_account_consents WHERE user_id=? ORDER BY consent_type').bind(userId).all();
-  return (rows?.results||[]).map(r=>({consentType:r.consent_type,version:r.version,accepted:Boolean(r.accepted),at:r.at}));
+  return (rows?.results||[]).map(r=>({consentType:r.consent_type,version:r.version,accepted:Boolean(r.accepted),at:r.at,recordedAt:r.at}));
  }catch(e){
   if(/no such table/i.test(e?.message||''))return [];
   throw e;
  }
+}
+
+async function isHealthConsentWithdrawn(db,userId){
+ try{
+  const row=await db.prepare("SELECT accepted FROM coaching_account_consents WHERE user_id=? AND consent_type='health_data_processing'").bind(userId).first();
+  return row!=null&&Number(row.accepted)===0;
+ }catch(e){
+  if(/no such table/i.test(e?.message||''))return false;
+  throw e;
+ }
+}
+
+async function hydrateAuthPayloadAvatar(payload,origin,env){
+ if(!payload?.user?.avatarUrl||!payload?.user?.userId)return payload;
+ const signed=await signAvatarUrlIfNeeded(origin,payload.user.avatarUrl,payload.user.userId,env);
+ return {...payload,user:{...payload.user,avatarUrl:signed}};
 }
 
 export default {async fetch(request,env){
@@ -144,17 +160,19 @@ export default {async fetch(request,env){
    return json(await handleStoreWebhook(env.DB,env,provider,request),200,{},reqId);
   }
 
-  // Stateless Onboarding Summary Preview (Public)
+  // Stateless Onboarding Summary Preview (Public, IP rate-limited)
   if(url.pathname==='/v1/plans/preview'){
    if(request.method!=='POST')return errorJson('Only POST is allowed for /v1/plans/preview.',405,reqId,{code:'METHOD_NOT_ALLOWED',params:{allowedMethod:'POST'}},{Allow:'POST'});
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const previewKey='preview:'+(request.headers.get('CF-Connecting-IP')||request.headers.get('X-Forwarded-For')||'local');
+   checkRateLimit(previewKey,'read',env);
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
    return json(previewPlan(body),200,{},reqId);
   }
 
   // First-Party Cloudflare Workers + D1 Public Auth & Direct Social OAuth Endpoints
-  if(url.pathname==='/v1/auth/register'||url.pathname==='/v1/auth/login'||url.pathname==='/v1/auth/refresh'||url.pathname==='/v1/auth/oauth/google'||url.pathname==='/v1/auth/oauth/apple'){
+  if(url.pathname==='/v1/auth/register'||url.pathname==='/v1/auth/login'||url.pathname==='/v1/auth/refresh'||((url.pathname==='/v1/auth/oauth/google'||url.pathname==='/v1/auth/oauth/apple')&&request.method!=='DELETE')){
    if(request.method!=='POST')return errorJson('Only POST is allowed for this endpoint.',405,reqId,{code:'METHOD_NOT_ALLOWED',params:{allowedMethod:'POST'}},{Allow:'POST'});
    if(request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)throw createApiError('Cross-origin write requests are forbidden.',403,{code:'ORIGIN_FORBIDDEN'});
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
@@ -164,11 +182,11 @@ export default {async fetch(request,env){
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
    if(url.pathname==='/v1/auth/register')return json(await registerUser(env.DB,env,body,request),201,{},reqId);
-   if(url.pathname==='/v1/auth/login')return json(await loginUser(env.DB,env,body,request),200,{},reqId);
-   if(url.pathname==='/v1/auth/refresh')return json(await refreshUserSession(env.DB,env,body,request),200,{},reqId);
+   if(url.pathname==='/v1/auth/login')return json(await hydrateAuthPayloadAvatar(await loginUser(env.DB,env,body,request),url.origin,env),200,{},reqId);
+   if(url.pathname==='/v1/auth/refresh')return json(await hydrateAuthPayloadAvatar(await refreshUserSession(env.DB,env,body,request),url.origin,env),200,{},reqId);
    const provider=url.pathname.endsWith('/google')?'google':'apple';
    const oauthRes=await authenticateSocialOAuth(env.DB,env,provider,body,request);
-   return json(oauthRes.data,oauthRes.status,{},reqId);
+   return json(await hydrateAuthPayloadAvatar(oauthRes.data,url.origin,env),oauthRes.status,{},reqId);
   }
 
   const auth=await authenticateRequest(request,env);
@@ -208,11 +226,19 @@ export default {async fetch(request,env){
    return json({total:all.length,offset,limit,nextOffset:offset+limit<all.length?offset+limit:null,items:all.slice(offset,offset+limit)},200,{},reqId);
   }
   if(request.method==='GET'&&url.pathname.startsWith('/v1/foods/barcode/')){
+   if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
+    const acc=await loadAccount(env.DB,user);
+    await requireProOrConsumeQuota(env.DB,acc,user,{feature:'barcode_scanner'},env);
+   }
    const ean=decodeURIComponent(url.pathname.slice('/v1/foods/barcode/'.length));
    return json(await lookupBarcode(env.DB,env,ean),200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/foods/barcode'){
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
+    const acc=await loadAccount(env.DB,user);
+    await requireProOrConsumeQuota(env.DB,acc,user,{feature:'barcode_scanner'},env);
+   }
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
    return json(await submitBarcode(env.DB,user,body),201,{},reqId);
@@ -248,13 +274,26 @@ export default {async fetch(request,env){
    return json(res,200,{},reqId);
   }
 
-  // Auth & Session Management Endpoints
+  // Auth, Session & OAuth Linking Endpoints
   if(request.method==='GET'&&url.pathname==='/v1/auth/session'){
    return json({
     userId:auth.userId,subject:auth.subject,sessionId:auth.sessionId,deviceId:auth.deviceId,
     authMethod:auth.authMethod,isAnonymous:auth.isAnonymous,scopes:auth.scopes,
     entitlement:auth.entitlement,issuedAt:auth.issuedAt,expiresAt:auth.expiresAt
    },200,{},reqId);
+  }
+  if(request.method==='GET'&&url.pathname==='/v1/auth/oauth/providers'){
+   return json({items:await listLinkedProviders(env.DB,identity)},200,{},reqId);
+  }
+  if(request.method==='POST'&&url.pathname==='/v1/auth/oauth/link'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   return json(await linkOAuthProvider(env.DB,env,identity,body.provider,body),200,{},reqId);
+  }
+  if(request.method==='DELETE'&&url.pathname.startsWith('/v1/auth/oauth/')){
+   const provider=decodeURIComponent(url.pathname.slice('/v1/auth/oauth/'.length));
+   return json(await unlinkOAuthProvider(env.DB,identity,provider),200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/auth/revoke'){
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
@@ -264,6 +303,7 @@ export default {async fetch(request,env){
    const nowIso=new Date().toISOString();
    await env.DB.prepare('INSERT OR REPLACE INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?)').bind(identity,String(targetSession),auth.deviceId||'manual',nowIso,null,nowIso).run();
    await revokeRefreshTokensForSession(env.DB,identity,targetSession,nowIso);
+   if(body?.allDevices===true)await deleteAllPushTokens(env.DB,identity);
    return json({revoked:true,sessionId:targetSession,revokedAt:nowIso},200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/auth/logout'){
@@ -342,16 +382,34 @@ export default {async fetch(request,env){
    return json({items:await listUserConsents(env.DB,user)},200,{},reqId);
   }
   if(request.method==='GET'&&url.pathname==='/v1/account/export'){
-   const exported=await exportFullAccountData(env.DB,user);
+   const [mediaRefs,entitlements]=await Promise.all([
+    exportSignedMediaRefs(env.DB,env,user,url.origin),
+    resolveEntitlements(env.DB,null,user,null,env)
+   ]);
+   const exported=await exportFullAccountData(env.DB,user,{
+    signedAvatarUrl:mediaRefs.avatarUrl,
+    signedProgressPhotos:mediaRefs.progressPhotos,
+    entitlements
+   });
    return json(exported,200,{},reqId);
   }
   if((request.method==='POST'||request.method==='DELETE')&&url.pathname==='/v1/account/delete'){
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    const body=JSON.parse(await requestJson(request));
    if(body?.confirm!==true)throw createApiError('Permanent account deletion requires confirm: true.',400,{code:'DELETE_CONFIRMATION_REQUIRED'});
-   const appleRevoke=await revokeAppleTokenOnDelete(env.DB,env,user);
-   const mediaPurge=await purgeUserMedia(env.DB,env,user);
+   // Safe deletion order: (1) Snapshot R2 keys, Apple token & anonymized trial tombstones -> (2) Atomic D1 deletion -> (3) Best-effort R2 & Apple cleanup
+   const mediaKeys=await collectUserMediaKeys(env.DB,user);
+   let appleEnc=null;
+   try{
+    const row=await env.DB.prepare("SELECT apple_refresh_token_enc FROM coaching_oauth_identities WHERE user_id=? AND provider='apple' AND apple_refresh_token_enc IS NOT NULL LIMIT 1").bind(user).first();
+    appleEnc=row?.apple_refresh_token_enc||null;
+   }catch{}
+   await recordTrialTombstones(env.DB,user);
    const res=await deleteFullAccountData(env.DB,user);
+   const [mediaPurge,appleRevoke]=await Promise.all([
+    purgeMediaKeys(env,mediaKeys),
+    revokeAppleTokenOnDelete(null,env,user,appleEnc)
+   ]);
    return json({...res,appleTokenRevoked:appleRevoke.revoked,mediaObjectsDeleted:mediaPurge.objectsDeleted},200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/account/consents'){
@@ -360,7 +418,7 @@ export default {async fetch(request,env){
    if(!body||typeof body.consentType!=='string'||typeof body.version!=='string'||typeof body.accepted!=='boolean')throw createApiError('Consent payload requires string consentType, string version, and boolean accepted.',400,{code:'INVALID_CONSENT_PAYLOAD'});
    const nowIso=new Date().toISOString();
    await env.DB.prepare('INSERT OR REPLACE INTO coaching_account_consents(user_id,consent_type,version,accepted,at) VALUES(?,?,?,?,?)').bind(user,body.consentType.slice(0,60),body.version.slice(0,30),body.accepted?1:0,nowIso).run();
-   return json({consentType:body.consentType,version:body.version,accepted:body.accepted,at:nowIso},200,{},reqId);
+   return json({consentType:body.consentType,version:body.version,accepted:body.accepted,at:nowIso,recordedAt:nowIso},200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/account/backfill'){
    const res=await backfillAccountToNormalizedTables(env.DB,user);
@@ -370,7 +428,6 @@ export default {async fetch(request,env){
   const s=await loadAccount(env.DB,user);
   const tz=s.profile?.timezone||'Africa/Cairo';
   const currDate=localDate(clockNow(),tz);
-  // Stable ETag keyed on revision + local date (no 60-second churn breaking 304 cold-starts)
   const etag=`W/"rev-${s.revision}-${currDate}"`;
 
   // Progress Photos (R2-backed; GET & DELETE remain accessible for downgraded Free users, only upload-url is Pro-gated)
@@ -381,7 +438,9 @@ export default {async fetch(request,env){
   }
   if(request.method==='POST'&&url.pathname==='/v1/progress/photos/upload-url'){
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
-   await requireProOrConsumeQuota(env.DB,s,user,{feature:'progress_photos_cloud'});
+   if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'progress_photos_cloud'},env);
+   }
    const body=JSON.parse(await requestJson(request));
    return json(await createProgressPhotoUploadUrl(env,user,url.origin,body),200,{},reqId);
   }
@@ -397,7 +456,7 @@ export default {async fetch(request,env){
 
   // Subscriptions & Offerings
   if(request.method==='GET'&&url.pathname==='/v1/subscriptions/offerings'){
-   const ent=await resolveEntitlements(env.DB,s,user,currDate);
+   const ent=await resolveEntitlements(env.DB,s,user,currDate,env);
    return json(getSubscriptionOfferings(url.searchParams.get('platform')||'android',url.searchParams.get('region')||s.preferences?.region||'egypt',ent.trialEligible),200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/subscriptions/verify'){
@@ -411,7 +470,7 @@ export default {async fetch(request,env){
    return json(await restoreStoreSubscriptions(env.DB,env,s,user,body),200,{},reqId);
   }
 
-  // Pantry Alternatives
+  // Pantry Alternatives (Free)
   if(request.method==='POST'&&url.pathname==='/v1/pantry/alternatives'){
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    const body=JSON.parse(await requestJson(request));
@@ -420,16 +479,35 @@ export default {async fetch(request,env){
 
   if(request.method==='GET'){
    if(url.pathname==='/v1/bootstrap'){
-    if(request.headers.get('If-None-Match')===etag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:etag,'X-Request-Id':reqId}});
-    const [consents,entitlements]=await Promise.all([listUserConsents(env.DB,user),resolveEntitlements(env.DB,s,user,currDate)]);
-    return json(presentBootstrap(s,{consents,entitlements}),200,{ETag:etag},reqId);
+    const [consents,entitlements,userRow]=await Promise.all([
+     listUserConsents(env.DB,user),
+     resolveEntitlements(env.DB,s,user,currDate,env),
+     env.DB.prepare('SELECT avatar_url FROM coaching_users WHERE user_id=?').bind(user).first().catch(()=>null)
+    ]);
+    const rawAvatar=userRow?.avatar_url??s.profile?.avatarUrl??null;
+    const signedAvatarUrl=await signAvatarUrlIfNeeded(url.origin,rawAvatar,user,env);
+    const bootPayload=presentBootstrap(s,{consents,entitlements,signedAvatarUrl});
+    const fp=await sha256Hex(JSON.stringify([
+     s.revision,currDate,entitlements.tier,entitlements.status,entitlements.updatedAt,
+     consents.map(c=>`${c.consentType}:${c.accepted}:${c.at}`),
+     rawAvatar||'',bootPayload.todaySummary?.recovery?.status||''
+    ]));
+    const bootEtag=`W/"boot-${s.revision}-${currDate}-${fp.slice(0,12)}"`;
+    if(request.headers.get('If-None-Match')===bootEtag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:bootEtag,'X-Request-Id':reqId}});
+    return json(bootPayload,200,{ETag:bootEtag},reqId);
    }
    if(url.pathname==='/v1/state'){
     if(request.headers.get('If-None-Match')===etag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:etag,'X-Request-Id':reqId}});
     return json(present(s),200,{ETag:etag},reqId);
    }
    if(url.pathname==='/v1/progress/summary')return json(progressSummary(s),200,{ETag:etag},reqId);
-   if(url.pathname==='/v1/progress/analytics')return json(computeProgressAnalytics(s,{range:url.searchParams.get('range')||'30d',exerciseId:url.searchParams.get('exerciseId')||null},clockNow()),200,{ETag:etag},reqId);
+   if(url.pathname==='/v1/progress/analytics'){
+    const rangeParam=url.searchParams.get('range')||'30d';
+    if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'&&(rangeParam==='90d'||rangeParam==='all')){
+     await requireProOrConsumeQuota(env.DB,s,user,{feature:'advanced_analytics'},env);
+    }
+    return json(computeProgressAnalytics(s,{range:rangeParam,exerciseId:url.searchParams.get('exerciseId')||null},clockNow()),200,{ETag:etag},reqId);
+   }
    if(url.pathname==='/v1/progress/weekly-wrapped')return json(computeWeeklyWrapped(s,url.searchParams.get('weekEnd')||null,clockNow()),200,{ETag:etag},reqId);
    if(url.pathname==='/v1/widgets/snapshot'){
     if(request.headers.get('If-None-Match')===etag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:etag,'X-Request-Id':reqId}});
@@ -462,7 +540,7 @@ export default {async fetch(request,env){
    if(url.pathname==='/v1/checkins')return json(paginateDateCollection(s.checkins,url),200,{},reqId);
    if(url.pathname==='/v1/activity-logs')return json(paginateDateCollection(s.activityLogs,url),200,{},reqId);
    if(url.pathname==='/v1/notifications/preferences')return json(s.notificationPreferences||{},200,{},reqId);
-   if(url.pathname==='/v1/entitlements')return json(await resolveEntitlements(env.DB,s,user,currDate),200,{},reqId);
+   if(url.pathname==='/v1/entitlements')return json(await resolveEntitlements(env.DB,s,user,currDate,env),200,{},reqId);
    if(url.pathname==='/v1/meal-alternatives')return json({items:mealAlternatives(s,url.searchParams.get('mealId'))},200,{},reqId);
    if(url.pathname==='/v1/exercise-alternatives')return json({items:exerciseAlternatives(s,url.searchParams.get('dayIndex'),url.searchParams.get('exerciseId')).map(enrichExercise)},200,{},reqId);
    if(url.pathname==='/v1/plans')return json({items:s.planRefs||[]},200,{},reqId);
@@ -478,6 +556,9 @@ export default {async fetch(request,env){
     }
     if(!plan)return errorJson('Nutrition plan not found.',404,reqId,{code:'PLAN_NOT_FOUND'});
     if(groceryMatch){
+     if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
+      await requireProOrConsumeQuota(env.DB,s,user,{feature:'grocery_list'},env);
+     }
      const daysScope=url.searchParams.get('days')||'all';
      return json(getPlanGroceryList(s,plan,daysScope,currDate),200,{},reqId);
     }
@@ -538,24 +619,36 @@ export default {async fetch(request,env){
    if(prior){if(prior.digest!==digest)throw createApiError('Idempotency-Key was already used with a different request payload.',409,{code:'IDEMPOTENCY_KEY_REUSED_MISMATCH'});return json({...JSON.parse(prior.response),replayed:true},200,{'Idempotency-Replayed':'true'},reqId);}
    let next=structuredClone(s);
    let ingested=0;
-   for(const rec of body.records){
-    if(rec.type==='weight'){
-     next=command(next,'weight',{date:rec.date,kg:rec.kg,source:rec.source||'wearable',externalRecordId:rec.externalRecordId||null,protectManual:true});
-     if(!next._weightSkipped)ingested++;
-    }else if(rec.type==='steps'||rec.type==='activity'){
-     const beforeCount=(next.activityLogs||[]).length;
-     const alreadyHad=rec.externalRecordId&&(next.activityLogs||[]).some(x=>x.externalRecordId===rec.externalRecordId);
-     if(!alreadyHad){
-      next=command(next,'activity',{date:rec.date,steps:rec.steps,activeEnergyKcal:rec.activeEnergyKcal,source:rec.source||'wearable',externalRecordId:rec.externalRecordId});
-      if((next.activityLogs||[]).length>=beforeCount)ingested++;
+   const skippedRecords=[];
+   for(let i=0;i<body.records.length;i++){
+    const rec=body.records[i];
+    try{
+     if(rec.type==='weight'){
+      next=command(next,'weight',{date:rec.date,kg:rec.kg,source:rec.source||'wearable',externalRecordId:rec.externalRecordId||null,protectManual:true});
+      if(!next._weightSkipped)ingested++;
+      else skippedRecords.push({index:i,type:'weight',reason:'manual_or_duplicate_protected'});
+     }else if(rec.type==='steps'||rec.type==='activity'){
+      const beforeCount=(next.activityLogs||[]).length;
+      const alreadyHad=rec.externalRecordId&&(next.activityLogs||[]).some(x=>x.externalRecordId===rec.externalRecordId);
+      if(!alreadyHad){
+       next=command(next,'activity',{date:rec.date,steps:rec.steps,activeEnergyKcal:rec.activeEnergyKcal,source:rec.source||'wearable',externalRecordId:rec.externalRecordId,preservePending:true});
+       if((next.activityLogs||[]).length>=beforeCount)ingested++;
+      }else{
+       skippedRecords.push({index:i,type:rec.type,reason:'duplicate_external_record_id'});
+      }
      }
+    }catch(recErr){
+     skippedRecords.push({index:i,type:rec?.type||'unknown',code:recErr?.code||'VALIDATION_ERROR',reason:recErr?.message||'Record skipped'});
     }
    }
    if(ingested>0){
+    // Preserve pending Coach adaptations across background wearable syncs so user approvals never fail with 409
+    next.adaptations=structuredClone(s.adaptations||[]);
+    for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
     next.revision=s.revision+1;
     await saveAccount(env.DB,user,next,s.revision,{key,digest,action:'wearable_ingest',payload:{count:ingested},previousState:s});
    }
-   return json({revision:ingested>0?next.revision:s.revision,ingested},200,{},reqId);
+   return json({revision:ingested>0?next.revision:s.revision,ingested,skippedCount:skippedRecords.length,skippedRecords},200,{},reqId);
   }
 
   if(request.method!=='POST'||url.pathname!=='/v1/commands')return errorJson('API endpoint not found.',404,reqId,{code:'ROUTE_NOT_FOUND'});
@@ -566,6 +659,11 @@ export default {async fetch(request,env){
   const body=JSON.parse(raw),key=request.headers.get('Idempotency-Key');
   if(!body||Array.isArray(body)||typeof body.action!=='string'||!Number.isSafeInteger(body.revision)||body.revision<0||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload))return errorJson('Command body must include integer revision >= 0, string action, and object payload.',400,reqId,{code:'INVALID_COMMAND_ENVELOPE'});
   if(!key||key.length>100)return errorJson('Idempotency-Key header (1..100 characters) is required.',400,reqId,{code:'IDEMPOTENCY_KEY_REQUIRED'});
+
+  // Enforce withdrawn health_data_processing consent lock on personalized calculation commands
+  if(['generate','review','adaptation','renew_plan'].includes(body.action)&&await isHealthConsentWithdrawn(env.DB,user)){
+   return errorJson('Active health_data_processing consent is required to generate plans or compute coaching reviews.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
+  }
 
   // Idempotency digest excludes `revision` so timeout + rebase replay succeeds cleanly while still recognizing legacy digests.
   const rawDigest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)))).map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -608,23 +706,23 @@ export default {async fetch(request,env){
   // so invalid/rejected commands never burn a Free user's quota (safety actions are ALWAYS 100% Free!)
   if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
    if(body.action==='replace_meal'){
-    await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_meal_swaps',quotaKey:'meal_swap',windowKey:currDate,freeLimit:2});
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_meal_swaps',quotaKey:'meal_swap',windowKey:currDate,freeLimit:2},env);
    }else if(body.action==='replace_exercise'){
     const isSafetySwap=workoutSafetyIssues(s).some(x=>x.dayIndex===Number(body.payload?.dayIndex)&&x.exerciseId===body.payload?.exerciseId);
     if(!isSafetySwap){
-     await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_exercise_swaps',quotaKey:'exercise_swap',windowKey:isoWeekKeyForDate(currDate),freeLimit:2});
+     await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_exercise_swaps',quotaKey:'exercise_swap',windowKey:isoWeekKeyForDate(currDate),freeLimit:2},env);
     }
    }else if(body.action==='renew_plan'){
-    await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_plan_renewals',quotaKey:'plan_renewal',windowKey:'lifetime',freeLimit:1});
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_plan_renewals',quotaKey:'plan_renewal',windowKey:'lifetime',freeLimit:1},env);
    }else if(body.action==='adaptation'&&body.payload?.accept===true){
     const targetAdapt=(s.adaptations||[]).find(a=>a.id===body.payload?.id&&a.status==='pending');
     if(targetAdapt&&['calories','weekly_volume','maintenance'].includes(targetAdapt.kind)){
-     await requireProOrConsumeQuota(env.DB,s,user,{feature:'adaptive_calorie_volume'});
+     await requireProOrConsumeQuota(env.DB,s,user,{feature:'adaptive_calorie_volume'},env);
     }
    }
   }
 
-  if(['recovery','weight','food','food_entry','food_complete','food_delete','copy_meal','session','workout','coaching_feedback','renew_plan','comeback_restart','timezone','confirm_health','confirm_schedule'].includes(body.action))review(next);
+  if(['recovery','weight','food','food_entry','food_entry_update','food_complete','food_delete','copy_meal','session','session_delete','workout','workout_delete','coaching_feedback','renew_plan','comeback_restart','timezone','confirm_health','confirm_schedule'].includes(body.action))review(next);
   reconcileCoaching(next,clockNow());
   if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze'].includes(body.action))next.adaptations=structuredClone(s.adaptations);
   if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze','coaching_ack','coaching_decision','coaching_outcome'].includes(body.action))for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;

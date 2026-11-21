@@ -2,6 +2,7 @@
 // Issues first-party CuraFit HS256 JWT + rotating D1 refresh tokens (no Supabase/Auth0/Firebase Auth).
 
 import { base64UrlEncodeBytes } from './auth.mjs';
+import { fetchWithTimeout, signEs256Jwt } from './external-crypto.mjs';
 import { issueTokenPair } from './native-auth.mjs';
 import { createApiError, logEvent } from './logger.mjs';
 import { SUPPORTED_LOCALES, validTimeZone } from '../coaching-shared.mjs';
@@ -17,6 +18,55 @@ function b64UrlToBytes(str) {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+async function resolveAppleClientSecret(env) {
+  if (env?.APPLE_CLIENT_SECRET) return env.APPLE_CLIENT_SECRET;
+  const appleClientId = env?.APPLE_CLIENT_ID || env?.APPLE_BUNDLE_ID;
+  if (!env?.APPLE_TEAM_ID || !env?.APPLE_KEY_ID || !env?.APPLE_PRIVATE_KEY || !appleClientId) return null;
+  const now = Math.floor(Date.now() / 1000);
+  return signEs256Jwt({
+    header: { kid: env.APPLE_KEY_ID },
+    payload: {
+      iss: env.APPLE_TEAM_ID,
+      iat: now,
+      exp: now + 300,
+      aud: 'https://appleid.apple.com',
+      sub: appleClientId
+    },
+    privateKeyPem: env.APPLE_PRIVATE_KEY
+  });
+}
+
+async function exchangeAppleAuthorizationCode(authorizationCode, env) {
+  const clientSecret = await resolveAppleClientSecret(env);
+  const appleClientId = env?.APPLE_CLIENT_ID || env?.APPLE_BUNDLE_ID;
+  if (!clientSecret || !appleClientId) {
+    // Dev/test fallback when Apple private key isn't provisioned yet
+    return authorizationCode;
+  }
+  try {
+    const form = new URLSearchParams({
+      client_id: appleClientId,
+      client_secret: clientSecret,
+      code: authorizationCode,
+      grant_type: 'authorization_code'
+    });
+    const res = await fetchWithTimeout('https://appleid.apple.com/auth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString()
+    });
+    if (!res.ok) {
+      logEvent('warn', 'apple_code_exchange_failed', { details: { status: res.status } });
+      return null;
+    }
+    const data = await res.json();
+    return data?.refresh_token || null;
+  } catch (err) {
+    logEvent('warn', 'apple_code_exchange_error', { details: { message: err?.message } });
+    return null;
+  }
 }
 
 function decodeJwtParts(token, provider) {
@@ -53,12 +103,12 @@ async function fetchJwks(provider, env) {
   if (cached && cached.expiresAt > Date.now()) return cached.jwks;
   let res;
   try {
-    res = await fetch(uri);
+    res = await fetchWithTimeout(uri);
   } catch {
-    throw createApiError('Unable to fetch JWKS verification keys.', 503, { code: 'AUTH_JWKS_UNAVAILABLE', retryable: true });
+    throw createApiError('Unable to fetch JWKS verification keys.', 503, { code: 'AUTH_JWKS_UNAVAILABLE', params: { provider }, retryable: true });
   }
   if (!res.ok) {
-    throw createApiError('Unable to fetch JWKS verification keys.', 503, { code: 'AUTH_JWKS_UNAVAILABLE', retryable: true });
+    throw createApiError('Unable to fetch JWKS verification keys.', 503, { code: 'AUTH_JWKS_UNAVAILABLE', params: { provider }, retryable: true });
   }
   const jwks = await res.json();
   OAUTH_JWKS_CACHE.set(uri, { jwks, expiresAt: Date.now() + 300_000 });
@@ -183,7 +233,10 @@ export async function authenticateSocialOAuth(db, env, provider, body, request) 
 
   const claims = await verifyOidcToken(provider, rawToken, env);
   const deviceId = String(body?.deviceId || request?.headers?.get('X-Client-Device-Id') || 'mobile-device').trim().slice(0, 120);
-  const fullName = (typeof body?.fullName === 'string' && body.fullName.trim()) ? body.fullName.trim().slice(0, 100) : claims.name;
+  const bodyName = typeof body?.fullName === 'string' && body.fullName.trim()
+    ? body.fullName.trim()
+    : (typeof body?.name === 'string' && body.name.trim() ? body.name.trim() : null);
+  const fullName = bodyName ? bodyName.slice(0, 100) : claims.name;
   const nowIso = new Date().toISOString();
 
   // 1. Lookup existing OAuth identity
@@ -220,10 +273,14 @@ export async function authenticateSocialOAuth(db, env, provider, body, request) 
     }
   }
 
-  // 3. Encrypt optional Apple authorization code / refresh token for Guideline 5.1.1(v)
-  const appleTokenEnc = provider === 'apple' && typeof body?.authorizationCode === 'string' && body.authorizationCode.trim()
-    ? await encryptSecret(body.authorizationCode.trim(), env?.OAUTH_TOKEN_ENC_KEY || env?.AUTH_JWT_SECRET)
-    : null;
+  // 3. Exchange optional Apple authorizationCode for real refresh_token and encrypt for Guideline 5.1.1(v)
+  let appleTokenEnc = null;
+  if (provider === 'apple' && typeof body?.authorizationCode === 'string' && body.authorizationCode.trim()) {
+    const refreshToken = await exchangeAppleAuthorizationCode(body.authorizationCode.trim(), env);
+    if (refreshToken) {
+      appleTokenEnc = await encryptSecret(refreshToken, env?.OAUTH_TOKEN_ENC_KEY || env?.AUTH_JWT_SECRET);
+    }
+  }
 
   const stmts = [];
   if (!userRow) {
@@ -250,8 +307,8 @@ export async function authenticateSocialOAuth(db, env, provider, body, request) 
 
   stmts.push(
     db.prepare(
-      'INSERT OR REPLACE INTO coaching_oauth_identities(provider,subject,user_id,email,apple_refresh_token_enc,created_at) VALUES(?,?,?,?,?,?)'
-    ).bind(provider, claims.subject, userRow.user_id, claims.email || userRow.email, appleTokenEnc, nowIso)
+      'INSERT OR REPLACE INTO coaching_oauth_identities(provider,subject,user_id,email,apple_refresh_token_enc,created_at) VALUES(?,?,?,?,COALESCE(?,(SELECT apple_refresh_token_enc FROM coaching_oauth_identities WHERE provider=? AND subject=?)),?)'
+    ).bind(provider, claims.subject, userRow.user_id, claims.email || userRow.email, appleTokenEnc, provider, claims.subject, nowIso)
   );
 
   const sessionId = `sess_${crypto.randomUUID()}`;
@@ -274,24 +331,103 @@ export async function authenticateSocialOAuth(db, env, provider, body, request) 
   };
 }
 
-export async function revokeAppleTokenOnDelete(db, env, userId) {
+export async function linkOAuthProvider(db, env, userId, provider, body = {}) {
+  if (!['google', 'apple'].includes(provider)) {
+    throw createApiError('Unsupported OAuth provider.', 400, { code: 'VALIDATION_ERROR' });
+  }
+  const rawToken = provider === 'google' ? body?.idToken : body?.identityToken;
+  if (typeof rawToken !== 'string' || !rawToken.trim()) {
+    throw createApiError('Identity provider token is invalid or expired.', 401, {
+      code: 'AUTH_OAUTH_TOKEN_INVALID',
+      params: { provider }
+    });
+  }
+  const claims = await verifyOidcToken(provider, rawToken, env);
+  const existing = await db.prepare(
+    'SELECT user_id FROM coaching_oauth_identities WHERE provider=? AND subject=?'
+  ).bind(provider, claims.subject).first();
+  if (existing && existing.user_id !== userId) {
+    throw createApiError('An account with this email is already linked to another sign-in method.', 409, {
+      code: 'AUTH_PROVIDER_EMAIL_CONFLICT',
+      params: { existingProvider: provider }
+    });
+  }
+  let appleTokenEnc = null;
+  if (provider === 'apple' && typeof body?.authorizationCode === 'string' && body.authorizationCode.trim()) {
+    const refreshToken = await exchangeAppleAuthorizationCode(body.authorizationCode.trim(), env);
+    if (refreshToken) appleTokenEnc = await encryptSecret(refreshToken, env?.OAUTH_TOKEN_ENC_KEY || env?.AUTH_JWT_SECRET);
+  }
+  const nowIso = new Date().toISOString();
+  await db.prepare(
+    'INSERT OR REPLACE INTO coaching_oauth_identities(provider,subject,user_id,email,apple_refresh_token_enc,created_at) VALUES(?,?,?,?,?,?)'
+  ).bind(provider, claims.subject, userId, claims.email || null, appleTokenEnc, nowIso).run();
+  const providers = await listLinkedProviders(db, userId);
+  return { linked: true, provider, providers };
+}
+
+export async function unlinkOAuthProvider(db, userId, provider) {
+  if (!['google', 'apple'].includes(provider)) {
+    throw createApiError('Unsupported OAuth provider.', 400, { code: 'VALIDATION_ERROR' });
+  }
+  const rows = await db.prepare(
+    'SELECT provider, subject FROM coaching_oauth_identities WHERE user_id=?'
+  ).bind(userId).all();
+  const list = rows?.results || [];
+  if (!list.some(r => r.provider === provider)) {
+    throw createApiError('The specified OAuth provider is not linked to this account.', 404, {
+      code: 'OAUTH_PROVIDER_NOT_LINKED',
+      params: { provider }
+    });
+  }
+  const userRow = await db.prepare('SELECT password_hash FROM coaching_users WHERE user_id=?').bind(userId).first();
+  const hasPassword = Boolean(userRow?.password_hash && userRow.password_hash !== 'oauth_only');
+  if (list.length <= 1 && !hasPassword) {
+    throw createApiError('Cannot unlink your only active sign-in provider; link another provider first.', 409, {
+      code: 'CANNOT_UNLINK_LAST_AUTH_METHOD',
+      params: { provider }
+    });
+  }
+  await db.prepare('DELETE FROM coaching_oauth_identities WHERE user_id=? AND provider=?').bind(userId, provider).run();
+  const providers = await listLinkedProviders(db, userId);
+  return { unlinked: true, provider, providers };
+}
+
+export async function listLinkedProviders(db, userId) {
   try {
-    const row = await db.prepare(
-      "SELECT apple_refresh_token_enc FROM coaching_oauth_identities WHERE user_id=? AND provider='apple' AND apple_refresh_token_enc IS NOT NULL LIMIT 1"
-    ).bind(userId).first();
-    if (!row?.apple_refresh_token_enc) return { attempted: false, revoked: false };
-    if (!env?.APPLE_CLIENT_ID || !env?.APPLE_CLIENT_SECRET) {
+    const rows = await db.prepare(
+      'SELECT provider, email, created_at FROM coaching_oauth_identities WHERE user_id=? ORDER BY created_at ASC'
+    ).bind(userId).all();
+    return (rows?.results || []).map(r => ({ provider: r.provider, email: r.email || null, linkedAt: r.created_at }));
+  } catch (e) {
+    if (/no such table/i.test(e?.message || '')) return [];
+    throw e;
+  }
+}
+
+export async function revokeAppleTokenOnDelete(db, env, userId, preloadedTokenEnc = null) {
+  try {
+    let encToken = preloadedTokenEnc;
+    if (!encToken && db) {
+      const row = await db.prepare(
+        "SELECT apple_refresh_token_enc FROM coaching_oauth_identities WHERE user_id=? AND provider='apple' AND apple_refresh_token_enc IS NOT NULL LIMIT 1"
+      ).bind(userId).first();
+      encToken = row?.apple_refresh_token_enc || null;
+    }
+    if (!encToken) return { attempted: false, revoked: false };
+    const clientSecret = await resolveAppleClientSecret(env);
+    const appleClientId = env?.APPLE_CLIENT_ID || env?.APPLE_BUNDLE_ID;
+    if (!appleClientId || !clientSecret) {
       return { attempted: false, revoked: false, reason: 'apple_credentials_not_configured' };
     }
-    const token = await decryptSecret(row.apple_refresh_token_enc, env?.OAUTH_TOKEN_ENC_KEY || env?.AUTH_JWT_SECRET);
+    const token = await decryptSecret(encToken, env?.OAUTH_TOKEN_ENC_KEY || env?.AUTH_JWT_SECRET);
     if (!token) return { attempted: false, revoked: false };
     const form = new URLSearchParams({
-      client_id: env.APPLE_CLIENT_ID,
-      client_secret: env.APPLE_CLIENT_SECRET,
+      client_id: appleClientId,
+      client_secret: clientSecret,
       token,
       token_type_hint: 'refresh_token'
     });
-    const res = await fetch('https://appleid.apple.com/auth/revoke', {
+    const res = await fetchWithTimeout('https://appleid.apple.com/auth/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString()

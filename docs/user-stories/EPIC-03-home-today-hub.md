@@ -32,7 +32,7 @@
 | **Labels** | `production`, `mobile`, `navigation`, `today-hub` |
 | **Target Screens** | `MainTabScaffold`, `TodayDashboardScreen`, `TrackLockedDiscoveryCard` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Modified` (`GET /v1/bootstrap` extended summary fields) |
+| **Backend Status** | `Implemented` |
 
 ### STORY
 As an active CuraFit user opening the app each day, I want a fast, clean 5-tab navigation shell centered on a Today Dashboard that adapts automatically to my chosen service track (`Nutrition + Workouts`, `Nutrition Only`, or `Workouts Only`) so that I only see tools relevant to my goals without clutter.
@@ -49,7 +49,7 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
    - **Floating Action Button (`+` Quick-Log):** Elevated circular brand-primary button (`56dp`) -> Opens `QuickLogBottomSheet` (`US-HOME-05`).
    - **Tab 3 — `Workouts`:** Dumbbell icon -> `WorkoutScheduleScreen` (`EPIC-05`).
      - *If `serviceTrack == "nutrition_only"`:* Shows *"Workout Plan Inactive"* with `[Browse 868 Exercise Library]` link and 1-tap `[Add Workout Program]` CTA (routes to `US-PRF-03`).
-   - **Tab 4 — `Coach`:** Sparkle/Coach Avatar icon (with unread red/amber dot if `pendingAdaptations.length > 0` or unread `coachingInbox` items) -> `CoachHubScreen` (`EPIC-06`).
+   - **Tab 4 — `Coach`:** Sparkle/Coach Avatar icon (with unread red/amber dot if `pendingAdaptations.length > 0` or `unreadCoachingInboxCount > 0`) -> `CoachHubScreen` (`EPIC-06`).
    - **Tab 5 — `Profile`:** User Avatar / Person icon -> `ProfileOverviewScreen` (`EPIC-09`).
 2. **Today Top Header Bar:**
    - Personalized greeting in user's language (`"Good morning, {name}"` / localized greeting by `timezone`), current date selector strip (`Today` + quick swipe across last 7 days), subtle **Gentle Streak Pill** (`🔥 6 Days`, taps to `US-PRG-04`), and **Notification Bell / Sync Pill** (`US-AUTH-04`).
@@ -64,11 +64,11 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
    - **RTL Mirroring:** Tab bar order mirrors cleanly for Arabic (`Today` at start/right, `Profile` at end/left), swipeable date strip flips horizontal scroll direction naturally.
 
 ### API & BACKEND CONTRACT
-1. **`[MODIFIED BACKEND] GET /v1/bootstrap`**
-   - **Headers:** `Authorization: Bearer <accessToken>`, `If-None-Match: <bootstrapEtag>`
-   - **Response Fields Consumed:** `revision`, `serverDate`, `timezone`, `consents`, `onboarding` (`serviceTrack`, `journeyStartedOn`, `workoutPrefs`), `profile` (incl. `activity`, `seniorMode`, `maternalStatus`, `workoutUiMode`), `eligibility`, `scheduledSessions` (14d), `todaySummary` (`nutrition` incl. `carbs`/`fat`/`targets`, `activity`, `hydration`, `latestWeight`, `recovery`, `scheduledWorkout` incl. `fromDate`, `fastingState`, `ramadanMode`), `pendingAdaptations`, `workoutSafetyIssues`, `entitlements`, `streakSummary`.
-2. **`[MODIFIED BACKEND] GET /v1/coaching/brief`** (Cached via `If-None-Match` ETag; pure-English + `code`/`params`/`actionTarget`)
-3. **`[EXISTING] GET /v1/coaching/inbox`** (For Coach badge count)
+1. **`GET /v1/bootstrap`**
+   - **Headers:** `Authorization: Bearer <accessToken>`, `If-None-Match: <bootstrapEtag>` (smart state-fingerprint `ETag` `W/"boot-..."` that changes automatically on `revision`, local date, `entitlements`, `consents`, `avatar`, or `recovery.status` changes).
+   - **Response Fields Consumed:** `revision`, `serverDate`, `timezone`, `onboardingCompleted` (`boolean`), `onboarding` (`object | null` with `serviceTrack`, `journeyStartedOn`, `workoutUiMode`, `workoutPrefs`), `consents`, `profile` (incl. `activity`, `unitSystem`, `seniorMode`, `maternalStatus`, `workoutUiMode`), `eligibility`, `scheduledSessions` (14d), `todaySummary` (`nutrition` incl. `carbs`/`fat`/`targets`, `activity` incl. `updatedAt`, `hydration`, `latestWeight`, `recovery`, `scheduledWorkout` incl. `fromDate`, `fastingState`, `ramadanMode`), `unreadCoachingInboxCount` (`integer`), `pendingAdaptations`, `workoutSafetyIssues`, `entitlements`, `streakSummary`, `engagementState`, `notificationPreferences`.
+2. **`GET /v1/coaching/brief`** (Cached via `If-None-Match` `W/"brief-..."` ETag; pure-English + `code`/`params`/`actionTarget`)
+3. **`GET /v1/widgets/snapshot`** (For OS Home Screen Widgets — includes `streakDays`, `readinessStatus`, `caloriesRemaining`, `waterCups`, `waterTargetCups`, `fastingState`, `nextWorkout`)
 
 ### RULES & BUSINESS LOGIC
 1. **Cache-First Instant Render:** Never block Today UI behind a network spinner if SQLDelight holds a valid local profile. Run `GET /v1/bootstrap` asynchronously and animate state updates only on `200 OK` diffs.
@@ -77,6 +77,7 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
    - `nutrition_and_workouts`: Renders Calories/Macros (`US-HOME-02`), Next Meal (`US-HOME-03`), Workout Card (`US-HOME-03`), Water (`US-HOME-04`), Weight (`US-HOME-04`), Steps (`US-HOME-06`), Coach Brief (`US-HOME-03`).
    - `nutrition_only`: Omits Workout Session card (shows external resistance day tag if `goal == "muscle_gain"` and `externalTrainingDays` includes today).
    - `workouts_only`: Replaces Calorie/Macro ring hero with **Training Readiness & Weekly Volume Hero Card** and omits Next Meal card.
+4. **Gentle Streak Hydration & Freeze Rules:** Hydration-only streak credit requires `>= 80%` of the user's daily water target (`dailyWaterTarget`), and `streak_freeze` enforces a bidirectional 7-day window (`409` if another freeze already exists within ±6 days).
 
 ### MAIN FLOW
 1. User taps the CuraFit app icon.
@@ -100,8 +101,8 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
   - **Given** `eligibility.needsHealthConfirmation == true` on a restored `workouts_only` account
   - **When** `TodayDashboardScreen` opens
   - **Then** a pinned top banner prompts health readiness confirmation before workout progression unlocks.
-- **Scenario 3: Coach tab badge reflects pending actions**
-  - **Given** `pendingAdaptations.length == 1` in bootstrap
+- **Scenario 3: Coach tab badge reflects pending actions and unread inbox items**
+  - **Given** `pendingAdaptations.length == 1` or `unreadCoachingInboxCount > 0` in bootstrap
   - **When** `MainTabScaffold` renders
   - **Then** the `Coach` bottom tab displays a visible unread badge dot.
 
@@ -123,7 +124,7 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
 | **Labels** | `production`, `mobile`, `nutrition`, `fasting`, `ramadan` |
 | **Target Screens** | `TodayDashboardScreen` (Hero Card Section) |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Mixed` (`[EXISTING]` food-diary + `[NEW BACKEND]` fasting-state) |
+| **Backend Status** | `Implemented` |
 
 ### STORY
 As a user tracking my daily nutrition, I want a prominent visual summary of my remaining calories, Protein/Carbs/Fats progress bars, diary completion state, and live Intermittent Fasting or Ramadan Suhoor/Iftar countdown at the top of my Today screen so I know my nutritional status in one glance.
@@ -144,15 +145,15 @@ As a user tracking my daily nutrition, I want a prominent visual summary of my r
    - Subtle pill at bottom-right of Hero Card:
      - `Open`: `"Logging in progress"` -> `[Mark Day Complete ✓]` (enabled once `entries.length >= 1`, calls `food_complete`).
      - `Completed`: `"Day Confirmed ✓"` (tappable to view summary or reopen).
-4. **Live Fasting / Ramadan Strip (Conditional — Shown inside Hero Card if `dietType == "intermittent_fasting"` OR `ramadanMode == true`):**
+4. **Live Fasting / Ramadan Strip (Conditional — Shown inside Hero Card if `dietType == "intermittent_fasting"` OR `todaySummary.ramadanMode.enabled == true`):**
    - Shows current phase pill (`"Fasting Window — 03h 18m left"` or `"Eating Window — Closes at 20:00"` / `"Ramadan Mode: Iftar in 02h 10m"`), progress bar along the fasting arc, and quick `[Start/End Fast]` or `[View Ramadan Schedule]` tap action routing to `US-NUT-10`.
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] GET /v1/food-diary?date={YYYY-MM-DD}`**
+1. **`GET /v1/food-diary?date={YYYY-MM-DD}`**
    - Returns `{ date, entries, totals: { energy, protein, fat, carbs, fiber, saturated, sodium, sugars }, complete, planEnergy }` (all 8 `totals` fields are `null` when `entries.length === 0`).
-2. **`[NEW BACKEND] GET /v1/nutrition/fasting-state`** (Also summarized in `/v1/bootstrap`)
+2. **`GET /v1/nutrition/fasting-state`** (Also embedded inside `GET /v1/bootstrap` -> `todaySummary.fastingState` & `todaySummary.ramadanMode`)
    - Returns `{ mode: "if_16_8" | "ramadan" | "off", phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, streakDays }`.
-3. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "food_complete"`)
+3. **`POST /v1/commands?view=receipt`** (`action: "food_complete"`)
 
 ### RULES & BUSINESS LOGIC
 1. **Deterministic Calculation Consistency:** Displayed consumed totals come directly from `dayTotals` aggregation (`food.mjs`): when `entries.length === 0`, all 8 metrics (`energy, protein, fat, carbs, fiber, saturated, sodium, sugars`) are returned as `null` and rendered by the client as `0`. When `entries.length > 0`, if ANY entry has `null` for a metric, the server returns `null` for that aggregate metric, and the client renders `"Partial (source N/A)"` (or partial sum labeled `+ unknown`).
@@ -202,7 +203,7 @@ As a user tracking my daily nutrition, I want a prominent visual summary of my r
 | **Labels** | `production`, `mobile`, `today-hub`, `coaching` |
 | **Target Screens** | `TodayDashboardScreen` (Action Stream) |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Mixed` (`[EXISTING]` plans/commands + `[MODIFIED BACKEND]` `/v1/coaching/brief` pure-English `code`/`params`/`actionTarget` + `/v1/bootstrap` `scheduledSessions`) |
+| **Backend Status** | `Implemented` |
 
 ### STORY
 As a user checking Today to see what to do right now, I want actionable cards showing my Daily Coach Brief insight, my next unlogged meal with a 1-tap Log button, and today's scheduled workout (or Rest & Recovery card) with a 1-tap Start Workout button so I can execute my plan effortlessly.
@@ -237,10 +238,10 @@ As a user checking Today to see what to do right now, I want actionable cards sh
      - Displays `"Rest & Recovery Day"`, muscle recovery hint, optional gentle step target (`7,500+ steps`), and `[Reschedule Another Day Here]` option (`US-WRK-09`).
 
 ### API & BACKEND CONTRACT
-1. **`[MODIFIED BACKEND] GET /v1/coaching/brief`** (Supports `If-None-Match` ETag; returns pure-English notes with `priority: "urgent" | "attention" | "normal"`, `role: "nutrition" | "training" | "followup"`, `code`, `params`, `action`, `actionTarget`)
-2. **`[EXISTING] GET /v1/plans/{planId}/days/{YYYY-MM-DD}`**
-3. **`[EXISTING] GET /v1/workout-plans/{activeWorkoutPlanId}`**
-4. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "food_entry"` for 1-tap Next Meal logging)
+1. **`GET /v1/coaching/brief`** (Supports `If-None-Match` ETag; returns pure-English notes with `priority: "urgent" | "attention" | "normal"`, `role: "nutrition" | "training" | "followup"`, `code`, `params`, `action`, `actionTarget`)
+2. **`GET /v1/plans/{planId}/days/{YYYY-MM-DD}`**
+3. **`GET /v1/workout-plans/{activeWorkoutPlanId}`**
+4. **`POST /v1/commands?view=receipt`** (`action: "food_entry"` for 1-tap Next Meal logging)
 
 ### RULES & BUSINESS LOGIC
 1. **Meal Slot Resolution:** Match current user-local hour (`clockNow`, `profile.timezone`) and filter out `meal.id` values already present in today's `foodEntries` (or `foodLogs` legacy daily total).
@@ -291,7 +292,7 @@ As a user checking Today to see what to do right now, I want actionable cards sh
 | **Labels** | `production`, `mobile`, `hydration`, `weight` |
 | **Target Screens** | `TodayDashboardScreen` (Water & Weight Cards), `WeightLogBottomSheet` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Mixed` (`[EXISTING]` water/weight commands & logs + `[MODIFIED BACKEND]` unified `dailyWaterTarget` formula) |
+| **Backend Status** | `Implemented` |
 
 ### STORY
 As a user monitoring hydration and body weight, I want one-tap water logging (`+1 cup`, `-1 cup`, custom ml) and fast scale-weight logging directly from the Today screen so tracking takes under 5 seconds daily.
@@ -302,7 +303,7 @@ As a user monitoring hydration and body weight, I want one-tap water logging (`+
 ### SCREEN AND UI DETAILS
 1. **Hydration Tracker Card:**
    - Displays animated water wave/cup row: `{cups} / {targetCups} cups ({liters} L / {targetLiters} L)`.
-   - Shows dynamic boost hint on training days (`"+500 ml workout day boost"`).
+   - Shows dynamic boost hint on scheduled or external training days (`"+500 ml training day boost"`).
    - Interactive controls:
      - `[-]` button (`addCups: -1`, disabled at `0`).
      - `[+ 1 Cup (250 ml)]` prominent primary tap (`addCups: 1`) with subtle haptic tick.
@@ -313,18 +314,22 @@ As a user monitoring hydration and body weight, I want one-tap water logging (`+
    - Action button `[Log Weight]` opens a clean numeric keypad bottom sheet pre-filled with last weight, `+/- 0.1 kg` stepper buttons, quick chips, and Eastern Arabic digit normalization (`normalizeDigits`).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "water"`)
+1. **`POST /v1/commands?view=receipt`** (`action: "water"`)
    - Increment payload: `{ "date": "YYYY-MM-DD", "addCups": 1 }` (range `-10..20`, server clamps total `0..30`).
    - Explicit set payload: `{ "date": "YYYY-MM-DD", "cups": 8 }` (`0..30`).
-2. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "weight"`)
+   - **Mandatory Date Rule for Widgets & Late-Night Offline Logs:** Every `water` command (especially from Android Glance / iOS WidgetKit quick-log buttons) MUST pass an explicit `date` (`YYYY-MM-DD`) captured at tap time so a late-night offline tap never mutates the next calendar day after midnight.
+2. **`POST /v1/commands?view=receipt`** (`action: "weight"`)
    - Payload: `{ "date": "YYYY-MM-DD", "kg": 81.4, "source": "manual" }` (range `35..250`, same-date entries overwrite cleanly).
-3. **`[EXISTING] GET /v1/water-logs?offset=0&limit=30`** & **`[EXISTING] GET /v1/weight-logs?offset=0&limit=30`**
+3. **`GET /v1/water-logs?offset=0&limit=30`** & **`GET /v1/weight-logs?offset=0&limit=30`**
    - Error Codes: `NUMBER_OUT_OF_RANGE` (`kg` outside `35..250`, `cups` outside `0..30`), `DATE_IN_FUTURE`, `DATE_TOO_OLD` (`> 90` days).
 
 ### RULES & BUSINESS LOGIC
-1. **Coalesced Rapid Water Taps:** If the user taps `+1 Cup` 3 times rapidly within `600ms`, coalesce locally and dispatch a single `water` command (`addCups: 3` or final `cups`) with one `Idempotency-Key` to keep revision count clean and responsive.
-2. **Cup-to-Liter & Unified Target Parity (`US-MOB-09` / `BACKEND-API-DELTA-SPEC` `M1`):** Always match server formula (`liters = round((cups * 0.25) * 100) / 100`, `1 cup = 250 ml`, max `30 cups = 7.5 L`). Daily hydration target computes deterministically as `weightKg * 35 ml + activity(+350 ml moderate / +500 ml active) + workoutDay(+500 ml) + maternal(+300 ml pregnant / +600 ml breastfeeding) + gout(+500 ml) + hotClimate(+200 ml egypt/gulf)`, clamped `2.0..5.0 L` (`8..20` cups).
-3. **Same-Day Weight Replacement:** Server retains 1 canonical weight record per `date`; logging a second weight on the same day updates that day's record smoothly with confirmation note if differing by `> 3 kg` from yesterday (typo guard).
+1. **Coalesced Rapid Water Taps:** If the user taps `+1 Cup` 3 times rapidly within `600ms`, coalesce locally and dispatch a single `water` command (`addCups: 3` or final `cups`) with one `Idempotency-Key` and explicit `date` to keep revision count clean and responsive.
+2. **Cup-to-Liter & Unified Target Parity (`US-MOB-09`):** Always match server formula (`liters = round((cups * 0.25) * 100) / 100`, `1 cup = 250 ml`, max `30 cups = 7.5 L`). Daily hydration target (`dailyWaterTarget`) computes deterministically as `weightKg * 35 ml + activity(+350 ml moderate / +500 ml active) + workoutOrExternalTrainingDay(+500 ml) + maternal(+300 ml pregnant / +600 ml breastfeeding) + gout(+500 ml) + hotClimate(+200 ml egypt/gulf)`, clamped `2.0..5.0 L` (`8..20` cups).
+3. **Standardized Weight Jump UX Guard (`> 3 kg` Soft / `> 10 kg` Hard):**
+   - Server retains 1 canonical weight record per `date`; logging a second weight on the same day overwrites that day's record smoothly.
+   - **`|newWeight - prevWeight| > 3 kg` and `<= 10 kg` (Soft Warning):** Show a quick confirm dialog (*"That's a {delta} kg change from your last weigh-in ({prevWeight} kg). Save {newWeight} kg?"* with `[Edit]` / `[Save Anyway]`).
+   - **`|newWeight - prevWeight| > 10 kg` (Hard Confirmation):** Show an elevated typo-protection confirmation requiring explicit confirmation (*"Large jump detected: Did you mean {newWeight} kg? Your last weigh-in was {prevWeight} kg."* with `[Cancel & Edit]` as default primary focus and secondary `[Confirm {newWeight} kg]`).
 
 ### MAIN FLOW
 1. User taps `[+ 1 Cup]` twice on Today -> Water visual increments from `4/10` to `6/10` cups (`1.5 L / 2.5 L`) immediately and syncs via `water` command.
@@ -332,23 +337,22 @@ As a user monitoring hydration and body weight, I want one-tap water logging (`+
 
 ### EDGE CASES
 - **Rapid Double Tap Above 30 Cups:** Client caps at `30` cups and shows toast *"Maximum daily log is 30 cups (7.5 L)"*.
-- **Suspected Weight Typo (e.g. User Types `8.1` or `181` Instead of `81`):** If `|newWeight - prevWeight| > 10 kg`, show gentle inline confirmation *"Did you mean {newWeight} kg? Yesterday was {prevWeight} kg."* before committing.
-- **Weight Already Synced From Smart Scale via HealthKit Today:** Allows manual override (`source: "manual"`) if the user measured separately.
-- **Rest Day vs. Workout Day Hydration Shift:** Displays base vs. workout-day adjusted water target transparently (e.g., `"3.0 L today (includes +500 ml workout boost)"` vs `"2.5 L rest day goal"`).
+- **Suspected Weight Typo (e.g. User Types `8.1` or `181` Instead of `81`):** Values outside `35..250 kg` are blocked immediately by `NUMBER_OUT_OF_RANGE`; in-range jumps `> 3 kg` trigger the soft confirm dialog, and jumps `> 10 kg` trigger the hard confirmation guard before committing.
+- **Weight Already Synced From Smart Scale via HealthKit Today:** Allows manual override (`source: "manual"`) if the user measured separately; subsequent background wearable syncs preserve manual entries via `protectManual: true`.
+- **Rest Day vs. Training Day Hydration Shift:** Displays base vs. training-day adjusted water target transparently (including `externalTrainingDays` boost on `nutrition_only`, e.g., `"3.0 L today (includes +500 ml training boost)"` vs `"2.5 L rest day goal"`).
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Incrementing water updates liters and target ratio accurately**
   - **Given** today's water count is `4` cups (`1.0 L`) of a `10`-cup target
   - **When** the user taps `[+ 500 ml Bottle]` (`addCups: 2`)
-  - **Then** the command sends `addCups: 2` and UI displays `6 / 10 cups (1.5 L)`.
+  - **Then** the command sends `addCups: 2` with explicit `date` and UI displays `6 / 10 cups (1.5 L)`.
 - **Scenario 2: Out-of-bounds weight is validated cleanly**
   - **Given** the Weight bottom sheet is open
   - **When** the user enters `25` kg (`< 35`) and taps Save
   - **Then** inline localized validation prevents submission (`NUMBER_OUT_OF_RANGE`: `35..250 kg`).
-- **Scenario 3: Large single-day weight delta triggers typo safeguard**
-  - **Given** yesterday's weight was `82.0 kg` and user enters `18.2 kg` or `182.0 kg`
-  - **When** validating before submit
-  - **Then** confirmation guard intercepts accidental typo input before overwriting weight history (or validates `35..250 kg` range).
+- **Scenario 3: Weight jump guard applies soft warning (`> 3 kg`) and hard confirmation (`> 10 kg`)**
+  - **Given** previous weight was `82.0 kg`
+  - **When** user enters `86.0 kg` (`+4.0 kg`) -> soft confirm dialog prompts verification; **when** user enters `102.0 kg` (`+20.0 kg`) -> hard confirmation guard intercepts before saving.
 
 ### ANALYTICS
 - `water_logged` (`delta_cups`: `integer`, `new_total_cups`: `integer`, `source`: `"today_card" | "quick_log" | "widget"`)
@@ -367,10 +371,10 @@ As a user monitoring hydration and body weight, I want one-tap water logging (`+
 | **Labels** | `production`, `mobile`, `quick-log`, `ux` |
 | **Target Screens** | `QuickLogBottomSheet` (Accessible from any top-level tab) |
 | **Entitlement** | `Freemium` |
-| **Backend Status** | `Mixed` (Routes to existing & new endpoints across `EPIC-04`..`EPIC-07`) |
+| **Backend Status** | `Implemented` *(AI Photo/Voice tile deferred to Final AI Phase — `POST /v1/nutrition/ai-parse` returns `501 FEATURE_DEFERRED_TO_AI_PHASE`)* |
 
 ### STORY
-As a busy user anywhere inside the app, I want a single floating `+` button that opens a fast, context-aware Quick-Log sheet for logging a meal by AI photo/voice, scanning a barcode, searching food, logging water/weight, recording body measurements, or starting a workout/check-in in 1–2 taps.
+As a busy user anywhere inside the app, I want a single floating `+` button that opens a fast, context-aware Quick-Log sheet for logging a meal by AI photo/voice *(Final AI Phase)*, scanning a barcode, searching food, logging water/weight, recording body measurements, or starting a workout/check-in in 1–2 taps.
 
 ### PRECONDITIONS
 - User is on any of the 5 top-level tabs (`Today`, `Nutrition`, `Workouts`, `Coach`, `Profile`).
@@ -378,8 +382,8 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
 ### SCREEN AND UI DETAILS
 1. **Bottom Sheet Layout (Grid of Tactile Action Tiles — Max 2 Rows, Scannable Icons):**
    - **Nutrition Actions** *(Hidden/Disabled if `serviceTrack == "workouts_only"`)*:
-     - **AI Photo / Voice Meal Log** *(PRO badge if Free; hidden/coming-soon until Final AI Phase when `capabilities.ai_meal_parse == true`)* -> Opens `AIMealLoggerScreen` (`US-NUT-05`).
-     - **Scan Barcode** *(PRO badge if Free)* -> Opens `BarcodeScannerScreen` (`US-NUT-06`).
+     - **AI Photo / Voice Meal Log** *(Final AI Phase — Deferred: `POST /v1/nutrition/ai-parse` returns `501 FEATURE_DEFERRED_TO_AI_PHASE` until AI rollout; hidden/coming-soon while `ai_meal_parse` is in `capabilities.deferredFeatures`)* -> Opens `AIMealLoggerScreen` (`US-NUT-05`).
+     - **Scan Barcode** *(Pro badge if Free)* -> Opens `BarcodeScannerScreen` (`US-NUT-06`).
      - **Search Food & Drinks** -> Opens `FoodSearchScreen` (`US-NUT-04`).
      - **Manual Calories / Quick Repeat** -> Opens `QuickRepeatAndManualSheet` (`US-NUT-07`).
    - **Health & Biometrics Actions:**
@@ -397,7 +401,7 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
 
 ### RULES & BUSINESS LOGIC
 1. **Service-Track Filtering:** Never display Nutrition food-logging tiles to `workouts_only` users, and never display `"Start Today's Workout"` to `nutrition_only` users.
-2. **Pro Feature Preview Behavior:** Free users tapping **Barcode Scanner** (or **AI Photo/Voice** once enabled in Final AI Phase) still see the tile clearly; tapping opens a brief contextual Soft Paywall preview (`US-MON-01`) showing a live example before offering the 7-day Free Trial.
+2. **Pro Feature Preview Behavior:** Free users (`entitlements.tier == "free"`) tapping **Barcode Scanner** (or **AI Photo/Voice** once enabled in Final AI Phase) still see the tile clearly; tapping opens a brief contextual Soft Paywall preview (`US-MON-01`) showing a live example before offering the 7-day Free Trial (`tier: "pro"`).
 3. **Target Date Context:** If the user is currently browsing a past date (e.g., Yesterday) inside `Today` or `Nutrition`, the Quick-Log sheet defaults `targetDate` to that viewed date with an explicit pill `"Logging for Yesterday (Nov 20)"` so entries don't land on the wrong day!
 
 ### MAIN FLOW
@@ -443,7 +447,7 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
 | **Labels** | `production`, `mobile`, `activity`, `wearables` |
 | **Target Screens** | `TodayDashboardScreen` (Activity Card), `ManualActivitySheet` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Existing` |
+| **Backend Status** | `Implemented` |
 
 ### STORY
 As a user trying to stay active outside formal gym workouts, I want to see my daily step count and active calories burned on the Today screen — synced automatically from Apple Health / Health Connect or entered manually — so my daily NEAT movement stays visible.
@@ -457,21 +461,22 @@ As a user trying to stay active outside formal gym workouts, I want to see my da
    - Displays a crisp step progress bar (`6,850 / 8,000 steps` — step goal dynamically aligned with persisted `profile.activity`: `sedentary: 6,000`, `light: 7,500`, `moderate: 9,000`, `active: 10,500`).
    - Displays **Active Energy** (`310 kcal`) when reported by wearables or manual entry.
    - **Sync Source Badge:**
-     - If connected (`US-INT-01`): `"Synced from Apple Health • 5m ago"` (or `Health Connect`) with `[Sync Now]` icon.
+     - If connected (`US-INT-01`): `"Synced from Apple Health • 5m ago"` (or `Health Connect`, computed from `todaySummary.activity.updatedAt`) with `[Sync Now]` icon.
      - If not connected: Subtle `[Connect Apple Health / Health Connect]` chip + `[+ Add Steps]` manual button.
 2. **Manual Steps / Activity Bottom Sheet:**
    - Inputs: `Steps` (`0..100,000`), optional `Active Energy (kcal)` (`0..5,000`), and `[Save]`.
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "steps"` or `"activity"`)
+1. **`POST /v1/commands?view=receipt`** (`action: "steps"` or `"activity"`)
    - Payload (`activity`): `{ "date": "YYYY-MM-DD", "steps": 9200, "activeEnergyKcal": 410, "source": "manual" }`
-2. **`[EXISTING] GET /v1/activity-logs?offset=0&limit=30`**
-3. **`[EXISTING] POST /v1/wearables/ingest`** (Auto-invoked when wearable permissions granted; `US-INT-01`)
-   - Error Codes: `NUMBER_OUT_OF_RANGE` (`steps` `0..100000`, `activeEnergyKcal` `0..5000`).
+2. **`GET /v1/activity-logs?offset=0&limit=30`**
+3. **`POST /v1/wearables/ingest`** (Auto-invoked when wearable permissions granted; `US-INT-01`)
+   - Supports **partial-success resilience**: returns `{ revision, ingested, skippedCount, skippedRecords[] }` without failing the entire batch on a single malformed record, deduplicates by `externalRecordId`, protects manual weight entries, and preserves pending Coach adaptations' `baseRevision`.
+   - Error Codes: `NUMBER_OUT_OF_RANGE` (`steps` `0..100000`, `activeEnergyKcal` `0..5000`), `INVALID_WEARABLES_BATCH`.
 
 ### RULES & BUSINESS LOGIC
 1. **No Double-Counting Calorie Targets:** Consistent with CuraFit's clinical engine (`IMPLEMENTATION.md`), daily calorie targets already include `activityMultiplier`; active energy burned from watches is displayed as an **informational movement card** and does **not** automatically add eat-back calories to the meal plan target! Add a small clear info note (`"Movement goal — does not auto-increase diet calories"`).
-2. **Wearable Priority Over Manual:** Server deduplicates by `externalRecordId` for wearables and replaces per `(date, source)` for manual entries (`coaching-settings.mjs`). If both wearable and manual records exist for today, display wearable count as primary unless manual value is newer and higher.
+2. **Wearable Priority Over Manual (`todaySummary.activity`):** Server deduplicates by `externalRecordId` for wearables and replaces per `(date, source)` for manual entries (`coaching-settings.mjs`). In `GET /v1/bootstrap`, `todaySummary.activity` returns `{ steps, activeEnergyKcal, source, updatedAt }` and prioritizes wearable sources over manual entries unless a manual entry is **both newer AND higher** in step count.
 
 ### MAIN FLOW
 1. User walks throughout the day with Apple Watch / Android phone.

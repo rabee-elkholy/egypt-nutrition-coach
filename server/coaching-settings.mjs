@@ -26,7 +26,7 @@ export function applySettingsCommand(s,action,p){
  }
  if(action==='notification_preferences'){
   const prefs=plainRecord(p,'notificationPreferences'),next={...s.notificationPreferences};
-  for(const k of ['dailyReminder','workoutReminder','waterReminder','weeklyReviewReminder','mealReminders','fastingReminder','ramadanSuhoorReminder']){
+  for(const k of ['dailyReminder','workoutReminder','waterReminder','weeklyReviewReminder','mealReminders','fastingReminder','ramadanSuhoorReminder','exemptSuhoorFromQuietHours']){
    if(prefs[k]!==undefined)next[k]=boolean(prefs[k],k);
   }
   if(prefs.preferredWorkoutReminderMinutesBefore!==undefined){
@@ -61,7 +61,7 @@ export function applySettingsCommand(s,action,p){
   const externalRecordId=p.externalRecordId?String(p.externalRecordId).slice(0,120):null;
   s.activityLogs||=[];
   if(externalRecordId&&s.activityLogs.some(x=>x.externalRecordId===externalRecordId))return s;
-  s.activityLogs=s.activityLogs.filter(x=>!(x.date===date&&x.source===source&&!externalRecordId));
+  s.activityLogs=s.activityLogs.filter(x=>!(x.date===date&&x.source===source&&(!externalRecordId||!x.externalRecordId)));
   s.activityLogs.push({id:crypto.randomUUID(),date,steps,activeEnergyKcal,source,externalRecordId,at:isoNow()});
   return s;
  }

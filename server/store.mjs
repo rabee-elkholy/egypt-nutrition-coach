@@ -41,6 +41,7 @@ async function hasNativeAuthTables(db){
 
 export async function loadAccount(db,user){
  const coachingReady=await hasCoachingTables(db);
+ const extendedReady=await hasExtendedTables(db);
  const row=await db.prepare('SELECT revision,body FROM coaching_accounts WHERE user_id=?').bind(user).first();
  let parsed=row?JSON.parse(row.body):empty();
  // The transactional revision column is authoritative for legacy/restored bodies.
@@ -51,16 +52,40 @@ export async function loadAccount(db,user){
    if(parsed._normalizedStorage){
     // Re-read the aggregate and all normalized history in one D1 transaction.
     // Separate reads could attach newer logs to an older account revision.
-    const [account,fe,wl,wgl,wkl,ss,ck,cases,feedback]=await db.batch([
+    const batchStmts=[
      db.prepare('SELECT revision,body FROM coaching_accounts WHERE user_id=?').bind(user),
      db.prepare('SELECT body FROM coaching_food_entries WHERE user_id=? AND deleted=0 ORDER BY date, entry_id').bind(user),
      db.prepare('SELECT body FROM coaching_water_logs WHERE user_id=? ORDER BY date').bind(user),
      db.prepare('SELECT body FROM coaching_weight_logs WHERE user_id=? ORDER BY date').bind(user),
      db.prepare('SELECT body FROM coaching_workout_logs WHERE user_id=? AND deleted=0 ORDER BY date, log_id').bind(user),
      db.prepare('SELECT body FROM coaching_sessions WHERE user_id=? ORDER BY date, session_id').bind(user),
-     db.prepare('SELECT body FROM coaching_checkins WHERE user_id=? ORDER BY date').bind(user),
-     ...(coachingReady?[db.prepare('SELECT body FROM coaching_cases WHERE user_id=? ORDER BY date,case_id').bind(user),db.prepare('SELECT body FROM coaching_feedback WHERE user_id=? ORDER BY date,feedback_id').bind(user)]:[])
-    ]);
+     db.prepare('SELECT body FROM coaching_checkins WHERE user_id=? ORDER BY date').bind(user)
+    ];
+    const coachingStart=batchStmts.length;
+    if(coachingReady){
+     batchStmts.push(
+      db.prepare('SELECT body FROM coaching_cases WHERE user_id=? ORDER BY date,case_id').bind(user),
+      db.prepare('SELECT body FROM coaching_feedback WHERE user_id=? ORDER BY date,feedback_id').bind(user)
+     );
+    }
+    const extStart=batchStmts.length;
+    if(extendedReady){
+     batchStmts.push(
+      db.prepare('SELECT body FROM coaching_activity_logs WHERE user_id=? ORDER BY date, log_id').bind(user),
+      db.prepare('SELECT body FROM coaching_body_measurements WHERE user_id=? ORDER BY date').bind(user),
+      db.prepare('SELECT body FROM coaching_food_favorites WHERE user_id=? ORDER BY created_at DESC').bind(user),
+      db.prepare('SELECT date FROM coaching_streak_freezes WHERE user_id=? ORDER BY date').bind(user)
+     );
+    }
+    const results=await db.batch(batchStmts);
+    const [account,fe,wl,wgl,wkl,ss,ck]=results;
+    const cases=coachingReady?results[coachingStart]:null;
+    const feedback=coachingReady?results[coachingStart+1]:null;
+    const actLogs=extendedReady?results[extStart]:null;
+    const bodyMeas=extendedReady?results[extStart+1]:null;
+    const favs=extendedReady?results[extStart+2]:null;
+    const freezes=extendedReady?results[extStart+3]:null;
+
     const snapshotRow=account.results[0];
     if(!snapshotRow)return empty();
     parsed=JSON.parse(snapshotRow.body);
@@ -99,6 +124,22 @@ export async function loadAccount(db,user){
      const map=new Map((parsed.checkins||[]).map(x=>[x.date,x]));
      for(const r of ck.results){const item=JSON.parse(r.body);map.set(item.date,item);}
      parsed.checkins=[...map.values()];
+    }
+    if(actLogs?.results?.length){
+     const map=new Map((parsed.activityLogs||[]).map(x=>[x.id,x]));
+     for(const r of actLogs.results){const item=JSON.parse(r.body);map.set(item.id,item);}
+     parsed.activityLogs=[...map.values()];
+    }
+    if(bodyMeas?.results?.length){
+     const map=new Map((parsed.bodyMeasurements||[]).map(x=>[x.date,x]));
+     for(const r of bodyMeas.results){const item=JSON.parse(r.body);map.set(item.date,item);}
+     parsed.bodyMeasurements=[...map.values()];
+    }
+    if(favs?.results?.length&&!(parsed.foodFavorites||[]).length){
+     parsed.foodFavorites=favs.results.map(r=>JSON.parse(r.body));
+    }
+    if(freezes?.results?.length){
+     parsed.streakFreezes=[...new Set([...(parsed.streakFreezes||[]),...freezes.results.map(r=>r.date)])].sort();
     }
    }
   }catch(error){throw apiError('ACCOUNT_SNAPSHOT_READ_FAILED','Unable to load account records; no changes were made.',{status:503,retryable:true,cause:error});}
@@ -146,9 +187,9 @@ export function deriveSyncDeltas(state,action,payload={},nowIso=new Date().toISO
  return deltas;
 }
 
-async function hasV2Tables(db){
- const result=await db.prepare("SELECT COUNT(*) AS total FROM sqlite_master WHERE type='table' AND name IN ('coaching_activity_logs','coaching_body_measurements','coaching_food_favorites','coaching_usage_quotas')").first();
- return result?.total===4;
+async function hasExtendedTables(db){
+ const result=await db.prepare("SELECT COUNT(*) AS total FROM sqlite_master WHERE type='table' AND name IN ('coaching_activity_logs','coaching_body_measurements','coaching_food_favorites','coaching_usage_quotas','coaching_streak_freezes')").first();
+ return result?.total===5;
 }
 
 export async function saveAccount(db,user,state,previousRevision,{key,digest,action,payload={},previousState=null,claimSource=null}){
@@ -162,7 +203,7 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
 
  const normalizedReady=await hasNormalizedTables(db);
  const coachingReady=normalizedReady&&await hasCoachingTables(db);
- const v2Ready=normalizedReady&&await hasV2Tables(db);
+ const extendedReady=normalizedReady&&await hasExtendedTables(db);
  previousState ||= normalizedReady?await loadAccount(db,user):empty();
  const nowIso=new Date().toISOString();
  const tz=state.profile?.timezone||'Africa/Cairo';
@@ -240,19 +281,25 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
    }else if(d.entityType==='recovery_checkin'&&d.payload){
     const c=d.payload;
     statements.push(db.prepare('INSERT OR REPLACE INTO coaching_checkins(user_id,date,at,body) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(user,c.date,c.at||nowIso,JSON.stringify(c),user,state.revision,body));
-   }else if(v2Ready&&d.entityType==='activity_log'&&d.payload){
+   }else if(extendedReady&&d.entityType==='activity_log'&&d.payload){
     const a=d.payload;
     statements.push(db.prepare('INSERT OR REPLACE INTO coaching_activity_logs(user_id,log_id,date,source,external_record_id,updated_at,body) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(user,a.id,a.date,a.source||'manual',a.externalRecordId||null,nowIso,JSON.stringify(a),user,state.revision,body));
-   }else if(v2Ready&&d.entityType==='body_measurement'&&d.payload){
+   }else if(extendedReady&&d.entityType==='body_measurement'&&d.payload){
     const m=d.payload;
     statements.push(db.prepare('INSERT OR REPLACE INTO coaching_body_measurements(user_id,date,body,updated_at) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(user,m.date,JSON.stringify(m),nowIso,user,state.revision,body));
-   }else if(v2Ready&&d.entityType==='food_favorite'){
+   }else if(extendedReady&&d.entityType==='food_favorite'){
     if(d.op==='delete'){
      statements.push(db.prepare('DELETE FROM coaching_food_favorites WHERE user_id=? AND favorite_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(user,String(d.entityId),user,state.revision,body));
     }else if(d.payload){
      const f=d.payload;
      statements.push(db.prepare('INSERT OR REPLACE INTO coaching_food_favorites(user_id,favorite_id,name,source,body,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(user,f.id,f.name,f.source||'manual',JSON.stringify(f),f.createdAt||nowIso,user,state.revision,body));
     }
+   }
+  }
+  if(extendedReady&&Array.isArray(state.streakFreezes)&&state.streakFreezes.length){
+   for(const fDate of state.streakFreezes){
+    const dStr=typeof fDate==='string'?fDate:fDate?.date;
+    if(dStr)statements.push(db.prepare('INSERT OR IGNORE INTO coaching_streak_freezes(user_id,date,auto_applied,created_at) SELECT ?,?,0,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(user,dStr,nowIso,user,state.revision,body));
    }
   }
  }
@@ -271,7 +318,7 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
  if(claimSource){
   const from=claimSource.userId;
   for(const [table,columns]of [['coaching_plans','plan_id,created_at,body'],['coaching_workout_plans','plan_id,body'],['coaching_account_consents','consent_type,version,accepted,at']])statements.push(db.prepare(`INSERT OR IGNORE INTO ${table}(user_id,${columns}) SELECT ?,${columns} FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(user,from,user,state.revision,body));
-  for(const table of ['coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_requests','coaching_plans','coaching_workout_plans','coaching_changes','coaching_accounts',...(coachingReady?['coaching_cases','coaching_feedback']:[]),...(v2Ready?['coaching_activity_logs','coaching_body_measurements','coaching_food_favorites','coaching_grocery_checks','coaching_streak_freezes']:[])])statements.push(db.prepare(`DELETE FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(from,user,state.revision,body));
+  for(const table of ['coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_requests','coaching_plans','coaching_workout_plans','coaching_changes','coaching_accounts',...(coachingReady?['coaching_cases','coaching_feedback']:[]),...(extendedReady?['coaching_activity_logs','coaching_body_measurements','coaching_food_favorites','coaching_grocery_checks','coaching_streak_freezes']:[])])statements.push(db.prepare(`DELETE FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(from,user,state.revision,body));
   statements.push(db.prepare("INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) SELECT ?,'__claimed__',?,?,NULL,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)").bind(from,user,nowIso,nowIso,user,state.revision,body));
  }
  const result=await db.batch(statements);
@@ -323,27 +370,31 @@ async function safeAll(db, sql, bindVal){
  catch(e){if(/no such table/i.test(e?.message||''))return [];throw e;}
 }
 
-export async function exportFullAccountData(db,user){
+export async function exportFullAccountData(db,user,extras={}){
  const state=await loadAccount(db,user);
- const [plansRows,workoutPlansRows,changesRows,consentsRows,subsRows,photosRows,ticketsRows]=await Promise.all([
+ const [plansRows,workoutPlansRows,changesRows,consentsRows,subsRows,photosRows,ticketsRows,oauthRows,pushRows,aiRows]=await Promise.all([
   safeAll(db,'SELECT plan_id,created_at,body FROM coaching_plans WHERE user_id=? ORDER BY created_at',user),
   safeAll(db,'SELECT plan_id,body FROM coaching_workout_plans WHERE user_id=?',user),
   safeAll(db,'SELECT revision,action,at FROM coaching_changes WHERE user_id=? ORDER BY revision',user),
   safeAll(db,'SELECT consent_type,version,accepted,at FROM coaching_account_consents WHERE user_id=?',user),
   safeAll(db,'SELECT provider,external_tx_id,product_id,status,expires_at,auto_renew_enabled,updated_at FROM coaching_subscriptions WHERE user_id=?',user),
   safeAll(db,'SELECT photo_id,date,pose,weight_kg_snapshot,created_at FROM coaching_progress_photos WHERE user_id=? ORDER BY date DESC',user),
-  safeAll(db,'SELECT ticket_id,category,message,created_at FROM coaching_support_tickets WHERE user_id=? ORDER BY created_at DESC',user)
+  safeAll(db,'SELECT ticket_id,category,message,created_at FROM coaching_support_tickets WHERE user_id=? ORDER BY created_at DESC',user),
+  safeAll(db,'SELECT provider,email,created_at FROM coaching_oauth_identities WHERE user_id=? ORDER BY created_at ASC',user),
+  safeAll(db,'SELECT device_id,platform,locale,timezone,app_version,updated_at FROM coaching_push_tokens WHERE user_id=? ORDER BY updated_at DESC',user),
+  safeAll(db,'SELECT thread_id,message_id,role,content,created_at FROM coaching_ai_messages WHERE user_id=? ORDER BY created_at ASC',user)
  ]);
+ const progressPhotos=Array.isArray(extras.signedProgressPhotos)?extras.signedProgressPhotos:photosRows;
  return {
   schemaVersion:3,
   exportedAt:new Date().toISOString(),
   userId:user,
   revision:state.revision,
-  profile:state.profile,
+  profile:state.profile?{...state.profile,...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null,
   preferences:state.preferences,
   onboarding:state.onboarding,
   notificationPreferences:state.notificationPreferences,
-  entitlements:state.entitlements,
+  entitlements:extras.entitlements||state.entitlements,
   fastingState:state.fastingState,
   ramadanMode:state.ramadanMode,
   activeNutritionPlanId:state.active_plan_id,
@@ -366,8 +417,11 @@ export async function exportFullAccountData(db,user){
    coachingFeedback:state.coachingFeedback||[],
    history:state.history||[]
   },
+  oauthIdentities:oauthRows,
+  registeredDevices:pushRows,
+  aiMessages:aiRows,
   subscriptions:subsRows,
-  progressPhotos:photosRows,
+  progressPhotos,
   supportTickets:ticketsRows,
   archivedNutritionPlans:plansRows.map(r=>JSON.parse(r.body)),
   archivedWorkoutPlans:workoutPlansRows.map(r=>JSON.parse(r.body)),
@@ -382,7 +436,7 @@ export async function deleteFullAccountData(db,user){
  if(!normalized)throw apiError('ACCOUNT_DELETION_MIGRATION_REQUIRED','Account deletion requires normalized session revocation tables to be migrated.',{status:503});
  const coachingReady=await hasCoachingTables(db);
  const nativeAuthReady=await hasNativeAuthTables(db);
- const v2Ready=await hasV2Tables(db);
+ const extendedReady=await hasExtendedTables(db);
  const tables=['coaching_accounts','coaching_requests','coaching_plans','coaching_changes','coaching_workout_plans'];
  if(normalized){
   tables.push('coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_auth_sessions');
@@ -391,7 +445,7 @@ export async function deleteFullAccountData(db,user){
  const identities=[...new Set([user,...claims.map(row=>row.user_id)])];
  if(coachingReady)tables.push('coaching_cases','coaching_feedback');
  if(nativeAuthReady)tables.push('coaching_refresh_tokens','coaching_users');
- if(v2Ready)tables.push('coaching_oauth_identities','coaching_push_tokens','coaching_food_favorites','coaching_grocery_checks','coaching_body_measurements','coaching_progress_photos','coaching_ai_messages','coaching_subscriptions','coaching_support_tickets','coaching_usage_quotas','coaching_activity_logs','coaching_streak_freezes');
+ if(extendedReady)tables.push('coaching_oauth_identities','coaching_push_tokens','coaching_food_favorites','coaching_grocery_checks','coaching_body_measurements','coaching_progress_photos','coaching_ai_messages','coaching_subscriptions','coaching_support_tickets','coaching_usage_quotas','coaching_activity_logs','coaching_streak_freezes');
  const stmts=identities.flatMap(identity=>tables.map(t=>db.prepare(`DELETE FROM ${t} WHERE user_id=?`).bind(identity)));
  if(normalized){
   for(const identity of identities)stmts.push(db.prepare('INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?)').bind(identity,'__deleted__','system',nowIso,null,nowIso));

@@ -33,6 +33,21 @@ export const present=s=>{
  };
 };
 
+function selectPrimaryTodayActivity(logs, currDate) {
+ const todayLogs = (logs || []).filter(a => a.date === currDate);
+ if (!todayLogs.length) return null;
+ const wearables = todayLogs.filter(a => a.source && a.source !== 'manual');
+ const manuals = todayLogs.filter(a => !a.source || a.source === 'manual');
+ const latestWearable = wearables.at(-1) || null;
+ const latestManual = manuals.at(-1) || null;
+ if (!latestWearable) return latestManual;
+ if (!latestManual) return latestWearable;
+ const wAt = Date.parse(latestWearable.at || '') || 0;
+ const mAt = Date.parse(latestManual.at || '') || 0;
+ if (mAt > wAt && Number(latestManual.steps || 0) > Number(latestWearable.steps || 0)) return latestManual;
+ return latestWearable;
+}
+
 export const presentBootstrap=(s,extras={})=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
@@ -46,13 +61,14 @@ export const presentBootstrap=(s,extras={})=>{
  const wTarget=dailyWaterTarget(s,currDate);
  const todayWater=(s.waterLogs||[]).find(w=>w.date===currDate);
  const latestWeight=(s.weights||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)).at(-1)||null;
- const todayActivity=(s.activityLogs||[]).filter(a=>a.date===currDate).at(-1)||null;
+ const todayActivity=selectPrimaryTodayActivity(s.activityLogs,currDate);
  const upcoming14=scheduledSessions(s,currDate,14);
  const todaySched=upcoming14.find(x=>x.date===currDate)||null;
  const todaySess=(s.sessions||[]).find(x=>x.date===currDate)||null;
  const {streakSummary,engagementState}=computeStreakAndEngagement(s,clockNow());
  const inbox=coachingInbox(s,clockNow());
  const unreadCoachingInboxCount=inbox.items.filter(c=>c.readStatus!=='ACKNOWLEDGED').length;
+ const hydratedProfile=s.profile?{...s.profile,unitSystem:s.profile.unitSystem||'metric',...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
  return {
   schemaVersion:s.schemaVersion||3,
   revision:s.revision,
@@ -67,8 +83,8 @@ export const presentBootstrap=(s,extras={})=>{
    workoutUiMode:s.profile?.workoutUiMode||'simple',
    workoutPrefs:s.onboarding.workoutPrefs||null
   }:null,
-  profile:s.profile,
-  preferences:s.preferences,
+  profile:hydratedProfile,
+  preferences:s.preferences?{...s.preferences,unitSystem:s.profile?.unitSystem||'metric'}:null,
   consents:extras.consents||[],
   eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
   activeNutritionPlanRef:plan?{id:plan.id,start_date:plan.start_date,end_date:plan.days.at(-1)?.date,effective_from:plan.effective_from,targets:plan.targets}:null,
@@ -89,10 +105,10 @@ export const presentBootstrap=(s,extras={})=>{
     entriesCount:todayDiary.entries.length
    },
    hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters},
-   activity:todayActivity?{steps:todayActivity.steps,activeEnergyKcal:todayActivity.activeEnergyKcal,source:todayActivity.source}:null,
+   activity:todayActivity?{steps:todayActivity.steps,activeEnergyKcal:todayActivity.activeEnergyKcal,source:todayActivity.source,updatedAt:todayActivity.at||null}:null,
    latestWeight,
    fastingState:getFastingState(s,clockNow()),
-   ramadanMode:s.ramadanMode||{enabled:false,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false},
+   ramadanMode:s.ramadanMode||{enabled:false,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false,endDate:null},
    recovery:{status:safety.length?(ready.status==='stop'?'stop':'hold'):ready.status,reasonCode:safety.length&&ready.status!=='stop'?'WORKOUT_SAFETY_EXCLUSION_HOLD':ready.reasonCode,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule&&!safety.length},
    scheduledWorkout:todaySched?{...todaySched,status:todaySess?.status||'scheduled'}:null
   },
@@ -101,7 +117,7 @@ export const presentBootstrap=(s,extras={})=>{
   unreadCoachingInboxCount,
   pendingAdaptations:(s.adaptations||[]).filter(a=>a.status==='pending'),
   workoutSafetyIssues:safety,
-  entitlements:extras.entitlements||s.entitlements||{tier:'free',status:'none',features:['core_nutrition','core_workouts','offline_sync','arabic_food_search']},
+  entitlements:extras.entitlements||s.entitlements||{tier:'free',status:'none',features:['core_nutrition','core_workouts','offline_sync','arabic_food_search','pantry_finder','ramadan_fasting']},
   notificationPreferences:s.notificationPreferences
  };
 };

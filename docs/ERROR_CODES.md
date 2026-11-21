@@ -42,9 +42,9 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `INVALID_DATE` | `400` | No | `field` | Invalid calendar date format; expected YYYY-MM-DD. |
 | `DATE_IN_FUTURE` | `400` | No | `date` | Logging date cannot be in the future. |
 | `DATE_TOO_OLD` | `400` | No | `maxDays` | Backdating logs is limited to the last {maxDays} days. |
-| `INVALID_DATE_RANGE` | `400` | No | `field` | Invalid from/to date query parameter; expected YYYY-MM-DD. |
+| `INVALID_DATE_RANGE` | `400` | No | `field` | Invalid date range or analytics range parameter (expected YYYY-MM-DD or one of 14d, 30d, 90d, all). |
 | `INVALID_WEEKDAY_CONVENTION` | `400` | No | — | weekdayConvention must be either js_sunday_0 or saturday_0. |
-| `INVALID_WORKOUT_DAYS` | `400` | No | — | Selected training days list is invalid (max 6 days). |
+| `INVALID_WORKOUT_DAYS` | `400` | No | — | Selected training days list is invalid (max 7 days). |
 | `INVALID_DAY_LOCATIONS` | `400` | No | — | dayLocations keys must be weekday indices 0..6 with valid location values. |
 | `INVALID_TIMEZONE` | `400` | No | — | Invalid IANA timezone identifier. |
 | `INVALID_QUIET_HOURS` | `400` | No | `field` | {field} must be formatted as 24-hour HH:mm. |
@@ -74,7 +74,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `AUTH_HEADER_INVALID` | `401` | No | — | Authorization header must use Bearer token format. |
 | `AUTH_TOKEN_MALFORMED` | `401` | No | — | Malformed JWT access token. |
 | `AUTH_PROVIDER_NOT_CONFIGURED` | `503` | No | — | Authentication provider key material is not configured on the server. |
-| `AUTH_JWKS_UNAVAILABLE` | `503` | Yes | — | Unable to fetch JWKS verification keys. |
+| `AUTH_JWKS_UNAVAILABLE` | `503` | Yes | `provider` | Unable to fetch JWKS verification keys. |
 | `AUTH_KEY_ROTATED_OR_UNKNOWN` | `401` | No | — | JWT signing key ID (kid) is unknown or rotated. |
 | `AUTH_UNSUPPORTED_ALG` | `401` | No | — | Unsupported JWT signing algorithm. |
 | `AUTH_INVALID_SIGNATURE` | `401` | No | — | Invalid JWT signature. |
@@ -127,16 +127,16 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `INVALID_SERVICE_TRACK` | `400` | No | — | serviceTrack must be one of nutrition_only, workouts_only, or nutrition_and_workouts. |
 | `BMI_OUT_OF_RANGE` | `400` | No | — | Calculated BMI is outside the automated planning range (12.5..65). |
 | `WEIGHT_LOSS_UNDERWEIGHT_UNSAFE` | `400` | No | — | Weight loss plans are not suitable when current BMI is below 18.5. |
-| `INVALID_EXTERNAL_TRAINING_DAYS` | `400` | No | — | externalTrainingDays must be an array of up to 6 weekday integers (0..6). |
+| `INVALID_EXTERNAL_TRAINING_DAYS` | `400` | No | — | externalTrainingDays must be an array of up to 7 weekday integers (0..6). |
 | `MUSCLE_GAIN_REQUIRES_RESISTANCE_DAYS` | `400` | No | — | Muscle gain goal in nutrition_only track requires confirmed external resistance training days. |
 | `INVALID_TARGET_WEIGHT` | `400` | No | — | targetWeight is inconsistent with your goal and safe BMI floor (18.5). |
 | `HEALTH_CONFIRMATION_REQUIRED` | `400` | No | — | Confirm health readiness clearance before creating or modifying a workout plan. |
 | `HEALTH_ALREADY_CONFIRMED` | `400` | No | — | Health readiness has already been confirmed. |
 | `SCHEDULE_ALREADY_CONFIRMED` | `400` | No | — | Workout schedule weekday convention has already been confirmed. |
 | `INVALID_SCHEDULE_MAPPING` | `400` | No | — | Provide a unique weekday index (0..6) for each workout day in dayMap. |
-| `INVALID_AGE` | `400` | No | — | age must be a whole number of years between 18 and 70. |
+| `INVALID_AGE` | `400` | No | — | age must be a whole number of years between 18 and 95. |
 | `INVALID_PROFILE_METRICS` | `400` | No | — | Invalid sex, activity level, or goal selection. |
-| `INVALID_TRAINING_DAYS` | `400` | No | — | trainingDays must be an integer between 0 and 6. |
+| `INVALID_TRAINING_DAYS` | `400` | No | — | trainingDays must be an integer between 0 and 7. |
 | `INVALID_GOAL_PACE` | `400` | No | — | goalPace must be one of slow, moderate, or fast. |
 | `INVALID_DIET_TYPE` | `400` | No | — | Selected dietType is not supported. |
 | `INVALID_BUDGET_OR_MEALS` | `400` | No | — | Invalid budget tier or daily meal count (2..5). |
@@ -223,7 +223,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `INVALID_WORKOUT_SPLIT` | `400` | No | — | workoutSplitPreference must be auto, full_body, upper_lower, ppl, or bro_split. |
 | `WORKOUT_INFEASIBLE` | `400` | No | — | Current equipment, injury exclusions, and duration cannot build a valid workout session. |
 | `NO_ELIGIBLE_EXERCISES` | `400` | No | — | No exercises satisfy both the selected equipment and declared injury exclusions. |
-| `WORKOUT_SETS_REQUIRED` | `400` | No | — | sets array must contain between 1 and 10 performed sets. |
+| `WORKOUT_SETS_REQUIRED` | `400` | No | — | sets array must contain between 1 and 15 performed sets. |
 | `WORKOUT_REPS_MUST_BE_INTEGER` | `400` | No | — | Performed set reps must be whole integers. |
 | `INVALID_WORKOUT_SESSION` | `400` | No | — | Workout session day or status (completed, partial, missed) is invalid. |
 | `SESSION_REQUIRES_ACTUAL_SETS` | `400` | No | — | Log at least one exercise set before marking a session completed or partial. |
@@ -302,3 +302,14 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `INVALID_WORKOUT_UI_MODE` | `400` | No | — | workoutUiMode must be simple or pro. |
 | `FEATURE_DEFERRED_TO_AI_PHASE` | `501` | No | `feature` | This AI feature is scheduled for the final AI rollout phase. |
 | `MEDICAL_DIET_CONFLICT` | `400` | No | `dietType` | The selected diet pattern is contraindicated for your declared medical conditions, maternal status, or goal. |
+| `PROFILE_ALREADY_EXISTS` | `409` | No | — | An existing profile already exists on this account; pass overwriteExisting: true to replace it. |
+| `HEALTH_CONSENT_REQUIRED` | `403` | No | — | Active health_data_processing consent is required to generate plans or compute coaching reviews. |
+| `ACTIVE_SUBSCRIPTION_ON_OTHER_PLATFORM` | `409` | No | `activeProvider`, `requestedProvider` | You already have an active Pro subscription on {activeProvider}; manage or cancel it there before subscribing on {requestedProvider}. |
+| `CANNOT_UNLINK_LAST_AUTH_METHOD` | `409` | No | `provider` | Cannot unlink your only active sign-in provider; link another provider first. |
+| `OAUTH_PROVIDER_NOT_LINKED` | `404` | No | `provider` | The specified OAuth provider is not linked to this account. |
+| `FOOD_DAY_MODE_CONFLICT` | `409` | No | `date` | Target date already has a legacy daily_total log; switch to entries or pass replaceDailyTotal: true. |
+| `WORKOUT_LOG_NOT_FOUND` | `404` | No | `logId` | The specified workout log was not found. |
+| `SESSION_NOT_FOUND` | `404` | No | `sessionId` | The specified workout session was not found. |
+| `AD_HOC_INJURY_WARNING` | `409` | No | `injuries` | This exercise conflicts with your declared joint injuries ({injuries}); pass overrideInjuryWarning: true to log it anyway. |
+| `INVALID_MATERNAL_PROFILE` | `400` | No | — | Maternal status is only applicable to female profiles aged 18 to 50. |
+| `INVALID_UNIT_SYSTEM` | `400` | No | — | unitSystem must be either metric or imperial. |

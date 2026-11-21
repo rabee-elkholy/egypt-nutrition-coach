@@ -52,13 +52,20 @@ export function computeWorkoutPrs(s, { since = null, exerciseId = null } = {}) {
 
   const best = new Map();
   const events = [];
+  const typeMap = {
+    weight: 'heaviest_kg',
+    reps: 'best_reps',
+    volume: 'highest_volume',
+    '1rm': 'estimated_1rm'
+  };
 
   for (const l of logs) {
     const ex = byExerciseId.get(l.exerciseId);
     const loadMode = l.loadMode || ex?.loadMode || 'external';
     const isWeighted = usesKg({ loadMode }) || ex?.supportsAddedWeight === true;
-    if (l.entryMode === 'simple' && isWeighted) continue;
-    const ws = workingSetsOf(l.sets);
+    const hasExplicitKg = (l.sets || []).some(set => Number(set.kg || 0) > 0);
+    if (l.entryMode === 'simple' && isWeighted && !hasExplicitKg) continue;
+    const ws = workingSetsOf(l.sets).filter(set => !set.pain);
     if (!ws.length) continue;
 
     const isAssisted = loadMode === 'assisted';
@@ -77,30 +84,39 @@ export function computeWorkoutPrs(s, { since = null, exerciseId = null } = {}) {
     const maxReps = Math.max(...ws.map(set => Number(set.reps || 0)));
 
     let bestWeightInSession = null;
+    let bestWeightReps = null;
     let best1RmInSession = null;
+    let best1RmReps = null;
     for (const set of ws) {
       const kg = Number(set.kg || 0);
       const reps = Number(set.reps || 0);
       if (isWeighted && kg > 0) {
         if (bestWeightInSession == null || (isAssisted ? kg < bestWeightInSession : kg > bestWeightInSession)) {
           bestWeightInSession = kg;
+          bestWeightReps = reps;
         }
-        if (!isAssisted) {
+        if (!isAssisted && reps >= 1 && reps <= 15) {
           const e1rm = Math.round(kg * (1 + reps / 30) * 10) / 10;
-          if (best1RmInSession == null || e1rm > best1RmInSession) best1RmInSession = e1rm;
+          if (best1RmInSession == null || e1rm > best1RmInSession) {
+            best1RmInSession = e1rm;
+            best1RmReps = reps;
+          }
         }
       }
     }
 
-    const pushEvent = (prType, value, previousValue) => {
+    const pushEvent = (prType, value, previousValue, repsVal = null) => {
       if (!since || l.date >= since) {
         events.push({
           exerciseId: l.exerciseId,
           name: rec.name,
           nameAr: rec.nameAr,
+          type: typeMap[prType] || prType,
           prType,
           value,
           previousValue,
+          reps: repsVal,
+          loadMode,
           achievedAt: l.at || `${l.date}T12:00:00.000Z`,
           date: l.date
         });
@@ -112,23 +128,23 @@ export function computeWorkoutPrs(s, { since = null, exerciseId = null } = {}) {
         ? true
         : (isAssisted ? bestWeightInSession < rec.heaviestWeightKg : bestWeightInSession > rec.heaviestWeightKg);
       if (improved) {
-        if (rec.heaviestWeightKg != null) pushEvent('weight', bestWeightInSession, rec.heaviestWeightKg);
+        pushEvent('weight', bestWeightInSession, rec.heaviestWeightKg, bestWeightReps);
         rec.heaviestWeightKg = bestWeightInSession;
       }
     }
 
     if (rec.bestRepsAtWeight == null || maxReps > rec.bestRepsAtWeight) {
-      if (rec.bestRepsAtWeight != null) pushEvent('reps', maxReps, rec.bestRepsAtWeight);
+      if (rec.bestRepsAtWeight != null) pushEvent('reps', maxReps, rec.bestRepsAtWeight, maxReps);
       rec.bestRepsAtWeight = maxReps;
     }
 
     if (sessionVolume > 0 && sessionVolume > rec.highestVolumeKg) {
-      if (rec.highestVolumeKg > 0) pushEvent('volume', Math.round(sessionVolume * 10) / 10, Math.round(rec.highestVolumeKg * 10) / 10);
+      if (rec.highestVolumeKg > 0) pushEvent('volume', Math.round(sessionVolume * 10) / 10, Math.round(rec.highestVolumeKg * 10) / 10, maxReps);
       rec.highestVolumeKg = Math.round(sessionVolume * 10) / 10;
     }
 
     if (best1RmInSession != null && (rec.estimated1RM == null || best1RmInSession > rec.estimated1RM)) {
-      if (rec.estimated1RM != null) pushEvent('1rm', best1RmInSession, rec.estimated1RM);
+      if (rec.estimated1RM != null) pushEvent('1rm', best1RmInSession, rec.estimated1RM, best1RmReps);
       rec.estimated1RM = best1RmInSession;
     }
 

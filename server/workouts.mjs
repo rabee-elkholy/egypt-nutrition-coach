@@ -41,14 +41,18 @@ const INJURY_NAMES={
  diastasis_recti:/crunch|sit.?up|v.?up|leg raise/i
 };
 const SENIOR_UNSAFE_RE=/jump|plyo|box jump|barbell back squat|conventional deadlift|snatch|clean|jerk|behind.*neck/i;
-const PREGNANCY_UNSAFE_RE=/crunch|sit.?up|v.?up|leg raise|jump|plyo|box jump|supine|flat bench|barbell bench|deadlift/i;
+const PREGNANCY_ALL_TRIMESTERS_UNSAFE_RE=/crunch|sit.?up|v.?up|leg raise|jump|plyo|box jump|deadlift/i;
+const PREGNANCY_POST_T1_SUPINE_RE=/supine|flat bench|barbell bench/i;
 
 export function isFriendlyForInjuries(e,injuries=[],profile={}){
  const injuryOk=canonicalInjuries(injuries).every(injury=>Object.hasOwn(INJURY_PATTERNS,injury)&&
   !INJURY_PATTERNS[injury].includes(e.pattern)&&!INJURY_NAMES[injury].test(e.name));
  if(!injuryOk)return false;
  if(profile?.seniorMode&&SENIOR_UNSAFE_RE.test(e.name))return false;
- if(isPregnantStatus(profile?.maternalStatus)&&profile.maternalStatus!=='pregnant_t1'&&PREGNANCY_UNSAFE_RE.test(e.name))return false;
+ if(isPregnantStatus(profile?.maternalStatus)){
+  if(PREGNANCY_ALL_TRIMESTERS_UNSAFE_RE.test(e.name))return false;
+  if(profile.maternalStatus!=='pregnant_t1'&&PREGNANCY_POST_T1_SUPINE_RE.test(e.name))return false;
+ }
  return true;
 }
 export function workoutSafetyIssues(s){
@@ -101,7 +105,7 @@ export function workoutPlan(draft){
  const warnings=[];
  if(injuries.length)warnings.push('Movements contraindicated for declared injuries were excluded precautionarily; remaining selections are not medical clearance. Stop any painful movement.');
  if(safetyProfile.seniorMode)warnings.push('Senior safety mode (70+): high-impact plyometrics and heavy spinal loading were excluded.');
- if(isPregnantStatus(safetyProfile.maternalStatus))warnings.push('Pregnancy safety filters active: supine and high-fall-risk movements were excluded after first trimester.');
+ if(isPregnantStatus(safetyProfile.maternalStatus))warnings.push('Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded.');
  if(days.length===7)warnings.push('7-day schedule detected: monitor daily recovery closely and keep intensity moderate on back-to-back sessions.');
  if(split==='upper_lower'&&days.length<2){warnings.push('Upper/Lower split requires at least 2 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
  if(split==='bro_split'&&days.length<5){warnings.push('Single-muscle Bro Split requires at least 5 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
@@ -126,13 +130,21 @@ export function workoutPlan(draft){
   for(const pattern of patternOrder){
    const pool=candidates(pattern,{...draft,fitnessLevel:level},location,used,safetyProfile);
    if(!pool.length){missing.push(pattern);continue;}
-   const sets=level==='beginner'?2:3;const compound=['squat','hinge','horizontal_push','horizontal_pull','vertical_push','vertical_pull','lunge'].includes(pattern);
+   const compound=['squat','hinge','horizontal_push','horizontal_pull','vertical_push','vertical_pull','lunge'].includes(pattern);
+   let sets=level==='beginner'?2:(level==='advanced'&&compound&&duration>=45?4:3);
    const restSeconds=compound?(goal==='lose'&&duration>=45?90:120):(goal==='lose'&&duration>=45?60:75);
    const repMin=compound?8:10,repMax=compound?12:15;
-   const fitting=pool.filter(cand=>{
+   let fitting=pool.filter(cand=>{
     const cCost=sets*repMax*3*(eachSide(cand)?2:1)+(sets-1)*restSeconds+60;
     return seconds+cCost<=duration*60;
    });
+   if(!fitting.length&&sets===4){
+    sets=3;
+    fitting=pool.filter(cand=>{
+     const cCost=sets*repMax*3*(eachSide(cand)?2:1)+(sets-1)*restSeconds+60;
+     return seconds+cCost<=duration*60;
+    });
+   }
    if(!fitting.length){missing.push(pattern);continue;}
    const e=fitting[focusOccurrence%fitting.length];
    const cost=sets*repMax*3*(eachSide(e)?2:1)+(sets-1)*restSeconds+60;

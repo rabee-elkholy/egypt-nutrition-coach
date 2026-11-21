@@ -83,7 +83,7 @@ paths:
           description: Not Modified (ETag matched)
         "401":
           $ref: "#/components/responses/UnauthorizedError"
-      description: Persist and resend the ETag returned by the server. It includes revision, local day and a short time bucket so recovery and date-dependent content expire. Do not construct it from revision alone.
+      description: Persist and resend the ETag returned by the server. It hashes revision, local day, entitlements, consents, avatar, and recovery/date-dependent state so any change invalidates cached responses. Do not construct it from revision alone.
   /v1/state:
     get:
       operationId: getFullState
@@ -971,10 +971,10 @@ paths:
   /v1/notifications/preferences:
     get:
       operationId: getNotificationPreferences
-      summary: Stored preferences; no background delivery is implied
+      summary: Stored notification preferences and quiet-hours configuration for FCM/APNs Cron delivery
       responses:
         "200":
-          description: Stored preferences; no background delivery is implied
+          description: Stored notification preferences
           content:
             application/json:
               schema:
@@ -982,10 +982,10 @@ paths:
   /v1/entitlements:
     get:
       operationId: getEntitlements
-      summary: Stored entitlements; billing provider is not connected
+      summary: Current subscription tier, active features, trial/grace/hold/paused flags, and store management URL
       responses:
         "200":
-          description: Stored entitlements; billing provider is not connected
+          description: Active user entitlements snapshot
           content:
             application/json:
               schema:
@@ -1026,7 +1026,7 @@ paths:
   /v1/plans/preview:
     post:
       operationId: previewPlan
-      summary: Stateless onboarding targets, safe floors, and weekly forecast preview
+      summary: Stateless onboarding targets, diet macros, recommended split, safe floors, warnings, and weekly forecast preview
       security: []
       requestBody:
         required: true
@@ -1059,6 +1059,8 @@ paths:
                 idToken: { type: string }
                 deviceId: { type: string }
                 name: { type: string }
+                fullName: { type: string }
+                linkExisting: { type: boolean }
       responses:
         "200":
           description: Signed in existing OAuth user
@@ -1092,7 +1094,9 @@ paths:
                 identityToken: { type: string }
                 authorizationCode: { type: string }
                 fullName: { type: string }
+                name: { type: string }
                 deviceId: { type: string }
+                linkExisting: { type: boolean }
       responses:
         "200":
           description: Signed in existing Apple OAuth user
@@ -1110,6 +1114,66 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "409":
           $ref: "#/components/responses/ConflictError"
+  /v1/auth/oauth/providers:
+    get:
+      operationId: listOAuthProviders
+      summary: List linked OAuth providers (Google, Apple) and whether a password fallback exists
+      responses:
+        "200":
+          description: Linked OAuth identities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+  /v1/auth/oauth/link:
+    post:
+      operationId: linkOAuthProvider
+      summary: Link an additional Google or Apple OAuth identity to the signed-in account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider: { type: string, enum: [google, apple] }
+                idToken: { type: string }
+                identityToken: { type: string }
+                authorizationCode: { type: string }
+      responses:
+        "200":
+          description: Linked OAuth provider confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+  /v1/auth/oauth/{provider}:
+    delete:
+      operationId: unlinkOAuthProvider
+      summary: Unlink a Google or Apple OAuth identity (blocks unlinking the last remaining sign-in method)
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [google, apple] }
+      responses:
+        "200":
+          description: Unlinked OAuth provider confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
   /v1/pantry/catalog:
     get:
       operationId: getPantryCatalog
@@ -1124,18 +1188,21 @@ paths:
   /v1/pantry/alternatives:
     post:
       operationId: postPantryAlternatives
-      summary: Match pantry ingredients to safe meal templates with optional mealId slot scoring
+      summary: Match pantry ingredients to safe meal templates with optional slot or mealId scoring
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [keys]
               properties:
+                selectedIngredients:
+                  type: array
+                  items: { type: string }
                 keys:
                   type: array
                   items: { type: string }
+                slot: { type: string, enum: [breakfast, lunch, dinner, snack] }
                 mealId: { type: string }
                 limit: { type: integer, minimum: 1, maximum: 50 }
       responses:
@@ -1148,7 +1215,7 @@ paths:
   /v1/plans/{planId}/grocery-list:
     get:
       operationId: getPlanGroceryList
-      summary: Aggregated shopping list for a nutrition plan with checked state
+      summary: Aggregated shopping list for a nutrition plan with checked state (Pro-gated when enforcement is enabled)
       parameters:
         - name: planId
           in: path
@@ -1164,6 +1231,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Pro entitlement required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           $ref: "#/components/responses/NotFoundError"
   /v1/foods/favorites:
@@ -1183,7 +1256,7 @@ paths:
   /v1/foods/barcode/{ean}:
     get:
       operationId: lookupBarcode
-      summary: Look up packaged food by EAN/UPC barcode (local D1 cache + OpenFoodFacts fallback)
+      summary: Look up packaged food by EAN/UPC barcode (local D1 cache + OpenFoodFacts fallback; Pro-gated when enforcement is enabled)
       parameters:
         - name: ean
           in: path
@@ -1196,19 +1269,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Pro entitlement required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           $ref: "#/components/responses/NotFoundError"
   /v1/foods/barcode:
     post:
       operationId: submitBarcode
-      summary: Submit a user-contributed barcode nutrition item
+      summary: Submit a user-contributed barcode nutrition item (Pro-gated when enforcement is enabled)
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [ean, name, kcalPer100g]
+              required: [barcode, nameEn, valuesPer100g]
+              properties:
+                barcode: { type: string }
+                nameEn: { type: string }
+                nameAr: { type: string }
+                brand: { type: string }
+                servingSizeGrams: { type: number }
+                valuesPer100g:
+                  type: object
+                  required: [energy]
+                  properties:
+                    energy: { type: number }
+                    protein: { type: number }
+                    carbs: { type: number }
+                    fat: { type: number }
+                    fiber: { type: number }
+                    sodium: { type: number }
+                    sugars: { type: number }
       responses:
         "201":
           description: Barcode entry stored
@@ -1216,6 +1312,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Pro entitlement required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/nutrition/fasting-state:
     get:
       operationId: getFastingState
@@ -1230,7 +1332,7 @@ paths:
   /v1/workouts/prs:
     get:
       operationId: getWorkoutPrs
-      summary: Computed personal records (weight, e1RM, volume, assisted inversion)
+      summary: Computed personal records (heaviest_kg, best_reps, highest_volume, estimated_1rm, assisted inversion)
       parameters:
         - name: since
           in: query
@@ -1248,11 +1350,11 @@ paths:
   /v1/progress/analytics:
     get:
       operationId: getProgressAnalytics
-      summary: Aggregated analytics series (weight EWMA, nutrition adherence, training volume, exercise e1RM)
+      summary: Aggregated analytics series (weight EWMA, nutrition adherence, training volume, exercise e1RM; 90d/all Pro-gated when enforcement is enabled)
       parameters:
         - name: range
           in: query
-          schema: { type: string, enum: [7d, 30d, 90d, 1y, all], default: 30d }
+          schema: { type: string, enum: [14d, 30d, 90d, all], default: 30d }
         - name: exerciseId
           in: query
           schema: { type: string }
@@ -1263,6 +1365,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "402":
+          description: Pro entitlement required for 90d or all range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/progress/weekly-wrapped:
     get:
       operationId: getWeeklyWrapped
@@ -1312,10 +1422,20 @@ paths:
   /v1/profile/avatar:
     post:
       operationId: uploadProfileAvatar
-      summary: Upload or replace user profile avatar (binary JPEG/PNG/WebP up to 5 MB stored in R2)
+      summary: Issue short-lived HMAC-signed PUT URL for user profile avatar (JPEG/PNG/WebP up to 512 KB stored in R2)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType, byteSize]
+              properties:
+                contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+                byteSize: { type: integer, minimum: 1, maximum: 524288 }
       responses:
         "200":
-          description: Avatar uploaded with signed URL
+          description: Signed PUT upload URL and object key
           content:
             application/json:
               schema:
@@ -1354,9 +1474,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [contentType, pose]
+              required: [contentType, byteSize, pose, date]
               properties:
                 contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+                byteSize: { type: integer, minimum: 1, maximum: 5242880 }
                 pose: { type: string, enum: [front, side, back] }
                 date: { type: string, format: date }
                 weightKg: { type: number }
@@ -1383,7 +1504,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [photoId, objectKey, pose]
+              required: [photoId, pose, date]
+              properties:
+                photoId: { type: string }
+                objectKey: { type: string }
+                pose: { type: string, enum: [front, side, back] }
+                date: { type: string, format: date }
+                weightKg: { type: number }
       responses:
         "201":
           description: Confirmed progress photo record
@@ -1412,7 +1539,7 @@ paths:
   /v1/media/signed/{token}:
     get:
       operationId: downloadSignedMedia
-      summary: Stream private R2 media object authorized by short-lived HMAC token
+      summary: Stream private R2 media object authorized by short-lived user-bound HMAC token
       security: []
       parameters:
         - name: token
@@ -1422,8 +1549,12 @@ paths:
       responses:
         "200":
           description: Binary image stream
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          description: Invalid or expired signed media token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     put:
       operationId: uploadSignedMedia
       summary: Upload private R2 media object authorized by short-lived HMAC PUT token
@@ -1436,8 +1567,12 @@ paths:
       responses:
         "200":
           description: Upload stored in R2
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          description: Invalid or expired signed media token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/devices/push-token:
     post:
       operationId: registerPushToken
@@ -1459,6 +1594,11 @@ paths:
     delete:
       operationId: deletePushToken
       summary: Unregister a device push token
+      parameters:
+        - name: deviceId
+          in: query
+          required: false
+          schema: { type: string }
       responses:
         "200":
           description: Push token removed
@@ -1505,14 +1645,21 @@ paths:
   /v1/subscriptions/verify:
     post:
       operationId: verifySubscription
-      summary: Verify an Apple StoreKit 2 or Google Play purchase and activate entitlements
+      summary: Verify an Apple StoreKit 2 or Google Play purchase and activate Pro entitlements
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [provider]
+              required: [productId]
+              properties:
+                platform: { type: string, enum: [android, ios] }
+                provider: { type: string, enum: [apple, google] }
+                productId: { type: string }
+                purchaseToken: { type: string }
+                signedTransactionInfo: { type: string }
+                originalTransactionId: { type: string }
       responses:
         "200":
           description: Updated entitlements snapshot
@@ -1520,6 +1667,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
   /v1/subscriptions/restore:
     post:
       operationId: restoreSubscriptions
@@ -1530,6 +1679,11 @@ paths:
           application/json:
             schema:
               type: object
+              properties:
+                platform: { type: string, enum: [android, ios] }
+                tokens:
+                  type: array
+                  items: { type: string }
       responses:
         "200":
           description: Restored entitlements snapshot
@@ -1537,6 +1691,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
   /v1/webhooks/apple:
     post:
       operationId: webhookAppleStore
@@ -1720,6 +1876,12 @@ components:
           enum: [nutrition, training, followup]
         key:
           type: string
+        code:
+          type: string
+          description: Canonical coaching code from contracts/coaching-codes.json
+        params:
+          type: object
+          additionalProperties: true
         priority:
           type: string
           enum: [normal, attention, urgent]
@@ -1729,8 +1891,8 @@ components:
           type: string
         actionTarget:
           type: string
-          enum: [recovery, food, feedback, workout]
-          description: Optional navigation destination for the in-app first-week next step; never performs a write.
+          enum: [recovery, food, feedback, workout, water, review]
+          description: Optional navigation destination for the in-app next step; never performs a write.
         basedOnRevision:
           type: integer
           minimum: 0
@@ -1925,7 +2087,9 @@ components:
                 eligibility:
                   type: object
                 onboarding:
-                  type: object
+                  type: [object, "null"]
+                onboardingCompleted:
+                  type: boolean
                 serviceTrack:
                   type: [string, "null"]
                 consents:
@@ -1940,14 +2104,13 @@ components:
                   items: { type: object }
                 todaySummary:
                   type: object
-                fastingState:
-                  type: object
-                ramadanMode:
-                  type: [object, "null"]
+                  description: Includes today food, water, weight, activity, recovery, workout session, fastingState, and ramadanMode.
                 streakSummary:
                   type: object
                 engagementState:
                   type: object
+                unreadCoachingInboxCount:
+                  type: integer
                 pendingAdaptations:
                   type: array
                   items: { type: object }
@@ -2047,7 +2210,7 @@ components:
         date: {type: string, format: date}
         revision: {type: integer}
         channel: {type: string, const: in_app}
-        pushConfigured: {type: boolean, const: false}
+        pushConfigured: {type: boolean}
         items:
           type: array
           items:
@@ -2095,6 +2258,7 @@ components:
             - confirm_schedule
             - renew_plan
             - food_entry
+            - food_entry_update
             - food_delete
             - food_complete
             - food
@@ -2111,7 +2275,9 @@ components:
             - activity
             - recovery
             - workout
+            - workout_delete
             - session
+            - session_delete
             - replace_exercise
             - ad_hoc_exercise
             - workout_ui_mode

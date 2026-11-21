@@ -44,7 +44,7 @@ Every JSON endpoint returns the canonical envelope:
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |
-| `error.code` | `string` | Stable uppercase error code (271 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
+| `error.code` | `string` | Stable uppercase error code (282 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
 | `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |
 | `error.params` | `object` | Interpolation parameters for client-side localization |
 | `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |
@@ -62,14 +62,14 @@ Every JSON endpoint returns the canonical envelope:
 | Variable | Type | Scope | Description |
 | :--- | :--- | :--- | :--- |
 | `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |
-| `testEmail` | `string (email)` | Environment | Email used in Register / Login |
-| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) |
+| `testEmail` | `string (email)` | Environment | Email used in internal Dev/QA Register / Login |
+| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) for internal Dev/QA routes |
 | `testNewPassword` | `string (secret)` | Environment | New password for Change Password |
 | `deviceId` | `string` | Environment | Client device ID (`max 120` chars) |
 | `clientPlatform` | `string (enum)` | Environment | `android` \| `ios` \| `web` |
 | `clientVersion` | `string` | Environment | App semantic version (e.g. `1.0.0`) |
-| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by Register / Login / Refresh |
-| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by Register / Login / Refresh |
+| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by OAuth / Register / Login / Refresh |
+| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by OAuth / Register / Login / Refresh |
 | `sessionId` | `string` | Collection (auto) | Current D1 session ID |
 | `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |
 | `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |
@@ -94,10 +94,11 @@ Every JSON endpoint returns the canonical envelope:
 | `sampleBarcode` | `string` | Collection | Sample EAN/UPC barcode (`6221000000001`) for `/v1/foods/barcode/{ean}` |
 | `samplePhotoId` | `string` | Collection | Progress photo ID for `/v1/progress/photos/{photoId}` |
 | `signedMediaToken` | `string` | Collection | Short-lived HMAC-signed token for `/v1/media/signed/{token}` |
+| `oauthProvider` | `string (enum)` | Collection | OAuth provider (`google` \| `apple`) for `/v1/auth/oauth/{provider}` |
 
 ---
 
-## 6. Complete Endpoint Reference (16 Groups / 123 Endpoints)
+## 6. Complete Endpoint Reference (16 Groups / 129 Endpoints)
 
 ## 01. System & Health
 
@@ -1289,7 +1290,7 @@ Maps legacy workout day indexes to canonical `js_sunday_0` (`0=Sun .. 6=Sat`).
 
 ### Renew Weekly Nutrition Plan
 
-Generates the next 7-day nutrition plan after the active plan's end date has elapsed.
+Generates the next 7-day nutrition plan after the active plan's end date has elapsed, or early when `earlyRenew: true` (preserving today's meals).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -1319,6 +1320,7 @@ Generates the next 7-day nutrition plan after the active plan's end date has ela
 | `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
 | `action` | `string (const)` | Yes | "renew_plan" | Domain command action identifier. |
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `renew_plan`. |
+| `payload.earlyRenew` | `boolean` | No | default: false | When `true`, regenerates remaining days starting tomorrow while preserving today. |
 
 ### Request Body Example
 ```json
@@ -1944,6 +1946,141 @@ Logs a custom manual food item with calories and optional protein/carbs/fat.
     "affected": [
       {
         "entityType": "food_entry",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Update Food Entry Atomically (food_entry_update)
+
+Atomically edits an existing food entry in place (preserving its ID and recomputing scaled macros for planned/ingredient entries, or updating manual fields).
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "food_entry_update" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `food_entry_update`. |
+| `payload.id` | `string (UUID)` | Yes | Existing food entry ID | Food entry ID to update. |
+| `payload.slot` | `string (enum)` | No | `breakfast` | `lunch` | `dinner` | `snack` | Updated meal slot. |
+| `payload.quantity` | `number` | No | 0.1..5 (planned entries) | Updated portion multiplier. |
+| `payload.grams` | `number` | No | 1..3000 (ingredient entries) | Updated weight in grams. |
+| `payload.name` | `string` | No | 1..120 chars (manual entries) | Updated label. |
+| `payload.energy` | `number` | No | 0..5000 (manual entries) | Updated calories. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "food_entry_update",
+  "payload": {
+    "id": "{{sampleFoodEntryId}}",
+    "slot": "dinner",
+    "energy": 510,
+    "protein": 18
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — food_entry_update Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_entry_update",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_entry_update",
         "entityId": "example-id",
         "op": "upsert",
         "payload": {}
@@ -3754,6 +3891,138 @@ Paginated exercise set/rep/load logs.
 
 ---
 
+### Delete Exercise Log (workout_delete)
+
+Deletes a logged exercise set record by ID (or by `date`, `dayIndex`, and `exerciseId`).
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "workout_delete" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `workout_delete`. |
+| `payload.id` | `string (UUID)` | No | Existing workout log ID (or pass `date` + `dayIndex` + `exerciseId`) | Workout log ID to delete. |
+| `payload.date` | `string (YYYY-MM-DD)` | No | Optional composite key fallback | Workout date. |
+| `payload.dayIndex` | `integer` | No | 0..6 | Workout day index. |
+| `payload.exerciseId` | `string` | No | Exercise ID | Exercise ID. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "workout_delete",
+  "payload": {
+    "date": "{{todayDate}}",
+    "dayIndex": {{sampleDayIndex}},
+    "exerciseId": "{{sampleExerciseId}}"
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — workout_delete Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "workout_delete",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "workout_delete",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
 ### Complete / Update Workout Session (session)
 
 Marks a workout session as `completed`, `partial`, or `missed`. Completion ratio below 80% automatically classifies as `partial`.
@@ -3843,6 +4112,138 @@ Marks a workout session as `completed`, `partial`, or `missed`. Completion ratio
     "affected": [
       {
         "entityType": "session",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Delete Workout Session (session_delete)
+
+Deletes a logged workout session record by ID (or `date` + `dayIndex`) and optionally clears its exercise logs (`deleteWorkouts: true`).
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "session_delete" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `session_delete`. |
+| `payload.id` | `string (UUID)` | No | Existing session ID (or pass `date` + `dayIndex`) | Session ID to delete. |
+| `payload.date` | `string (YYYY-MM-DD)` | No | Optional composite key fallback | Session date. |
+| `payload.dayIndex` | `integer` | No | 0..6 | Workout day index. |
+| `payload.deleteWorkouts` | `boolean` | No | default: false | When `true`, also removes exercise logs from that session. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "session_delete",
+  "payload": {
+    "date": "{{todayDate}}",
+    "dayIndex": {{sampleDayIndex}},
+    "deleteWorkouts": false
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — session_delete Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "session_delete",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "session_delete",
         "entityId": "example-id",
         "op": "upsert",
         "payload": {}
@@ -6315,6 +6716,7 @@ Verifies Google ID token JWKS signature directly on Cloudflare Workers and issue
 | `idToken` | `string (JWT)` | Yes | Google OIDC ID token | Signed Google ID token from mobile Google Sign-In. |
 | `deviceId` | `string` | No | max 120 chars | Client device identifier. |
 | `name` | `string` | No | max 100 chars | Optional display name fallback. |
+| `linkExisting` | `boolean` | No | default: false | When `true`, links Google to an existing verified account sharing the same email. |
 
 ### Request Body Example
 ```json
@@ -6352,6 +6754,7 @@ Verifies Apple identity token JWKS signature directly on Cloudflare Workers and 
 | `authorizationCode` | `string` | No | Optional first-login code | Exchanged for encrypted Apple refresh token for GDPR revocation. |
 | `fullName` | `string` | No | max 100 chars | Optional display name sent on first Apple login. |
 | `deviceId` | `string` | No | max 120 chars | Client device identifier. |
+| `linkExisting` | `boolean` | No | default: false | When `true`, links Apple to an existing verified account sharing the same verified email. |
 
 ### Request Body Example
 ```json
@@ -6365,9 +6768,88 @@ Verifies Apple identity token JWKS signature directly on Cloudflare Workers and 
 
 ---
 
+### List Linked OAuth Providers
+
+Returns linked Google and Apple OAuth identities for the authenticated user and whether a fallback password exists.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/auth/oauth/providers`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/providers`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/providers`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/providers`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Link OAuth Provider (Google or Apple)
+
+Links an additional Google or Apple OIDC identity to the currently signed-in account.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/auth/oauth/link`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/link`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/link`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/link`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `provider` | `string (enum)` | Yes | `google` | `apple` | OAuth provider to link. |
+| `idToken` | `string (JWT)` | No | Required for `google` | Verified Google ID token. |
+| `identityToken` | `string (JWT)` | No | Required for `apple` | Verified Apple identity token. |
+| `authorizationCode` | `string` | No | Optional for `apple` | Apple authorization code for refresh-token exchange. |
+
+### Request Body Example
+```json
+{
+  "provider": "google",
+  "idToken": "<google-oidc-id-token>"
+}
+```
+
+---
+
+### Unlink OAuth Provider
+
+Unlinks Google or Apple from the signed-in account. Returns `409 CANNOT_UNLINK_LAST_AUTH_METHOD` if it is the last sign-in method.
+
+### Endpoint Info
+- **Method:** `DELETE`
+- **URL:** `{{baseUrl}}/v1/auth/oauth/{{oauthProvider}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/{{oauthProvider}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/{{oauthProvider}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/{{oauthProvider}}`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Path Parameters
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `oauthProvider` | `string (enum)` | Yes | `google` | `apple`. |
+
+---
+
 ### Update Profile Settings (profile_update)
 
-Updates non-regenerative profile metadata such as display name or workout UI mode.
+Updates non-regenerative profile metadata such as display name, preferred measurement unit system, or workout UI mode.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -6398,6 +6880,7 @@ Updates non-regenerative profile metadata such as display name or workout UI mod
 | `action` | `string (const)` | Yes | "profile_update" | Domain command action identifier. |
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `profile_update`. |
 | `payload.name` | `string` | No | max 100 chars | Updated display name. |
+| `payload.unitSystem` | `string (enum)` | No | `metric` | `imperial` | Preferred measurement unit system. |
 | `payload.workoutUiMode` | `string (enum)` | No | `simple` | `pro` | Workout logger UI mode. |
 
 ### Request Body Example
@@ -6407,6 +6890,7 @@ Updates non-regenerative profile metadata such as display name or workout UI mod
   "action": "profile_update",
   "payload": {
     "name": "Updated Name",
+    "unitSystem": "metric",
     "workoutUiMode": "pro"
   }
 }
@@ -6496,7 +6980,7 @@ Updates non-regenerative profile metadata such as display name or workout UI mod
 
 ### Activate Comeback Protocol (comeback_restart)
 
-Activates a safe 24h deload or 7-day volume ramp-in after a training gap, optionally updating current weight.
+Activates a safe deload or 7-day volume ramp-in after a training gap, optionally updating current weight and renewing the meal plan.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -6526,8 +7010,12 @@ Activates a safe 24h deload or 7-day volume ramp-in after a training gap, option
 | `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
 | `action` | `string (const)` | Yes | "comeback_restart" | Domain command action identifier. |
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `comeback_restart`. |
-| `payload.mode` | `string (enum)` | Yes | `24h_deload` | `7d_ramp` | Comeback protocol mode. |
-| `payload.currentWeightKg` | `number` | No | 35..250 | Optional updated body weight in kg. |
+| `payload.mode` | `string (enum)` | No | `24h_deload` | `7d_ramp` (optional when `applyDeload` is set) | Comeback protocol mode. |
+| `payload.applyDeload` | `boolean` | No | boolean | Whether to apply a temporary deload/volume ramp. |
+| `payload.deloadDurationDays` | `integer` | No | 1..14 | Optional deload duration in days. |
+| `payload.updatedWeightKg` | `number` | No | 35..250 | Optional updated body weight in kg (alias `currentWeightKg`). |
+| `payload.reason` | `string` | No | max 200 chars | Optional comeback reason (e.g. `travel`, `illness`, `busy`). |
+| `payload.renewMealPlan` | `boolean` | No | default: false | When `true`, refreshes the nutrition plan starting today. |
 
 ### Request Body Example
 ```json
@@ -6536,7 +7024,9 @@ Activates a safe 24h deload or 7-day volume ramp-in after a training gap, option
   "action": "comeback_restart",
   "payload": {
     "mode": "7d_ramp",
-    "currentWeightKg": 81.2
+    "applyDeload": true,
+    "deloadDurationDays": 7,
+    "updatedWeightKg": 81.2
   }
 }
 ```
@@ -6648,7 +7138,7 @@ Returns all pantry ingredient keys grouped by category with English & Arabic lab
 
 ### Find Pantry Meal Alternatives
 
-Matches user pantry ingredients against safe meal templates.
+Matches user pantry ingredients against safe meal templates (Free feature).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -6688,7 +7178,7 @@ Matches user pantry ingredients against safe meal templates.
 
 ### Get Plan Grocery List
 
-Aggregated shopping list for the active nutrition plan with checked item state.
+Aggregated shopping list for the active nutrition plan with checked item state (Pro feature when enforcement is enabled).
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -7122,7 +7612,7 @@ Copies logged food entries from a source date/slot into a target date/slot.
 
 ### Lookup Packaged Food by Barcode
 
-Looks up a packaged food product by EAN/UPC barcode (D1 cache + OpenFoodFacts fallback).
+Looks up a packaged food product by EAN/UPC barcode (D1 cache + OpenFoodFacts fallback; Pro feature when enforcement is enabled).
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -7141,7 +7631,7 @@ Looks up a packaged food product by EAN/UPC barcode (D1 cache + OpenFoodFacts fa
 
 ### Submit User Barcode Food
 
-Contributes a packaged food barcode item to D1.
+Contributes a packaged food barcode item to D1 (Pro feature when enforcement is enabled).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -7186,7 +7676,7 @@ Contributes a packaged food barcode item to D1.
 
 ### Get Fasting / Ramadan Timer State
 
-Returns active intermittent fasting or Ramadan window progress.
+Returns active intermittent fasting or Ramadan window progress (Free feature).
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -7336,7 +7826,7 @@ Starts or completes a fasting session log.
 
 ### Toggle Ramadan Mode (ramadan_mode)
 
-Enables or disables Ramadan Iftar/Suhoor meal slot remapping.
+Enables or disables Ramadan Iftar/Suhoor meal slot remapping (Free feature; works for both nutrition and workouts-only users).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -7369,6 +7859,7 @@ Enables or disables Ramadan Iftar/Suhoor meal slot remapping.
 | `payload.enabled` | `boolean` | Yes | boolean | Whether Ramadan mode is enabled. |
 | `payload.iftarTime` | `string (HH:mm)` | No | `00:00`..`23:59` | Local Iftar start time. |
 | `payload.suhoorCutoffTime` | `string (HH:mm)` | No | `00:00`..`23:59` | Local Suhoor cutoff time. |
+| `payload.endDate` | `string (YYYY-MM-DD)` | No | Optional Eid/Ramadan end date | Optional auto-expiration date for Ramadan mode. |
 
 ### Request Body Example
 ```json
@@ -7598,7 +8089,7 @@ Switches between simple (bodyweight/rep-focused) and pro (load + RIR) workout lo
 
 ### Add Ad-Hoc Exercise (ad_hoc_exercise)
 
-Adds a bonus exercise to a specific workout date without mutating baseline progression.
+Adds a bonus exercise to a specific workout date without mutating baseline progression. Returns `409 AD_HOC_INJURY_WARNING` if unsafe for declared injuries unless `overrideInjuryWarning: true`.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -7630,7 +8121,8 @@ Adds a bonus exercise to a specific workout date without mutating baseline progr
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `ad_hoc_exercise`. |
 | `payload.date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Workout session date. |
 | `payload.exerciseId` | `string` | Yes | Catalog exercise ID | Exercise ID from `/v1/exercises`. |
-| `payload.sets` | `Array<object>` | Yes | 1..12 set objects `{ reps, kg, rir?, isWarmup? }` | Logged ad-hoc sets. |
+| `payload.sets` | `Array<object>` | Yes | 1..15 set objects `{ reps, kg, rir?, isWarmup? }` | Logged ad-hoc sets. |
+| `payload.overrideInjuryWarning` | `boolean` | No | default: false | Explicit confirmation to log despite an injury caution. |
 
 ### Request Body Example
 ```json
@@ -7734,7 +8226,7 @@ Adds a bonus exercise to a specific workout date without mutating baseline progr
 
 ### Get Workout Personal Records (PRs)
 
-Returns best weight, estimated 1RM, and session volume per exercise (with assisted-exercise load inversion).
+Returns best weight, reps, estimated 1RM, and session volume per exercise (with assisted-exercise load inversion).
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -7753,7 +8245,7 @@ Returns best weight, estimated 1RM, and session volume per exercise (with assist
 
 ### Get Progress Analytics
 
-Returns weight moving average trend, calorie adherence, training volume, and exercise e1RM series.
+Returns weight moving average trend, calorie adherence, training volume, and exercise e1RM series (`14d`/`30d` Free; `90d`/`all` Pro).
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -7829,7 +8321,7 @@ Paginated waist, chest, hips, arms, thighs, and neck measurements.
 
 ### Log Body Measurement (body_measurement)
 
-Logs a daily body circumference measurement record.
+Logs or merges daily body circumference measurements for a date.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -8091,7 +8583,7 @@ Worker-proxied HMAC-signed R2 avatars & progress photos, FCM/APNs push tokens, S
 
 ### Create Profile Avatar Upload URL
 
-Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PNG/WebP, max 2 MB) into Cloudflare R2.
+Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PNG/WebP, max 512 KB) into Cloudflare R2.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -8111,7 +8603,7 @@ Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PN
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
 | `contentType` | `string (enum)` | Yes | `image/jpeg` | `image/png` | `image/webp` | Avatar MIME type. |
-| `byteSize` | `integer` | Yes | 1..2097152 | Declared file size in bytes. |
+| `byteSize` | `integer` | Yes | 1..524288 | Declared file size in bytes (max 512 KB). |
 
 ### Request Body Example
 ```json

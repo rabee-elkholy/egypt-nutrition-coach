@@ -151,23 +151,24 @@ export function estimateNeeds(input) {
     change = -Math.min(tdee * {slow:.1, moderate:.15, fast:.2}[pace], maxDeficit);
     if (seniorMode) notes.push("Senior safety mode (70+): daily calorie deficit capped at -400 kcal.");
   }
-  else if(input.goal === 'muscle_gain'&&(input.recomposition||Number(input.targetWeight)===weight)){change=0;notes.push('Body recomposition starts at maintenance calories with progressive resistance training.');}
+  else if(input.goal === 'muscle_gain'&&(input.recomposition||(input.targetWeight!=null&&Math.abs(Number(input.targetWeight)-weight)<0.5))){change=0;notes.push('Body recomposition starts at maintenance calories with progressive resistance training.');}
   else if(input.goal === 'muscle_gain')change=Math.min(tdee*{slow:.05,moderate:.08,fast:.1}[pace],250);
   else if(input.goal === 'gain')change=Math.min(tdee*{slow:.08,moderate:.12,fast:.15}[pace],400);
   notes.push('Goal pace sets a bounded initial offset; actual energy needs are calibrated from recorded weight trends.');
 
-  // Maternal adjustments
+  // Maternal adjustments (never stack weight-gain surplus on top of trimester energy add-ons)
   if (maternalStatus === "pregnant_t1") {
-    change = Math.max(0, change);
-    notes.push("First-trimester pregnancy calibration applied (calorie deficits disabled).");
+    change = 0;
+    notes.push("First-trimester pregnancy calibration applied (maintenance baseline, calorie deficits disabled).");
   } else if (maternalStatus === "pregnant_t2" || maternalStatus === "pregnant") {
-    change = Math.max(0, change) + 340;
-    notes.push("Second-trimester pregnancy calibration applied (+340 kcal/day, deficits disabled).");
+    change = 340;
+    notes.push("Second-trimester pregnancy calibration applied (+340 kcal/day, deficits and extra gain surplus disabled).");
   } else if (maternalStatus === "pregnant_t3") {
-    change = Math.max(0, change) + 450;
-    notes.push("Third-trimester pregnancy calibration applied (+450 kcal/day, deficits disabled).");
+    change = 450;
+    notes.push("Third-trimester pregnancy calibration applied (+450 kcal/day, deficits and extra gain surplus disabled).");
   } else if (maternalStatus === "breastfeeding") {
-    change = input.goal === "lose" ? Math.max(-300, change + 400) : change + 400;
+    const boundedOffset = input.goal === "lose" ? Math.max(-300, change) : change;
+    change = boundedOffset + 400;
     notes.push("Breastfeeding calibration applied (+400 kcal baseline, max deficit -300 kcal/day).");
   }
 

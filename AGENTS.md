@@ -25,7 +25,7 @@
   * Worker: `curafit-api-dev`
   * D1 Database: `curafit-db-dev` (`database_id`: `0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`, binding: `DB`)
 * **Git Repository & Branches:** `https://github.com/rabee-elkholy/egypt-nutrition-coach.git` — Branches: **`dev`** & **`main`**
-* **Postman Documentation (Published):** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `123` endpoints; environments: `CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`)
+* **Postman Documentation (Published):** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `129` endpoints; environments: `CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`)
 * **Worker Entrypoint & Config:** `server/cloudflare-entry.mjs` (bundled into `dist/server/cloudflare.js`), `wrangler.jsonc`, `drizzle/`
 
 Full step-by-step instructions for AI agents and developers (error & coaching contract sync, OpenAPI/Postman regeneration, Drizzle D1 migrations, QA, and CI/CD) live in [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md).
@@ -73,3 +73,26 @@ Run from `e:\Egypt_Nutrition_Local\website\dist`:
 3. **Do NOT commit Arabic text into `contracts/`, `docs/`, `postman/`, `README.md`, `AGENTS.md`, or server/domain error or coaching responses.** All server error messages (`contracts/error-codes.json`) and coaching/brief/review/eligibility messages (`contracts/coaching-codes.json`) are pure English with canonical codes & params; non-English UI translations live strictly in the KMM mobile app (and bilingual food/exercise catalog data in `data/`).
 4. **Do NOT overwrite `scripts/build.mjs` to remove the `dist/server/cloudflare.js` build target or skip `npm.cmd run check` before pushing.**
 5. **Do NOT use `.openai/hosting.json`, GitHub Pages, or any third-party BaaS IdP (Supabase, Auth0, Firebase Auth).** First-party Google Sign-In and Apple Sign-In OIDC token verification directly inside Cloudflare Workers with first-party HS256 JWT + D1 refresh tokens is explicitly permitted.
+
+---
+
+## 4. Clean Code & Production Safety Standards
+
+Every change merged to `dev` or promoted to `main` must satisfy these production-engineering invariants:
+
+1. **Acyclic, Single-Responsibility Modules (Zero Duplication):**
+   - Keep `server/` strictly acyclic (verified automatically by `scripts/quality/check-modules.mjs`).
+   - Centralize shared external crypto and outbound HTTP helpers in `server/external-crypto.mjs` (PEM decoding, ES256 JWT signing, cached Google Service Account OAuth2 token exchange, and bounded-timeout `fetchWithTimeout`) — never duplicate WebCrypto or OAuth2 boilerplate across `oauth.mjs`, `subscriptions.mjs`, and `push.mjs`.
+2. **Bounded External I/O Timeouts (Cloudflare Workers Safety):**
+   - Every outbound `fetch()` to third-party APIs (Apple, Google, FCM, APNs, OpenFoodFacts, JWKS) **must** enforce an explicit `AbortSignal.timeout(...)` via `fetchWithTimeout()` so a slow upstream never stalls a Worker isolate or exhausts a Cron execution window.
+3. **Structured PII-Safe Logging Only:**
+   - Never use raw `console.log` in `server/`. Emit structured JSON events exclusively through `logEvent()` (`server/logger.mjs`) so tokens, emails, and health payloads remain automatically redacted.
+4. **Atomic Persistence, Safe Deletion Order & Idempotency:**
+   - All domain mutations pass through `POST /v1/commands` with optimistic-concurrency `revision` checks and intent-digest `Idempotency-Key` replay safety.
+   - Destructive account erasure (`DELETE /v1/account/delete`) must commit the atomic D1 batch (including anonymized SHA-256 `coaching_trial_tombstones`) **before** purging R2 objects or calling Apple `/auth/revoke`.
+5. **Fail-Closed Production Flags & Environment Variable Parity:**
+   - Production must run with `STRICT_STORE_VERIFICATION="true"` and `ENFORCE_PRO_ENTITLEMENTS="true"`.
+   - Every Worker secret or environment variable read in `server/*.mjs` must be documented in [`docs/MANUAL_SETUP_AND_DEPLOY_CHECKLIST.md`](docs/MANUAL_SETUP_AND_DEPLOY_CHECKLIST.md).
+6. **Zero-Regression Verification Before Every Push:**
+   - Always run `npm run check` (`typecheck`, `check-data-manifest`, `build`, `check-modules`, `check-reference`, and all `307+` tests) plus `npm run audit:matrix` whenever domain engines (`planner-core.mjs`, `server/workouts.mjs`, `server/coaching.mjs`) are modified.
+

@@ -35,7 +35,9 @@
     "JOINT_PAIN_HOLD": {
       "domain": "recovery",
       "severity": "hold",
-      "params": ["painRegions"],
+      "params": [
+        "painRegions"
+      ],
       "message": "Joint pain reported; pause painful movements, use safe alternatives or rest, and pause progression until pain resolves."
     },
     "RECOVERY_READY": {
@@ -47,19 +49,28 @@
     "RECOVERY_DELOAD_SUGGESTED": {
       "domain": "recovery",
       "severity": "attention",
-      "params": ["setFactor", "domains"],
+      "params": [
+        "setFactor",
+        "domains"
+      ],
       "message": "Multiple fatigue or sleep indicators are elevated; a temporary 24-hour set reduction is recommended pending your approval."
     },
     "RECOVERY_DELOAD_PROPOSAL": {
       "domain": "adaptation",
       "severity": "attention",
-      "params": ["setFactor", "regions"],
+      "params": [
+        "setFactor",
+        "regions"
+      ],
       "message": "Based on recent recovery strain, we propose temporarily reducing working sets for 24 hours; applying this adjustment requires your approval."
     },
     "RECOVERY_ADJUSTMENT_ACTIVE": {
       "domain": "review",
       "severity": "attention",
-      "params": ["setFactor", "expiresAt"],
+      "params": [
+        "setFactor",
+        "expiresAt"
+      ],
       "message": "Your approved temporary set reduction is currently active for today's workout."
     },
     "RECOVERY_ADVICE_DECLINED": {
@@ -83,7 +94,9 @@
     "WORKOUT_SAFETY_EXCLUSION_HOLD": {
       "domain": "review",
       "severity": "hold",
-      "params": ["count"],
+      "params": [
+        "count"
+      ],
       "message": "Your current workout plan contains movements excluded for your declared injuries; swap them or regenerate your plan before progressing."
     },
     "PLAN_CONSTRAINTS_VERIFICATION_FAILED": {
@@ -107,7 +120,10 @@
     "GOAL_WEIGHT_REACHED_MAINTENANCE": {
       "domain": "adaptation",
       "severity": "normal",
-      "params": ["averageWeight", "targetWeight"],
+      "params": [
+        "averageWeight",
+        "targetWeight"
+      ],
       "message": "Your 7-day average weight has reached your target weight ({averageWeight} kg). We propose transitioning to a maintenance plan."
     },
     "MAINTENANCE_ADVICE_DECLINED": {
@@ -125,7 +141,11 @@
     "INSUFFICIENT_EVIDENCE_COVERAGE": {
       "domain": "nutrition",
       "severity": "normal",
-      "params": ["previousWeights", "currentWeights", "completeFoodDays"],
+      "params": [
+        "previousWeights",
+        "currentWeights",
+        "completeFoodDays"
+      ],
       "message": "Keep logging: adaptive calorie reviews require at least 3 weigh-ins in each of the last 2 weeks and 10 adherent complete food days."
     },
     "WEIGHT_SAMPLING_TOO_CLOSE": {
@@ -137,19 +157,27 @@
     "TREND_ON_TRACK": {
       "domain": "nutrition",
       "severity": "normal",
-      "params": ["rate"],
+      "params": [
+        "rate"
+      ],
       "message": "Your 2-week weight trend ({rate}%/week) is within the expected target range; no calorie adjustment is needed."
     },
     "CALORIE_DEFICIT_STEP": {
       "domain": "adaptation",
       "severity": "normal",
-      "params": ["delta", "rate"],
+      "params": [
+        "delta",
+        "rate"
+      ],
       "message": "Based on adherent food logs and a {rate}%/week weight trend, we propose a modest {delta} kcal daily reduction."
     },
     "CALORIE_SURPLUS_STEP": {
       "domain": "adaptation",
       "severity": "normal",
-      "params": ["delta", "rate"],
+      "params": [
+        "delta",
+        "rate"
+      ],
       "message": "Based on adherent food logs and a {rate}%/week weight trend, we propose a modest +{delta} kcal daily increase."
     },
     "PERFORMANCE_DROP_CALORIE_CUT_HOLD": {
@@ -173,13 +201,17 @@
     "MIN_SAFE_ENERGY_FLOOR_HOLD": {
       "domain": "nutrition",
       "severity": "attention",
-      "params": ["minEnergyFloor"],
+      "params": [
+        "minEnergyFloor"
+      ],
       "message": "Calories were held at the safe automated planning floor ({minEnergyFloor} kcal) instead of reducing further."
     },
     "MAX_SAFE_ENERGY_CEILING_HOLD": {
       "domain": "nutrition",
       "severity": "attention",
-      "params": ["maxEnergyCeiling"],
+      "params": [
+        "maxEnergyCeiling"
+      ],
       "message": "Calories were held at the safe automated planning ceiling ({maxEnergyCeiling} kcal)."
     },
     "MATERNAL_CALORIE_CUT_BLOCKED": {
@@ -221,7 +253,11 @@
     "WEEKLY_VOLUME_INCREASE_PROPOSED": {
       "domain": "adaptation",
       "severity": "normal",
-      "params": ["exerciseId", "region", "extraSets"],
+      "params": [
+        "exerciseId",
+        "region",
+        "extraSets"
+      ],
       "message": "Strong adherence and stable performance over the last 3 exposures support adding +{extraSets} weekly set."
     },
     "VOLUME_INCREASE_NOT_JUSTIFIED": {
@@ -233,7 +269,11 @@
     "WORKOUT_RESCHEDULE_PROPOSAL": {
       "domain": "adaptation",
       "severity": "normal",
-      "params": ["dayIndex", "fromDate", "toDate"],
+      "params": [
+        "dayIndex",
+        "fromDate",
+        "toDate"
+      ],
       "message": "Confirm moving your scheduled workout from {fromDate} to {toDate} while keeping daily calorie targets steady."
     },
     "ADAPTATION_PROPOSED": {
@@ -287,7 +327,9 @@
     "DOUBLE_PROGRESSION_READY": {
       "domain": "progression",
       "severity": "normal",
-      "params": ["kg"],
+      "params": [
+        "kg"
+      ],
       "message": "Target reps achieved cleanly across two consecutive sessions; consider progressing to {kg} kg if technique and recovery feel solid."
     },
     "AGE_UNSUPPORTED_OR_MISSING": {
@@ -341,13 +383,17 @@
     "BRIEF_FOOD_COMPLETE": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["date"],
+      "params": [
+        "date"
+      ],
       "message": "Food diary for {date} is complete. Consistent logging enables accurate weekly reviews."
     },
     "BRIEF_FOOD_PARTIAL": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["entriesCount"],
+      "params": [
+        "entriesCount"
+      ],
       "message": "You have logged {entriesCount} meal(s) today and your day is still open; finish logging as you eat."
     },
     "BRIEF_FOOD_MISSING": {
@@ -359,19 +405,29 @@
     "BRIEF_PROTEIN_STATUS": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["actualProtein", "targetProtein"],
+      "params": [
+        "actualProtein",
+        "targetProtein"
+      ],
       "message": "Logged protein today is {actualProtein} g against your {targetProtein} g target."
     },
     "BRIEF_WEIGHT_TREND": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["currentAvg", "currentCount", "previousAvg", "previousCount"],
+      "params": [
+        "currentAvg",
+        "currentCount",
+        "previousAvg",
+        "previousCount"
+      ],
       "message": "Current 7-day average weight is {currentAvg} kg ({currentCount} logs) vs. {previousAvg} kg ({previousCount} logs) last week."
     },
     "BRIEF_WEIGHT_COVERAGE": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["count"],
+      "params": [
+        "count"
+      ],
       "message": "You have {count} weigh-ins in the last 14 days; log at least 3 weigh-ins per week for reliable trend comparisons."
     },
     "BRIEF_PLAN_EXPIRED": {
@@ -383,7 +439,10 @@
     "BRIEF_HIGH_HUNGER": {
       "domain": "brief",
       "severity": "attention",
-      "params": ["hunger", "date"],
+      "params": [
+        "hunger",
+        "date"
+      ],
       "message": "You logged hunger {hunger}/5 on {date}; calorie reductions are paused while we monitor appetite and energy."
     },
     "BRIEF_TRAINING_SAFETY": {
@@ -395,19 +454,27 @@
     "BRIEF_TRAINING_SCHEDULED": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["focus"],
+      "params": [
+        "focus"
+      ],
       "message": "Today's scheduled workout is {focus}. Current readiness supports your planned session."
     },
     "BRIEF_TRAINING_REST": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["nextDate", "nextFocus"],
+      "params": [
+        "nextDate",
+        "nextFocus"
+      ],
       "message": "Rest day today. Focus on sleep, hydration, and nutrition ahead of your next session."
     },
     "BRIEF_TRAINING_COMPLETED": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["date", "duration"],
+      "params": [
+        "date",
+        "duration"
+      ],
       "message": "Workout session for {date} is logged as completed. Great consistency."
     },
     "BRIEF_TRAINING_PARTIAL": {
@@ -425,50 +492,105 @@
     "BRIEF_FOLLOWUP_WATER": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["cups", "targetCups"],
+      "params": [
+        "cups",
+        "targetCups"
+      ],
       "message": "Hydration logged today: {cups} of {targetCups} cups."
     },
     "BRIEF_FOLLOWUP_SHORT_SLEEP": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["sleepHours", "date"],
+      "params": [
+        "sleepHours",
+        "date"
+      ],
       "message": "Last logged sleep was {sleepHours} hours on {date}; prioritize recovery and earlier wind-down tonight."
     },
     "BRIEF_FOLLOWUP_RETURN": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["lastDate"],
+      "params": [
+        "lastDate"
+      ],
       "message": "Welcome back! Last logged activity was on {lastDate}. Resume smoothly without trying to compensate for missed days."
     },
     "BRIEF_FIRST_WEEK": {
       "domain": "brief",
       "severity": "normal",
-      "params": ["day", "activeDays"],
+      "params": [
+        "day",
+        "activeDays"
+      ],
       "message": "First-week onboarding guidance (Day {day}/7): build a simple, repeatable logging habit."
     },
     "COACHING_BARRIER_AGREEMENT": {
       "domain": "coaching",
       "severity": "normal",
-      "params": ["domain", "barrier"],
+      "params": [
+        "domain",
+        "barrier"
+      ],
       "message": "A structured coaching agreement is proposed for your reported {barrier} barrier."
     },
     "COACHING_BARRIER_QUESTION": {
       "domain": "coaching",
       "severity": "normal",
-      "params": ["domain"],
+      "params": [
+        "domain"
+      ],
       "message": "Tell us the main barrier affecting your recent {domain} consistency so we can choose a realistic next step."
     },
     "COACHING_REVIEW_DUE": {
       "domain": "coaching",
       "severity": "attention",
-      "params": ["caseId"],
+      "params": [
+        "caseId"
+      ],
       "message": "Your agreed coaching step is due for review. Report whether it helped, did not help, or was not tried."
     },
     "COMEBACK_DELOAD_ACTIVE": {
       "domain": "training",
       "severity": "normal",
-      "params": ["tier", "setFactor", "expiresAt"],
+      "params": [
+        "tier",
+        "setFactor",
+        "expiresAt"
+      ],
       "message": "Gentle comeback ramp-in is active ({setFactor}x sets) to help you rebuild momentum safely."
+    },
+    "BRIEF_TRAINING_PERFORMANCE": {
+      "domain": "brief",
+      "severity": "attention",
+      "params": [],
+      "message": "Recent workout performance shows a drop; prioritizing recovery before pushing load or deeper calorie cuts."
+    },
+    "BRIEF_FOLLOWUP_TIRED": {
+      "domain": "brief",
+      "severity": "attention",
+      "params": [],
+      "message": "You reported low energy or fatigue during follow-up; training load and calorie cuts are held conservatively."
+    },
+    "BRIEF_FOLLOWUP_SLEEP": {
+      "domain": "brief",
+      "severity": "attention",
+      "params": [],
+      "message": "Short sleep was recorded recently; improving sleep duration will help stabilize appetite and recovery."
+    },
+    "BRIEF_FOLLOWUP_ACTIVITY": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Recent daily step or movement feedback was logged and factored into your weekly coaching context."
+    },
+    "VOLUME_HOLD": {
+      "domain": "training",
+      "severity": "normal",
+      "params": [
+        "muscle",
+        "currentSets"
+      ],
+      "message": "Weekly volume for {muscle} is held at {currentSets} sets while monitoring recovery and progression."
     }
   }
 }

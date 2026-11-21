@@ -254,7 +254,7 @@ export async function loginUser(db, env, body, request) {
 
   try {
     const user = await db.prepare(
-      'SELECT user_id,email,password_hash,display_name,entitlement,created_at FROM coaching_users WHERE email=?'
+      'SELECT user_id,email,password_hash,display_name,avatar_url,entitlement,created_at FROM coaching_users WHERE email=?'
     ).bind(email).first();
 
     // Always run PBKDF2 to avoid timing-based account enumeration.
@@ -325,7 +325,7 @@ export async function refreshUserSession(db, env, body, request) {
       db.prepare('SELECT revoked_at FROM coaching_auth_sessions WHERE user_id=? AND session_id=?').bind(row.user_id, row.session_id),
       db.prepare("SELECT revoked_at FROM coaching_auth_sessions WHERE user_id=? AND session_id='__deleted__'").bind(row.user_id),
       db.prepare("SELECT revoked_at FROM coaching_auth_sessions WHERE user_id=? AND session_id='__all__'").bind(row.user_id),
-      db.prepare('SELECT user_id,email,display_name,entitlement,created_at FROM coaching_users WHERE user_id=?').bind(row.user_id)
+      db.prepare('SELECT user_id,email,display_name,avatar_url,entitlement,created_at FROM coaching_users WHERE user_id=?').bind(row.user_id)
     ]);
 
     if (deleted.results?.[0]?.revoked_at) {
@@ -418,6 +418,15 @@ export async function logoutUserSession(db, auth, body = {}) {
     'INSERT OR REPLACE INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?)'
   ).bind(auth.userId, String(targetSession), auth.deviceId || 'logout', nowIso, null, nowIso).run();
   await revokeRefreshTokensForSession(db, auth.userId, targetSession, nowIso);
+  try {
+    if (allDevices) {
+      await db.prepare('DELETE FROM coaching_push_tokens WHERE user_id=?').bind(auth.userId).run();
+    } else if (auth.deviceId) {
+      await db.prepare('DELETE FROM coaching_push_tokens WHERE user_id=? AND device_id=?').bind(auth.userId, auth.deviceId).run();
+    }
+  } catch (e) {
+    if (!/no such table/i.test(e?.message || '')) throw e;
+  }
   return {
     loggedOut: true,
     sessionId: targetSession,

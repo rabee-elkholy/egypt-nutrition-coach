@@ -1,6 +1,6 @@
 # CuraFit API v1 — Postman Collection & Cloudflare Workers Guide
 
-This directory contains the ready-to-use **Postman Collection v2.1** (`16` folders / `123` endpoints) and **three environment presets** (**Cloud Dev**, **Production**, and **Local Dev**) running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** with direct Google/Apple OIDC verification and zero third-party BaaS IdP dependency.
+This directory contains the ready-to-use **Postman Collection v2.1** (`16` folders / `129` endpoints) and **three environment presets** (**Cloud Dev**, **Production**, and **Local Dev**) running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** with direct Google/Apple OIDC verification and zero third-party BaaS IdP dependency.
 
 ## Files
 

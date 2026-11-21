@@ -60,7 +60,7 @@ const COLLECTION_OVERVIEW_MD = [
   '| Field | Type | Description |',
   '| :--- | :--- | :--- |',
   '| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |',
-  '| `error.code` | `string` | Stable uppercase error code (271 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
+  '| `error.code` | `string` | Stable uppercase error code (282 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
   '| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |',
   '| `error.params` | `object` | Interpolation parameters for client-side localization |',
   '| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |',
@@ -78,14 +78,14 @@ const COLLECTION_OVERVIEW_MD = [
   '| Variable | Type | Scope | Description |',
   '| :--- | :--- | :--- | :--- |',
   '| `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |',
-  '| `testEmail` | `string (email)` | Environment | Email used in Register / Login |',
-  '| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) |',
+  '| `testEmail` | `string (email)` | Environment | Email used in internal Dev/QA Register / Login |',
+  '| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) for internal Dev/QA routes |',
   '| `testNewPassword` | `string (secret)` | Environment | New password for Change Password |',
   '| `deviceId` | `string` | Environment | Client device ID (`max 120` chars) |',
   '| `clientPlatform` | `string (enum)` | Environment | `android` \\| `ios` \\| `web` |',
   '| `clientVersion` | `string` | Environment | App semantic version (e.g. `1.0.0`) |',
-  '| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by Register / Login / Refresh |',
-  '| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by Register / Login / Refresh |',
+  '| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by OAuth / Register / Login / Refresh |',
+  '| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by OAuth / Register / Login / Refresh |',
   '| `sessionId` | `string` | Collection (auto) | Current D1 session ID |',
   '| `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |',
   '| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |',
@@ -109,7 +109,8 @@ const COLLECTION_OVERVIEW_MD = [
   '| `anonymousUserId` | `string` | Collection | Anonymous `anon:...` ID for `/v1/auth/claim-anonymous` |',
   '| `sampleBarcode` | `string` | Collection | Sample EAN/UPC barcode (`6221000000001`) for `/v1/foods/barcode/{ean}` |',
   '| `samplePhotoId` | `string` | Collection | Progress photo ID for `/v1/progress/photos/{photoId}` |',
-  '| `signedMediaToken` | `string` | Collection | Short-lived HMAC-signed token for `/v1/media/signed/{token}` |'
+  '| `signedMediaToken` | `string` | Collection | Short-lived HMAC-signed token for `/v1/media/signed/{token}` |',
+  '| `oauthProvider` | `string (enum)` | Collection | OAuth provider (`google` \\| `apple`) for `/v1/auth/oauth/{provider}` |'
 ].join('\n');
 
 function buildEndpointMarkdown({ method, path, summary, noAuth, headers, optionalHeaders, pathParams, queryParams, fields, responseFields, errors, rawBody }) {
@@ -635,7 +636,8 @@ const collection = {
     { key: 'anonymousUserId', value: '' },
     { key: 'sampleBarcode', value: '6221000000001' },
     { key: 'samplePhotoId', value: '' },
-    { key: 'signedMediaToken', value: '' }
+    { key: 'signedMediaToken', value: '' },
+    { key: 'oauthProvider', value: 'google' }
   ],
   item: [
     {
@@ -981,8 +983,10 @@ const collection = {
         cmdReq({
           name: 'Renew Weekly Nutrition Plan',
           action: 'renew_plan',
-          summary: 'Generates the next 7-day nutrition plan after the active plan\'s end date has elapsed.',
-          payloadFields: [],
+          summary: 'Generates the next 7-day nutrition plan after the active plan\'s end date has elapsed, or early when `earlyRenew: true` (preserving today\'s meals).',
+          payloadFields: [
+            { name: 'earlyRenew', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, regenerates remaining days starting tomorrow while preserving today.' }
+          ],
           payload: {}
         })
       ]
@@ -1148,6 +1152,20 @@ const collection = {
             '  if (hit && hit.entityId) pm.collectionVariables.set("sampleFoodEntryId", hit.entityId);',
             '} catch (e) {}'
           ]
+        }),
+        cmdReq({
+          name: 'Update Food Entry Atomically (food_entry_update)',
+          action: 'food_entry_update',
+          summary: 'Atomically edits an existing food entry in place (preserving its ID and recomputing scaled macros for planned/ingredient entries, or updating manual fields).',
+          payloadFields: [
+            { name: 'id', type: 'string (UUID)', required: true, constraints: 'Existing food entry ID', description: 'Food entry ID to update.' },
+            { name: 'slot', type: 'string (enum)', required: false, constraints: '`breakfast` | `lunch` | `dinner` | `snack`', description: 'Updated meal slot.' },
+            { name: 'quantity', type: 'number', required: false, constraints: '0.1..5 (planned entries)', description: 'Updated portion multiplier.' },
+            { name: 'grams', type: 'number', required: false, constraints: '1..3000 (ingredient entries)', description: 'Updated weight in grams.' },
+            { name: 'name', type: 'string', required: false, constraints: '1..120 chars (manual entries)', description: 'Updated label.' },
+            { name: 'energy', type: 'number', required: false, constraints: '0..5000 (manual entries)', description: 'Updated calories.' }
+          ],
+          payload: { id: '{{sampleFoodEntryId}}', slot: 'dinner', energy: 510, protein: 18 }
         }),
         cmdReq({
           name: 'Confirm Food Day Complete (food_complete)',
@@ -1398,6 +1416,18 @@ const collection = {
           responseFields: PAGINATION_RESPONSE_FIELDS
         }),
         cmdReq({
+          name: 'Delete Exercise Log (workout_delete)',
+          action: 'workout_delete',
+          summary: 'Deletes a logged exercise set record by ID (or by `date`, `dayIndex`, and `exerciseId`).',
+          payloadFields: [
+            { name: 'id', type: 'string (UUID)', required: false, constraints: 'Existing workout log ID (or pass `date` + `dayIndex` + `exerciseId`)', description: 'Workout log ID to delete.' },
+            { name: 'date', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Optional composite key fallback', description: 'Workout date.' },
+            { name: 'dayIndex', type: 'integer', required: false, constraints: '0..6', description: 'Workout day index.' },
+            { name: 'exerciseId', type: 'string', required: false, constraints: 'Exercise ID', description: 'Exercise ID.' }
+          ],
+          payload: { date: '{{todayDate}}', dayIndex: '__DAY_IDX__', exerciseId: '{{sampleExerciseId}}' }
+        }),
+        cmdReq({
           name: 'Complete / Update Workout Session (session)',
           action: 'session',
           summary: 'Marks a workout session as `completed`, `partial`, or `missed`. Completion ratio below 80% automatically classifies as `partial`.',
@@ -1409,6 +1439,18 @@ const collection = {
             { name: 'rpe', type: 'number | null', required: false, constraints: '0..10', description: 'Session perceived exertion.' }
           ],
           payload: { date: '{{todayDate}}', dayIndex: '__DAY_IDX__', status: 'completed', duration: 45, rpe: 7 }
+        }),
+        cmdReq({
+          name: 'Delete Workout Session (session_delete)',
+          action: 'session_delete',
+          summary: 'Deletes a logged workout session record by ID (or `date` + `dayIndex`) and optionally clears its exercise logs (`deleteWorkouts: true`).',
+          payloadFields: [
+            { name: 'id', type: 'string (UUID)', required: false, constraints: 'Existing session ID (or pass `date` + `dayIndex`)', description: 'Session ID to delete.' },
+            { name: 'date', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Optional composite key fallback', description: 'Session date.' },
+            { name: 'dayIndex', type: 'integer', required: false, constraints: '0..6', description: 'Workout day index.' },
+            { name: 'deleteWorkouts', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, also removes exercise logs from that session.' }
+          ],
+          payload: { date: '{{todayDate}}', dayIndex: '__DAY_IDX__', deleteWorkouts: false }
         }),
         req({
           name: 'List Workout Sessions',
@@ -1963,7 +2005,8 @@ const collection = {
           fields: [
             { name: 'idToken', type: 'string (JWT)', required: true, constraints: 'Google OIDC ID token', description: 'Signed Google ID token from mobile Google Sign-In.' },
             { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Client device identifier.' },
-            { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name fallback.' }
+            { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name fallback.' },
+            { name: 'linkExisting', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, links Google to an existing verified account sharing the same email.' }
           ],
           body: { idToken: '<google-oidc-id-token>', deviceId: '{{deviceId}}', name: 'CuraFit User' }
         }),
@@ -1977,29 +2020,63 @@ const collection = {
             { name: 'identityToken', type: 'string (JWT)', required: true, constraints: 'Apple OIDC identity token', description: 'Signed Apple identity token from Sign in with Apple.' },
             { name: 'authorizationCode', type: 'string', required: false, constraints: 'Optional first-login code', description: 'Exchanged for encrypted Apple refresh token for GDPR revocation.' },
             { name: 'fullName', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name sent on first Apple login.' },
-            { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Client device identifier.' }
+            { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Client device identifier.' },
+            { name: 'linkExisting', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, links Apple to an existing verified account sharing the same verified email.' }
           ],
           body: { identityToken: '<apple-oidc-identity-token>', authorizationCode: '<optional-auth-code>', fullName: 'CuraFit User', deviceId: '{{deviceId}}' }
+        }),
+        req({
+          name: 'List Linked OAuth Providers',
+          method: 'GET',
+          path: '/v1/auth/oauth/providers',
+          summary: 'Returns linked Google and Apple OAuth identities for the authenticated user and whether a fallback password exists.'
+        }),
+        req({
+          name: 'Link OAuth Provider (Google or Apple)',
+          method: 'POST',
+          path: '/v1/auth/oauth/link',
+          summary: 'Links an additional Google or Apple OIDC identity to the currently signed-in account.',
+          fields: [
+            { name: 'provider', type: 'string (enum)', required: true, constraints: '`google` | `apple`', description: 'OAuth provider to link.' },
+            { name: 'idToken', type: 'string (JWT)', required: false, constraints: 'Required for `google`', description: 'Verified Google ID token.' },
+            { name: 'identityToken', type: 'string (JWT)', required: false, constraints: 'Required for `apple`', description: 'Verified Apple identity token.' },
+            { name: 'authorizationCode', type: 'string', required: false, constraints: 'Optional for `apple`', description: 'Apple authorization code for refresh-token exchange.' }
+          ],
+          body: { provider: 'google', idToken: '<google-oidc-id-token>' }
+        }),
+        req({
+          name: 'Unlink OAuth Provider',
+          method: 'DELETE',
+          path: '/v1/auth/oauth/{{oauthProvider}}',
+          summary: 'Unlinks Google or Apple from the signed-in account. Returns `409 CANNOT_UNLINK_LAST_AUTH_METHOD` if it is the last sign-in method.',
+          pathParams: [
+            { key: 'oauthProvider', type: 'string (enum)', required: true, description: '`google` | `apple`.' }
+          ]
         }),
         cmdReq({
           name: 'Update Profile Settings (profile_update)',
           action: 'profile_update',
-          summary: 'Updates non-regenerative profile metadata such as display name or workout UI mode.',
+          summary: 'Updates non-regenerative profile metadata such as display name, preferred measurement unit system, or workout UI mode.',
           payloadFields: [
             { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Updated display name.' },
+            { name: 'unitSystem', type: 'string (enum)', required: false, constraints: '`metric` | `imperial`', description: 'Preferred measurement unit system.' },
             { name: 'workoutUiMode', type: 'string (enum)', required: false, constraints: '`simple` | `pro`', description: 'Workout logger UI mode.' }
           ],
-          payload: { name: 'Updated Name', workoutUiMode: 'pro' }
+          payload: { name: 'Updated Name', unitSystem: 'metric', workoutUiMode: 'pro' }
         }),
         cmdReq({
           name: 'Activate Comeback Protocol (comeback_restart)',
           action: 'comeback_restart',
-          summary: 'Activates a safe 24h deload or 7-day volume ramp-in after a training gap, optionally updating current weight.',
+          summary: 'Activates a safe deload or 7-day volume ramp-in after a training gap, optionally updating current weight and renewing the meal plan.',
           payloadFields: [
-            { name: 'mode', type: 'string (enum)', required: true, constraints: '`24h_deload` | `7d_ramp`', description: 'Comeback protocol mode.' },
-            { name: 'currentWeightKg', type: 'number', required: false, constraints: '35..250', description: 'Optional updated body weight in kg.' }
+            { name: 'mode', type: 'string (enum)', required: false, constraints: '`24h_deload` | `7d_ramp` (optional when `applyDeload` is set)', description: 'Comeback protocol mode.' },
+            { name: 'applyDeload', type: 'boolean', required: false, constraints: 'boolean', description: 'Whether to apply a temporary deload/volume ramp.' },
+            { name: 'deloadDurationDays', type: 'integer', required: false, constraints: '1..14', description: 'Optional deload duration in days.' },
+            { name: 'updatedWeightKg', type: 'number', required: false, constraints: '35..250', description: 'Optional updated body weight in kg (alias `currentWeightKg`).' },
+            { name: 'reason', type: 'string', required: false, constraints: 'max 200 chars', description: 'Optional comeback reason (e.g. `travel`, `illness`, `busy`).' },
+            { name: 'renewMealPlan', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, refreshes the nutrition plan starting today.' }
           ],
-          payload: { mode: '7d_ramp', currentWeightKg: 81.2 }
+          payload: { mode: '7d_ramp', applyDeload: true, deloadDurationDays: 7, updatedWeightKg: 81.2 }
         })
       ]
     },
@@ -2013,7 +2090,7 @@ const collection = {
           name: 'Find Pantry Meal Alternatives',
           method: 'POST',
           path: '/v1/pantry/alternatives',
-          summary: 'Matches user pantry ingredients against safe meal templates.',
+          summary: 'Matches user pantry ingredients against safe meal templates (Free feature).',
           fields: [
             { name: 'selectedIngredients', type: 'Array<string>', required: true, constraints: '1..40 pantry keys', description: 'Selected pantry ingredient keys.' },
             { name: 'slot', type: 'string (enum)', required: false, constraints: '`breakfast` | `lunch` | `dinner` | `snack`', description: 'Optional meal slot filter.' },
@@ -2021,7 +2098,7 @@ const collection = {
           ],
           body: { selectedIngredients: ['eggs', 'fava', 'olive', 'tomato'], limit: 15 }
         }),
-        req({ name: 'Get Plan Grocery List', method: 'GET', path: '/v1/plans/{{activePlanId}}/grocery-list?days=all', summary: 'Aggregated shopping list for the active nutrition plan with checked item state.' }),
+        req({ name: 'Get Plan Grocery List', method: 'GET', path: '/v1/plans/{{activePlanId}}/grocery-list?days=all', summary: 'Aggregated shopping list for the active nutrition plan with checked item state (Pro feature when enforcement is enabled).' }),
         cmdReq({
           name: 'Toggle Grocery Item (grocery_toggle)',
           action: 'grocery_toggle',
@@ -2055,12 +2132,12 @@ const collection = {
           ],
           payload: { fromDate: '{{todayDate}}', toDate: '{{todayDate}}', slot: 'breakfast' }
         }),
-        req({ name: 'Lookup Packaged Food by Barcode', method: 'GET', path: '/v1/foods/barcode/{{sampleBarcode}}', summary: 'Looks up a packaged food product by EAN/UPC barcode (D1 cache + OpenFoodFacts fallback).' }),
+        req({ name: 'Lookup Packaged Food by Barcode', method: 'GET', path: '/v1/foods/barcode/{{sampleBarcode}}', summary: 'Looks up a packaged food product by EAN/UPC barcode (D1 cache + OpenFoodFacts fallback; Pro feature when enforcement is enabled).' }),
         req({
           name: 'Submit User Barcode Food',
           method: 'POST',
           path: '/v1/foods/barcode',
-          summary: 'Contributes a packaged food barcode item to D1.',
+          summary: 'Contributes a packaged food barcode item to D1 (Pro feature when enforcement is enabled).',
           fields: [
             { name: 'barcode', type: 'string', required: true, constraints: '8..14 numeric digits', description: 'EAN/UPC barcode string.' },
             { name: 'nameEn', type: 'string', required: true, constraints: '2..120 chars', description: 'English product name.' },
@@ -2070,7 +2147,7 @@ const collection = {
           ],
           body: { barcode: '6221000000001', nameEn: 'Greek Yogurt Plain', brand: 'Local Dairy', servingSizeGrams: 170, valuesPer100g: { energy: 97, protein: 9.0, carbs: 3.6, fat: 5.0 } }
         }),
-        req({ name: 'Get Fasting / Ramadan Timer State', method: 'GET', path: '/v1/nutrition/fasting-state', summary: 'Returns active intermittent fasting or Ramadan window progress.' }),
+        req({ name: 'Get Fasting / Ramadan Timer State', method: 'GET', path: '/v1/nutrition/fasting-state', summary: 'Returns active intermittent fasting or Ramadan window progress (Free feature).' }),
         cmdReq({
           name: 'Start / End Fasting Log (fasting_log)',
           action: 'fasting_log',
@@ -2085,11 +2162,12 @@ const collection = {
         cmdReq({
           name: 'Toggle Ramadan Mode (ramadan_mode)',
           action: 'ramadan_mode',
-          summary: 'Enables or disables Ramadan Iftar/Suhoor meal slot remapping.',
+          summary: 'Enables or disables Ramadan Iftar/Suhoor meal slot remapping (Free feature; works for both nutrition and workouts-only users).',
           payloadFields: [
             { name: 'enabled', type: 'boolean', required: true, constraints: 'boolean', description: 'Whether Ramadan mode is enabled.' },
             { name: 'iftarTime', type: 'string (HH:mm)', required: false, constraints: '`00:00`..`23:59`', description: 'Local Iftar start time.' },
-            { name: 'suhoorCutoffTime', type: 'string (HH:mm)', required: false, constraints: '`00:00`..`23:59`', description: 'Local Suhoor cutoff time.' }
+            { name: 'suhoorCutoffTime', type: 'string (HH:mm)', required: false, constraints: '`00:00`..`23:59`', description: 'Local Suhoor cutoff time.' },
+            { name: 'endDate', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Optional Eid/Ramadan end date', description: 'Optional auto-expiration date for Ramadan mode.' }
           ],
           payload: { enabled: true, iftarTime: '18:15', suhoorCutoffTime: '04:00' }
         })
@@ -2112,23 +2190,24 @@ const collection = {
         cmdReq({
           name: 'Add Ad-Hoc Exercise (ad_hoc_exercise)',
           action: 'ad_hoc_exercise',
-          summary: 'Adds a bonus exercise to a specific workout date without mutating baseline progression.',
+          summary: 'Adds a bonus exercise to a specific workout date without mutating baseline progression. Returns `409 AD_HOC_INJURY_WARNING` if unsafe for declared injuries unless `overrideInjuryWarning: true`.',
           payloadFields: [
             { name: 'date', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Valid ISO date', description: 'Workout session date.' },
             { name: 'exerciseId', type: 'string', required: true, constraints: 'Catalog exercise ID', description: 'Exercise ID from `/v1/exercises`.' },
-            { name: 'sets', type: 'Array<object>', required: true, constraints: '1..12 set objects `{ reps, kg, rir?, isWarmup? }`', description: 'Logged ad-hoc sets.' }
+            { name: 'sets', type: 'Array<object>', required: true, constraints: '1..15 set objects `{ reps, kg, rir?, isWarmup? }`', description: 'Logged ad-hoc sets.' },
+            { name: 'overrideInjuryWarning', type: 'boolean', required: false, constraints: 'default: false', description: 'Explicit confirmation to log despite an injury caution.' }
           ],
           payload: { date: '{{todayDate}}', exerciseId: '{{sampleCatalogExerciseId}}', sets: [{ reps: 12, kg: 10 }] }
         }),
-        req({ name: 'Get Workout Personal Records (PRs)', method: 'GET', path: '/v1/workouts/prs', summary: 'Returns best weight, estimated 1RM, and session volume per exercise (with assisted-exercise load inversion).' }),
-        req({ name: 'Get Progress Analytics', method: 'GET', path: '/v1/progress/analytics?range=30d', summary: 'Returns weight moving average trend, calorie adherence, training volume, and exercise e1RM series.' }),
+        req({ name: 'Get Workout Personal Records (PRs)', method: 'GET', path: '/v1/workouts/prs', summary: 'Returns best weight, reps, estimated 1RM, and session volume per exercise (with assisted-exercise load inversion).' }),
+        req({ name: 'Get Progress Analytics', method: 'GET', path: '/v1/progress/analytics?range=30d', summary: 'Returns weight moving average trend, calorie adherence, training volume, and exercise e1RM series (`14d`/`30d` Free; `90d`/`all` Pro).' }),
         req({ name: 'Get Weekly Wrapped Recap', method: 'GET', path: '/v1/progress/weekly-wrapped', summary: 'Returns shareable weekly recap metrics.' }),
         req({ name: 'Get Home Widget Snapshot', method: 'GET', path: '/v1/widgets/snapshot', summary: 'Ultra-lightweight (< 1.5 KB) snapshot for Android Glance & iOS WidgetKit with ETag support.' }),
         req({ name: 'List Body Measurements', method: 'GET', path: '/v1/measurements?offset=0&limit=30', summary: 'Paginated waist, chest, hips, arms, thighs, and neck measurements.' }),
         cmdReq({
           name: 'Log Body Measurement (body_measurement)',
           action: 'body_measurement',
-          summary: 'Logs a daily body circumference measurement record.',
+          summary: 'Logs or merges daily body circumference measurements for a date.',
           payloadFields: [
             { name: 'date', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Valid ISO date', description: 'Measurement date.' },
             { name: 'waistCm', type: 'number', required: false, constraints: '40..220', description: 'Waist circumference in cm.' },
@@ -2156,10 +2235,10 @@ const collection = {
           name: 'Create Profile Avatar Upload URL',
           method: 'POST',
           path: '/v1/profile/avatar',
-          summary: 'Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PNG/WebP, max 2 MB) into Cloudflare R2.',
+          summary: 'Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PNG/WebP, max 512 KB) into Cloudflare R2.',
           fields: [
             { name: 'contentType', type: 'string (enum)', required: true, constraints: '`image/jpeg` | `image/png` | `image/webp`', description: 'Avatar MIME type.' },
-            { name: 'byteSize', type: 'integer', required: true, constraints: '1..2097152', description: 'Declared file size in bytes.' }
+            { name: 'byteSize', type: 'integer', required: true, constraints: '1..524288', description: 'Declared file size in bytes (max 512 KB).' }
           ],
           body: { contentType: 'image/jpeg', byteSize: 180000 }
         }),

@@ -84,3 +84,8 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `COACHING_BARRIER_QUESTION` | `coaching` | `normal` | `domain` | Tell us the main barrier affecting your recent {domain} consistency so we can choose a realistic next step. |
 | `COACHING_REVIEW_DUE` | `coaching` | `attention` | `caseId` | Your agreed coaching step is due for review. Report whether it helped, did not help, or was not tried. |
 | `COMEBACK_DELOAD_ACTIVE` | `training` | `normal` | `tier`, `setFactor`, `expiresAt` | Gentle comeback ramp-in is active ({setFactor}x sets) to help you rebuild momentum safely. |
+| `BRIEF_TRAINING_PERFORMANCE` | `brief` | `attention` | — | Recent workout performance shows a drop; prioritizing recovery before pushing load or deeper calorie cuts. |
+| `BRIEF_FOLLOWUP_TIRED` | `brief` | `attention` | — | You reported low energy or fatigue during follow-up; training load and calorie cuts are held conservatively. |
+| `BRIEF_FOLLOWUP_SLEEP` | `brief` | `attention` | — | Short sleep was recorded recently; improving sleep duration will help stabilize appetite and recovery. |
+| `BRIEF_FOLLOWUP_ACTIVITY` | `brief` | `normal` | — | Recent daily step or movement feedback was logged and factored into your weekly coaching context. |
+| `VOLUME_HOLD` | `training` | `normal` | `muscle`, `currentSets` | Weekly volume for {muscle} is held at {currentSets} sets while monitoring recovery and progression. |

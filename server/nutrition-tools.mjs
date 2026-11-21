@@ -97,6 +97,7 @@ export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null)
       foodId: item.food_id,
       name: item.name,
       state: item.state,
+      preparationState: item.state,
       totalGrams,
       practicalQuantityLabel,
       checked: Boolean(checkRecord?.checked),
@@ -132,7 +133,8 @@ export async function lookupBarcode(db, env, rawEan) {
   }
   if (env?.ENABLE_OPENFOODFACTS === 'true') {
     try {
-      const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${ean}.json`);
+      const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(5000) : undefined;
+      const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${ean}.json`, signal ? { signal } : undefined);
       if (res.ok) {
         const payload = await res.json();
         const p = payload?.product;

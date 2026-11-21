@@ -2,7 +2,19 @@
 
 This document lists **every action that requires manual operator intervention** (in Cloudflare Dashboard, Antigravity Desktop / local Wrangler CLI, Google Cloud / Play Console, Apple Developer Console, Firebase Console, or Postman) before promoting CuraFit to Cloud Dev (`dev`) and Production (`main`).
 
-> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts, bilingual exercise/muscle i18n (`868` exercises + `69` muscles), OpenAPI spec, Postman definitions, and automated tests are already implemented in the repository on branch **`dev`**. The items below are strictly external infrastructure provisioning, secrets, and release operations that cannot be run from an isolated sandbox VM.
+> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts (`282` error codes, `83` coaching codes), bilingual exercise/muscle i18n (`868` exercises + `69` muscles), OpenAPI spec (`82` paths / `41` commands), Postman collection (`16` groups / `129` endpoints), all `13` User Story documents, and `307+` automated tests are already implemented and pushed on branch **`dev`**. The items below are strictly external infrastructure provisioning, secrets, and release operations to complete from **Antigravity Desktop (local machine)** or external developer consoles.
+
+---
+
+## 0. Quick Handoff Summary (What to Run on Antigravity Desktop / Local)
+
+| # | Action | Where | Required Before |
+| :-: | :--- | :--- | :--- |
+| 1 | Create private R2 buckets (`curafit-media-dev`, `curafit-media-prod`) & uncomment `r2_buckets` in `wrangler.jsonc` | Local Wrangler CLI | Cloud Dev & Prod media uploads |
+| 2 | Run `npm run deploy:d1:dev` and `npm run deploy:dev` (verify `/v1/health` & `/v1/capabilities`) | Local Antigravity Desktop | Cloud Dev QA |
+| 3 | Set Worker secrets via `wrangler secret put` (Section 2 below — OAuth, Store Billing, FCM/APNs, `STRICT_STORE_VERIFICATION`, `ENFORCE_PRO_ENTITLEMENTS`) | Local Wrangler CLI / Cloudflare Dashboard | Live OAuth, Push & Subscriptions |
+| 4 | Re-import `postman/CuraFit_API.postman_collection.json` (`16` groups / `129` endpoints) & republish Postman Documenter (plus optional Jira `KAN` sync) | Postman Web / Jira | Team / Mobile QA |
+| 5 | After Cloud Dev QA & green CI: export Prod D1 backup, fast-forward `dev` -> `main`, run `npm run deploy:d1:prod` & `npm run deploy:prod` | Local Antigravity Desktop | Production Launch |
 
 ---
 
@@ -32,10 +44,10 @@ wrangler d1 export egypt-nutrition-coaching --remote --output ./backup-prod-pre-
 npm run deploy:d1:prod
 ```
 
-> **Important:** `drizzle/0006_production_features.sql` executes `ALTER TABLE coaching_users ADD COLUMN avatar_url text;` plus `CREATE TABLE IF NOT EXISTS` for the 13 new tables. It is additive and non-destructive.
+> **Important:** `drizzle/0006_production_features.sql` is the single consolidated pre-production migration (there is **no `0007`** migration). It executes `ALTER TABLE coaching_users ADD COLUMN avatar_url text;` plus `CREATE TABLE IF NOT EXISTS` for all **14** production tables — including `coaching_streak_freezes` (with `auto_applied`) and `coaching_trial_tombstones`. It is strictly additive and non-destructive.
 
 ### 1.3 Verify Cloudflare Cron Trigger
-`wrangler.jsonc` already configures `"triggers": { "crons": ["0 * * * *"] }` invoking `scheduled()` in `server/cloudflare-entry.mjs` (hourly timezone-aware push reminder dispatch). Verify in Cloudflare Dashboard -> Workers -> `curafit-api-dev` / `curafit-api` -> **Triggers** after deploying.
+`wrangler.jsonc` already configures `"triggers": { "crons": ["0 * * * *"] }` invoking `scheduled()` in `server/cloudflare-entry.mjs` (hourly timezone-aware push reminder dispatch across all 6 production triggers: `ramadan_suhoor_reminder`, `daily_checkin_reminder`, `coaching_case_review`, `weekly_checkin_due`, `plan_renewal_due`, `trial_ending_day5`). Verify in Cloudflare Dashboard -> Workers -> `curafit-api-dev` / `curafit-api` -> **Triggers** after deploying.
 
 ---
 
@@ -46,41 +58,45 @@ Set the following secrets separately for **Cloud Dev** (`--env dev`) and **Produ
 ### 2.1 Core Auth & Media Signing (Required)
 | Secret Name | Purpose | Notes |
 | :--- | :--- | :--- |
-| `AUTH_JWT_SECRET` | HS256 JWT signing & verification (already configured) | Minimum 32 random bytes |
+| `AUTH_JWT_SECRET` | HS256 JWT signing & verification (already configured) | Exact binding read by `server/auth.mjs` & `server/native-auth.mjs` (minimum 32 random bytes) |
 | `MEDIA_SIGNING_SECRET` | HMAC-SHA256 signing for `/v1/media/signed/{token}` R2 proxy URLs | Falls back to `AUTH_JWT_SECRET` if unset, but using a dedicated secret is recommended |
-| `OAUTH_TOKEN_ENC_KEY` | AES-GCM encryption key for stored Apple authorization/refresh tokens | Required for App Store Guideline 5.1.1(v) token revocation on account deletion |
+| `OAUTH_TOKEN_ENC_KEY` | AES-GCM encryption key for stored Apple refresh tokens | Required for App Store Guideline 5.1.1(v) token revocation on GDPR account deletion |
 
 ### 2.2 Social Sign-In (Google & Apple OIDC — Required for Social Login)
 | Secret / Var Name | Source | Notes |
 | :--- | :--- | :--- |
-| `GOOGLE_OAUTH_CLIENT_IDS` | Google Cloud Console -> Credentials -> OAuth 2.0 Client IDs | Comma-separated Android, iOS, and Web client IDs accepted in `aud` claim |
-| `APPLE_CLIENT_ID` | Apple Developer -> Identifiers -> App ID / Services ID | Bundle ID (e.g. `com.curafit.ios`) accepted in `aud` claim |
-| `APPLE_TEAM_ID` | Apple Developer -> Membership | 10-char Team ID (used for Apple token revocation on GDPR account delete) |
-| `APPLE_KEY_ID` | Apple Developer -> Keys (Sign in with Apple key) | 10-char Key ID |
-| `APPLE_PRIVATE_KEY_PEM` | Downloaded `.p8` private key for Sign in with Apple | PEM string for ES256 client-secret JWT on `/auth/revoke` |
+| `OAUTH_GOOGLE_CLIENT_IDS` | Google Cloud Console -> Credentials -> OAuth 2.0 Client IDs | Comma-separated Android, iOS, and Web client IDs accepted in `aud` claim (`GOOGLE_OAUTH_CLIENT_IDS` is also accepted as an alias) |
+| `APPLE_CLIENT_ID` | Apple Developer -> Identifiers -> App ID / Services ID | Bundle ID (e.g. `com.curafit.app`) accepted in `aud` claim (`OAUTH_APPLE_CLIENT_IDS` supported for multi-ID lists) |
+| `APPLE_BUNDLE_ID` | Apple Developer -> Identifiers -> App ID | iOS bundle ID verified in Apple StoreKit 2 transactions (falls back to `APPLE_CLIENT_ID` if unset) |
+| `APPLE_TEAM_ID` | Apple Developer -> Membership | 10-char Team ID (used for Apple `/auth/token` exchange & `/auth/revoke` on GDPR delete) |
+| `APPLE_KEY_ID` | Apple Developer -> Keys (Sign in with Apple / App Store Connect key) | 10-char Key ID |
+| `APPLE_PRIVATE_KEY` | Downloaded `.p8` private key | PKCS#8 PEM string for ES256 JWT signing (Apple `/auth/token`, `/auth/revoke` & App Store Server API) |
+| `APPLE_ISSUER_ID` | App Store Connect -> Users and Access -> Integrations -> In-App Purchase | UUID Issuer ID for App Store Server API transaction verification |
 
-### 2.3 Push Notifications (FCM HTTP v1 & Apple APNs — Required for Cron Reminders)
+### 2.3 Push Notifications (FCM HTTP v1 & Apple APNs HTTP/2 — Required for Cron Reminders)
 | Secret / Var Name | Source | Notes |
 | :--- | :--- | :--- |
-| `FCM_PROJECT_ID` | Firebase Console -> Project Settings | GCP/Firebase project ID |
-| `FCM_SERVICE_ACCOUNT_JSON` | Firebase Console -> Service Accounts -> Generate New Private Key | JSON string (`client_email`, `private_key`) for WebCrypto RS256 OAuth2 token exchange |
-| `APNS_TEAM_ID` | Apple Developer -> Membership | 10-char Team ID |
+| `FCM_SERVICE_ACCOUNT_JSON` | Firebase Console -> Service Accounts -> Generate New Private Key | JSON string (`project_id`, `client_email`, `private_key`) for WebCrypto RS256 OAuth2 token exchange |
 | `APNS_KEY_ID` | Apple Developer -> Keys (APNs `.p8` key) | 10-char Key ID |
-| `APNS_PRIVATE_KEY_PEM` | Downloaded APNs `.p8` key | PEM string for ES256 APNs JWT |
+| `APNS_TEAM_ID` | Apple Developer -> Membership | 10-char Team ID |
+| `APNS_PRIVATE_KEY` | Downloaded APNs `.p8` key | PKCS#8 PEM string for ES256 APNs HTTP/2 JWT |
 | `APNS_BUNDLE_ID` | Apple Developer -> App ID | iOS bundle ID (`apns-topic`) |
 | `APNS_USE_SANDBOX` | Environment flag | `"true"` on Cloud Dev (`--env dev`), `"false"` on Production |
 
-### 2.4 Store Billing & Webhooks (Apple StoreKit & Google Play Billing)
+### 2.4 Store Billing & Webhooks (Apple StoreKit 2 & Google Play Billing)
 | Secret / Var Name | Source | Notes |
 | :--- | :--- | :--- |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Google Play Console -> API Access -> Service Account | JSON string for Google Play Developer API (`purchases.subscriptionsv2.get` & `:acknowledge`) |
+| `GOOGLE_PLAY_PACKAGE_NAME` | Google Play Console -> App ID | Android package name (e.g. `com.curafit.app`, also used in Play subscription management deep links) |
 | `APPLE_WEBHOOK_SECRET` | Shared secret / verification header | Verified on `POST /v1/webhooks/apple` |
 | `GOOGLE_PUBSUB_TOKEN` | Google Cloud Pub/Sub push subscription token | Verified on `POST /v1/webhooks/google-play` |
-| `ENFORCE_PRO_ENTITLEMENTS` | Environment flag | Set `"true"` in Production & Cloud Dev when paywall enforcement should go live (currently defaults to unset/off so QA & automated suites can run unrestricted unless explicitly enabled) |
+| `STRICT_STORE_VERIFICATION` | Environment flag | Set `"true"` in Production to require live Apple App Store Server API & Google Play `subscriptionsv2.get` verification (dev/test fallback allowed when unset) |
+| `ENFORCE_PRO_ENTITLEMENTS` | Environment flag | Set `"true"` in Production (and Cloud Dev when testing paywall gating) to enforce `402 PRO_ENTITLEMENT_REQUIRED` on Pro features & free quotas |
 
 ### 2.5 Optional Feature & Operations Flags
 | Var Name | Default | Purpose |
 | :--- | :--- | :--- |
-| `ENABLE_OPENFOODFACTS` | `"false"` | Set `"true"` to enable live OpenFoodFacts fallback on `GET /v1/foods/barcode/{ean}` cache misses |
+| `ENABLE_OPENFOODFACTS` | `"false"` | Set `"true"` to enable live OpenFoodFacts `/api/v2/` fallback on `GET /v1/foods/barcode/{ean}` cache misses |
 | `MIN_ANDROID_VERSION` | `"1.0.0"` | Minimum Android semver before returning `426 CLIENT_UPDATE_REQUIRED` |
 | `MIN_IOS_VERSION` | `"1.0.0"` | Minimum iOS semver before returning `426 CLIENT_UPDATE_REQUIRED` |
 | `MAINTENANCE_MODE` | `"false"` | Set `"true"` during emergency maintenance (`503 MAINTENANCE_MODE`, while `/v1/health` and `/v1/capabilities` stay `200 OK`) |
@@ -104,15 +120,15 @@ Set the following secrets separately for **Cloud Dev** (`--env dev`) and **Produ
    - Create auto-renewable subscription products:
      - `com.curafit.pro.monthly` (7-day introductory free trial)
      - `com.curafit.pro.annual` (7-day introductory free trial)
-   - Configure App Store Server Notifications URL:
+   - Configure App Store Server Notifications v2 URL:
      - Sandbox: `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
      - Production: `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
 
-3. **Postman Published Documentation:**
-   - Re-import [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) and environments (`Cloud Dev`, `Production`, `Local Dev`) into Postman Workspace and republish the public Documenter URL (`https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`).
+3. **Postman Published Documentation (`16` Groups / `129` Endpoints):**
+   - Re-import [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) (`16` groups / `129` endpoints, aligned with `82` OpenAPI paths, `41` command actions, `282` error codes, and `83` coaching codes) and environments (`CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`) into Postman Workspace and republish the public Documenter URL (`https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`).
 
 4. **Jira Backlog Sync (Optional):**
-   - If you keep Jira (`KAN` project) mirrored with `docs/user-stories/`, update ticket labels (`production-v2` -> `production`, `mobile-v2` -> `mobile`) and sync the aligned stories (`EPIC-01`..`EPIC-10`).
+   - If you keep Jira (`KAN` project) mirrored with `docs/user-stories/`, sync the aligned production stories (`EPIC-01`..`EPIC-10`) using clean `production` and `mobile` labels.
 
 ---
 

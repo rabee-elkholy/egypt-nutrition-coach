@@ -8,6 +8,7 @@ import {apiError} from '../coaching-error.mjs';
 export {library};
 const dateForLog=(date,tz=clockTimeZone())=>validateLogDate(date,clockNow(),tz);
 const metrics=['energy','protein','fat','carbs','fiber','saturated','sodium','sugars'];
+const SLOTS=new Set(['breakfast','lunch','dinner','snack']);
 const DISPLAY_SLOTS=new Set(['breakfast','lunch','dinner','snack','snack_1','snack_2','suhoor','iftar','night_snack']);
 export const activePlan=s=>s.plans.find(p=>p.id===s.active_plan_id);
 export function plannedEnergyForDate(s,date){
@@ -80,6 +81,45 @@ export function foodCommand(s,action,p){
   if(p.confirm!==true||!previous||previous.source==='entries')throw apiError('CONVERT_DETAILED_CONFIRMATION_REQUIRED','Switching a daily-total log to detailed entries requires confirm: true on a daily-total day.',{status:400});
   s.history.push({kind:'food_diary_mode',at:isoNow(),previous:structuredClone(previous)});
   s.foodLogs=s.foodLogs.filter(d=>d.date!==date);refreshDay(s,date);
+ }else if(action==='food_entry_update'){
+  const idx=(s.foodEntries||[]).findIndex(e=>e.id===p.id);
+  if(idx<0)throw apiError('FOOD_ENTRY_NOT_FOUND','Food log entry not found.',{status:404});
+  const existing=s.foodEntries[idx];
+  const nextSlot=p.slot!=null?p.slot:existing.slot;
+  if(!SLOTS.has(nextSlot))throw apiError('INVALID_MEAL_SLOT','Meal slot must be breakfast, lunch, dinner, or snack.',{status:400});
+  let nextQuantity=existing.quantity,nextSnapshot=existing.snapshot;
+  if(existing.source==='planned'){
+   nextQuantity=p.quantity!=null?number(p.quantity,.25,3,'quantity'):existing.quantity;
+   if(nextQuantity!==existing.quantity){
+    const factor=nextQuantity/(Number(existing.quantity)||1);
+    nextSnapshot=freezeSnapshot(scaleSnapshot(existing.snapshot,factor));
+   }
+  }else if(existing.source==='ingredient'){
+   const firstIng=existing.snapshot?.ingredients?.[0];
+   const isRef=p.unit==='reference'||(p.unit==null&&firstIng?.unit==='reference');
+   if(isRef){
+    nextQuantity=p.quantity!=null?number(p.quantity,.25,10,'quantity'):existing.quantity;
+   }else{
+    nextQuantity=p.grams!=null?number(p.grams,1,2000,'grams'):(p.quantity!=null?number(p.quantity,1,2000,'grams'):existing.quantity);
+   }
+   if(nextQuantity!==existing.quantity){
+    const factor=nextQuantity/(Number(existing.quantity)||1);
+    nextSnapshot=freezeSnapshot(scaleSnapshot(existing.snapshot,factor));
+   }
+  }else{
+   const nextName=p.name!=null?String(p.name).trim():existing.snapshot?.name||'';
+   if(!nextName||nextName.length>120)throw apiError('INVALID_MEAL_NAME','Manual meal name must be non-empty and at most 120 characters.',{status:400});
+   const prevVals=existing.snapshot?.values||{};
+   const nextVals=Object.fromEntries(metrics.map(k=>{
+    if(p[k]!==undefined)return [k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))];
+    return [k,prevVals[k]??null];
+   }));
+   if(nextVals.energy==null||Number(nextVals.energy)<=0)throw apiError('MANUAL_MEAL_ENERGY_REQUIRED','Positive actual energy (kcal > 0) is required for manual food entries.',{status:400});
+   nextSnapshot=freezeSnapshot({...existing.snapshot,name:nextName,values:nextVals});
+  }
+  s.foodEntries[idx]={...existing,slot:nextSlot,quantity:nextQuantity,snapshot:nextSnapshot,updatedAt:isoNow()};
+  refreshDay(s,existing.date);
+  Object.assign(s.foodLogs.find(d=>d.date===existing.date),{complete:false,confirmedAt:null,completionPolicy:1});
  }else if(action==='food_delete'){
   const entry=s.foodEntries.find(e=>e.id===p.id);if(!entry)throw apiError('FOOD_ENTRY_NOT_FOUND','Food log entry not found.',{status:404});s.foodEntries=s.foodEntries.filter(e=>e.id!==p.id);refreshDay(s,entry.date);
   Object.assign(s.foodLogs.find(d=>d.date===entry.date),{complete:false,confirmedAt:null,completionPolicy:1});

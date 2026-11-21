@@ -94,7 +94,7 @@
     },
     "INVALID_DATE_RANGE": {
       "httpStatus": 400,
-      "message": "Invalid from/to date query parameter; expected YYYY-MM-DD.",
+      "message": "Invalid date range or analytics range parameter (expected YYYY-MM-DD or one of 14d, 30d, 90d, all).",
       "params": [
         "field"
       ],
@@ -108,7 +108,7 @@
     },
     "INVALID_WORKOUT_DAYS": {
       "httpStatus": 400,
-      "message": "Selected training days list is invalid (max 6 days).",
+      "message": "Selected training days list is invalid (max 7 days).",
       "params": [],
       "retryable": false
     },
@@ -300,7 +300,9 @@
     "AUTH_JWKS_UNAVAILABLE": {
       "httpStatus": 503,
       "message": "Unable to fetch JWKS verification keys.",
-      "params": [],
+      "params": [
+        "provider"
+      ],
       "retryable": true
     },
     "AUTH_KEY_ROTATED_OR_UNKNOWN": {
@@ -620,7 +622,7 @@
     },
     "INVALID_EXTERNAL_TRAINING_DAYS": {
       "httpStatus": 400,
-      "message": "externalTrainingDays must be an array of up to 6 weekday integers (0..6).",
+      "message": "externalTrainingDays must be an array of up to 7 weekday integers (0..6).",
       "params": [],
       "retryable": false
     },
@@ -662,7 +664,7 @@
     },
     "INVALID_AGE": {
       "httpStatus": 400,
-      "message": "age must be a whole number of years between 18 and 70.",
+      "message": "age must be a whole number of years between 18 and 95.",
       "params": [],
       "retryable": false
     },
@@ -674,7 +676,7 @@
     },
     "INVALID_TRAINING_DAYS": {
       "httpStatus": 400,
-      "message": "trainingDays must be an integer between 0 and 6.",
+      "message": "trainingDays must be an integer between 0 and 7.",
       "params": [],
       "retryable": false
     },
@@ -1206,7 +1208,7 @@
     },
     "WORKOUT_SETS_REQUIRED": {
       "httpStatus": 400,
-      "message": "sets array must contain between 1 and 10 performed sets.",
+      "message": "sets array must contain between 1 and 15 performed sets.",
       "params": [],
       "retryable": false
     },
@@ -1709,6 +1711,87 @@
         "dietType"
       ],
       "message": "The selected diet pattern is contraindicated for your declared medical conditions, maternal status, or goal."
+    },
+    "PROFILE_ALREADY_EXISTS": {
+      "httpStatus": 409,
+      "message": "An existing profile already exists on this account; pass overwriteExisting: true to replace it.",
+      "params": [],
+      "retryable": false
+    },
+    "HEALTH_CONSENT_REQUIRED": {
+      "httpStatus": 403,
+      "message": "Active health_data_processing consent is required to generate plans or compute coaching reviews.",
+      "params": [],
+      "retryable": false
+    },
+    "ACTIVE_SUBSCRIPTION_ON_OTHER_PLATFORM": {
+      "httpStatus": 409,
+      "message": "You already have an active Pro subscription on {activeProvider}; manage or cancel it there before subscribing on {requestedProvider}.",
+      "params": [
+        "activeProvider",
+        "requestedProvider"
+      ],
+      "retryable": false
+    },
+    "CANNOT_UNLINK_LAST_AUTH_METHOD": {
+      "httpStatus": 409,
+      "message": "Cannot unlink your only active sign-in provider; link another provider first.",
+      "params": [
+        "provider"
+      ],
+      "retryable": false
+    },
+    "OAUTH_PROVIDER_NOT_LINKED": {
+      "httpStatus": 404,
+      "message": "The specified OAuth provider is not linked to this account.",
+      "params": [
+        "provider"
+      ],
+      "retryable": false
+    },
+    "FOOD_DAY_MODE_CONFLICT": {
+      "httpStatus": 409,
+      "message": "Target date already has a legacy daily_total log; switch to entries or pass replaceDailyTotal: true.",
+      "params": [
+        "date"
+      ],
+      "retryable": false
+    },
+    "WORKOUT_LOG_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "The specified workout log was not found.",
+      "params": [
+        "logId"
+      ],
+      "retryable": false
+    },
+    "SESSION_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "The specified workout session was not found.",
+      "params": [
+        "sessionId"
+      ],
+      "retryable": false
+    },
+    "AD_HOC_INJURY_WARNING": {
+      "httpStatus": 409,
+      "message": "This exercise conflicts with your declared joint injuries ({injuries}); pass overrideInjuryWarning: true to log it anyway.",
+      "params": [
+        "injuries"
+      ],
+      "retryable": false
+    },
+    "INVALID_MATERNAL_PROFILE": {
+      "httpStatus": 400,
+      "message": "Maternal status is only applicable to female profiles aged 18 to 50.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_UNIT_SYSTEM": {
+      "httpStatus": 400,
+      "message": "unitSystem must be either metric or imperial.",
+      "params": [],
+      "retryable": false
     }
   }
 }
