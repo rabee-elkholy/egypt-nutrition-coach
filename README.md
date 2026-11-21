@@ -11,10 +11,10 @@ Server-driven Arabic & regional nutrition planning, workout prescription, and ad
 - **Git Repository:** [rabee-elkholy/egypt-nutrition-coach](https://github.com/rabee-elkholy/egypt-nutrition-coach) — Branches: **`dev`** (Cloud Dev) & **`main`** (Production)
 - **Working Directory:** `E:\Egypt_Nutrition_Local\website\dist`
 - **Cloudflare Workers:** `curafit-api` (Production) & `curafit-api-dev` (Cloud Dev)
-- **Cloudflare D1 Databases:** `egypt-nutrition-coaching` (`database_id`: `90fa62f1-7866-4156-ac29-f0aec4814bab`, binding: `DB`) & `curafit-db-dev` (full production clone for Cloud Dev)
+- **Cloudflare D1 Databases:** `egypt-nutrition-coaching` (`database_id`: `90fa62f1-7866-4156-ac29-f0aec4814bab`, binding: `DB`) & `curafit-db-dev` (`database_id`: `0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`, full production clone for Cloud Dev)
 - **Deployment Configuration:** [`wrangler.jsonc`](wrangler.jsonc), Worker entrypoint [`server/cloudflare-entry.mjs`](server/cloudflare-entry.mjs)
 
-Full repository, branching, and deployment rules are defined in [`AGENTS.md`](AGENTS.md).
+Full repository, branching, and AI agent development workflow rules are defined in [`AGENTS.md`](AGENTS.md) and [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md).
 
 ## Nutrition Planning & Adaptive Follow-Up
 
@@ -43,7 +43,7 @@ Full repository, branching, and deployment rules are defined in [`AGENTS.md`](AG
 
 ## Privacy, Account Erasure & API Contract
 
-- **Privacy & Account Erasure Guarantees:** Deleting an account (`POST /v1/account/delete`) atomically clears the account namespace and any claimed anonymous namespaces within one database batch, and records tombstones so late or concurrent writes cannot resurrect deleted health data.
+- **Privacy & Account Erasure Guarantees:** Deleting an account (`DELETE /v1/account/delete`) atomically clears the account namespace and any claimed anonymous namespaces within one database batch, and records tombstones so late or concurrent writes cannot resurrect deleted health data.
 - **Uniform Response Envelope & KMM Error Catalog:**
   - `2xx`: `{ ok: true, data: T, meta: { requestId, serverTime, revision? } }`
   - `4xx`/`5xx`: `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta: { requestId, serverTime } }` — 100% English error messages, machine-translatable via `contracts/error-codes.json`.
@@ -88,8 +88,10 @@ npm.cmd run deploy:d1:prod
 
 ## Documentation & Contracts
 
-- **Canonical Error Catalog & KMM Spec:** [`contracts/error-codes.json`](contracts/error-codes.json), [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md), [`contracts/openapi.yaml`](contracts/openapi.yaml)
-- **Postman Collection & Environments:** [`postman/`](postman) (generated via `node scripts/generate-postman.mjs`)
+- **AI & Developer Workflow (`dev` -> `main`):** [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) and [`AGENTS.md`](AGENTS.md)
+- **Canonical Error Catalog & KMM Spec:** [`contracts/error-codes.json`](contracts/error-codes.json), [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md), [`contracts/openapi.yaml`](contracts/openapi.yaml), and [`docs/KMM_BACKEND_INTEGRATION.md`](docs/KMM_BACKEND_INTEGRATION.md)
+- **Architecture, Safety & D1 Ops:** [`docs/BACKEND_ARCHITECTURE.md`](docs/BACKEND_ARCHITECTURE.md), [`docs/DATA_SAFETY_AND_SOURCES.md`](docs/DATA_SAFETY_AND_SOURCES.md), [`docs/DB_MIGRATION_AND_RECOVERY.md`](docs/DB_MIGRATION_AND_RECOVERY.md), [`docs/SECURITY_PRIVACY_REVIEW.md`](docs/SECURITY_PRIVACY_REVIEW.md)
+- **API Reference & Postman:** [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md), [`postman/`](postman) (generated via `npm.cmd run postman:generate`), and Published Docs: `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`
 
 ## Data Sources & Licensing
 
