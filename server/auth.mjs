@@ -174,7 +174,7 @@ export async function verifyBearerToken(token, env, nowMs = Date.now()) {
       const globalRevoke = await env.DB.prepare(
         'SELECT revoked_at FROM coaching_auth_sessions WHERE user_id=? AND session_id=?'
       ).bind(userId, '__all__').first();
-      if (globalRevoke?.revoked_at && payload.iat && payload.iat * 1000 < Date.parse(globalRevoke.revoked_at)) {
+      if (globalRevoke?.revoked_at && payload.iat && (payload.iat + 1) * 1000 <= Date.parse(globalRevoke.revoked_at)) {
         throw createApiError('All sessions were revoked; sign in again.', 401, { code: 'AUTH_ALL_SESSIONS_REVOKED' });
       }
     } catch (e) {
@@ -191,7 +191,7 @@ export async function verifyBearerToken(token, env, nowMs = Date.now()) {
     authMethod: 'bearer_jwt',
     isAnonymous: false,
     scopes: Array.isArray(payload.scopes) ? payload.scopes : ['coach:read', 'coach:write'],
-    entitlement: payload.entitlement === 'premium' ? 'premium' : 'free',
+    entitlement: (payload.entitlement === 'pro' || payload.entitlement === 'premium') ? 'pro' : 'free',
     issuedAt: payload.iat ? new Date(payload.iat * 1000).toISOString() : null,
     expiresAt: new Date(payload.exp * 1000).toISOString()
   };
@@ -261,8 +261,10 @@ export function checkRateLimit(userId, actionCategory = 'read', env = {}) {
   }
 
   if (current > maxPerMinute) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((RATE_WINDOW_MS - (now % RATE_WINDOW_MS)) / 1000));
     throw createApiError('Too many requests per minute; wait a moment and retry.', 429, {
       code: 'RATE_LIMITED',
+      params: { retryAfterSeconds },
       retryable: true
     });
   }

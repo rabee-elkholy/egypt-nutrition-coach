@@ -2,8 +2,8 @@
 
 > **Epic ID:** `EPIC-10`
 > **Target Platforms:** KMM (Android Google Play Billing v7+ & iOS StoreKit 2)
-> **Scope:** Production V2
-> **Labels:** `production-v2`, `mobile-v2`, `monetization`, `paywall`, `subscriptions`
+> **Scope:** Production
+> **Labels:** `production`, `mobile`, `monetization`, `paywall`, `subscriptions`
 
 ---
 
@@ -27,10 +27,10 @@
 | **Story ID** | `US-MON-01` |
 | **Epic** | `EPIC-10` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `monetization`, `entitlements` |
+| **Labels** | `production`, `mobile`, `monetization`, `entitlements` |
 | **Target Screens** | `ContextualProUpsellSheet` (Triggered smoothly from gated feature entry points) |
 | **Entitlement** | `Freemium` |
-| **Backend Status** | `Modified` (`GET /v1/entitlements` expanded V2 feature keys & status fields) |
+| **Backend Status** | `Modified` (`GET /v1/entitlements` expanded feature keys & status fields) |
 
 ### STORY
 As a Free-tier user exploring CuraFit, I want complete clarity on which core tracking features are Free forever vs. which advanced automation/AI tools belong to CuraFit Pro, with helpful preview teasers rather than frustrating sudden blocks — and never paywall-locking critical safety tools.
@@ -45,17 +45,17 @@ As a Free-tier user exploring CuraFit, I want complete clarity on which core tra
 | :--- | :--- | :--- |
 | Conversational Onboarding & Initial 7-Day Plan | Unlimited (`Free`) | Unlimited |
 | Daily Today Hub, Hydration, Weight, Steps & Streaks | Unlimited (`Free`) | Unlimited |
-| Planned Meal Logging, Manual Entry, Search (3,291 items), Recipe Calc, Pantry Finder | Unlimited (`Free`) | Unlimited |
+| Planned Meal Logging, Manual Entry, Search (3,291 foods/beverages + 2,437 regional models), Recipe Calc, Pantry Finder | Unlimited (`Free`) | Unlimited |
 | Ramadan Mode & 16:8 Fasting Live Timer | Unlimited (`Free`) | Unlimited |
 | Workouts (`Simple` & `Pro` Modes), Rest Timer, Plate Calc, 868 Exercise Library, Reschedule | Unlimited (`Free`) | Unlimited |
-| Daily Recovery Check-In & Urgent Safety Stops (`RED_FLAGS_STOP`, Injury Safety Swaps) | **Always `Free` (Safety Rule!)** | Unlimited |
+| Daily Recovery Check-In, Safety Adaptations (`recovery` 24h deload & `schedule`), & Urgent Safety Stops (`RED_FLAGS_STOP`, Injury Safety Swaps) | **Always `Free` (Safety Rule!)** | Unlimited |
 | **Meal & Exercise Swaps (Voluntary Preference)** | 2 Meal swaps/day + 2 Exercise swaps/week | **Unlimited** |
-| **AI Meal Photo & Arabic/English Voice/Text Quick Log** (`US-NUT-05`) | 1 Free Sample Preview | **Unlimited** (fair-use cap) |
+| **AI Meal Photo & Arabic/English Voice/Text Quick Log** (`US-NUT-05` — *Final AI Phase*) | 1 Free Sample Preview *(once enabled)* | **Unlimited** (fair-use cap) |
 | **MENA Supermarket Barcode Scanner** (`US-NUT-06`) | Preview teaser | **Unlimited** |
 | **Smart Weekly Grocery / Shopping List** (`US-NUT-09`) | Previews top 2 items | **Full Interactive List & WhatsApp Share** |
 | **Weekly Meal Plan Renewal (`renew_plan`)** (`US-NUT-01`) | Week 1 Included + 1 Bonus Renewal | **Unlimited Auto/1-Tap Renewals** |
-| **Adaptive Coach Reviews & Auto Calorie/Volume Proposals** (`US-CCH-03`) | Readiness & Evidence Checklist visible | **Full Adaptive Proposals & Approvals** |
-| **Guarded AI Coach Q&A ("Ask the Coach")** (`US-CCH-05`) | 3 Starter Messages | **Unlimited Coaching Chat** |
+| **Performance & Nutrition Adaptive Proposals (`calories`, `weekly_volume`, `maintenance`)** (`US-CCH-03`) | Readiness & Evidence Checklist visible | **Full Adaptive Proposals & Approvals** |
+| **Guarded AI Coach Q&A ("Ask the Coach")** (`US-CCH-05` — *Final AI Phase*) | 3 Starter Messages *(once enabled)* | **Unlimited Coaching Chat** |
 | **Multi-Horizon Analytics (`90D`/`All`) & Encrypted Cloud Photo Vault** (`US-PRG-01`/`03`) | `14D/30D` + Local Vault (6 photos) | **Full History + Unlimited R2 Cloud Vault** |
 
 2. **Contextual Soft Paywall Sheet (`ContextualProUpsellSheet`):**
@@ -64,17 +64,20 @@ As a Free-tier user exploring CuraFit, I want complete clarity on which core tra
 
 ### API & BACKEND CONTRACT
 1. **`[MODIFIED BACKEND] GET /v1/entitlements`**
-   - **Response (`200 OK`):**
+   - **Unified Response (`200 OK` — matches `US-MON-04` and Delta Spec `M6`):**
      ```json
      {
        "ok": true,
        "data": {
          "tier": "free",
          "status": "none",
+         "productId": null,
          "provider": null,
          "expiresAt": null,
+         "autoRenewEnabled": false,
          "trialEligible": true,
          "isInGracePeriod": false,
+         "managementUrl": null,
          "quotas": {
            "aiParsesRemainingFree": 1,
            "aiCoachMessagesRemainingFree": 3,
@@ -92,11 +95,11 @@ As a Free-tier user exploring CuraFit, I want complete clarity on which core tra
        }
      }
      ```
-   - *(When `tier == "premium"`, `features` includes `"ai_meal_logging"`, `"barcode_scanner"`, `"smart_grocery_list"`, `"unlimited_swaps"`, `"unlimited_plan_renewal"`, `"adaptive_coaching_proposals"`, `"ai_coach_chat"`, `"advanced_analytics"`, `"cloud_photo_vault"`).*
+   - *(When `tier == "premium"`, `features` includes `"barcode_scanner"`, `"smart_grocery_list"`, `"unlimited_swaps"`, `"unlimited_plan_renewal"`, `"adaptive_coaching_proposals"`, `"advanced_analytics"`, `"cloud_photo_vault"`, and — once enabled in Final AI Phase — `"ai_meal_logging"` & `"ai_coach_chat"`).*
 
 ### RULES & BUSINESS LOGIC
-1. **Strict Safety Exemption Rule:** NEVER gate `confirm_health`, `confirm_schedule`, `recovery` check-ins, `RED_FLAGS_STOP`, injury-safety exercise swaps (`workoutSafetyIssues`), GDPR export, or account deletion behind Pro!
-2. **Server-Authoritative Enforcement:** Backend endpoints (`POST /v1/nutrition/ai-parse`, `GET /v1/plans/{id}/grocery-list`, `POST /v1/coaching/chat`, `renew_plan`, `adaptation` after free grace) independently verify `entitlements.tier === "premium"` (or remaining free sample quota) and return `402 PRO_ENTITLEMENT_REQUIRED` if bypassed!
+1. **Strict Safety Exemption Rule:** NEVER gate `confirm_health`, `confirm_schedule`, `recovery` check-ins, safety-critical adaptations (`kind: "recovery"` & `kind: "schedule"`), `RED_FLAGS_STOP`, injury-safety exercise swaps (`workoutSafetyIssues`), GDPR export, or account deletion behind Pro!
+2. **Server-Authoritative Enforcement:** Backend endpoints (`GET /v1/plans/{id}/grocery-list`, `GET /v1/foods/barcode/{ean}`, `POST /v1/progress/photos/upload-url`, `GET /v1/progress/analytics` `90d|all`, `renew_plan`, `replace_meal`, `replace_exercise`, `adaptation` for `calories`/`weekly_volume`/`maintenance`, plus Final AI Phase `POST /v1/nutrition/ai-parse` & `POST /v1/coaching/chat`) independently verify `entitlements.tier === "premium"` (or remaining free sample quota) and return `402 PRO_ENTITLEMENT_REQUIRED` if bypassed!
 
 ### MAIN FLOW
 1. A Free user uses their 1 free AI Meal Photo sample on Day 1 and loves it.
@@ -138,7 +141,7 @@ As a Free-tier user exploring CuraFit, I want complete clarity on which core tra
 | **Story ID** | `US-MON-02` |
 | **Epic** | `EPIC-10` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `monetization`, `paywall`, `store-compliance` |
+| **Labels** | `production`, `mobile`, `monetization`, `paywall`, `store-compliance` |
 | **Target Screens** | `PaywallScreen` |
 | **Entitlement** | `Freemium` |
 | **Backend Status** | `New` (`GET /v1/subscriptions/offerings`) |
@@ -154,7 +157,7 @@ As a user considering upgrading to CuraFit Pro, I want a clean, trustworthy Payw
 1. **Top Close Button (`X`) & Header:** Always visibly dismissible (`Soft Paywall` — never trap the user!).
 2. **Hero Value Stack:**
    - Personalized headline: *"Unlock Your Full Smart Coach, {name}"*
-   - Scannable 4-bullet visual checklist (AI Photo/Voice Log, Barcode Scanner & Grocery List, Adaptive Calorie/Volume Reviews, Unlimited AI Coach Q&A & Cloud Vault).
+   - Scannable 4-bullet visual checklist (Barcode Scanner & Grocery List, Unlimited Meal/Exercise Swaps & Weekly Renewals, Adaptive Calorie/Volume Reviews, Advanced Analytics & Cloud Vault — plus AI Photo/Voice Log & AI Coach Q&A in Final AI Phase).
 3. **Trial Timeline Explainer (If `trialEligible == true` — Proven High-Trust Pattern):**
    - `Day 1 (Today):` Instant full Pro access — **0.00 charged today**.
    - `Day 5:` Friendly reminder before trial ends *(via local/push alert if enabled)*.
@@ -171,7 +174,7 @@ As a user considering upgrading to CuraFit Pro, I want a clean, trustworthy Payw
 
 ### API & BACKEND CONTRACT
 1. **`[NEW BACKEND] GET /v1/subscriptions/offerings?platform=android|ios&region=egypt|gulf|levant|maghreb`**
-   - Returns active Store product IDs (`curafit_pro_annual`, `curafit_pro_monthly`), trial eligibility (`trialEligible` from `coaching_subscriptions`), promotional badges (`best_value_pct: 45`), and copy tags.
+   - Returns active Store product IDs (`curafit_pro_annual`, `curafit_pro_monthly`), trial eligibility (`trialEligible` from `coaching_subscriptions`), promotional badges (`bestValuePct: 45`), and copy tags.
 2. **Native Store SDK Product Query:** Always render exact localized currency strings (`formattedPrice`, `introductoryOffer`) directly from Apple StoreKit 2 `Product` / Google Play `ProductDetails` — never hardcode currency strings in UI!
 
 ### RULES & BUSINESS LOGIC
@@ -219,7 +222,7 @@ As a user considering upgrading to CuraFit Pro, I want a clean, trustworthy Payw
 | **Story ID** | `US-MON-03` |
 | **Epic** | `EPIC-10` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `monetization`, `billing`, `storekit2`, `play-billing` |
+| **Labels** | `production`, `mobile`, `monetization`, `billing`, `storekit2`, `play-billing` |
 | **Target Screens** | Native OS Payment Sheet + `PurchaseProcessingOverlay`, `ProUnlockedModal` |
 | **Entitlement** | `Freemium` |
 | **Backend Status** | `New` (`POST /v1/subscriptions/verify`, `POST /v1/subscriptions/restore`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`) |
@@ -248,7 +251,7 @@ As a user tapping Subscribe or Restore Purchases, I want my Apple App Store or G
      - **Android (Google Play Billing):** `{ "platform": "android", "productId": "curafit_pro_annual", "purchaseToken": "<play-purchase-token>", "orderId": "GPA...." }`
    - **Server Action:** Verifies JWS cryptographically against Apple Root CA / Google Play Developer API (`purchases.subscriptionsv2.get`), **acknowledges Play purchase server-side**, writes `coaching_subscriptions` in D1, updates account `entitlements.tier = "premium"`, and returns the updated `entitlements` object!
 2. **`[NEW BACKEND] POST /v1/subscriptions/restore`** -> Accepts array of active StoreKit 2 `currentEntitlements` / Play `queryPurchasesAsync` tokens, validates ownership, and attaches/restores `premium` tier cleanly.
-3. **`[NEW BACKEND] POST /v1/webhooks/apple` & `POST /v1/webhooks/google-play`** -> Real-time Apple App Store Server Notifications V2 & Google Play RTDN Pub/Sub handlers for renewals, cancellations, refunds, and billing grace transitions.
+3. **`[NEW BACKEND] POST /v1/webhooks/apple` & `POST /v1/webhooks/google-play`** -> Real-time Apple App Store Server Notifications & Google Play RTDN Pub/Sub handlers for renewals, cancellations, refunds, and billing grace transitions.
    - Error Codes: `400 INVALID_SUBSCRIPTION_RECEIPT`, `409 SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT`, `503 BILLING_VERIFICATION_UNAVAILABLE` (`retryable: true`).
 
 ### RULES & BUSINESS LOGIC
@@ -297,7 +300,7 @@ As a user tapping Subscribe or Restore Purchases, I want my Apple App Store or G
 | **Story ID** | `US-MON-04` |
 | **Epic** | `EPIC-10` |
 | **Priority** | `Medium` |
-| **Labels** | `production-v2`, `mobile-v2`, `monetization`, `retention`, `billing` |
+| **Labels** | `production`, `mobile`, `monetization`, `retention`, `billing` |
 | **Target Screens** | `ManageSubscriptionScreen`, `BillingGraceBanner` |
 | **Entitlement** | `Freemium` |
 | **Backend Status** | `Modified` (`GET /v1/entitlements`) |

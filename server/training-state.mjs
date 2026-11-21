@@ -2,6 +2,7 @@ import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {catalog,eachSide,estimatedSessionMinutes} from './workouts.mjs';
 import {localDate,effectiveSets} from '../coaching-shared.mjs';
 export const prescriptionSignature=e=>[e.id,e.loadMode,e.tracking,e.laterality,e.sets,e.repMin,e.repMax,e.rir,e.restSeconds].join('|');
+export const workingSetsOf=sets=>(Array.isArray(sets)?sets:[]).filter(x=>x.setType!=='warmup');
 export function ensureTrainingState(s){
  const p=s.workoutPlan;if(!p)return s;
  p.programId||=p.id;
@@ -13,7 +14,7 @@ export function ensureTrainingState(s){
  for(const day of p.days){
   day.estimatedMinutes=estimatedSessionMinutes(day);
   if(day.estimatedMinutes>(day.duration??s.onboarding?.workoutPrefs?.sessionDuration??45)){
-   const warning='حساب وقت خطتك القديمة بعد احتساب الجانبين يتجاوز الوقت المختار؛ راجع بياناتك وجدّد الخطة لتطبيق الميزانية الحالية.';
+   const warning='Estimated session duration including unilateral sides exceeds your selected time budget; regenerate your plan to apply the current budget.';
    p.warnings||=[];if(!p.warnings.includes(warning))p.warnings.push(warning);
   }
  }
@@ -33,13 +34,14 @@ export function ensureTrainingState(s){
 export function expectedExercises(s,day,date){return day.exercises.map(e=>({exerciseId:e.id,sets:effectiveSets(s,e,date,clockNow()),progressionKey:e.progressionKey,requiresBothSides:eachSide(e)}));}
 export function sessionCompletion(s,session){
  const plan=s.workoutPlan;
- const expected=session.expectedExercises||(session.planId===plan?.id?plan.days.find(d=>d.dayIndex===session.dayIndex)?.exercises.map(e=>({exerciseId:e.id,sets:e.sets})):null);
+ const expected=session.expectedExercises||(session.planId===plan?.id?plan.days.find(d=>d.dayIndex===session.dayIndex)?.exercises.map(e=>({exerciseId:e.id,sets:e.sets,progressionKey:e.progressionKey,requiresBothSides:eachSide(e)})):null);
  if(!expected?.length)return {completionRatio:0,expectedSets:0,actualSets:0};
  let actualSets=0,completedSets=0,total=0;
  for(const e of expected){
   total+=e.sets;
-  const log=s.workoutLogs.filter(l=>l.date===session.date&&l.dayIndex===session.dayIndex&&l.planId===session.planId&&l.exerciseId===e.exerciseId).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).at(-1);
-  const performed=Math.min(e.sets,log?.sets.length||0);actualSets+=performed;if(!e.requiresBothSides||log?.bothSides===true)completedSets+=performed;
+  // Match either exact session.planId OR shared progressionKey on same date/dayIndex so mid-session replace_exercise forks never lose earlier logged exercises!
+  const log=(s.workoutLogs||[]).filter(l=>!l.adHoc&&l.date===session.date&&l.dayIndex===session.dayIndex&&l.exerciseId===e.exerciseId&&(l.planId===session.planId||(e.progressionKey&&l.progressionKey===e.progressionKey))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).at(-1);
+  const performed=Math.min(e.sets,workingSetsOf(log?.sets).length);actualSets+=performed;if(!e.requiresBothSides||log?.bothSides===true)completedSets+=performed;
  }
  return {completionRatio:total?completedSets/total:0,expectedSets:total,actualSets,completedSets};
 }

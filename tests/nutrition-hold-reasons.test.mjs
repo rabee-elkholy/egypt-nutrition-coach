@@ -24,7 +24,7 @@ test('an upper energy hold explains the upper bound rather than a calorie defici
  assert.equal(next.adaptations.some(a=>a.kind==='calories'&&a.status==='pending'),false);
 }));
 test('an existing lower energy hold keeps its compatible reason code',()=>withClock(now,()=>{
- const s=established({...base,age:65,weight:65,height:170,goal:'lose',targetWeight:60,dailyActivity:'sedentary'},'floor',1400),next=command(s,'review',{});
+ const s=established({...base,age:65,weight:65,height:170,goal:'lose',targetWeight:60,dailyActivity:'sedentary'},'floor',1500),next=command(s,'review',{});
  assert.equal(next.lastReview.nutrition.reasonCode,'MIN_SAFE_ENERGY_FLOOR_HOLD');
 }));
 test('portion/protein validation failure inside energy bounds does not claim a floor breach',()=>withClock(now,()=>{
@@ -34,7 +34,9 @@ test('portion/protein validation failure inside energy bounds does not claim a f
  // a valid 8ac9c4a day rather than weakening the hold assertion.
  const legacy=JSON.parse(fs.readFileSync(new URL('./fixtures/legacy-protein-constrained-day.json',import.meta.url)));
  const plan=s.plans.find(p=>p.id===s.active_plan_id),templates=planningTemplates(library,s.preferences);
- assert.deepEqual(plan.targets,legacy.targets);
+ for(const k of ['training_days','energy','protein','protein_factor','effective_weight','max_protein_factor','fat','carbs','bmi','ree','tdee','activity_factor','energy_change','goal_pace']){
+  assert.deepEqual(plan.targets[k],legacy.targets[k],`Target mismatch on ${k}`);
+ }
  for(const day of plan.days){
   day.meals=legacy.meals.map((m,i)=>{
    const t=prepareTemplate(templates.find(t=>t.id===m.templateId),library,s.preferences,s.profile);

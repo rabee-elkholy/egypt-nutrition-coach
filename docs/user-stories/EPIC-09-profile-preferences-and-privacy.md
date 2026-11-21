@@ -2,8 +2,8 @@
 
 > **Epic ID:** `EPIC-09` *(Replaces legacy Jira Epic `KAN-6: Profile`)*
 > **Target Platforms:** KMM (Android Jetpack Compose & iOS SwiftUI)
-> **Scope:** Production V2
-> **Labels:** `production-v2`, `mobile-v2`, `profile`, `settings`, `privacy`, `localization`
+> **Scope:** Production
+> **Labels:** `production`, `mobile`, `profile`, `settings`, `privacy`, `localization`
 
 ---
 
@@ -30,7 +30,7 @@
 | **Story ID** | `US-PRF-01` |
 | **Epic** | `EPIC-09` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `profile`, `avatar` |
+| **Labels** | `production`, `mobile`, `profile`, `avatar` |
 | **Target Screens** | `ProfileOverviewScreen`, `EditNameAndAvatarSheet` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `New` (`POST /v1/profile/avatar`, `DELETE /v1/profile/avatar`, `action: "profile_update"`) |
@@ -60,7 +60,7 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 1. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "profile_update"`)
    - Lightweight profile metadata command (`name`, optional `workoutUiMode`) that updates `s.profile` **without** regenerating meal/workout plans!
    - Payload: `{ "name": "Ahmed Hassan" }`.
-2. **`[NEW BACKEND] POST /v1/profile/avatar`** (Multipart image `<= 512 KB` -> stored in Cloudflare R2, returns `{ avatarUrl }`) & **`DELETE /v1/profile/avatar`**.
+2. **`[NEW BACKEND] POST /v1/profile/avatar`** (Multipart image `<= 512 KB` -> stored in private Cloudflare R2, returns `{ avatarUrl }` using Worker-proxied HMAC-signed `/v1/media/signed/{token}`) & **`DELETE /v1/profile/avatar`**.
    - Error Codes: `400 INVALID_PROFILE_NAME`, `413 PHOTO_TOO_LARGE`, `415 UNSUPPORTED_IMAGE_FORMAT`.
 
 ### RULES & BUSINESS LOGIC
@@ -82,7 +82,7 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 - **Scenario 1: Editing display name updates profile without regenerating active plans**
   - **Given** user is on `ProfileOverviewScreen` with active plan `plan-123`
   - **When** user changes `name` to `"Sara Karim"` and saves
-  - **Then** `profile_update` commits, Today greeting updates to `"Sara Karim"`, and `active_plan_id` remains `plan-123`.
+  - **Then** `profile_update` commits, Today greeting updates to `"Sara Karim"`, and `activeNutritionPlanRef.id` remains `plan-123`.
 - **Scenario 2: Selecting a large phone gallery photo compresses under limit cleanly**
   - **Given** user picks an `8 MB` portrait photo from the phone gallery
   - **When** user crops and confirms upload
@@ -107,7 +107,7 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 | **Story ID** | `US-PRF-02` |
 | **Epic** | `EPIC-09` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `profile`, `goals`, `recalculation` |
+| **Labels** | `production`, `mobile`, `profile`, `goals`, `recalculation` |
 | **Target Screens** | `EditBodyAndGoalScreen` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Modified` (`POST /v1/eligibility`, `action: "generate"` preserving historical logs on profile update) |
@@ -125,11 +125,11 @@ As a user whose goals, age, maternal status, or target weight evolve over time, 
    - `Maternal Status` *(Shown if Female `18..50`)*: `None` | `Pregnant T1` | `Pregnant T2` | `Pregnant T3` | `Breastfeeding`.
    - `Height (cm)` (`120..230`, supports meter auto-convert like `1.75 -> 175`).
    - `Current Reference Weight (kg)` (pre-filled from latest weight log or profile).
-   - `Goal`: `Lose Fat`, `Build Muscle`, `Gain Weight`, `Maintain Weight` (hides `Lose` if pregnant!).
-   - `Target Weight (kg)` *(hidden if Maintain)* + Healthy BMI Range chip (`minHealthyWeight..maxHealthyWeight kg`) + Live BMI Warning modal (`US-MOB-05`) if outside `18.5–24.9`.
+   - `Goal`: `Lose Fat`, `Build Muscle`, `Gain Weight`, `Maintain Weight` (hides/blocks `Lose` if pregnant OR `currentBmi < 18.5`!).
+   - `Target Weight (kg)` (`35..250 kg`, hidden if Maintain) + Healthy BMI Range chip (`minHealthyWeight..maxHealthyWeight kg`) + Live BMI Warning modal (`US-MOB-05`) if outside `18.5–24.9`.
    - `Weekly Pace` (`Slow` / `Moderate` / `Fast` — hides `Fast` for `seniorMode` or `breastfeeding`!).
 2. **Live Impact Preview Banner (Sticky Bottom Bar before Saving):**
-   - Computes exact client preview equations matching `US-MOB-09`:
+   - Computes exact preview equations via `POST /v1/plans/preview` (or local KMM mirror matching `US-MOB-09`):
      - *"New Targets: **1,780 kcal/day** (`-70 kcal`) • 145g P / 155g C / 64g F • New meal plan will generate starting today."*
    - Primary CTA: `[Recalculate & Update Plan]`.
 
@@ -142,14 +142,14 @@ As a user whose goals, age, maternal status, or target weight evolve over time, 
    - Error Codes: `INVALID_TARGET_WEIGHT`, `WEIGHT_LOSS_UNDERWEIGHT_UNSAFE`, `CLINICAL_REVIEW_REQUIRED`, `BMI_OUT_OF_RANGE`.
 
 ### RULES & BUSINESS LOGIC
-1. **Strict Maternal Safety Consistency:** If user switches `maternalStatus` to `pregnant_*` while current `dietType` is `keto` or `intermittent_fasting`, automatically alert user inside the form *"Keto / Fasting is blocked during pregnancy — your diet style will update to Balanced (or choose another safe style) before saving."*
+1. **Strict Maternal Safety Consistency:** If user switches `maternalStatus` to `pregnant_*` or `breastfeeding` while current `dietType` is `keto` or `intermittent_fasting`, automatically alert user inside the form *"Keto / Intermittent Fasting is blocked for your maternal status — your diet style will update to Balanced (or choose another safe style) before saving."*
 2. **Zero Historical Erasure:** Never delete past food, weight, or training logs when regenerating plans (`coaching.mjs` line 86).
 3. **Senior Mode Auto-Enforcement:** Changing `age` to `>= 70` enables `seniorMode = true`, hides `fast` pace, raises protein floor `>= 1.2 g/kg`, and updates workout exclusions immediately.
 
 ### MAIN FLOW
 1. User reaches `75 kg` (or decides to switch from `lose` to `muscle_gain`) and opens `Profile -> Body Metrics & Goal`.
-2. User changes `Goal` to `Build Muscle & Tone`, enters `Target Weight = 78 kg`, selects `Moderate` pace (`+400 kcal`).
-3. Sticky preview shows `New Target: 2,550 kcal • 156g Protein`.
+2. User changes `Goal` to `Build Muscle & Tone`, enters `Target Weight = 78 kg`, selects `Moderate` pace (`+min(tdee * 0.08, 250)` -> e.g. `+250 kcal`).
+3. Sticky preview shows `New Target: 2,400 kcal • 135g Protein`.
 4. User taps `[Recalculate & Update Plan]` -> Calls `POST /v1/eligibility` + `POST /v1/commands?view=full` (`generate`) -> Hydrates new nutrition & training plan into SQLDelight and confirms update.
 
 ### EDGE CASES
@@ -185,7 +185,7 @@ As a user whose goals, age, maternal status, or target weight evolve over time, 
 | **Story ID** | `US-PRF-03` |
 | **Epic** | `EPIC-09` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `profile`, `workouts`, `injuries` |
+| **Labels** | `production`, `mobile`, `profile`, `workouts`, `injuries` |
 | **Target Screens** | `EditTrainingSetupScreen` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Modified` (`action: "generate"` + `action: "workout_ui_mode"`) |
@@ -201,24 +201,24 @@ As a user whose gym membership, free schedule, injuries, or coaching track chang
    - `[Simple / Guided Mode]` vs `[Pro / Performance Mode]` -> Uses `workout_ui_mode` (`US-WRK-02`) if user ONLY changes UI mode!
 2. **Program Configuration Form (Triggers Workout/Plan Update):**
    - `Service Track`: `Nutrition + Workouts` | `Nutrition Only` | `Workouts Only`.
-   - *(If `service_track == "nutrition_only"` & `goal == "muscle_gain"`):* Show `External Resistance Training Days` weekday selector (`MUSCLE_GAIN_REQUIRES_RESISTANCE_DAYS`).
-   - *(If `service_track != "nutrition_only"`):*
+   - *(If `serviceTrack == "nutrition_only"` & `goal == "muscle_gain"`):* Show optional `External Resistance Training Days` weekday selector (if left empty, defaults cleanly with an informational coaching note reminding that hypertrophy requires external resistance stimulus).
+   - *(If `serviceTrack != "nutrition_only"`):*
      - `Fitness Level`: `Beginner` | `Intermediate` | `Advanced`.
-     - `Training Location`: `Gym Only` | `Home Only` | `Mix (Home & Gym)`.
+     - `Training Location`: `Gym Only` (`gym_only`) | `Home Only` (`home_only`) | `Mix (Home & Gym)` (`home_and_gym`).
      - `Exact Workout Weekdays` (`Saturday..Friday` pills `1..7` days) + `Per-Day Location Split` (if Mix).
      - `Available Home Equipment` (if `Home` or `Mix` — `Bodyweight Only`, `Dumbbells`, `Resistance Bands`, `Pull-up Bar`, `Kettlebell`, `Bench`).
      - `Workout Split` (shown ONLY if location != `home_only` AND days `>= 3`, filtered dynamically by day count!).
      - `Session Duration`: `20` | `30` | `45` | `60` | `90 min`.
      - `Joint Pain & Injuries`: `None`, `Knee`, `Lower Back`, `Shoulder`, `Neck`, `Wrist`, `Ankle`, `Elbow`, `Hip`, `Postpartum Diastasis Recti` (if Female).
-     - *(If `service_track == "workouts_only"`):* Explicit `Health Readiness Confirmation` checkbox (`healthConfirmed: true`).
+     - *(If `serviceTrack == "workouts_only"`):* Explicit `Health Readiness Confirmation` checkbox (`healthConfirmed: true`).
 3. **Smart Save Logic Button:**
    - Only changed `Simple/Pro` UI Mode -> `[Save View Mode]` (`workout_ui_mode`).
-   - Changed schedule/equipment/injuries/track -> `[Update Workout Program]` (calls `generate` -> forks/creates workout plan + updates TDEE workout bonus if track changed).
+   - Changed schedule/equipment/injuries/track -> `[Update Workout Program]` (calls `generate` -> forks/creates workout plan + refreshes daily water workout-day boost if schedule changed).
 
 ### API & BACKEND CONTRACT
 1. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "workout_ui_mode"`) -> When only UI mode changed.
-2. **`[MODIFIED BACKEND] POST /v1/commands?view=full`** (`action: "generate"`) -> Rebuilds workout plan (and nutrition plan if `serviceTrack` / `workoutDays` changed TDEE).
-   - Error Codes: `WORKOUT_INFEASIBLE`, `NO_ELIGIBLE_EXERCISES`, `MUSCLE_GAIN_REQUIRES_RESISTANCE_DAYS`, `HEALTH_CONFIRMATION_REQUIRED`.
+2. **`[MODIFIED BACKEND] POST /v1/commands?view=full`** (`action: "generate"`) -> Rebuilds workout plan (and nutrition plan if `serviceTrack` changed).
+   - Error Codes: `WORKOUT_INFEASIBLE`, `NO_ELIGIBLE_EXERCISES`, `HEALTH_CONFIRMATION_REQUIRED`.
 
 ### RULES & BUSINESS LOGIC
 1. **Immediate Contraindication Audit:** Adding an injury (e.g., `lower_back`) immediately excludes contraindicated exercises (`deadlift`, `good morning`, `back squat`) and clears `workoutSafetyIssues`.
@@ -263,10 +263,10 @@ As a user whose gym membership, free schedule, injuries, or coaching track chang
 | **Story ID** | `US-PRF-04` |
 | **Epic** | `EPIC-09` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `profile`, `nutrition`, `medical-safety` |
+| **Labels** | `production`, `mobile`, `profile`, `nutrition`, `medical-safety` |
 | **Target Screens** | `EditNutritionPrefsScreen` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Modified` (`action: "generate"` with full V2 dietary/clinical fields) |
+| **Backend Status** | `Modified` (`action: "generate"` with full dietary/clinical fields) |
 
 ### STORY
 As a user whose daily activity, health conditions, grocery budget, region, food dislikes, or preferred diet school changed, I want to update my nutrition preferences with live medical diet filtering and zero-compromise ingredient exclusion validation so my meal plan stays appetizing, affordable, and medically safe.
@@ -276,13 +276,13 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 
 ### SCREEN AND UI DETAILS
 1. **Form Sections (Mirroring `US-MOB-08` Medical Guardrails):**
-   - `Daily Non-Workout Activity`: `Sedentary (1.2x)` | `Light (1.375x)` | `Moderate (1.55x)` | `Very Active (1.725x)`.
+   - `Daily Activity (`profile.activity`)`: `Sedentary (1.2x)` | `Light (1.375x)` | `Moderate (1.55x)` | `Very Active (1.725x)`.
    - `Health & Metabolic Conditions`: Multi-select chips (`None`, `Insulin Resistance`, `Type 2 Diabetes`, `Type 1 Diabetes`, `PCOS` [Female], `Hypothyroid`, `Hypertension`, `High Cholesterol`, `IBS`, `Celiac / Gluten`, `Gout`, `Kidney Sensitivity`).
-   - `Diet School` *(Clinically filtered live — hides `Keto` / `IF` whenever blocked by newly checked conditions or maternal status, highlighting `⭐ Recommended` fit!)*: `Balanced`, `Low Carb`, `High Protein`, `Intermittent Fasting (16:8)`, `Keto`, `Mediterranean`, `DASH`, `Vegetarian`, `Vegan`.
+   - `Diet School` *(Clinically filtered live — hides `Keto` / `IF` whenever blocked by newly checked conditions or maternal status, including conservative blocks on `keto + cholesterol` and `intermittent_fasting + breastfeeding`, highlighting `⭐ Recommended` fit!)*: `Balanced`, `Low Carb`, `High Protein`, `Intermittent Fasting (16:8)`, `Keto`, `Mediterranean`, `DASH`, `Vegetarian`, `Vegan`.
    - `IF Start Hour` (`10 / 12 / 14 / 16`) *(Only if `intermittent_fasting`)* OR `Meals & Snacks per Day` (`2 / 3 / 4 / 5`) *(Only if `balanced`)*.
-   - `Grocery Budget Tier`: `Economic` | `Moderate` | `Premium`.
+   - `Grocery Budget Tier` (`budget: "low" | "medium" | "high"`): `Economic` | `Moderate` | `Premium`.
    - `Regional Cuisine`: `Egypt` | `Gulf (GCC)` | `Levant` | `Maghreb`.
-   - `Food Allergies & Exclusions`: Multi-select (`None`, `Dairy`, `Eggs`, `Fish`, `Shellfish`, `Peanuts`, `Tree Nuts`, `Wheat & Gluten`, `Soy`, `Sesame/Tahini`, `Red Meat`, `Poultry`, `Legumes`, `Oats`, `Spicy`).
+   - `Food Allergies & Exclusions`: Multi-select (`None`, `Dairy`, `Eggs`, `Fish`, `Shellfish`, `Peanuts`, `Tree Nuts`, `Wheat & Gluten`, `Soy`, `Sesame/Tahini`, `Red Meat`, `Poultry`, `Legumes`, `Oats`, `Spicy` — wire key `"spicy"`).
 2. **Primary CTA:** `[Generate Updated Meal Plan]` (`POST /v1/eligibility` -> `POST /v1/commands?view=full` `generate`).
 
 ### API & BACKEND CONTRACT
@@ -291,12 +291,12 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 
 ### RULES & BUSINESS LOGIC
 1. **Constraint Integrity (`IMPLEMENTATION.md`):** Never silently clear an allergy or raise budget to make an infeasible meal plan pass (`LIBRARY_INSUFFICIENT_FOR_DIET_GOALS`); instead, display a clear helpful prompt identifying which combination (e.g., *Vegan + No Legumes + No Soy + No Nuts*) narrowed available protein templates too far.
-2. **Automatic Conflict Resolution:** If adding `diabetes_t2` conflicts with currently selected `keto`, highlight `dietType` section automatically and require picking a diabetes-safe school (`Low Carb ⭐` or `Balanced`) before saving.
+2. **Automatic Conflict Resolution:** If adding `diabetes_t2` or `cholesterol` conflicts with currently selected `keto`, highlight `dietType` section automatically and require picking a safe school (`Low Carb ⭐` or `Balanced` / `Mediterranean`) before saving.
 
 ### MAIN FLOW
 1. User gets diagnosed with Hypertension and opens `Profile -> Nutrition Preferences`.
 2. User toggles `High Blood Pressure (Hypertension)` -> Coach highlights `DASH Diet ⭐ (Recommended)`.
-3. User switches from `High Protein` to `DASH Diet`, keeps `Medium` budget, and taps `[Generate Updated Meal Plan]`.
+3. User switches from `High Protein` to `DASH Diet`, keeps `medium` budget, and taps `[Generate Updated Meal Plan]`.
 4. Backend applies low-sodium (`<= 2300 mg/day`) filters and generates a fresh 7-day regional DASH meal plan immediately.
 
 ### EDGE CASES
@@ -332,7 +332,7 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 | **Story ID** | `US-PRF-05` |
 | **Epic** | `EPIC-09` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `profile`, `localization`, `rtl`, `timezone` |
+| **Labels** | `production`, `mobile`, `profile`, `localization`, `rtl`, `timezone` |
 | **Target Screens** | `LanguageAndRegionSettingsScreen`, `LanguagePickerSheet` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Existing` (`action: "timezone"` + localized `/v1/catalog/muscles` / `/v1/foods`) |
@@ -362,7 +362,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 1. **Zero-Restart Live Layout Mirroring:** Switching language updates Compose `LayoutDirection` / SwiftUI `environment(\.layoutDirection)` immediately across every active screen without losing scroll state or unsaved inputs! User-typed text (`profile.name`, manual meal names) stays untouched.
 2. **Notification Re-Scheduling (`US-INT-02`):** Immediately rewrites all local scheduled notification strings into the newly chosen language.
 3. **Offline Language Switching:** All UI strings (`ar` / `en`) live in bundled KMM string resources (`Compose Resources` / `Localizable.xcstrings`), so switching works 100% offline, queuing `timezone` (`locale`) sync cleanly into outbox if online status is unavailable.
-4. **Error Code Localization Guarantee:** All server errors continue mapping `error.code` + `error.params` into the active app language cleanly (`KMM_BACKEND_INTEGRATION.md`).
+4. **Error & Coaching Code Localization Guarantee:** All server error codes (`contracts/error-codes.json`) and coaching/brief/review codes (`contracts/coaching-codes.json`) map `(code, params)` into the active app language cleanly on KMM.
 
 ### MAIN FLOW
 1. User opens `Profile -> Language & Region`.
@@ -403,10 +403,10 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 | **Story ID** | `US-PRF-06` |
 | **Epic** | `EPIC-09` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `profile`, `privacy`, `gdpr`, `security`, `compliance` |
+| **Labels** | `production`, `mobile`, `profile`, `privacy`, `gdpr`, `security`, `compliance` |
 | **Target Screens** | `PrivacyAndSecurityScreen`, `DeleteAccountConfirmModal` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Existing` |
+| **Backend Status** | `Mixed` (`[EXISTING]` export/logout/POST consents + `[NEW BACKEND]` `GET /v1/account/consents`, `DELETE /v1/devices/push-token` + `[MODIFIED BACKEND]` `DELETE` & `POST /v1/account/delete` + `bootstrap.consents`) |
 
 ### STORY
 As a privacy-conscious user (and per Apple App Store & Google Play mandatory account deletion policies), I want a transparent Privacy Center where I can review/update my health data consents, download a complete machine-readable export of my data (GDPR), sign out of this device or all active devices, or permanently erase my account and every stored record irreversibly.
@@ -416,7 +416,7 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 
 ### SCREEN AND UI DETAILS
 1. **Privacy & Consents Section:**
-   - Displays `Health Data Processing Consent (v1.0.0 — Accepted on {date})` + Optional `Product Analytics & Crash Telemetry` toggle (`POST /v1/account/consents`).
+   - Displays `Health Data Processing Consent (v1.0.0 — Accepted on {date})` (hydrated from `GET /v1/bootstrap` `data.consents` and `GET /v1/account/consents`) + Optional `Product Analytics & Crash Telemetry` toggle (`POST /v1/account/consents`).
    - Clear explanation: *"Note: Withdrawing Health Data Processing consent stops personalized plan calculations; you can also export or delete your data anytime."*
 2. **Data Portability (`[Download My Complete Data (JSON)]`):**
    - Calls `GET /v1/account/export` and opens the OS Share Sheet (`Files`, `Email`, `Drive`) with `curafit-export-{date}.json` containing profile, logs, archived plans, and consents!
@@ -425,15 +425,16 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
    - `[Sign Out All Devices]` -> For lost/shared phones -> `POST /v1/auth/logout` (`allDevices: true`) or `POST /v1/auth/revoke` (`allDevices: true`).
 4. **Danger Zone — `[Delete My Account Permanently]` (Mandatory Apple Guideline 5.1.1(v) & Google Play Compliance):**
    - Step 1: Warning sheet listing everything erased permanently (`profile`, `OAuth login links`, `all nutrition & workout plans`, `food/weight/workout/recovery logs`, `R2 avatars & progress photos`, `push tokens`, `all sessions`). Also warns: *"Deleting your CuraFit account does not automatically cancel an active Apple/Google subscription — manage billing in App Store / Play Store if subscribed."* with direct `[Manage Store Subscription]` link!
-   - Step 2: User must type `"DELETE"` (or tap explicit confirmation switch) -> Primary destructive red button `[Permanently Delete Everything]` (`DELETE /v1/account/delete` with `{ "confirm": true }`).
+   - Step 2: User must type `"DELETE"` (or tap explicit confirmation switch) -> Primary destructive red button `[Permanently Delete Everything]` (`DELETE /v1/account/delete` — or `POST /v1/account/delete` fallback for HTTP clients that strip bodies on `DELETE` — with `{ "confirm": true }`).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] POST /v1/account/consents`** -> `{ "consentType": "analytics_telemetry", "version": "1.0.0", "accepted": false }`.
-2. **`[EXISTING] GET /v1/account/export`** -> Full JSON archive (`schemaVersion`, `exportedAt`, `userId`, `profile`, `logs`, `archivedNutritionPlans`, `archivedWorkoutPlans`, `consents`).
-3. **`[EXISTING] POST /v1/auth/logout`** -> `{ "allDevices": false | true }` (and `POST /v1/auth/revoke` for remote session invalidation).
-4. **`[EXISTING] DELETE /v1/devices/push-token`** -> Unregisters device push notifications on sign-out/delete.
-5. **`[MODIFIED BACKEND] DELETE /v1/account/delete`** -> Request Body: `{ "confirm": true }`.
-   - Server atomically clears all D1 tables (`coaching_accounts`, `coaching_plans`, `coaching_workout_plans`, `coaching_users`, `coaching_refresh_tokens`, `coaching_oauth_identities`, all normalized logs), deletes Cloudflare R2 objects (`avatars/{userId}/*`, `users/{userId}/photos/*`), revokes the stored encrypted **Apple Sign-In refresh token** server-side via Apple's `https://appleid.apple.com/auth/revoke` endpoint *(mandatory per App Store Review Guideline 5.1.1(v))*, and writes a permanent `__deleted__` tombstone (`ACCOUNT_DELETED`).
+1. **`[NEW BACKEND] GET /v1/account/consents`** (plus `consents` returned in `GET /v1/bootstrap`) -> Lists recorded consent types, versions, accepted status, and timestamps.
+2. **`[EXISTING] POST /v1/account/consents`** -> `{ "consentType": "analytics_telemetry", "version": "1.0.0", "accepted": false }`.
+3. **`[EXISTING] GET /v1/account/export`** -> Full JSON archive (`schemaVersion`, `exportedAt`, `userId`, `profile`, `logs`, `archivedNutritionPlans`, `archivedWorkoutPlans`, `consents`).
+4. **`[EXISTING] POST /v1/auth/logout`** -> `{ "allDevices": false | true }` (and `POST /v1/auth/revoke` for remote session invalidation).
+5. **`[NEW BACKEND] DELETE /v1/devices/push-token`** -> Unregisters device push notifications on sign-out/delete.
+6. **`[MODIFIED BACKEND] DELETE /v1/account/delete`** *(also accepts **`POST /v1/account/delete`** fallback for mobile/proxy stacks that disallow `DELETE` request bodies)* -> Request Body: `{ "confirm": true }`.
+   - Server atomically clears all D1 tables (`coaching_accounts`, `coaching_plans`, `coaching_workout_plans`, `coaching_users`, `coaching_refresh_tokens`, `coaching_oauth_identities`, all normalized logs), deletes Cloudflare R2 objects (`avatars/{userId}/*`, `users/{userId}/photos/*`), revokes the stored encrypted **Apple Sign-In refresh token** server-side via Apple's `https://appleid.apple.com/auth/revoke` endpoint *(mandatory per App Store Review Guideline 5.1.1(v))*, and writes a permanent `__deleted__` tombstone (`ACCOUNT_DELETED`) for the erased `userId`.
    - Error Codes: `DELETE_CONFIRMATION_REQUIRED`, `INVALID_CONSENT_PAYLOAD`, `ACCOUNT_DELETION_MIGRATION_REQUIRED`.
 
 ### RULES & BUSINESS LOGIC
@@ -446,13 +447,13 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 1. User taps `Profile -> Privacy, Consents & Export`.
 2. User taps `[Download My Complete Data (JSON)]` -> `GET /v1/account/export` downloads and opens OS Share Sheet cleanly.
 3. User (optionally) taps `[Delete My Account Permanently]`, reviews the subscription reminder, types `"DELETE"`, and confirms.
-4. `DELETE /v1/account/delete` returns `{ deleted: true }`; client wipes all local state & tokens and resets smoothly to Onboarding Step 0 (`US-MOB-01`).
+4. `DELETE /v1/account/delete` (or `POST /v1/account/delete`) returns `{ deleted: true }`; client wipes all local state & tokens and resets smoothly to Onboarding Step 0 (`US-MOB-01`).
 
 ### EDGE CASES
 - **Active Pro Subscription When Deleting Account (`US-MON-04` Cross-Link):** Prompt explicitly warns *"Deleting your CuraFit account does NOT cancel Apple App Store or Google Play recurring billing"* and provides a 1-tap `[Open Store Subscriptions]` button before final deletion confirmation!
 - **Network Error During `DELETE /v1/account/delete`:** Do NOT clear tokens prematurely; keep user authenticated and display `[Retry Deletion]` so user isn't stranded thinking their server data was deleted when it wasn't.
 - **Offline Sign Out With Queued Outbox Items:** Offers clear warning showing exact `{N}` pending unsynced changes before wiping local cache, preventing silent data loss!
-- **Sign-In Attempt After Permanent Deletion (`ACCOUNT_DELETED`):** Re-authenticating with the same provider identity receives `401 ACCOUNT_DELETED` (or treats deleted Apple `sub` revocation cleanly per App Store policy) without resurrecting erased logs.
+- **Re-Signing In After Permanent Deletion:** Because deletion unlinks `coaching_oauth_identities` while tombstoning the old `userId`, any old JWT or refresh token from the deleted account fails with `401 ACCOUNT_DELETED`, whereas signing in fresh with Google or Apple creates a **brand-new empty account** (`isNewUser: true`, `profile: null`) without resurrecting any erased logs.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Full GDPR export generates shareable JSON file**
@@ -466,7 +467,7 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 - **Scenario 3: Sign out on all devices invalidates refresh tokens globally**
   - **Given** user taps `[Sign Out All Devices]`
   - **When** `POST /v1/auth/logout` (`{ "allDevices": true }`) succeeds
-  - **Then** all other devices fail silently to `SessionExpiredAlert` (`AUTH_SESSION_REVOKED`) on their next API call.
+  - **Then** all other devices fail cleanly to `SessionExpiredAlert` (`AUTH_ALL_SESSIONS_REVOKED`) on their next API call.
 
 ### ANALYTICS
 - `account_gdpr_exported` (`archived_plans_count`: `integer`)
@@ -483,10 +484,10 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 | **Story ID** | `US-PRF-07` |
 | **Epic** | `EPIC-09` |
 | **Priority** | `Medium` |
-| **Labels** | `production-v2`, `mobile-v2`, `profile`, `support`, `legal`, `compliance` |
+| **Labels** | `production`, `mobile`, `profile`, `support`, `legal`, `compliance` |
 | **Target Screens** | `HelpAndLegalScreen`, `ReportBugFeedbackSheet` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Mixed` (`[EXISTING] GET /v1/health`, `GET /v1/capabilities` + `[NEW BACKEND] POST /v1/support/feedback`) |
+| **Backend Status** | `Mixed` (`[EXISTING] GET /v1/health`, `GET /v1/capabilities`, `GET /v1/catalog/manifest` + `[NEW BACKEND] POST /v1/support/feedback`) |
 
 ### STORY
 As a user wanting answers to common questions, transparent scientific/medical disclaimers, legal privacy/terms documents, or a way to report a bug/food data issue with diagnostic context, I want an accessible Help & App Info center inside Profile.
@@ -503,17 +504,18 @@ As a user wanting answers to common questions, transparent scientific/medical di
 2. **Medical & Scientific Disclaimer Card (Mandatory Clinical Transparency):**
    - *"CuraFit provides deterministic nutrition and training guidance grounded in peer-reviewed equations (Mifflin-St Jeor, validated nutrient datasets, OpenExerciseDB). It is not a medical device, clinical diagnosis, or substitute for a licensed physician or dietitian."*
 3. **Legal Documents:**
-   - `[Terms of Service]` | `[Privacy Policy]` | `[Data Sources & Licenses]` (lists USDA, EFSA, ENNI, OpenExerciseDB attribution cleanly!).
+   - `[Terms of Service]` | `[Privacy Policy]` | `[Data Sources & Licenses]` (lists `USDA FDC`, `UK CoFID 2021`, `Egyptian Baladi Study 2018`, `Lebanese Lab Study 2021`, `Regional Serving Models`, and `OpenExerciseDB` attribution cleanly from `GET /v1/catalog/manifest`!).
 4. **Support & Diagnostic Feedback (`[Contact Support / Report Issue]` -> `ReportBugFeedbackSheet`):**
    - Category (`Bug Report`, `Food Data Correction`, `Exercise Media Issue`, `Billing Question`, `Feature Idea`), free-text note, and `"Include diagnostic app version & last Request ID"` toggle (NO health weights/conditions included automatically!).
    - Calls `POST /v1/support/feedback` (or opens pre-addressed support email fallback if offline).
 5. **App & Server Diagnostics Footer:**
-   - App Version (`1.0.0 (Build ...)`), Engine Version (`capabilities.engineVersion`), Food Catalog Version (`foodCatalogVersion`), Exercise Catalog Version (`catalogVersion`), and live Server Health indicator (`GET /v1/health`).
+   - App Version (`1.0.0 (Build ...)`), Engine Version (`capabilities.engineVersion`), Food Catalog Version (`foodCatalogVersion`), Exercise Catalog Version (`catalogVersion`), OpenExerciseDB manifest provenance (`GET /v1/catalog/manifest`), and live Server Health indicator (`GET /v1/health`).
 
 ### API & BACKEND CONTRACT
 1. **`[EXISTING] GET /v1/health`** -> `{ status, apiVersion, engineVersion, requestId }`.
 2. **`[EXISTING] GET /v1/capabilities`** -> `{ apiVersion, schemaVersion, engineVersion, catalogVersion, foodCatalogVersion, features[] }`.
-3. **`[NEW BACKEND] POST /v1/support/feedback`** -> `{ category, message, foodOrExerciseId?, includeDiagnostics, appVersion, platform, lastRequestId }` -> Returns `{ ticketId, receivedAt }`.
+3. **`[EXISTING] GET /v1/catalog/manifest`** -> Pinned OpenExerciseDB & food catalog provenance manifest.
+4. **`[NEW BACKEND] POST /v1/support/feedback`** -> `{ category, message, foodOrExerciseId?, includeDiagnostics, appVersion, platform, lastRequestId }` -> Returns `{ ticketId, receivedAt }`.
 
 ### RULES & BUSINESS LOGIC
 1. **Diagnostic Privacy Guard:** Support tickets automatically attach ONLY `appVersion`, `platform`, `locale`, `engineVersion`, and `lastRequestId` — NEVER attach body weight, medical conditions, photos, or JWT tokens!
@@ -521,7 +523,7 @@ As a user wanting answers to common questions, transparent scientific/medical di
 
 ### MAIN FLOW
 1. User taps `Profile -> Help, Legal & App Info`.
-2. User checks `Data Sources & Licenses`, sees catalog version `0.6.0-data.4`, and taps `[Contact Support / Report Issue]`.
+2. User checks `Data Sources & Licenses`, sees catalog version `0.6.0-data.4` & OpenExerciseDB provenance from `GET /v1/catalog/manifest`, and taps `[Contact Support / Report Issue]`.
 3. User picks `Food Data Correction`, writes a short note, and taps `[Send Feedback]` -> Receives confirmation ticket ID `"#CF-2841"`.
 
 ### EDGE CASES
@@ -541,7 +543,7 @@ As a user wanting answers to common questions, transparent scientific/medical di
   - **Then** bundled localized Privacy Policy & Medical Disclaimer render completely offline with zero errors.
 - **Scenario 3: Diagnostics footer displays live catalog and engine versions**
   - **Given** user opens `Help & Legal` while online
-  - **When** `GET /v1/capabilities` completes
+  - **When** `GET /v1/capabilities` and `GET /v1/catalog/manifest` complete
   - **Then** App Version, `engineVersion`, `foodCatalogVersion`, and OpenExerciseDB provenance match server metadata accurately.
 
 ### ANALYTICS

@@ -2,21 +2,21 @@
 
 > **Epic ID:** `EPIC-04`
 > **Target Platforms:** KMM (Android Jetpack Compose & iOS SwiftUI)
-> **Scope:** Production V2
-> **Labels:** `production-v2`, `mobile-v2`, `nutrition`, `ai-logging`, `ramadan`, `pantry`
+> **Scope:** Production
+> **Labels:** `production`, `mobile`, `nutrition`, `ai-logging`, `ramadan`, `pantry`
 
 ---
 
 ## Epic Overview
 
-`EPIC-04` powers the entire **Nutrition Tab** and **Multi-Modal Food Logging** ecosystem. It unites CuraFit's clinically validated, 100% regional 7-day meal plan engine (`Egypt`, `Gulf`, `Levant`, `Maghreb`) and 3,291-item Arabic/English catalog with market-leading consumer conveniences: **AI Meal Photo & Dialect Voice/Text Quick Log**, **MENA Supermarket Barcode Scanner**, **"What's in My Fridge?" Pantry Finder** (powered by existing `pantry.mjs`), **Smart Weekly Grocery List**, **Quick Repeat / Favorites / Copy Yesterday**, and **Intermittent Fasting (16:8) + Ramadan Mode**.
+`EPIC-04` powers the entire **Nutrition Tab** and **Multi-Modal Food Logging** ecosystem. It unites CuraFit's clinically validated, 100% regional 7-day meal plan engine (`Egypt`, `Gulf`, `Levant`, `Maghreb`) and 3,291 reference/estimated foods & beverages + 2,437 regional serving models (`5,728` total indexed) Arabic/English catalog with market-leading consumer conveniences: **MENA Supermarket Barcode Scanner**, **"What's in My Fridge?" Pantry Finder** (powered by existing `pantry.mjs`), **Smart Weekly Grocery List**, **Quick Repeat / Favorites / Copy Yesterday**, **Intermittent Fasting (16:8) + Ramadan Mode**, and (in Final AI Phase) **AI Meal Photo & Dialect Voice/Text Quick Log**.
 
 ### Child User Stories
 - `US-NUT-01`: 7-Day Regional Meal Plan Viewer, Calendar Switcher & Smart Plan Renewal
 - `US-NUT-02`: 1-Tap Planned Meal Logging, Portion Multiplier, Ingredient Breakdown & Entry Deletion
 - `US-NUT-03`: Smart Meal Swap & Constraint-Validated Alternatives
-- `US-NUT-04`: Bilingual Arabic/English Food & Beverage Search (3,291 Items) & Custom Recipe Calculator
-- `US-NUT-05`: AI Meal Photo & Egyptian/Arabic Dialect Voice/Text Quick Log
+- `US-NUT-04`: Bilingual Arabic/English Food & Beverage Search (3,291 Foods/Beverages + 2,437 Regional Serving Models) & Custom Recipe Calculator
+- `US-NUT-05`: AI Meal Photo & Egyptian/Arabic Dialect Voice/Text Quick Log *(Final AI Phase)*
 - `US-NUT-06`: MENA Supermarket Barcode Scanner & Community Product Submission
 - `US-NUT-07`: Quick Repeat — Favorites, Recent Foods, Manual Macro Entry & 1-Tap Copy Yesterday
 - `US-NUT-08`: Pantry / "What's in My Fridge?" Smart Meal Finder
@@ -34,16 +34,16 @@
 | **Story ID** | `US-NUT-01` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `plans` |
+| **Labels** | `production`, `mobile`, `nutrition`, `plans` |
 | **Target Screens** | `NutritionHubScreen`, `PlanArchiveSheet` |
 | **Entitlement** | `Freemium` (`Free` view active plan; `Pro` unlimited weekly renewals + full plan archive history) |
-| **Backend Status** | `Existing` |
+| **Backend Status** | `Modified` (`renew_plan` Free renewal quota enforcement via `coaching_usage_quotas` + `402 PRO_ENTITLEMENT_REQUIRED`) |
 
 ### STORY
 As a user following a weekly nutrition plan, I want to browse each day of my 7-day regional meal plan, switch cleanly between my Planned Menu and Actual Food Diary, view past archived weeks, and renew my plan when the 7 days finish so I always have fresh, balanced meals aligned with my latest targets.
 
 ### PRECONDITIONS
-- `service_track != "workouts_only"` and `activeNutritionPlanRef != null`.
+- `serviceTrack != "workouts_only"` and `activeNutritionPlanRef != null`.
 
 ### SCREEN AND UI DETAILS
 1. **Top Sticky Nutrition Header:**
@@ -62,7 +62,7 @@ As a user following a weekly nutrition plan, I want to browse each day of my 7-d
 1. **`[EXISTING] GET /v1/plans`** -> Lists active & archived `{ id, start_date, end_date, energy, reason, parent_id }`.
 2. **`[EXISTING] GET /v1/plans/{activePlanId}`** -> Fetches full 7-day plan once on sync/restore and caches in SQLDelight.
 3. **`[EXISTING] GET /v1/plans/{activePlanId}/days/{YYYY-MM-DD}`** -> Lazy-loads any single day (`{ planId, targets, day }`).
-4. **`[EXISTING/MODIFIED] POST /v1/commands?view=receipt`** (`action: "renew_plan"`, `payload: {}`)
+4. **`[MODIFIED BACKEND] POST /v1/commands?view=receipt`** (`action: "renew_plan"`, `payload: {}`)
    - Enforces Pro entitlement once `entitlements.quotas.freePlanRenewalsRemaining == 0` (`402 PRO_ENTITLEMENT_REQUIRED`).
    - Error Codes:
      - `400 PLAN_STILL_ACTIVE`: Active plan hasn't ended yet (`end_date >= currDate`).
@@ -115,10 +115,10 @@ As a user following a weekly nutrition plan, I want to browse each day of my 7-d
 | **Story ID** | `US-NUT-02` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `food-diary` |
+| **Labels** | `production`, `mobile`, `nutrition`, `food-diary` |
 | **Target Screens** | `MealDetailBottomSheet`, `NutritionDiarySection` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Existing` |
+| **Backend Status** | `Modified` (`food_entry` optional `displaySlot` metadata) |
 
 ### STORY
 As a user eating from my daily plan, I want to inspect the exact gram weights and ingredients of any planned meal, adjust my actual portion multiplier (such as `0.5x` or `1.5x`), log it in one tap, and edit or delete logged entries if I made a mistake.
@@ -140,8 +140,8 @@ As a user eating from my daily plan, I want to inspect the exact gram weights an
 
 ### API & BACKEND CONTRACT
 1. **`[EXISTING] GET /v1/food-diary?date={YYYY-MM-DD}`** -> Returns `entries`, `totals`, `complete`, `planEnergy`.
-2. **`[EXISTING/MODIFIED] POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "planned"`)
-   - Payload: `{ "date": "2026-11-21", "source": "planned", "mealId": "<uuid>", "slot": "breakfast", "displaySlot": "suhoor", "quantity": 1.0 }` (`quantity` valid `0.1..4.0`; `slot` MUST strictly be one of `"breakfast" | "lunch" | "dinner" | "snack"` for `food.mjs`, while optional `displaySlot` (`[MODIFIED BACKEND]` `M8`) stores `"snack_1" | "snack_2" | "suhoor" | "iftar" | "night_snack"`!).
+2. **`[MODIFIED BACKEND] POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "planned"`)
+   - Payload: `{ "date": "2026-11-21", "source": "planned", "mealId": "<uuid>", "slot": "<meal.slot>", "displaySlot": "suhoor", "quantity": 1.0 }` (`quantity` valid `0.1..4.0`; `slot` MUST strictly be one of `"breakfast" | "lunch" | "dinner" | "snack"` for `food.mjs`, while optional `displaySlot` (`[MODIFIED BACKEND]` `M8`) stores `"snack_1" | "snack_2" | "suhoor" | "iftar" | "night_snack"`!).
 3. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "food_delete"`)
    - Payload: `{ "id": "<entry-uuid>" }`.
    - Error Codes: `PLANNED_MEAL_ALREADY_LOGGED`, `MEAL_DATE_MISMATCH`, `MEAL_SLOT_MISMATCH`, `INVALID_MEAL_SLOT`, `DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION`, `FOOD_ENTRY_NOT_FOUND`.
@@ -150,7 +150,9 @@ As a user eating from my daily plan, I want to inspect the exact gram weights an
 1. **Frozen Snapshot Guarantee:** Once logged, the food entry stores a frozen nutrient `snapshot`. Subsequent calorie adjustments or meal swaps on future days never alter past logged consumption.
 2. **Auto-Reopening Day Completion:** Any `food_entry` or `food_delete` sets `complete = false` on the server (`food.mjs`). The mobile UI reflects this immediately (`"Changes logged — confirm day complete when done"`).
 3. **Quantity Bounds:** Enforce exact backend bounds `0.1 <= quantity <= 4.0` on portion multiplier controls.
-4. **Canonical Wire Slot Mapping Rule:** Always send `slot in ["breakfast", "lunch", "dinner", "snack"]` on every `food_entry` command (`Suhoor` -> `slot: "breakfast"`, `displaySlot: "suhoor"`; `Iftar` -> `slot: "dinner"`, `displaySlot: "iftar"`; `Snack 1/2/Night` -> `slot: "snack"`, `displaySlot: ...`) so backend validation never rejects 5-meal Balanced or Ramadan plans!
+4. **Canonical Wire Slot Mapping Rule (Planned vs. Ad-Hoc):**
+   - **For `source: "planned"` (including during Ramadan Mode or 5-meal Balanced plans):** ALWAYS send the planned meal's actual `meal.slot` as wire `slot` (preventing `MEAL_SLOT_MISMATCH`), and pass the Ramadan or multi-snack presentation label (`"suhoor" | "iftar" | "night_snack" | "snack_1" | "snack_2"`) in `displaySlot`!
+   - **For ad-hoc logs (`source: "ingredient" | "manual"`):** Map Ramadan presentation slots to canonical wire slots: `Suhoor` -> `slot: "breakfast"` (`displaySlot: "suhoor"`), `Iftar` -> `slot: "dinner"` (`displaySlot: "iftar"`), `Night Snack` / `Snack 1` / `Snack 2` -> `slot: "snack"` (`displaySlot: "night_snack" | "snack_1" | "snack_2"`).
 
 ### MAIN FLOW
 1. User taps Lunch (`Kofta & Rice with Salad`, `610 kcal`).
@@ -162,7 +164,7 @@ As a user eating from my daily plan, I want to inspect the exact gram weights an
 - **Deleting an Entry Then Re-Logging Different Portion:** Chaining `food_delete` followed sequentially by `food_entry` (with distinct `Idempotency-Key`s) avoids `PLANNED_MEAL_ALREADY_LOGGED` cleanly.
 - **Trying to Log Planned Meal From Yesterday on Today's Date:** App always submits the meal's scheduled `day.date` (or disables planned-meal button on mismatched dates while allowing `"Copy Yesterday"` via `US-NUT-07` which logs as `ingredient`/`manual` on Today!).
 - **Rapid Undo After Swipe-to-Delete:** Tapping `[Undo]` within 5 seconds re-queues `food_entry` using the previously cached frozen snapshot/mealId safely.
-- **Ramadan `Suhoor` or 5-Meal `Snack 2` Planned Log:** Sends `slot: "breakfast"` / `"snack"` alongside `displaySlot: "suhoor"` / `"snack_2"` so server validation succeeds 100% reliably.
+- **Ramadan `Suhoor` or 5-Meal `Snack 2` Planned Log:** Sends the planned meal's actual `meal.slot` as wire `slot` alongside `displaySlot: "suhoor"` / `"snack_2"` so server `MEAL_SLOT_MISMATCH` never triggers; ad-hoc logs under Suhoor/Iftar/Night Snack map to `breakfast`/`dinner`/`snack` + `displaySlot`.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Portion scaling updates snapshot macros and commits**
@@ -193,10 +195,10 @@ As a user eating from my daily plan, I want to inspect the exact gram weights an
 | **Story ID** | `US-NUT-03` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `swaps` |
+| **Labels** | `production`, `mobile`, `nutrition`, `swaps` |
 | **Target Screens** | `MealAlternativesSheet` |
 | **Entitlement** | `Freemium` (`Free`: up to 2 swaps/day; `Pro`: unlimited swaps) |
-| **Backend Status** | `Existing` |
+| **Backend Status** | `Modified` (`replace_meal` Free daily swap quota enforcement via `coaching_usage_quotas` + `402 PRO_ENTITLEMENT_REQUIRED`) |
 
 ### STORY
 As a user who doesn't feel like eating a specific planned dish, I want to swap that meal with curated alternatives guaranteed to fit my medical conditions, allergies, diet school, budget, and daily macro tolerances so I stay on track without breaking my plan.
@@ -208,18 +210,19 @@ As a user who doesn't feel like eating a specific planned dish, I want to swap t
 1. **Meal Alternatives Bottom Sheet:**
    - Top summary bar showing the original meal (`"Replacing: Oats & Milk (420 kcal • 22g P)"`).
    - Vertical list of up to 6 validated alternatives returned by `/v1/meal-alternatives`, each showing:
-     - Dish name, key ingredients preview, Calories & Macros, and a **Delta Pill** (e.g., `"+15 kcal • +4g P"`).
+     - Dish name (`snapshot.name`), key ingredients preview (`snapshot.ingredients`), Calories & Macros, and a **Delta Pill** (e.g., `"+15 kcal • +4g P"` from `energy_delta` / `protein_delta`).
      - `[Preview Ingredients]` expand toggle + `[Select Replacement]` button.
    - *Free Tier Quota Banner:* Shows subtle `"1 of 2 free swaps left today"` (or triggers Soft Paywall `US-MON-01` when exceeded).
-   - *Empty State:* If zero alternatives meet strict constraints (e.g., multiple severe allergies + vegan), show *"No alternative dishes satisfy all your current allergies and calorie limits for this slot. You can still eat something else and log it via Search or AI Log."*
+   - *Empty State:* If zero alternatives meet strict constraints (e.g., multiple severe allergies + vegan), show *"No alternative dishes satisfy all your current allergies and calorie limits for this slot. You can still eat something else and log it via Search or Manual Entry."*
 
 ### API & BACKEND CONTRACT
 1. **`[EXISTING] GET /v1/meal-alternatives?mealId={mealId}`**
-   - Returns `{ items: [{ templateId, name, snapshot, summary, deltaEnergy, deltaProtein }] }`.
-2. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "replace_meal"`)
-   - Payload: `{ "mealId": "<uuid>", "templateId": "<templateId>" }`.
+   - Returns `{ items: [{ snapshot: { template_id, name, slot, ingredients, values, ... }, energy_delta, protein_delta }] }`.
+2. **`[MODIFIED BACKEND] POST /v1/commands?view=receipt`** (`action: "replace_meal"`)
+   - Payload: `{ "mealId": "<uuid>", "templateId": "<snapshot.template_id>" }`.
+   - Enforces Free daily swap quota (`2/day` via `coaching_usage_quotas`), returning `402 PRO_ENTITLEMENT_REQUIRED` when exceeded.
    - After `200 OK`, fetch the newly created plan version (`GET /v1/plans/{newPlanId}`) using `affected` delta or `GET /v1/bootstrap` so local SQLDelight holds the new immutable plan version.
-   - Error Codes: `PAST_DAY_PLAN_IMMUTABLE`, `MEAL_ALREADY_CONSUMED`, `MEAL_ALTERNATIVE_UNAVAILABLE`, `PLANNED_MEAL_NOT_FOUND`.
+   - Error Codes: `PAST_DAY_PLAN_IMMUTABLE`, `MEAL_ALREADY_CONSUMED`, `MEAL_ALTERNATIVE_UNAVAILABLE`, `PLANNED_MEAL_NOT_FOUND`, `402 PRO_ENTITLEMENT_REQUIRED`.
 
 ### RULES & BUSINESS LOGIC
 1. **Immutable Plan Versioning:** `replace_meal` creates a new `planId` (`parent_id = oldPlanId`) on the server so history and previously logged days remain untampered.
@@ -242,7 +245,7 @@ As a user who doesn't feel like eating a specific planned dish, I want to swap t
 - **Scenario 1: Valid meal swap versions plan and updates UI**
   - **Given** Dinner today is unlogged and alternatives exist
   - **When** the user selects an alternative and confirms
-  - **Then** `replace_meal` commits, a new plan version becomes active, and Dinner renders the selected replacement dish.
+  - **Then** `replace_meal` commits with `snapshot.template_id`, a new plan version becomes active, and Dinner renders the selected replacement dish.
 - **Scenario 2: Consumed meal cannot be swapped**
   - **Given** Breakfast today has already been logged
   - **When** viewing Breakfast options
@@ -258,7 +261,7 @@ As a user who doesn't feel like eating a specific planned dish, I want to swap t
 
 ---
 
-## US-NUT-04: Bilingual Arabic/English Food & Beverage Search (3,291 Items) & Custom Recipe Calculator
+## US-NUT-04: Bilingual Arabic/English Food & Beverage Search (3,291 Foods/Beverages + 2,437 Regional Serving Models) & Custom Recipe Calculator
 
 ### METADATA
 | Field | Value |
@@ -266,16 +269,16 @@ As a user who doesn't feel like eating a specific planned dish, I want to swap t
 | **Story ID** | `US-NUT-04` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `catalog`, `arabic-search` |
+| **Labels** | `production`, `mobile`, `nutrition`, `catalog`, `arabic-search` |
 | **Target Screens** | `FoodSearchScreen`, `FoodItemDetailSheet`, `CustomRecipeCalculatorSheet` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Existing` |
 
 ### STORY
-As a user wanting to log everyday Egyptian, Gulf, Levantine, or homemade foods and drinks not in my meal plan, I want fast bilingual search across 3,291 foods and beverages with colloquial Egyptian synonym matching, clear Verified vs. Estimated provenance badges, null-nutrient honesty, and a custom recipe/drink macro calculator.
+As a user wanting to log everyday Egyptian, Gulf, Levantine, or homemade foods and drinks not in my meal plan, I want fast bilingual search across 3,291 reference/estimated foods & beverages + 2,437 regional serving models (`5,728` total indexed) with colloquial Egyptian synonym matching, clear Verified vs. Estimated provenance badges, null-nutrient honesty, and a custom recipe/drink macro calculator.
 
 ### PRECONDITIONS
-- User is authenticated (`service_track != "workouts_only"` or browsing library).
+- User is authenticated (`serviceTrack != "workouts_only"` or browsing library).
 
 ### SCREEN AND UI DETAILS
 1. **Food & Beverage Search Screen:**
@@ -289,8 +292,8 @@ As a user wanting to log everyday Egyptian, Gulf, Levantine, or homemade foods a
    - **Infinite Scroll Pagination:** Loads `20–40` items per page using `offset` & `nextOffset`.
    - Top-right CTA button: `[+ Recipe Calculator]` -> Opens `CustomRecipeCalculatorSheet`.
 2. **Food Item Detail Sheet (`GET /v1/foods/{id}`):**
-   - Full macro breakdown per `100g` + clear **`Raw (Dry)` vs `Cooked` state indicator** + household serving unit chips (`1 tbsp`, `1 medium baladi loaf`, `1 cup`) + gram input (`1..2000g`).
-   - Shows provenance source (`USDA / EFSA / Egyptian National Nutrition Institute / Regional Model`).
+   - Full macro breakdown per `100g` + clear **`Raw (Dry)` vs `Cooked` state indicator** + household serving unit chips (`portions[].grams` paired with `portion_units` labels such as `1 tbsp`, `1 medium baladi loaf`, `1 cup`) + gram input (`1..2000g`) or reference serving count (`unit: "reference"` for estimated beverages/recipes).
+   - Shows actual audited provenance source (`USDA FDC`, `UK CoFID 2021`, `Egyptian Baladi Study 2018`, `Lebanese Lab Study 2021`, or `Regional Serving Models`).
    - Null nutrients explicitly render `"Not available in source"` (never `0`).
    - *Approximate Item Acknowledgment:* If `isApproximate == true` (`Pending Review`), shows unobtrusive note `"Nutritional values are recipe estimates"` before logging.
    - CTA: `[Log to {Slot} ({kcal} kcal)]`. Also supports editing saved `grams` on an existing diary entry via sequential `food_delete` + `food_entry` chain.
@@ -306,21 +309,21 @@ As a user wanting to log everyday Egyptian, Gulf, Levantine, or homemade foods a
    - Request Body: `{ "ingredients": [{ "key": "chicken", "grams": 150 }], "additions": [], "finalWeightGrams": 240 }`.
    - Error Codes: `INGREDIENT_NOT_IN_CATALOG`, `INGREDIENT_NOT_VERIFIED`, `LIQUID_DENSITY_MISSING`, `DENSITY_REQUIRED_FOR_ML`.
 5. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "ingredient"` or `"manual"` for custom calculated recipes)
-   - Note: `source: "ingredient"` accepts planning keys OR approved/regional-serving catalog items (`1..2000g` in `food.mjs`); custom multi-ingredient recipes log via `source: "manual"` with frozen calculated values!
+   - Note: `source: "ingredient"` accepts planning keys OR approved/regional-serving catalog items (`1..2000g` in `food.mjs`), AND supports logging estimated beverages/recipes by reference serving count using `unit: "reference"` (e.g., `{ "source": "ingredient", "key": "<id>", "unit": "reference", "quantity": 1 }`); custom multi-ingredient recipes log via `source: "manual"` with frozen calculated values!
 
 ### RULES & BUSINESS LOGIC
 1. **Stale Response Guard:** Ignore search responses whose `querySequenceId` is older than the latest input keystroke so slow responses never overwrite newer typed queries.
-2. **Gram Validation (`1..2000g`):** Enforce `food.mjs` exact gram bounds on `source: "ingredient"` entries, converting household portion chips (`1 cup`, `1 piece`) using catalog `portion_units` grams.
+2. **Gram Validation (`1..2000g`) & Reference Servings:** Enforce `food.mjs` exact gram bounds on gram-based `source: "ingredient"` entries, converting household portion chips (`1 cup`, `1 piece`) using catalog `portions[].grams` (displayed with `portion_units` labels). For estimated beverages and regional serving models that define per-serving nutrition without `100g` scaling, submit `unit: "reference"` with serving `quantity`.
 3. **Zero Null Coercion:** Never convert `null` nutrient values (such as missing fiber or sodium) to `0`.
 
 ### MAIN FLOW
 1. User taps `+` -> `Search Food & Drinks`.
 2. User types `"shai bil-laban"` in Arabic script (or `"mango juice"`) with `Drinks & Cafe` active.
 3. App calls `GET /v1/beverages?q=...&includeEstimated=true` and returns matches including Egyptian cafe drinks with `Verified` vs `Estimated` badges.
-4. User taps the item, selects `250 ml / 1 Cup`, verifies `115 kcal`, and taps `[Log to Snack]` -> Commits and updates Today totals.
+4. User taps the item, selects `250 ml / 1 Cup` (`portions[].grams` or `unit: "reference"`), verifies `115 kcal`, and taps `[Log to Snack]` -> Commits and updates Today totals.
 
 ### EDGE CASES
-- **Search Returns 0 Items (`coverageStatus == "missing_coverage"`):** Show friendly empty state with two direct shortcuts: `[Log Custom Calories Manually]` (`US-NUT-07`) or `[Try AI Text/Photo Log]` (`US-NUT-05`).
+- **Search Returns 0 Items (`coverageStatus == "missing_coverage"`):** Show friendly empty state with two direct shortcuts: `[Log Custom Calories Manually]` (`US-NUT-07`) or `[Try AI Text/Photo Log]` (`US-NUT-05`, once enabled in Final AI Phase).
 - **Liquid Added in `ml` Lacks Density (`LIQUID_DENSITY_MISSING`):** Custom recipe calculator highlights the offending ingredient and asks the user to weigh in `grams` instead.
 - **Gram Input Out of Range (`< 1g` or `> 2000g` per `food.mjs`):** Inline validation prevents API failure and shows `"Enter between 1 and 2,000 grams per entry."`.
 - **Offline Catalog Search:** Searches locally cached common Egyptian/MENA staples in SQLDelight (plus user Favorites/Recent) seamlessly when disconnected, with subtle `"Searching offline essentials"` footer.
@@ -348,16 +351,18 @@ As a user wanting to log everyday Egyptian, Gulf, Levantine, or homemade foods a
 
 ## US-NUT-05: AI Meal Photo & Egyptian/Arabic Dialect Voice/Text Quick Log
 
+> **Rollout Phase:** Scheduled for Final AI Phase (after core launch); capabilities flags `ai_meal_parse` and `ai_coach_qa` remain disabled until Final AI Phase.
+
 ### METADATA
 | Field | Value |
 | :--- | :--- |
 | **Story ID** | `US-NUT-05` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `ai-logging`, `pro-feature` |
+| **Labels** | `production`, `mobile`, `nutrition`, `ai-logging`, `pro-feature`, `final-ai-phase` |
 | **Target Screens** | `AIMealLoggerScreen` (Camera / Gallery / Mic / Text Tabs), `AIParsedMealReviewSheet` |
 | **Entitlement** | `Pro` (Soft Paywall value teaser + 1 free lifetime sample preview for Free users) |
-| **Backend Status** | `New` (`POST /v1/nutrition/ai-parse`) + `Existing` (`food_entry`) |
+| **Backend Status** | `New` (`POST /v1/nutrition/ai-parse` — Final AI Phase) + `Existing` (`food_entry`) |
 
 ### STORY
 As a user eating home-cooked Arabic meals or dining out, I want to snap a photo of my plate, speak into my microphone in Egyptian/Gulf Arabic or English (e.g., *"I ate 2 boiled eggs, half a baladi loaf, and 2 tablespoons of ful"*), or type a quick sentence, and review editable itemized calorie/macro estimates matched against CuraFit's food catalog before saving so logging takes under 10 seconds.
@@ -433,7 +438,7 @@ As a user eating home-cooked Arabic meals or dining out, I want to snap a photo 
 ### RULES & BUSINESS LOGIC
 1. **Strict Human-in-the-Loop Confirmation:** AI parsing NEVER writes directly to `coaching_food_entries`. Every detected dish MUST appear in `AIParsedMealReviewSheet` with clear confidence and provenance tags so the user confirms or tweaks portions before committing via `food_entry`.
 2. **Client-Side Image Compression:** Always downscale camera/gallery photos to max `1024px` long edge at `80%` JPEG/WebP (`< 400 KB`) on-device before upload for snappy performance on Egyptian 4G networks.
-3. **Catalog Grounding First:** Backend AI parser resolves detected foods against `food-catalog.mjs` (`EGYPTIAN_SYNONYMS`) whenever possible so nutrients inherit verified USDA/EFSA/ENNI provenance instead of hallucinated macros.
+3. **Catalog Grounding First:** Backend AI parser resolves detected foods against `food-catalog.mjs` (`EGYPTIAN_SYNONYMS`) whenever possible so nutrients inherit verified audited provenance (`USDA FDC`, `UK CoFID 2021`, `Egyptian Baladi Study 2018`, `Lebanese Lab Study 2021`, `Regional Serving Models`) instead of hallucinated macros.
 
 ### MAIN FLOW
 1. User taps `+` -> `[AI Photo / Voice]`.
@@ -478,7 +483,7 @@ As a user eating home-cooked Arabic meals or dining out, I want to snap a photo 
 | **Story ID** | `US-NUT-06` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `barcode`, `pro-feature` |
+| **Labels** | `production`, `mobile`, `nutrition`, `barcode`, `pro-feature` |
 | **Target Screens** | `BarcodeScannerScreen`, `ScannedProductSheet`, `SubmitBarcodeProductSheet` |
 | **Entitlement** | `Pro` (Soft Paywall on scan for Free users) |
 | **Backend Status** | `New` (`GET /v1/foods/barcode/{ean}`, `POST /v1/foods/barcode`) + `Existing` (`food_entry`) |
@@ -569,7 +574,7 @@ As a user buying packaged dairy, snacks, protein bars, or drinks in Egyptian and
 | **Story ID** | `US-NUT-07` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `quick-repeat` |
+| **Labels** | `production`, `mobile`, `nutrition`, `quick-repeat` |
 | **Target Screens** | `QuickRepeatSheet` (Tabs: `Favorites`, `Recent`, `Copy Yesterday`, `Manual Entry`) |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Mixed` (`[EXISTING]` `food_entry` + `[NEW BACKEND]` favorites & copy_meal) |
@@ -642,16 +647,16 @@ As a creature of habit who often eats the same breakfast or snacks on multiple d
 | **Story ID** | `US-NUT-08` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `pantry`, `differentiator` |
+| **Labels** | `production`, `mobile`, `nutrition`, `pantry`, `differentiator` |
 | **Target Screens** | `PantryFinderScreen` |
 | **Entitlement** | `Free` *(Uses existing deterministic `pantry.mjs` logic!)* |
-| **Backend Status** | `New` (HTTP endpoints exposing existing `website/dist/pantry.mjs`) + `Existing` (`replace_meal` / `food_entry`) |
+| **Backend Status** | `New` (HTTP endpoints exposing existing `pantry.mjs`) + `Existing` (`replace_meal` / `food_entry`) |
 
 ### STORY
 As a user looking into my fridge or kitchen before deciding what to cook, I want to tap the ingredients I currently have at home (like Eggs, Chicken Breast, Tomatoes, Oats, Ful) and immediately see healthy meal ideas and plan replacements made ONLY from those available ingredients and aligned with my calorie/diet constraints.
 
 ### PRECONDITIONS
-- `service_track != "workouts_only"`.
+- `serviceTrack != "workouts_only"`.
 
 ### SCREEN AND UI DETAILS
 1. **Ingredient Selector (`PantryFinderScreen`):**
@@ -664,9 +669,9 @@ As a user looking into my fridge or kitchen before deciding what to cook, I want
 
 ### API & BACKEND CONTRACT
 1. **`[NEW BACKEND] GET /v1/pantry/catalog`**
-   - Directly exposes `pantryCatalog(library)` from `website/dist/pantry.mjs` returning `{ items: [{ id, label, labelEn, category, keys }] }`.
+   - Directly exposes `pantryCatalog(library)` from `pantry.mjs` returning `{ items: [{ id, label, labelEn, category, keys }] }`.
 2. **`[NEW BACKEND] POST /v1/pantry/alternatives`**
-   - Directly exposes `pantryAlternatives(meal, prefs, library, selectedIngredients, componentIndex, limit)` from `website/dist/pantry.mjs`.
+   - Directly exposes `pantryAlternatives(meal, prefs, library, selectedIngredients, componentIndex, limit)` from `pantry.mjs`.
    - **Request Body:** `{ "mealId": "<optional-target-meal-uuid>", "slot": "lunch", "selectedIngredients": ["eggs", "tomato", "fava", "bread"], "limit": 12 }`.
    - **Error Codes:** `400 INVALID_PANTRY_SELECTION` (already cataloged in `contracts/error-codes.json`!).
 
@@ -714,7 +719,7 @@ As a user looking into my fridge or kitchen before deciding what to cook, I want
 | **Story ID** | `US-NUT-09` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `grocery`, `pro-feature` |
+| **Labels** | `production`, `mobile`, `nutrition`, `grocery`, `pro-feature` |
 | **Target Screens** | `GroceryListScreen` |
 | **Entitlement** | `Pro` (Free users preview first 2 items + Pro upgrade card) |
 | **Backend Status** | `New` (`GET /v1/plans/{planId}/grocery-list`, `grocery_toggle`) |
@@ -723,7 +728,7 @@ As a user looking into my fridge or kitchen before deciding what to cook, I want
 As a user preparing meals for the week, I want CuraFit to automatically aggregate every ingredient across my active 7-day meal plan into a practical, supermarket-aisle-grouped shopping list (showing practical units like `"1.2 kg Chicken Breast"` and `"12 Eggs"`) where I can check off what I already have at home and share via WhatsApp so grocery shopping takes minutes.
 
 ### PRECONDITIONS
-- An active 7-day nutrition plan exists (`active_plan_id != null`).
+- An active 7-day nutrition plan exists (`activeNutritionPlanRef != null`).
 
 ### SCREEN AND UI DETAILS
 1. **Top Scope & Budget Bar:**
@@ -731,13 +736,13 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
    - Active Budget badge (`Economic` / `Moderate` / `Premium`) and progress counter (`"9 of 24 items checked ✓"`).
    - `[Share List]` button (exports clean RTL/LTR formatted text for WhatsApp/Notes) & `[Uncheck All]` overflow option.
 2. **Aisle-Grouped Collapsible Sections:**
-   - *Poultry, Meat & Fish* (e.g., `Chicken Breast — 1,050 g`)
-   - *Dairy & Eggs* (e.g., `Eggs — 14 pcs (approx. 700g)`, `Cottage Cheese — 600g`)
-   - *Grains & Bakery* (e.g., `Baladi Bread — 7 loaves`, `Basmati Rice — 800g dry`)
-   - *Fresh Produce* (e.g., `Tomatoes — 900g`, `Cucumber — 700g`)
+   - *Poultry, Meat & Fish* (e.g., `Chicken Breast (Cooked) — 1,050 g`)
+   - *Dairy & Eggs* (e.g., `Eggs (Raw / As-sold) — 14 pcs (approx. 700g)`, `Cottage Cheese — 600g`)
+   - *Grains & Bakery* (e.g., `Baladi Bread (As-sold) — 7 loaves`, `Basmati Rice (Cooked) — 800g`)
+   - *Fresh Produce* (e.g., `Tomatoes (Raw / As-sold) — 900g`, `Cucumber — 700g`)
    - *Legumes, Canned & Pantry* (e.g., `Fava Beans — 3 cans / 600g`, `Olive Oil — 140 ml`)
 3. **Interactive Row:**
-   - Checkbox toggle (moves checked items to a collapsed `"In Pantry / Cart ✓"` section at bottom), tap row to see *Which days/meals need this ingredient*.
+   - Checkbox toggle (moves checked items to a collapsed `"In Pantry / Cart ✓"` section at bottom), explicit **`Cooked` vs `Raw / As-sold` state badge** honoring `planner-core.mjs` ingredient definitions, and tap row to see *Which days/meals need this ingredient*.
 
 ### API & BACKEND CONTRACT
 1. **`[NEW BACKEND] GET /v1/plans/{planId}/grocery-list?days=remaining|all|3`**
@@ -757,8 +762,9 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
                {
                  "ingredientKey": "chicken",
                  "name": "Skinless Chicken Breast",
+                 "preparationState": "cooked",
                  "totalGrams": 1050,
-                 "practicalQuantityLabel": "1.05 kg",
+                 "practicalQuantityLabel": "1.05 kg (Cooked)",
                  "checked": false,
                  "mealRefs": ["2026-11-21:lunch", "2026-11-23:dinner"]
                }
@@ -772,13 +778,13 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
    - Payload: `{ "planId": "<planId>", "ingredientKey": "chicken", "checked": true }`.
 
 ### RULES & BUSINESS LOGIC
-1. **Smart Cooked-to-Raw Aggregation Hint:** Group identical base ingredients across all selected plan days (`chicken` + `chickenboiled` combined clearly under raw purchase weight guidance where applicable, using `food-catalog` yield metadata).
+1. **Honest `Cooked` vs `Raw / As-sold` Integrity (`planner-core.mjs`):** Aggregate ingredients by exact `ingredientKey` across selected plan days without applying fabricated cooked-to-raw yield conversion ratios. Each row displays an explicit **`Cooked`** or **`Raw / As-sold`** badge matching its canonical `planner-core.mjs` ingredient state so users never buy or weigh the wrong amount.
 2. **Auto-Refresh on Plan Swap (`replace_meal`):** When a meal is swapped (`US-NUT-03`), grocery totals automatically recompute for the new `planId` while preserving checked state for matching `ingredientKey`s.
 3. **Offline Check-Off:** Toggling checkboxes works smoothly offline via outbox queue while shopping in a supermarket with poor indoor signal.
 
 ### MAIN FLOW
 1. User taps `Grocery List` inside `Nutrition` tab.
-2. App renders the aisle-grouped list for the current 7-day plan (`1.05 kg Chicken`, `14 Eggs`, `750g Oats`, etc.).
+2. App renders the aisle-grouped list for the current 7-day plan (`1.05 kg Chicken (Cooked)`, `14 Eggs (Raw / As-sold)`, `750g Oats (Raw / As-sold)`, etc.).
 3. User checks off `Eggs` and `Olive Oil` (already in kitchen), then taps `[Share List]` to send remaining items to family on WhatsApp.
 
 ### EDGE CASES
@@ -791,7 +797,7 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
 - **Scenario 1: Grocery list aggregates ingredient totals across 7 days accurately**
   - **Given** a 7-day plan includes `150g` oats on 5 days (`750g` total)
   - **When** `GET /v1/plans/{planId}/grocery-list?days=all` loads
-  - **Then** `Oats` appears once under *Grains & Bakery* showing `750g`.
+  - **Then** `Oats` appears once under *Grains & Bakery* showing `750g` with its explicit `Raw / As-sold` badge.
 - **Scenario 2: Toggling checked item persists across app restarts and devices**
   - **Given** the user checks off `Eggs`
   - **When** `grocery_toggle` commits and user opens on another device
@@ -816,7 +822,7 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
 | **Story ID** | `US-NUT-10` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `fasting`, `ramadan`, `differentiator` |
+| **Labels** | `production`, `mobile`, `nutrition`, `fasting`, `ramadan`, `differentiator` |
 | **Target Screens** | `FastingAndRamadanScreen`, `RamadanSettingsSheet` |
 | **Entitlement** | `Free` *(Core cultural & fasting differentiator for MENA market)* |
 | **Backend Status** | `New` (`GET /v1/nutrition/fasting-state`, `fasting_log`, `ramadan_mode`) |
@@ -825,8 +831,8 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
 As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I want an interactive fasting timer aligned with my configured eating window, plus a 1-tap Ramadan Mode that shifts my daily meals into Suhoor, Iftar, and Night Snack, adds smart hydration reminders between Maghrib and Fajr, and recommends safe workout timing (before Iftar or 2 hours after Iftar).
 
 ### PRECONDITIONS
-- `service_track != "workouts_only"`.
-- For Ramadan Mode: available globally for any user (`pregnant_t1|t2|t3`, `diabetes_t1`, and `diabetes_t2` display an explicit medical consultation banner before enabling Ramadan fasting!).
+- `serviceTrack != "workouts_only"`.
+- For Ramadan Mode: available globally for any user (`pregnant_t1|t2|t3`, `breastfeeding`, `diabetes_t1`, and `diabetes_t2` display an explicit medical consultation banner before enabling Ramadan fasting!).
 
 ### SCREEN AND UI DETAILS
 1. **Fasting Timer Screen (`FastingAndRamadanScreen`):**
@@ -839,7 +845,7 @@ As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I wa
    - Prominent toggle `[Ramadan Mode 🌙]`:
      - Auto-detects Maghrib / Fajr prayer window by user's region/city (`Cairo`, `Riyadh`, `Dubai`, `Amman`, `Casablanca`, etc., with manual time override).
      - **Clinical Safety Guard:** If `conditions` includes `diabetes_t1` / `diabetes_t2` / `kidney` OR `maternalStatus != "none"` (pregnancy/breastfeeding), display a clear warning modal *"Fasting with your declared medical or maternal status requires direct approval from your physician before activating Ramadan fasting mode."* requiring explicit acknowledgment (`medicalClearanceAcknowledged: true`).
-     - **Workout Timing Shift Selector (When `service_track != "nutrition_only"`):**
+     - **Workout Timing Shift Selector (When `serviceTrack != "nutrition_only"`):**
        - `Pre-Iftar (30–45 min before Maghrib — light/moderate intensity recommended)`
        - `Post-Iftar (2 hours after breaking fast — best for strength & PRs)`
        - `Post-Taraweeh (Night session)`
@@ -849,17 +855,19 @@ As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I wa
      - `Suhoor` (45 min before Fajr — slow-digesting protein, complex carbs, potassium & water emphasis)
 
 ### API & BACKEND CONTRACT
-1. **`[NEW BACKEND] GET /v1/nutrition/fasting-state`** -> Returns active mode (`off | if_16_8 | ramadan`), active timer timestamps, Fajr/Maghrib window (if Ramadan), and recent 14-day fasting streak.
+1. **`[NEW BACKEND] GET /v1/nutrition/fasting-state`** -> Returns standardized DTO `{ mode: "off" | "if_16_8" | "ramadan", phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, streakDays }`.
 2. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "fasting_log"`)
    - Payload: `{ "op": "start" | "end" | "adjust_window", "at": "<iso8601>", "ifStartHour": 12 }`.
 3. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "ramadan_mode"`)
    - Payload: `{ "enabled": true, "iftarTime": "18:05", "suhoorCutoffTime": "04:20", "workoutTiming": "post_iftar", "medicalClearanceAcknowledged": true }`.
 
 ### RULES & BUSINESS LOGIC
-1. **Pregnancy & Type-1 Diabetes Guard:** In `US-MOB-08`, `intermittent_fasting` is blocked for `pregnant_*` and `diabetes_*`. If a pregnant or diabetic user manually toggles `Ramadan Mode`, present the clinical safety advisory and do NOT allow silent activation without explicit confirmation (`medicalClearanceAcknowledged: true`); never drop below `minCalorieFloor` (`1800` pregnancy / `1500` M / `1200` F) regardless of Ramadan meal compression.
+1. **Pregnancy, Breastfeeding & Diabetes Guard:** In `US-MOB-08`, `intermittent_fasting` is conservatively blocked for `pregnant_*`, `breastfeeding`, and `diabetes_*`. If a pregnant, breastfeeding, or diabetic user manually toggles `Ramadan Mode`, present the clinical safety advisory and do NOT allow silent activation without explicit confirmation (`medicalClearanceAcknowledged: true`); never drop below `minCalorieFloor` (`1800` pregnancy / `1600` breastfeeding / `1500` M / `1200` F) regardless of Ramadan meal compression.
 2. **Hydration Night-Window Scheduling (`US-INT-03`):** When Ramadan Mode is enabled, water notifications (`waterReminder`) automatically reschedule solely between `iftarTime` and `suhoorCutoffTime` (`~250 ml/hour`) — zero daytime water reminders while fasting!
-3. **16:8 Window Alignment:** Matches `if_start_hour` (`10`, `12`, `14`, `16`) from `US-MOB-08` (`eatingStart`).
-4. **Canonical Wire Slot Mapping (`US-NUT-02`):** Ramadan display slots (`Iftar`, `Night Snack`, `Suhoor`) map deterministically onto the 4 canonical server slots when calling `food_entry`: `Suhoor` -> `slot: "breakfast"` (`displaySlot: "suhoor"`), `Iftar` -> `slot: "dinner"` (`displaySlot: "iftar"`), `Night Snack` -> `slot: "snack"` (`displaySlot: "night_snack"`), preventing `400 INVALID_MEAL_SLOT`.
+3. **16:8 Window Alignment:** Matches `ifStartHour` (`10`, `12`, `14`, `16`) from `US-MOB-08` (`eatingStart`).
+4. **Canonical Wire Slot Mapping (`US-NUT-02`):**
+   - **For `source: "planned"` meals during Ramadan:** ALWAYS send the planned meal's actual `meal.slot` as wire `slot` (avoiding `MEAL_SLOT_MISMATCH`), and set `displaySlot` to `"suhoor" | "iftar" | "night_snack" | "snack_1" | "snack_2"`.
+   - **For ad-hoc logs (`source: "ingredient" | "manual"`):** Map Ramadan slots cleanly onto the 4 canonical server slots: `Suhoor` -> `slot: "breakfast"` (`displaySlot: "suhoor"`), `Iftar` -> `slot: "dinner"` (`displaySlot: "iftar"`), `Night Snack` -> `slot: "snack"` (`displaySlot: "night_snack"`), preventing `400 INVALID_MEAL_SLOT`.
 
 ### MAIN FLOW
 1. User toggles **Ramadan Mode 🌙** inside `Nutrition` -> `Fasting`.
@@ -869,20 +877,20 @@ As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I wa
 ### EDGE CASES
 - **User Breaks Fast Early (Illness / Fatigue):** Tapping `[End Fast Early]` records partial fast duration cleanly with encouraging neutral feedback (*"Listening to your body always comes first."*).
 - **Ramadan Ends / User Disables Ramadan Mode:** Reverts slots cleanly back to `Breakfast / Lunch / Dinner / Snack` (or standard `16:8` schedule) without losing any historical food logs.
-- **Diabetic / Pregnant User Refuses Medical Clearance Prompt:** Keeps `ramadanMode.enabled = false` without mutating profile or sending unsafe fasting reminders.
+- **Diabetic / Pregnant / Breastfeeding User Refuses Medical Clearance Prompt:** Keeps `ramadanMode.enabled = false` without mutating profile or sending unsafe fasting reminders.
 - **Midnight Crossing Between `Iftar` (`18:05`) and `Suhoor` (`04:20`):** Eating window timer computes next day `04:20` cutoff accurately across midnight without negative duration display.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Enabling Ramadan Mode remaps meal slots & nighttime hydration reminders**
   - **Given** a non-pregnant healthy user enables Ramadan Mode with `Iftar 18:05` and `Suhoor 04:20`
   - **When** `ramadan_mode` commits
-  - **Then** the Nutrition Plan displays `Iftar` and `Suhoor` labels (sending `dinner`/`breakfast` wire slots + `displaySlot`) and hydration reminders restrict to `18:05–04:20`.
+  - **Then** the Nutrition Plan displays `Iftar` and `Suhoor` labels (sending `meal.slot` + `displaySlot` for planned meals, and `dinner`/`breakfast` + `displaySlot` for ad-hoc logs) and hydration reminders restrict to `18:05–04:20`.
 - **Scenario 2: Live 16:8 timer tracks exact remaining window**
-  - **Given** `diet_type == "intermittent_fasting"` with `if_start_hour = 12`
+  - **Given** `dietType == "intermittent_fasting"` with `ifStartHour = 12`
   - **When** user views `FastingAndRamadanScreen` at `10:00 AM`
   - **Then** timer counts down `02:00:00` remaining in the fasting phase.
 - **Scenario 3: High-risk clinical user requires medical clearance acknowledgment**
-  - **Given** user has `diabetes_t1` or `pregnant_t2`
+  - **Given** user has `diabetes_t1`, `pregnant_t2`, or `breastfeeding`
   - **When** user toggles `Ramadan Mode` on
   - **Then** the physician-approval warning modal blocks activation unless user explicitly checks acknowledgment.
 
@@ -900,7 +908,7 @@ As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I wa
 | **Story ID** | `US-NUT-11` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `evidence`, `adaptive-review` |
+| **Labels** | `production`, `mobile`, `nutrition`, `evidence`, `adaptive-review` |
 | **Target Screens** | `NutritionDiaryFooter`, `LegacyConvertConfirmationDialog` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Existing` |

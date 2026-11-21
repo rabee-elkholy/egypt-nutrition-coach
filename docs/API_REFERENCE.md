@@ -1,6 +1,6 @@
 # CuraFit API v1 — Cloudflare Workers & D1
 
-Production-grade REST API running natively on **Cloudflare Workers + Cloudflare D1** (`curafit-api` for Production, `curafit-api-dev` for Cloud Dev). Designed for **Kotlin Multiplatform Mobile (KMM)** and clean Web User Stories with uniform JSON envelopes and 100% English machine-coded errors.
+Production-grade REST API running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** (`curafit-api` for Production, `curafit-api-dev` for Cloud Dev). Designed for **Kotlin Multiplatform Mobile (KMM)** with uniform JSON envelopes, 100% English machine-coded errors (`contracts/error-codes.json`), and canonical coaching codes (`contracts/coaching-codes.json`).
 
 ---
 
@@ -16,26 +16,25 @@ Switch between environments from the top-right **Environment selector** in Postm
 
 ---
 
-## 2. Authentication (Cloudflare Native D1)
+## 2. Authentication (Cloudflare Native D1 + Direct OIDC)
 
-- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`.
+- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.
 - **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).
 - **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).
 - **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).
-- **Web Fallback:** Browser clients without Bearer token continue to use the `HttpOnly` `coach_uid` anonymous cookie and can migrate via `POST /v1/auth/claim-anonymous`.
 
 ---
 
 ## 3. Unified Command Pipeline (`POST /v1/commands`), Revision & Idempotency
 
 All domain mutations pass through `POST /v1/commands`:
-- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and body on network timeout.
-- **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.details.currentRevision` and `error.details.mergeHints`.
+- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and intent (`action` + `payload`) on network timeout even after a revision rebase.
+- **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.params.currentRevision` and `error.details.mergeHints`.
 - **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt inside `data`; `?view=full` returns the full account snapshot inside `data`.
 
 ---
 
-## 4. Uniform KMM Envelopes & Pure-English Error Contract
+## 4. Uniform KMM Envelopes & Pure-English Error / Coaching Contracts
 
 Every JSON endpoint returns the canonical envelope:
 
@@ -45,7 +44,7 @@ Every JSON endpoint returns the canonical envelope:
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |
-| `error.code` | `string` | Stable uppercase error code (235 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
+| `error.code` | `string` | Stable uppercase error code (271 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
 | `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |
 | `error.params` | `object` | Interpolation parameters for client-side localization |
 | `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |
@@ -53,6 +52,8 @@ Every JSON endpoint returns the canonical envelope:
 | `error.details` | `object` (optional) | Structured recovery data such as `currentRevision` and `mergeHints` on `409` |
 | `meta.requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |
 | `meta.serverTime` | `string (ISO-8601)` | Server UTC timestamp |
+
+> **Coaching Codes:** All coaching briefs, agreements, readiness summaries, and eligibility reasons return canonical English text plus `code` and `params` cataloged in `contracts/coaching-codes.json` (`docs/COACHING_CODES.md`). AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are deferred to the final AI rollout phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`).
 
 ---
 
@@ -90,10 +91,13 @@ Every JSON endpoint returns the canonical envelope:
 | `sampleCatalogExerciseId` | `string (URL-encoded)` | Collection (auto) | Exercise catalog ID from `/v1/exercises` |
 | `nextSeqCursor` | `integer` | Collection (auto) | Incremental outbox sequence cursor for `/v1/sync/changes` |
 | `anonymousUserId` | `string` | Collection | Anonymous `anon:...` ID for `/v1/auth/claim-anonymous` |
+| `sampleBarcode` | `string` | Collection | Sample EAN/UPC barcode (`6221000000001`) for `/v1/foods/barcode/{ean}` |
+| `samplePhotoId` | `string` | Collection | Progress photo ID for `/v1/progress/photos/{photoId}` |
+| `signedMediaToken` | `string` | Collection | Short-lived HMAC-signed token for `/v1/media/signed/{token}` |
 
 ---
 
-## 6. Complete Endpoint Reference (12 Groups / 77 Endpoints)
+## 6. Complete Endpoint Reference (16 Groups / 123 Endpoints)
 
 ## 01. System & Health
 
@@ -192,7 +196,7 @@ Returns API/schema/catalog versions, enabled feature flags, and native Cloudflar
       "adaptive_workouts",
       "native_cloudflare_auth",
       "kmm_bootstrap",
-      "offline_sync_v2"
+      "offline_sync"
     ]
   },
   "meta": {
@@ -6152,8 +6156,10 @@ Exports complete machine-readable JSON of profile, preferences, active & archive
     "deleted": true,
     "userId": "user:1a2b",
     "deletedAt": "2026-11-21T12:40:00.000Z",
-    "tablesCleared": 18,
-    "namespacesCleared": 1
+    "tablesCleared": 28,
+    "namespacesCleared": 1,
+    "appleTokenRevoked": false,
+    "mediaObjectsDeleted": 0
   },
   "meta": {
     "requestId": "req-uuid",
@@ -6161,6 +6167,2434 @@ Exports complete machine-readable JSON of profile, preferences, active & archive
   }
 }
 ```
+
+---
+
+### List Privacy / Health Consents
+
+Lists all persisted legal and medical disclaimer consents for the signed-in account.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/account/consents`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/account/consents`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/account/consents`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/account/consents`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Submit In-App Support Feedback
+
+Creates a persisted support ticket or catalog correction report in D1.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/support/feedback`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/support/feedback`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/support/feedback`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/support/feedback`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `category` | `string (enum)` | Yes | `bug` | `feature` | `food_catalog_correction` | `exercise_catalog_correction` | `billing` | `other` | Feedback category. |
+| `message` | `string` | Yes | 3..2000 chars | User message describing the report. |
+| `includeDiagnostics` | `boolean` | No | default: false | Include non-PII diagnostic metadata. |
+| `appVersion` | `string` | No | max 40 chars | Client app version. |
+| `platform` | `string` | No | `android` | `ios` | `web` | Client platform. |
+
+### Request Body Example
+```json
+{
+  "category": "food_catalog_correction",
+  "message": "Please verify protein per 100g on item #104.",
+  "includeDiagnostics": true,
+  "appVersion": "1.0.0",
+  "platform": "android"
+}
+```
+
+---
+
+## 13. Social OAuth, Plan Preview & Profile
+
+Direct Google/Apple OIDC verification on Cloudflare Workers, stateless onboarding plan preview, profile updates, and Comeback Protocol.
+
+### Preview Onboarding Plan (Public)
+
+Stateless onboarding calculation returning daily kcal/macros, safe calorie floors, water target, eligibility, and weekly forecast range.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/plans/preview`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/plans/preview`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/plans/preview`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/plans/preview`
+- **Auth:** Public (`No Auth`)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `name` | `string` | No | max 100 chars | Optional display name. |
+| `age` | `integer` | Yes | 18..70 | Age in years. |
+| `sex` | `string (enum)` | Yes | `male` | `female` | Biological sex. |
+| `weight` | `number` | Yes | 35..250 (kg) | Current body weight in kg. |
+| `height` | `number` | Yes | 120..230 (cm) | Height in cm. |
+| `goal` | `string (enum)` | Yes | `lose` | `maintain` | `gain` | `muscle_gain` | Primary coaching goal. |
+| `targetWeight` | `number | null` | No | 35..250 (kg) | Optional target weight. |
+| `activity` | `string (enum)` | No | `sedentary` | `light` | `moderate` | `active` | Daily activity level. |
+| `dietType` | `string (enum)` | No | Supported diet enum | Dietary pattern. |
+| `serviceTrack` | `string (enum)` | No | `nutrition_only` | `workouts_only` | `nutrition_and_workouts` | Coaching track. |
+| `selectedWorkoutDays` | `Array<integer>` | No | 0..6 | Selected weekly workout days. |
+| `healthConfirmed` | `boolean` | No | boolean | Health clearance confirmation. |
+
+### Request Body Example
+```json
+{
+  "name": "Preview User",
+  "age": 30,
+  "sex": "male",
+  "weight": 82,
+  "height": 178,
+  "goal": "lose",
+  "targetWeight": 75,
+  "activity": "moderate",
+  "dietType": "balanced",
+  "serviceTrack": "nutrition_and_workouts",
+  "selectedWorkoutDays": [
+    1,
+    3,
+    5
+  ],
+  "healthConfirmed": true
+}
+```
+
+---
+
+### Sign In / Register with Google OIDC
+
+Verifies Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/auth/oauth/google`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/google`
+- **Auth:** Public (`No Auth`)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `idToken` | `string (JWT)` | Yes | Google OIDC ID token | Signed Google ID token from mobile Google Sign-In. |
+| `deviceId` | `string` | No | max 120 chars | Client device identifier. |
+| `name` | `string` | No | max 100 chars | Optional display name fallback. |
+
+### Request Body Example
+```json
+{
+  "idToken": "<google-oidc-id-token>",
+  "deviceId": "{{deviceId}}",
+  "name": "CuraFit User"
+}
+```
+
+---
+
+### Sign In / Register with Apple OIDC
+
+Verifies Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/auth/oauth/apple`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/apple`
+- **Auth:** Public (`No Auth`)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `identityToken` | `string (JWT)` | Yes | Apple OIDC identity token | Signed Apple identity token from Sign in with Apple. |
+| `authorizationCode` | `string` | No | Optional first-login code | Exchanged for encrypted Apple refresh token for GDPR revocation. |
+| `fullName` | `string` | No | max 100 chars | Optional display name sent on first Apple login. |
+| `deviceId` | `string` | No | max 120 chars | Client device identifier. |
+
+### Request Body Example
+```json
+{
+  "identityToken": "<apple-oidc-identity-token>",
+  "authorizationCode": "<optional-auth-code>",
+  "fullName": "CuraFit User",
+  "deviceId": "{{deviceId}}"
+}
+```
+
+---
+
+### Update Profile Settings (profile_update)
+
+Updates non-regenerative profile metadata such as display name or workout UI mode.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "profile_update" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `profile_update`. |
+| `payload.name` | `string` | No | max 100 chars | Updated display name. |
+| `payload.workoutUiMode` | `string (enum)` | No | `simple` | `pro` | Workout logger UI mode. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "profile_update",
+  "payload": {
+    "name": "Updated Name",
+    "workoutUiMode": "pro"
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — profile_update Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "profile_update",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "profile_update",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Activate Comeback Protocol (comeback_restart)
+
+Activates a safe 24h deload or 7-day volume ramp-in after a training gap, optionally updating current weight.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "comeback_restart" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `comeback_restart`. |
+| `payload.mode` | `string (enum)` | Yes | `24h_deload` | `7d_ramp` | Comeback protocol mode. |
+| `payload.currentWeightKg` | `number` | No | 35..250 | Optional updated body weight in kg. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "comeback_restart",
+  "payload": {
+    "mode": "7d_ramp",
+    "currentWeightKg": 81.2
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — comeback_restart Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "comeback_restart",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "comeback_restart",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+## 14. Nutrition Tools — Pantry, Grocery, Favorites, Barcode & Fasting
+
+Pantry catalog & meal matching, plan grocery lists, favorites, copy meal, EAN barcode lookup/submit, and intermittent fasting / Ramadan timer.
+
+### Get Pantry Ingredient Catalog
+
+Returns all pantry ingredient keys grouped by category with English & Arabic labels.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/pantry/catalog`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/pantry/catalog`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/pantry/catalog`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/pantry/catalog`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Find Pantry Meal Alternatives
+
+Matches user pantry ingredients against safe meal templates.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/pantry/alternatives`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/pantry/alternatives`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/pantry/alternatives`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/pantry/alternatives`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `selectedIngredients` | `Array<string>` | Yes | 1..40 pantry keys | Selected pantry ingredient keys. |
+| `slot` | `string (enum)` | No | `breakfast` | `lunch` | `dinner` | `snack` | Optional meal slot filter. |
+| `limit` | `integer` | No | 1..30 (default 15) | Maximum matched meals returned. |
+
+### Request Body Example
+```json
+{
+  "selectedIngredients": [
+    "eggs",
+    "fava",
+    "olive",
+    "tomato"
+  ],
+  "limit": 15
+}
+```
+
+---
+
+### Get Plan Grocery List
+
+Aggregated shopping list for the active nutrition plan with checked item state.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/plans/{{activePlanId}}/grocery-list?days=all`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/plans/{{activePlanId}}/grocery-list?days=all`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/plans/{{activePlanId}}/grocery-list?days=all`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/plans/{{activePlanId}}/grocery-list?days=all`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Toggle Grocery Item (grocery_toggle)
+
+Persists checked/unchecked state for a grocery list item.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "grocery_toggle" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `grocery_toggle`. |
+| `payload.planId` | `string` | Yes | Active plan ID | Nutrition plan identifier. |
+| `payload.ingredientKey` | `string` | Yes | Non-empty string | Grocery ingredient key. |
+| `payload.checked` | `boolean` | Yes | boolean | Checked state. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "grocery_toggle",
+  "payload": {
+    "planId": "{{activePlanId}}",
+    "ingredientKey": "egg",
+    "checked": true
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — grocery_toggle Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "grocery_toggle",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "grocery_toggle",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### List Food Favorites
+
+Returns pinned/favorite foods for quick logging.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/foods/favorites?offset=0&limit=40`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/foods/favorites?offset=0&limit=40`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/foods/favorites?offset=0&limit=40`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/foods/favorites?offset=0&limit=40`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Toggle Food Favorite (food_favorite)
+
+Pins or unpins a food item as a user favorite.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "food_favorite" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `food_favorite`. |
+| `payload.op` | `string (enum)` | Yes | `add` | `remove` | Favorite operation. |
+| `payload.item` | `object` | Yes | Food item descriptor | Food item to pin or remove. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "food_favorite",
+  "payload": {
+    "op": "add",
+    "item": {
+      "name": "Boiled Eggs",
+      "source": "ingredient",
+      "key": "egg",
+      "grams": 120
+    }
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — food_favorite Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_favorite",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_favorite",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Copy Meals from Previous Day (copy_meal)
+
+Copies logged food entries from a source date/slot into a target date/slot.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "copy_meal" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `copy_meal`. |
+| `payload.fromDate` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Source log date. |
+| `payload.toDate` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Destination log date. |
+| `payload.slot` | `string (enum)` | No | `breakfast` | `lunch` | `dinner` | `snack` | Optional meal slot filter. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "copy_meal",
+  "payload": {
+    "fromDate": "{{todayDate}}",
+    "toDate": "{{todayDate}}",
+    "slot": "breakfast"
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — copy_meal Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "copy_meal",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "copy_meal",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Lookup Packaged Food by Barcode
+
+Looks up a packaged food product by EAN/UPC barcode (D1 cache + OpenFoodFacts fallback).
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/foods/barcode/{{sampleBarcode}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/foods/barcode/{{sampleBarcode}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/foods/barcode/{{sampleBarcode}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/foods/barcode/{{sampleBarcode}}`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Submit User Barcode Food
+
+Contributes a packaged food barcode item to D1.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/foods/barcode`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/foods/barcode`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/foods/barcode`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/foods/barcode`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `barcode` | `string` | Yes | 8..14 numeric digits | EAN/UPC barcode string. |
+| `nameEn` | `string` | Yes | 2..120 chars | English product name. |
+| `brand` | `string` | No | max 80 chars | Brand name. |
+| `servingSizeGrams` | `number` | No | 1..2000 | Default serving size in grams. |
+| `valuesPer100g` | `object` | Yes | `{ energy, protein, carbs, fat }` | Nutrition facts per 100g. |
+
+### Request Body Example
+```json
+{
+  "barcode": "6221000000001",
+  "nameEn": "Greek Yogurt Plain",
+  "brand": "Local Dairy",
+  "servingSizeGrams": 170,
+  "valuesPer100g": {
+    "energy": 97,
+    "protein": 9,
+    "carbs": 3.6,
+    "fat": 5
+  }
+}
+```
+
+---
+
+### Get Fasting / Ramadan Timer State
+
+Returns active intermittent fasting or Ramadan window progress.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/nutrition/fasting-state`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/nutrition/fasting-state`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/nutrition/fasting-state`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/nutrition/fasting-state`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Start / End Fasting Log (fasting_log)
+
+Starts or completes a fasting session log.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "fasting_log" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `fasting_log`. |
+| `payload.op` | `string (enum)` | Yes | `start` | `end` | Fasting session action. |
+| `payload.protocol` | `string` | No | `16_8` | `14_10` | `18_6` | `ramadan` | Fasting protocol identifier. |
+| `payload.targetHours` | `number` | No | 8..24 | Target fast duration in hours. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "fasting_log",
+  "payload": {
+    "op": "start",
+    "protocol": "16_8",
+    "targetHours": 16
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — fasting_log Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "fasting_log",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "fasting_log",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Toggle Ramadan Mode (ramadan_mode)
+
+Enables or disables Ramadan Iftar/Suhoor meal slot remapping.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "ramadan_mode" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `ramadan_mode`. |
+| `payload.enabled` | `boolean` | Yes | boolean | Whether Ramadan mode is enabled. |
+| `payload.iftarTime` | `string (HH:mm)` | No | `00:00`..`23:59` | Local Iftar start time. |
+| `payload.suhoorCutoffTime` | `string (HH:mm)` | No | `00:00`..`23:59` | Local Suhoor cutoff time. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "ramadan_mode",
+  "payload": {
+    "enabled": true,
+    "iftarTime": "18:15",
+    "suhoorCutoffTime": "04:00"
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — ramadan_mode Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "ramadan_mode",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "ramadan_mode",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+## 15. Workouts Insights, PRs, Analytics, Measurements & Widgets
+
+Workout UI modes, ad-hoc exercises, PR engine, multi-series progress analytics, weekly wrapped, body measurements, streak freeze, and home-screen widget snapshots.
+
+### Set Workout UI Mode (workout_ui_mode)
+
+Switches between simple (bodyweight/rep-focused) and pro (load + RIR) workout logging.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "workout_ui_mode" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `workout_ui_mode`. |
+| `payload.mode` | `string (enum)` | Yes | `simple` | `pro` | Target workout logging UI mode. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "workout_ui_mode",
+  "payload": {
+    "mode": "pro"
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — workout_ui_mode Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "workout_ui_mode",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "workout_ui_mode",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Add Ad-Hoc Exercise (ad_hoc_exercise)
+
+Adds a bonus exercise to a specific workout date without mutating baseline progression.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "ad_hoc_exercise" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `ad_hoc_exercise`. |
+| `payload.date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Workout session date. |
+| `payload.exerciseId` | `string` | Yes | Catalog exercise ID | Exercise ID from `/v1/exercises`. |
+| `payload.sets` | `Array<object>` | Yes | 1..12 set objects `{ reps, kg, rir?, isWarmup? }` | Logged ad-hoc sets. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "ad_hoc_exercise",
+  "payload": {
+    "date": "{{todayDate}}",
+    "exerciseId": "{{sampleCatalogExerciseId}}",
+    "sets": [
+      {
+        "reps": 12,
+        "kg": 10
+      }
+    ]
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — ad_hoc_exercise Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "ad_hoc_exercise",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "ad_hoc_exercise",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Get Workout Personal Records (PRs)
+
+Returns best weight, estimated 1RM, and session volume per exercise (with assisted-exercise load inversion).
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/workouts/prs`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/workouts/prs`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/workouts/prs`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/workouts/prs`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Get Progress Analytics
+
+Returns weight moving average trend, calorie adherence, training volume, and exercise e1RM series.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/progress/analytics?range=30d`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/analytics?range=30d`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/analytics?range=30d`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/analytics?range=30d`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Get Weekly Wrapped Recap
+
+Returns shareable weekly recap metrics.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/progress/weekly-wrapped`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/weekly-wrapped`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/weekly-wrapped`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/weekly-wrapped`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Get Home Widget Snapshot
+
+Ultra-lightweight (< 1.5 KB) snapshot for Android Glance & iOS WidgetKit with ETag support.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/widgets/snapshot`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/widgets/snapshot`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/widgets/snapshot`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/widgets/snapshot`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### List Body Measurements
+
+Paginated waist, chest, hips, arms, thighs, and neck measurements.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/measurements?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/measurements?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/measurements?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/measurements?offset=0&limit=30`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Log Body Measurement (body_measurement)
+
+Logs a daily body circumference measurement record.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "body_measurement" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `body_measurement`. |
+| `payload.date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Measurement date. |
+| `payload.waistCm` | `number` | No | 40..220 | Waist circumference in cm. |
+| `payload.chestCm` | `number` | No | 50..200 | Chest circumference in cm. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "body_measurement",
+  "payload": {
+    "date": "{{todayDate}}",
+    "waistCm": 84.5,
+    "chestCm": 101
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — body_measurement Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "body_measurement",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "body_measurement",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Use Streak Freeze (streak_freeze)
+
+Consumes one streak freeze token (max 1 per 7 days) to protect the nutrition streak.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "streak_freeze" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `streak_freeze`. |
+| `payload.date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Date to protect with a streak freeze token. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "streak_freeze",
+  "payload": {
+    "date": "{{todayDate}}"
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — streak_freeze Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "streak_freeze",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "streak_freeze",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+## 16. Media (R2), Push, Billing & Deferred AI Phase
+
+Worker-proxied HMAC-signed R2 avatars & progress photos, FCM/APNs push tokens, StoreKit/Play Billing verification & webhooks, and deferred AI phase 501 placeholders.
+
+### Create Profile Avatar Upload URL
+
+Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PNG/WebP, max 2 MB) into Cloudflare R2.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/profile/avatar`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/profile/avatar`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/profile/avatar`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/profile/avatar`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `contentType` | `string (enum)` | Yes | `image/jpeg` | `image/png` | `image/webp` | Avatar MIME type. |
+| `byteSize` | `integer` | Yes | 1..2097152 | Declared file size in bytes. |
+
+### Request Body Example
+```json
+{
+  "contentType": "image/jpeg",
+  "byteSize": 180000
+}
+```
+
+---
+
+### Delete Profile Avatar
+
+Deletes the signed-in user avatar from Cloudflare R2.
+
+### Endpoint Info
+- **Method:** `DELETE`
+- **URL:** `{{baseUrl}}/v1/profile/avatar`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/profile/avatar`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/profile/avatar`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/profile/avatar`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### List Progress Photos
+
+Lists progress photos with short-lived Worker-signed GET URLs (always free to read/delete).
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/progress/photos?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/photos?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/photos?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/photos?offset=0&limit=30`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Create Progress Photo Upload URL
+
+Issues a short-lived HMAC-signed PUT URL for private R2 upload.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/progress/photos/upload-url`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/photos/upload-url`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/photos/upload-url`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/photos/upload-url`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `contentType` | `string (enum)` | Yes | `image/jpeg` | `image/png` | `image/webp` | Photo MIME type. |
+| `byteSize` | `integer` | Yes | 1..5242880 | Declared file size in bytes (max 5 MB). |
+| `pose` | `string (enum)` | Yes | `front` | `side` | `back` | Progress photo pose. |
+| `date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Photo date. |
+| `weightKg` | `number` | No | 35..250 | Optional weight snapshot. |
+
+### Request Body Example
+```json
+{
+  "contentType": "image/jpeg",
+  "byteSize": 250000,
+  "pose": "front",
+  "date": "{{todayDate}}",
+  "weightKg": 79.5
+}
+```
+
+---
+
+### Confirm Progress Photo Upload
+
+Confirms uploaded R2 object and persists metadata in D1.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/progress/photos/confirm`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/photos/confirm`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/photos/confirm`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/photos/confirm`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `photoId` | `string` | Yes | UUID from upload-url | Photo ID issued by upload-url. |
+| `objectKey` | `string` | Yes | User-scoped R2 key | R2 object key issued by upload-url. |
+| `pose` | `string (enum)` | Yes | `front` | `side` | `back` | Progress photo pose. |
+| `date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Photo date. |
+
+### Request Body Example
+```json
+{
+  "photoId": "photo-id",
+  "objectKey": "users/user-id/photos/photo-id.jpg",
+  "pose": "front",
+  "date": "{{todayDate}}"
+}
+```
+
+---
+
+### Delete Progress Photo
+
+Deletes a progress photo from Cloudflare R2 and D1 (always permitted even after Pro downgrade).
+
+### Endpoint Info
+- **Method:** `DELETE`
+- **URL:** `{{baseUrl}}/v1/progress/photos/{{samplePhotoId}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/photos/{{samplePhotoId}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/photos/{{samplePhotoId}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/photos/{{samplePhotoId}}`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Upload Binary to Signed Media URL
+
+Worker-proxied HMAC-signed binary upload into private Cloudflare R2 with magic-byte verification.
+
+### Endpoint Info
+- **Method:** `PUT`
+- **URL:** `{{baseUrl}}/v1/media/signed/{{signedMediaToken}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/media/signed/{{signedMediaToken}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/media/signed/{{signedMediaToken}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/media/signed/{{signedMediaToken}}`
+- **Auth:** Public (`No Auth`)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must match the MIME type embedded in the signed token |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Download Private Media via Signed URL
+
+Streams a private avatar or progress photo from Cloudflare R2 after verifying the short-lived HMAC signature.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/media/signed/{{signedMediaToken}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/media/signed/{{signedMediaToken}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/media/signed/{{signedMediaToken}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/media/signed/{{signedMediaToken}}`
+- **Auth:** Public (`No Auth`)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Register Push Token
+
+Registers or refreshes an FCM/APNs push token for Cron reminder delivery.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/devices/push-token`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/devices/push-token`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/devices/push-token`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/devices/push-token`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `deviceId` | `string` | Yes | max 120 chars | Client device ID. |
+| `platform` | `string (enum)` | Yes | `android` | `ios` | Mobile push platform. |
+| `token` | `string` | Yes | 10..4096 chars | FCM or APNs registration token. |
+| `locale` | `string` | No | e.g. `en`, `ar-EG` | Preferred push notification locale. |
+
+### Request Body Example
+```json
+{
+  "deviceId": "{{deviceId}}",
+  "platform": "android",
+  "token": "fcm-device-token-sample",
+  "locale": "en"
+}
+```
+
+---
+
+### Unregister Push Token
+
+Removes a device push token.
+
+### Endpoint Info
+- **Method:** `DELETE`
+- **URL:** `{{baseUrl}}/v1/devices/push-token?deviceId={{deviceId}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/devices/push-token?deviceId={{deviceId}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/devices/push-token?deviceId={{deviceId}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/devices/push-token?deviceId={{deviceId}}`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Get Subscription Offerings
+
+Returns StoreKit/Play Billing product offerings and trial eligibility.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/subscriptions/offerings?platform=android&region=egypt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/subscriptions/offerings?platform=android&region=egypt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/subscriptions/offerings?platform=android&region=egypt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/subscriptions/offerings?platform=android&region=egypt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+---
+
+### Verify Store Subscription
+
+Verifies an Apple StoreKit or Google Play purchase and activates Pro entitlements.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/subscriptions/verify`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/subscriptions/verify`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/subscriptions/verify`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/subscriptions/verify`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `platform` | `string (enum)` | Yes | `android` | `ios` | Store platform. |
+| `productId` | `string` | Yes | Configured SKU ID | Store subscription product ID. |
+| `purchaseToken` | `string` | No | Required for `android` | Google Play purchase token. |
+| `signedTransactionInfo` | `string` | No | Required for `ios` | Apple StoreKit 2 JWS transaction. |
+
+### Request Body Example
+```json
+{
+  "platform": "android",
+  "productId": "curafit_pro.monthly",
+  "purchaseToken": "test-purchase-token"
+}
+```
+
+---
+
+### Restore Store Subscriptions
+
+Reconciles prior store purchases and restores active entitlements.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/subscriptions/restore`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/subscriptions/restore`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/subscriptions/restore`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/subscriptions/restore`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `platform` | `string (enum)` | Yes | `android` | `ios` | Store platform. |
+| `tokens` | `Array<string>` | No | Optional purchase tokens/transactions | Active store purchase tokens to reconcile. |
+
+### Request Body Example
+```json
+{
+  "platform": "android",
+  "tokens": []
+}
+```
+
+---
+
+### Apple Store Server Webhook (Public)
+
+Receives Apple App Store Server Notifications events.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/webhooks/apple`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/webhooks/apple`
+- **Auth:** Public (`No Auth`)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `notificationType` | `string` | No | e.g. `DID_RENEW`, `EXPIRED` | App Store Server Notification type (or inside `signedPayload` JWS). |
+| `data` | `object` | No | `{ originalTransactionId, expiresDate? }` | Decoded notification payload. |
+
+### Request Body Example
+```json
+{
+  "notificationType": "DID_RENEW",
+  "data": {
+    "originalTransactionId": "tx-123"
+  }
+}
+```
+
+---
+
+### Google Play RTDN Webhook (Public)
+
+Receives Google Play Real-Time Developer Notifications.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/webhooks/google-play`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/webhooks/google-play`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/webhooks/google-play`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/webhooks/google-play`
+- **Auth:** Public (`No Auth`)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `subscriptionNotification` | `object` | No | `{ notificationType, purchaseToken }` | Direct RTDN payload (or base64 inside Pub/Sub `message.data`). |
+
+### Request Body Example
+```json
+{
+  "subscriptionNotification": {
+    "notificationType": 2,
+    "purchaseToken": "token-123"
+  }
+}
+```
+
+---
+
+### AI Meal Parse (Deferred — 501)
+
+Reserved for Final AI Phase; returns 501 FEATURE_DEFERRED_TO_AI_PHASE.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/nutrition/ai-parse`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/nutrition/ai-parse`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/nutrition/ai-parse`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/nutrition/ai-parse`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `text` | `string` | Yes | 1..500 chars | Natural language meal description. |
+
+### Request Body Example
+```json
+{
+  "text": "2 boiled eggs and brown toast"
+}
+```
+
+---
+
+### AI Coach Chat (Deferred — 501)
+
+Reserved for Final AI Phase; returns 501 FEATURE_DEFERRED_TO_AI_PHASE.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/coaching/chat`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/coaching/chat`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/coaching/chat`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/coaching/chat`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `message` | `string` | Yes | 1..1000 chars | Coaching question text. |
+
+### Request Body Example
+```json
+{
+  "message": "How can I increase protein at breakfast?"
+}
+```
+
+---
+
+### AI Coach Chat History (Deferred — 501)
+
+Reserved for Final AI Phase; returns 501 FEATURE_DEFERRED_TO_AI_PHASE.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/coaching/chat/history`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/coaching/chat/history`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/coaching/chat/history`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/coaching/chat/history`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
 
 ---
 

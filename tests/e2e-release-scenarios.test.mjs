@@ -345,10 +345,10 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
     await t.test('E06 (F12, F13, F18): hypertension enforces verified sodium <= 2300mg (never null), lactose/favism exclude contraindicated foods, diabetes blocked, no false specialist claims', async () => {
       const baseDraft = { name: 'Clinical Test', age: 35, weight: 84, height: 174, sex: 'male', goal: 'lose', serviceTrack: 'nutrition_and_workouts', dietType: 'balanced', selectedWorkoutDays: [1, 3, 5] };
 
-      // 1. Unsupported clinical disease (diabetes) is blocked from autonomous planning
-      const eligDiabetes = evaluateEligibilityForTest({ ...baseDraft, diseases: ['diabetes'] });
-      assert.equal(eligDiabetes.status, 'requires_review');
-      assert.throws(() => generate(empty(), { ...baseDraft, diseases: ['diabetes'] }), e => e.code === 'CLINICAL_REVIEW_REQUIRED' && /specialist review/i.test(e.message));
+      // 1. Unsupported severe clinical condition (heart_failure) is blocked from autonomous planning
+      const eligSevere = evaluateEligibilityForTest({ ...baseDraft, diseases: ['heart_failure'] });
+      assert.equal(eligSevere.status, 'requires_review');
+      assert.throws(() => generate(empty(), { ...baseDraft, diseases: ['heart_failure'] }), e => e.code === 'CLINICAL_REVIEW_REQUIRED' && /specialist review/i.test(e.message));
 
       // 2. Hypertension + balanced diet: every generated day has non-null reference sodium <= 2300 mg
       const htnState = generate(empty(), { ...baseDraft, diseases: ['hypertension'], dietType: 'balanced' }, 'e06-htn');
@@ -780,7 +780,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       const cap = await unwrap(capRes);
       assert.equal(cap.apiVersion, '1');
       assert.ok(cap.features.includes('kmm_bootstrap'));
-      assert.ok(cap.features.includes('offline_sync_v2'));
+      assert.ok(cap.features.includes('offline_sync'));
       assert.ok(!cap.features.includes('simulation_90d'));
     });
 

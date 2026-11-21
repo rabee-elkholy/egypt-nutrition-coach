@@ -8,17 +8,17 @@
     "moduleResolution": "bundler",
     "lib": [
       "ES2023",
-      "DOM"
+      "WebWorker"
     ],
     "skipLibCheck": true
   },
   "files": [
-    "coaching-api-client.mjs",
-    "coaching-page-lifecycle.mjs",
     "coaching-time.mjs",
     "types/coaching.d.ts",
     "coaching-evidence.mjs",
     "coaching-priority.mjs",
-    "coaching-summary.mjs"
+    "coaching-summary.mjs",
+    "coaching-shared.mjs",
+    "coaching-error.mjs"
   ]
 }

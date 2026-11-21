@@ -1,4 +1,4 @@
-// Evidence-backed coaching agreements. No inference of delivery, reading or efficacy.
+// Evidence-backed coaching agreements. Pure-English baseline with canonical codes for KMM localization.
 import {localDate,dateOffset} from './coaching-shared.mjs';
 import {apiError} from './coaching-error.mjs';
 
@@ -8,16 +8,16 @@ export const BARRIERS={
 };
 const terminal=new Set(['completed','declined','superseded']);
 const advice={
- time:['خلّينا نقلل عبء التجهيز.','اختار وجبة مسموحة وسهلة من بدائل خطتك وجهّز مكوناتها مسبقًا.'],
- budget:['نسهّل الالتزام بميزانيتك.','راجع ميزانية الأكل والبدائل المسموحة؛ ما تغيّرش قيودك الصحية لتقليل التكلفة.'],
- taste:['الطعم مهم للاستمرار.','جرّب بديلًا مسموحًا لوجبة مش مناسبة لذوقك، وسجّل هل البديل أفضل.'],
- hunger:['الجوع اللي سجلته يستحق المتابعة.','سجّل الجوع والطاقة خلال الأيام الجاية؛ هنوقف اقتراح خفض السعرات مع الجوع المرتفع الحديث.'],
- eating_out:['نرتب التسجيل مع الأكل خارج البيت.','سجّل المكونات والحصة بقدر المتاح، واعتبر الكميات غير المقاسة تقديرية.'],
- logging:['نسهّل التسجيل قبل تغيير الخطة.','ابدأ بتسجيل وجبة واحدة فعلية؛ أكد اكتمال اليوم فقط بعد تسجيل كل ما أكلته.'],
- fatigue:['نراجع مجهودك حسب حالتك الحالية.','حدّث النوم والتعب والألم في «حالتي» قبل اقتراح تعديل التدريب.'],
- pain:['الألم يحتاج تقييمًا قبل التدرج.','أوقف الحركة المؤلمة وحدّث «حالتي»؛ الألم المستمر أو المتزايد يحتاج تقييم مختص.'],
- equipment:['نختار حركة تناسب المعدات المتاحة.','استخدم بدائل التمرين المسموحة أو حدّث المعدات؛ راجع الخطة الناتجة قبل التنفيذ.'],
- motivation:['نختار خطوة صغيرة تقدر تستمر عليها.','حدد موعدًا واقعيًا للجلسة القادمة، من غير مضاعفة المجهود لتعويض الغياب.']
+ time:['Simplify meal prep load.','Choose an easy allowed alternative from your plan and prep ingredients ahead of time.'],
+ budget:['Make your plan easier on your budget.','Review budget-friendly allowed alternatives without removing your health constraints.'],
+ taste:['Enjoyment supports consistency.','Try an allowed swap for any meal you dislike and report whether it works better.'],
+ hunger:['Logged hunger deserves attention.','Continue logging hunger and energy over the next few days; calorie cuts are paused while hunger stays elevated.'],
+ eating_out:['Handle dining out without stress.','Log ingredients and estimated portions honestly, marking unmeasured entries as approximate.'],
+ logging:['Make logging frictionless before changing targets.','Start by logging one actual meal today; mark the day complete only after logging all intake.'],
+ fatigue:['Match training load to current readiness.','Update sleep, fatigue, and pain in your daily recovery check-in before adjusting workout effort.'],
+ pain:['Address pain before progressing.','Stop any painful movement and update your recovery check-in; persistent or worsening pain requires specialist evaluation.'],
+ equipment:['Match exercises to available equipment.','Use safe exercise alternatives or update your home equipment settings in Profile.'],
+ motivation:['Pick one small repeatable step.','Schedule a realistic next session without doubling effort to compensate for missed days.']
 };
 const fail=(code,message,status=400,extra={})=>{throw apiError(code,message,{status,...extra});};
 const active=c=>!terminal.has(c.status);
@@ -28,8 +28,6 @@ export function currentFeedback(s,domain,today){
  const recent=(s.coachingFeedback||[]).filter(f=>f.domain===domain&&f.date<=today&&f.date>=dateOffset(today,-2)&&f.context===coachingContext(s,domain)).sort((a,b)=>a.at.localeCompare(b.at));
  const latest=recent.at(-1);if(!latest)return undefined;
  const result={...latest,metricEvidence:{}};
- // Optional omissions are not reassessments. Each rating keeps its own source
- // and original freshness window, even when a newer report changes the barrier.
  for(const key of ['hunger','energy','satiety']){
   const observed=recent.findLast(f=>Number.isInteger(f[key])&&f[key]>=1&&f[key]<=5);
   result[key]=observed?.[key]??null;
@@ -52,11 +50,11 @@ export function handleCoachingCommand(s,action,p,now){
   const feedback={id:crypto.randomUUID(),date:today,at,domain:p.domain,barrier:p.barrier,hunger:p.hunger??null,satiety:p.satiety??null,energy:p.energy??null,context:coachingContext(s,p.domain)};
   s.coachingFeedback.push(feedback);
   const existing=s.coachingCases.find(c=>c.domain===p.domain&&active(c)&&c.context===feedback.context&&c.barrier===p.barrier&&c.status!=='question'&&(c.status!=='proposed'||Date.parse(c.createdAt)+7*86400000>now));
-  if(existing)return s; // A repeated report is evidence, not a second agreement.
+  if(existing)return s;
   for(const c of s.coachingCases.filter(c=>c.domain===p.domain&&active(c))){c.status='superseded';c.closedAt=at;}
   if(p.barrier==='none')return s;
-  const [title,step]=p.domain==='training'&&p.barrier==='time'?['وقت الجلسة محتاج تنظيم.','راجع موعد الجلسة والمدة المتاحة في بياناتك؛ أي تغيير للبرنامج يحتاج خطة محدثة، ولم نقلل تمرينك تلقائيًا.']:advice[p.barrier];
-  s.coachingCases.push({id:crypto.randomUUID(),domain:p.domain,date:today,createdAt:at,context:feedback.context,barrier:p.barrier,status:'proposed',title,step,evidence:{...evidence(s,p.domain,today),feedbackId:feedback.id},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
+  const [title,step]=p.domain==='training'&&p.barrier==='time'?['Adjust session timing to fit your schedule.','Review your session duration and training days in Profile; workout duration is not reduced automatically without your confirmation.']:advice[p.barrier];
+  s.coachingCases.push({id:crypto.randomUUID(),code:'COACHING_BARRIER_AGREEMENT',params:{domain:p.domain,barrier:p.barrier},domain:p.domain,date:today,createdAt:at,context:feedback.context,barrier:p.barrier,status:'proposed',title,step,evidence:{...evidence(s,p.domain,today),feedbackId:feedback.id},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
   return s;
  }
  const c=s.coachingCases.find(c=>c.id===p.id);
@@ -80,7 +78,7 @@ export function handleCoachingCommand(s,action,p,now){
   if(!['helped','not_helped','not_tried'].includes(p.outcome))fail('COACHING_OUTCOME_INVALID','outcome must be one of helped, not_helped, or not_tried.');
   if(c.reviewOn>today&&p.outcome==='helped')fail('COACHING_REVIEW_DATE_NOT_REACHED','Cannot confirm helped outcome before the scheduled coaching review date.',409,{params:{reviewOn:c.reviewOn}});
   c.status='completed';c.closedAt=at;c.outcome={value:p.outcome,at,source:'user_report'};
-  if(p.outcome!=='helped')s.coachingCases.push({id:crypto.randomUUID(),domain:c.domain,date:today,createdAt:at,context:c.context,priorCaseId:c.id,barrier:null,status:'question',title:p.outcome==='not_tried'?'الخطوة لم تتجرب؛ نختار حاجة أسهل؟':'قلت إن الخطوة لم تساعدك؛ نراجع السبب قبل تكرارها.',step:'سجّل العائق الحالي علشان نختار خطوة مناسبة؛ مش هنعتبر عدم التجربة فشلًا.',evidence:{source:'user_report',outcome:p.outcome,caseId:c.id,basedOnRevision:s.revision+1},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
+  if(p.outcome!=='helped')s.coachingCases.push({id:crypto.randomUUID(),code:'COACHING_BARRIER_QUESTION',params:{domain:c.domain,priorOutcome:p.outcome},domain:c.domain,date:today,createdAt:at,context:c.context,priorCaseId:c.id,barrier:null,status:'question',title:p.outcome==='not_tried'?'Step was not tried yet; want to pick an easier one?':'You reported this step did not help; let us review the barrier first.',step:'Select your current barrier so we can pick a realistic step; skipping is never treated as failure.',evidence:{source:'user_report',outcome:p.outcome,caseId:c.id,basedOnRevision:s.revision+1},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
   return s;
  }
  fail('COACHING_COMMAND_UNKNOWN','Unknown coaching command action.');
@@ -97,14 +95,14 @@ export function reconcileCoaching(s,now){
   if(dates.length<2||domain==='nutrition'&&!s.active_plan_id||domain==='training'&&!s.workoutPlan)continue;
   if(s.coachingCases.some(c=>c.domain===domain&&c.context===coachingContext(s,domain)&&(active(c)&&!expired(c,now)||c.date>=dateOffset(today,-6))))continue;
   for(const c of s.coachingCases.filter(c=>c.domain===domain&&active(c)&&expired(c,now))){c.status='superseded';c.closedAt=at;}
-  s.coachingCases.push({id:crypto.randomUUID(),domain,date:today,createdAt:at,context:coachingContext(s,domain),barrier:null,status:'question',title:domain==='nutrition'?'في أيام مسجلة أكلك كان مختلف عن الخطة.':'في جلستين أو أكتر سجلتهم فائتين الأسبوع ده.',step:'إيه السبب الأساسي؟ سجّل العائق علشان نختار خطوة مناسبة، من غير افتراض السبب.',evidence:{dates,source:'recorded_logs',basedOnRevision:s.revision+1},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
+  s.coachingCases.push({id:crypto.randomUUID(),code:'COACHING_BARRIER_QUESTION',params:{domain,datesCount:dates.length},domain,date:today,createdAt:at,context:coachingContext(s,domain),barrier:null,status:'question',title:domain==='nutrition'?'Several logged days differed from your meal plan targets.':'Two or more scheduled sessions were missed this week.',step:'Tell us the main barrier so we can choose a realistic step without guessing.',evidence:{dates,source:'recorded_logs',basedOnRevision:s.revision+1},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
  }
  return s;
 }
 
 export function coachingInbox(s,now){
  const today=localDate(now,s.profile?.timezone||'Africa/Cairo');
- const items=(s.coachingCases||[]).filter(c=>active(c)&&c.context===coachingContext(s,c.domain)).map(c=>({...c,reviewDue:c.status==='accepted'&&c.reviewOn<=today,expired:expired(c,now),deliveryStatus:'NOT_SENT',readStatus:c.acknowledgedAt?'ACKNOWLEDGED':'UNKNOWN'}));
+ const items=(s.coachingCases||[]).filter(c=>active(c)&&c.context===coachingContext(s,c.domain)).map(c=>({...c,code:c.code||(c.status==='question'?'COACHING_BARRIER_QUESTION':'COACHING_BARRIER_AGREEMENT'),reviewDue:c.status==='accepted'&&c.reviewOn<=today,expired:expired(c,now),deliveryStatus:'NOT_SENT',readStatus:c.acknowledgedAt?'ACKNOWLEDGED':'UNKNOWN'}));
  items.sort((a,b)=>Number(b.barrier==='pain')-Number(a.barrier==='pain')||Number(b.reviewDue)-Number(a.reviewDue)||b.createdAt.localeCompare(a.createdAt));
  return {date:today,revision:s.revision,channel:'in_app',pushConfigured:false,items};
 }

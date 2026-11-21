@@ -366,6 +366,11 @@ EXCLUSIONS.push(
   ),
   row("quinoa", "الكينوا والفريك", "النشويات", ["quinoa"], ["كينوا", "فريك", "quinoa", "freekeh"]),
   row("avocado", "الأفوكادو", "الفاكهة", ["avocado"], ["افوكادو", "avocado"]),
+  row("gluten", "الجلوتين والقمح", "النشويات", ["bread", "wholebread", "toast", "pasta", "bulgur", "couscous", "tabbouleh", "fattoush"], ["جلوتين", "قمح", "gluten", "wheat"]),
+  row("tree_nuts", "المكسرات الشجرية", "المكسرات والإضافات", ["almonds", "walnuts", "cashews"], ["مكسرات", "لوز", "عين جمل", "كاجو", "tree nuts"]),
+  row("red_meat", "اللحوم الحمراء", "البروتين والبقول", ["beef", "lamb", "shawarma_beef"], ["لحم", "لحوم", "beef", "lamb", "red meat"]),
+  row("poultry", "الدواجن", "البروتين والبقول", ["chicken", "chickenthigh", "chickenboiled", "turkey", "shawarma_chicken"], ["فراخ", "دجاج", "ديك رومي", "poultry", "chicken", "turkey"]),
+  row("spicy", "الأطعمة الحارة", "المكسرات والإضافات", [], ["حار", "شطة", "فلفل حار", "spicy", "chili"])
 );
 export function expandedKeys(p) {
   return [
@@ -373,7 +378,7 @@ export function expandedKeys(p) {
       ...(p.excludedKeys || []),
       ...((p.excludedKeys || []).includes("tomato") ? ["tomatocooked"] : []),
       ...(p.excludedGroups || []).flatMap(
-        (id) => EXCLUSIONS.find((g) => g.id === id)?.keys || [],
+        (id) => EXCLUSIONS.find((g) => g.id === String(id).toLowerCase())?.keys || [],
       ),
     ]),
   ];

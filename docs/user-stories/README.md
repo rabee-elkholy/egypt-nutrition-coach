@@ -1,6 +1,6 @@
-# CuraFit Mobile App (KMM Android & iOS) — Production V2 User Stories & API Specification
+# CuraFit Mobile App (KMM Android & iOS) — Production User Stories & API Specification
 
-> **Document Status:** Production V2 Complete & Verified on Jira (Project `KAN`)
+> **Document Status:** Production Complete & Verified on Jira (Project `KAN`)
 > **Jira Board:** [https://abdulrahman-alaa.atlassian.net/jira/software/projects/KAN/boards/1?filter=&groupBy=epic](https://abdulrahman-alaa.atlassian.net/jira/software/projects/KAN/boards/1?filter=&groupBy=epic)
 > **Scope:** Full Production Scope (No MVP Deferral — All 10 Epics / 65 Stories Target Production Launch)
 > **Target Platforms:** Kotlin Multiplatform Mobile (KMM — Android & iOS), Native Jetpack Compose & SwiftUI UI
@@ -11,14 +11,14 @@
 
 ## 1. Product Vision & Competitive Positioning
 
-CuraFit Mobile V2 is an end-to-end, clinically guarded, culturally native **Nutrition & Workout Coaching Application** built specifically for MENA households, gyms, kitchens, and Ramadan routines. Rather than acting as a generic Western calorie counter or an overly technical gym spreadsheet, CuraFit combines:
+CuraFit Mobile is an end-to-end, clinically guarded, culturally native **Nutrition & Workout Coaching Application** built specifically for MENA households, gyms, kitchens, and Ramadan routines. Rather than acting as a generic Western calorie counter or an overly technical gym spreadsheet, CuraFit combines:
 
 1. **Conversational Smart Onboarding (`EPIC-01`, `KAN-34`)**: Fast, adaptive chat onboarding with live clinical/maternal/age safety gates, ideal BMI guidance, location-first workout routing, and deterministic energy/macro/hydration equations.
 2. **Passwordless Social-First Entry (`EPIC-02`)**: Instant `Google Sign-In` and `Apple Sign-In` authentication with zero password friction, silent rotating refresh tokens, and multi-device offline SQLDelight outbox sync (`409 REVISION_CONFLICT` auto-rebase).
 3. **Coach-First Daily Command Center (`EPIC-03`)**: A 5-Tab adaptive shell (`Today`, `Nutrition`, `Workouts`, `Coach`, `Profile`) plus a floating Quick-Log (`+`) sheet that adapts seamlessly to `nutrition_and_workouts`, `nutrition_only`, and `workouts_only`.
 4. **Best-in-Class MENA Nutrition & Smart Logging (`EPIC-04`)**:
-   - Deterministic 7-day regional meal plans (`Egypt`, `Gulf`, `Levant`, `Maghreb`) built from a verified 3,291-item food & beverage catalog.
-   - Multi-modal logging: **AI Meal Photo & Egyptian/Arabic Dialect Voice/Text Quick Log**, **MENA Supermarket Barcode Scanner**, **1-Tap Planned Meal Logging**, **Favorites/Recents/Copy Yesterday**, and **"What's in My Fridge?" Pantry Finder**.
+   - Deterministic 7-day regional meal plans (`Egypt`, `Gulf`, `Levant`, `Maghreb`) built from a verified 3,291 reference/estimated foods & beverages + 2,437 regional serving models catalog (`5,728` total indexed).
+   - Multi-modal logging: **MENA Supermarket Barcode Scanner**, **1-Tap Planned Meal Logging**, **Favorites/Recents/Copy Yesterday**, **"What's in My Fridge?" Pantry Finder**, plus **AI Meal Photo & Egyptian/Arabic Dialect Voice/Text Quick Log** *(scheduled for Final AI Phase after core launch; `capabilities.ai_meal_parse` remains disabled until Final AI Phase)*.
    - **Smart Weekly Grocery List** (aisle-grouped & budget-aware) and **Intermittent Fasting (16:8) + Ramadan Mode** (Suhoor / Iftar / Snack scheduling + workout timing shift).
 5. **Dual-Mode Live Workout Experience (`EPIC-05`)**:
    - **Simple / Guided Mode** (auto-default for Beginners & Home-Only): Large visual exercise cards, 1-tap completion, automatic guided rest timer, zero gym jargon.
@@ -26,12 +26,12 @@ CuraFit Mobile V2 is an end-to-end, clinically guarded, culturally native **Nutr
    - Instant `Simple <-> Pro` toggle in the player header without losing any logged sets.
 6. **Hybrid Adaptive Smart Coach (`EPIC-06`)**:
    - 100% deterministic, evidence-backed coaching engine: On-Demand Daily Brief, Daily Recovery Check-in with interactive body-map soreness & urgent Red-Flag Safety Stop, explicit Accept/Reject adaptation cards (`<= 5% / 150 kcal` calorie adjustments, 24h deloads, muscle-gain weekly volume boosts, maintenance transitions), and structured Coaching Agreements.
-   - Paired with a **Guarded AI Coach Q&A** ("Ask the Coach") grounded in the user's real logs, strictly forbidden from overriding clinical holds or deterministic equations.
+   - Paired with a **Guarded AI Coach Q&A** ("Ask the Coach") grounded in the user's real logs, strictly forbidden from overriding clinical holds or deterministic equations *(scheduled for Final AI Phase after core launch; `capabilities.ai_coach_qa` remains disabled until Final AI Phase)*.
 7. **Analytics, Retention, Wearables & Widgets (`EPIC-07`, `EPIC-08`)**:
    - 7-day moving-average weight trend vs. trajectory curve, body measurements, encrypted private progress photo vault with Split/Slider comparisons, Gentle Streaks with Freeze Day, Weekly Wrapped reports, Apple Health / Health Connect batch sync, smart Quiet-Hours notifications, and Android Glance / iOS WidgetKit home screen widgets.
 8. **Freemium Soft Paywall & Subscription Engine (`EPIC-10`)**:
-   - Free tier covers onboarding, daily plan viewing, manual/planned food logging, water/weight tracking, basic workouts, and the 868-exercise catalog.
-   - Pro tier (7-day Free Trial, Monthly/Annual MENA-localized StoreKit 2 & Google Play Billing) unlocks AI Photo/Voice Log, Barcode Scanner, Grocery List, Unlimited Meal/Exercise Swaps, Plan Renewal, Adaptive Coach Reviews, AI Coach Q&A, Advanced Analytics, and Cloud Progress Photo Vault.
+   - Free tier covers onboarding, daily plan viewing, manual/planned food logging, water/weight tracking, basic workouts, safety-critical adaptations (`recovery`/`schedule`), and the 868-exercise catalog.
+   - Pro tier (7-day Free Trial, Monthly/Annual MENA-localized StoreKit 2 & Google Play Billing) unlocks Barcode Scanner, Grocery List, Unlimited Meal/Exercise Swaps, Plan Renewal, Performance/Nutrition Adaptive Coach Reviews (`calories`/`weekly_volume`/`maintenance`), Advanced Analytics, Cloud Progress Photo Vault, and (in Final AI Phase) AI Photo/Voice Log & AI Coach Q&A.
 
 ---
 
@@ -43,7 +43,7 @@ CuraFit Mobile V2 is an end-to-end, clinically guarded, culturally native **Nutr
 | :---: | :--- | :--- | :--- | :--- |
 | **1** | `today` | Home / Today | Today Dashboard (`US-HOME-01`..`06`) | Always visible across all tracks; hides unavailable domain cards |
 | **2** | `nutrition` | Nutrition | Meal Plan & Food Diary (`US-NUT-01`..`11`) | Visible in `nutrition_and_workouts` and `nutrition_only`; replaced or shows clean "Add Nutrition Track" upsell card in `workouts_only` |
-| **FAB** | `quick_log` | Floating `+` Action Button | Quick-Log Bottom Sheet (`US-HOME-05`) | Anchored above/center-right of tab bar; dynamically filters options to active `service_track` |
+| **FAB** | `quick_log` | Floating `+` Action Button | Quick-Log Bottom Sheet (`US-HOME-05`) | Anchored above/center-right of tab bar; dynamically filters options to active `serviceTrack` |
 | **3** | `workouts` | Workouts | Workout Schedule & Dual-Mode Player (`US-WRK-01`..`10`) | Visible in `nutrition_and_workouts` and `workouts_only`; shows clean "Add Workout Track" card + Exercise Library browser in `nutrition_only` |
 | **4** | `coach` | Coach | Hybrid 3-Specialist Care Team & Analytics (`US-CCH-01`..`06`) | Always visible across all tracks; adapts brief & proposals to active track |
 | **5** | `profile` | Profile | Profile, Analytics Entry, Settings & Privacy (`US-PRF-01`..`07`) | Always visible across all tracks; includes top shortcut to Progress & Measurements (`EPIC-07`) and Subscription (`EPIC-10`) |
@@ -56,12 +56,12 @@ CuraFit Mobile V2 is an end-to-end, clinically guarded, culturally native **Nutr
 
 | Epic | Jira Epic | Epic File & Title | Stories (Jira Keys) | Total | Backend Mix |
 | :---: | :---: | :--- | :--- | :---: | :--- |
-| **EPIC-01** | [`KAN-34`](https://abdulrahman-alaa.atlassian.net/browse/KAN-34) | [EPIC-01-onboarding-v2-full.md](EPIC-01-onboarding-v2-full.md) (Full Jira Export) & [EPIC-01-onboarding-v2-alignment.md](EPIC-01-onboarding-v2-alignment.md) (API Parity) — *Mobile Conversational Onboarding & Smart Plan Engine (V2)* | `US-MOB-01` .. `US-MOB-09` (`KAN-35`..`KAN-43`) | **9** | Existing + Modified Parity |
-| **EPIC-02** | [`KAN-44`](https://abdulrahman-alaa.atlassian.net/browse/KAN-44) | [EPIC-02-authentication-and-session.md](EPIC-02-authentication-and-session.md) — *Passwordless Social Authentication, Session Lifecycle & Cross-Device Sync* | `US-AUTH-01` .. `US-AUTH-04` (`KAN-45`..`KAN-48`) | **4** | Existing + New OAuth |
-| **EPIC-03** | [`KAN-49`](https://abdulrahman-alaa.atlassian.net/browse/KAN-49) | [EPIC-03-home-today-hub.md](EPIC-03-home-today-hub.md) — *Today Dashboard, Quick-Log Hub & Adaptive Daily Experience* | `US-HOME-01` .. `US-HOME-06` (`KAN-50`..`KAN-55`) | **6** | Existing + Modified Bootstrap |
-| **EPIC-04** | [`KAN-56`](https://abdulrahman-alaa.atlassian.net/browse/KAN-56) | [EPIC-04-nutrition-plan-and-smart-logging.md](EPIC-04-nutrition-plan-and-smart-logging.md) — *Personalized Meal Plans, Smart Multi-Modal Logging & MENA Kitchen Tools* | `US-NUT-01` .. `US-NUT-11` (`KAN-57`..`KAN-67`) | **11** | Existing + New AI/Barcode/Grocery/IF/Pantry |
+| **EPIC-01** | [`KAN-34`](https://abdulrahman-alaa.atlassian.net/browse/KAN-34) | [EPIC-01-onboarding-full.md](EPIC-01-onboarding-full.md) (Full Jira Export) & [EPIC-01-onboarding-alignment.md](EPIC-01-onboarding-alignment.md) (API Parity) — *Mobile Conversational Onboarding & Smart Plan Engine* | `US-MOB-01` .. `US-MOB-09` (`KAN-35`..`KAN-43`) | **9** | Existing + New Preview + Modified Parity |
+| **EPIC-02** | [`KAN-44`](https://abdulrahman-alaa.atlassian.net/browse/KAN-44) | [EPIC-02-authentication-and-session.md](EPIC-02-authentication-and-session.md) — *Passwordless Social Authentication, Session Lifecycle & Cross-Device Sync* | `US-AUTH-01` .. `US-AUTH-04` (`KAN-45`..`KAN-48`) | **4** | Existing + New OAuth + Modified Sync/Capabilities |
+| **EPIC-03** | [`KAN-49`](https://abdulrahman-alaa.atlassian.net/browse/KAN-49) | [EPIC-03-home-today-hub.md](EPIC-03-home-today-hub.md) — *Today Dashboard, Quick-Log Hub & Adaptive Daily Experience* | `US-HOME-01` .. `US-HOME-06` (`KAN-50`..`KAN-55`) | **6** | Existing + Modified Bootstrap/Brief/Hydration |
+| **EPIC-04** | [`KAN-56`](https://abdulrahman-alaa.atlassian.net/browse/KAN-56) | [EPIC-04-nutrition-plan-and-smart-logging.md](EPIC-04-nutrition-plan-and-smart-logging.md) — *Personalized Meal Plans, Smart Multi-Modal Logging & MENA Kitchen Tools* | `US-NUT-01` .. `US-NUT-11` (`KAN-57`..`KAN-67`) | **11** | Existing + Modified + New Barcode/Grocery/IF/Pantry (+ Final AI Phase `US-NUT-05`) |
 | **EPIC-05** | [`KAN-68`](https://abdulrahman-alaa.atlassian.net/browse/KAN-68) | [EPIC-05-workouts-and-dual-mode-player.md](EPIC-05-workouts-and-dual-mode-player.md) — *Adaptive Workout Plans, Dual-Mode Live Player (Simple & Pro) & Exercise Library* | `US-WRK-01` .. `US-WRK-10` (`KAN-69`..`KAN-78`) | **10** | Existing + Modified + New Pro Tools |
-| **EPIC-06** | [`KAN-79`](https://abdulrahman-alaa.atlassian.net/browse/KAN-79) | [EPIC-06-hybrid-coach-and-adaptive-engine.md](EPIC-06-hybrid-coach-and-adaptive-engine.md) — *Hybrid 3-Specialist Care Team, Daily Recovery, Weekly Check-Ins & Adaptive Engine* | `US-CCH-01` .. `US-CCH-06` (`KAN-80`..`KAN-85`) | **6** | Existing + New Guarded AI Chat + Modified Engagement |
+| **EPIC-06** | [`KAN-79`](https://abdulrahman-alaa.atlassian.net/browse/KAN-79) | [EPIC-06-hybrid-coach-and-adaptive-engine.md](EPIC-06-hybrid-coach-and-adaptive-engine.md) — *Hybrid 3-Specialist Care Team, Daily Recovery, Weekly Check-Ins & Adaptive Engine* | `US-CCH-01` .. `US-CCH-06` (`KAN-80`..`KAN-85`) | **6** | Existing + Modified + New Comeback/Engagement (+ Final AI Phase `US-CCH-05`) |
 | **EPIC-07** | [`KAN-86`](https://abdulrahman-alaa.atlassian.net/browse/KAN-86) | [EPIC-07-progress-analytics-and-retention.md](EPIC-07-progress-analytics-and-retention.md) — *Progress Analytics, Body Tracking, Gentle Streaks & Home Screen Widgets* | `US-PRG-01` .. `US-PRG-05` (`KAN-87`..`KAN-91`) | **5** | Existing + New Analytics/Measurements/Photos/Widgets |
 | **EPIC-08** | [`KAN-92`](https://abdulrahman-alaa.atlassian.net/browse/KAN-92) | [EPIC-08-wearables-and-smart-notifications.md](EPIC-08-wearables-and-smart-notifications.md) — *Apple Health / Health Connect Sync & Intelligent Push Notifications* | `US-INT-01` .. `US-INT-03` (`KAN-93`..`KAN-95`) | **3** | Existing + New Push Token/Triggers |
 | **EPIC-09** | [`KAN-96`](https://abdulrahman-alaa.atlassian.net/browse/KAN-96) | [EPIC-09-profile-preferences-and-privacy.md](EPIC-09-profile-preferences-and-privacy.md) — *Profile Management, Plan Reconfiguration, Localization & GDPR Privacy* | `US-PRF-01` .. `US-PRF-07` (`KAN-97`..`KAN-103`) | **7** | Existing + Modified + Avatar Upload |
@@ -79,17 +79,17 @@ CuraFit Mobile V2 is an end-to-end, clinically guarded, culturally native **Nutr
 - **Command Mutations:** All account-mutating domain commands execute through `POST /v1/commands?view=receipt` (or `?view=full`) with:
   - Headers: `Authorization: Bearer <accessToken>`, `Idempotency-Key: <uuid-v4>`, `Prefer: return=minimal`, `X-Client-Platform: android|ios`, `X-Client-Version: <semver>`.
   - Body: `{ "revision": <int>, "action": "<action>", "payload": { ... } }`.
-- **Optimistic Concurrency & Offline Queue:** On `409 REVISION_CONFLICT`, the KMM sync coordinator fetches `GET /v1/sync/changes?after=<localRev>&afterSeq=<lastSeq>`, applies entity deltas (`upsert` / `delete`) in ascending `seq` order into SQLDelight, updates `localRevision`, and replays the queued command with the **same `Idempotency-Key`**.
+- **Optimistic Concurrency & Offline Queue:** On `409 REVISION_CONFLICT`, the KMM sync coordinator fetches `GET /v1/sync/changes?after=<localRev>` (adding `&afterSeq=<lastSeq>` only when `lastSeq > 0`), applies entity deltas (`upsert` / `delete`) in ascending `seq` order into SQLDelight, updates `localRevision`, and replays the queued command with the **same `Idempotency-Key`** (server idempotency digest excludes `revision` so timeout+rebase replays cleanly).
 
-### 4.2 Pure-English Error Contract & Client Localization
-- Every API `error.code` (235+ cataloged codes in `website/dist/contracts/error-codes.json` plus new codes in `BACKEND-API-DELTA-SPEC.md`) returns strictly canonical English in `error.message` and `fieldErrors[].message`.
-- Mobile clients **never display raw `error.message`** to Arabic users; instead, KMM resolves localized strings in `ar` and `en` by `(error.code, error.params)`.
-- Coaching `reasonCode` values (e.g., `RECOVERY_DELOAD_PROPOSAL`, `PERFORMANCE_DROP_CALORIE_CUT_HOLD`, `INSUFFICIENT_EVIDENCE_COVERAGE`, `DOUBLE_PROGRESSION_READY`, `RED_FLAGS_STOP`) also resolve cleanly to localized Arabic/English coaching copy on the client.
+### 4.2 Pure-English Error & Coaching Message Contracts + Client Localization
+- Every API `error.code` (235+ cataloged codes in `contracts/error-codes.json` plus new codes in `BACKEND-API-DELTA-SPEC.md`) returns strictly canonical English in `error.message` and `fieldErrors[].message`.
+- Every server coaching, brief, review, and eligibility message returns strictly canonical English paired with deterministic `code` and `params` (`contracts/coaching-codes.json`).
+- Mobile clients **never display raw server English text** to Arabic users; instead, KMM resolves localized strings in `ar` and `en` by `(error.code, error.params)` or `(coachingCode, params)` (e.g., `RECOVERY_DELOAD_PROPOSAL`, `PERFORMANCE_DROP_CALORIE_CUT_HOLD`, `INSUFFICIENT_EVIDENCE_COVERAGE`, `DOUBLE_PROGRESSION_READY`, `RED_FLAGS_STOP`).
 
 ### 4.3 Mandatory Bilingual UX, RTL, Digits & Nutritional Null-Safety
 1. **Live RTL/LTR Switching:** Switching between Arabic (`ar-EG` / `ar-SA`) and English (`en`) applies immediately without restarting the app, mirroring layouts (`Start`/`End` alignment, directional icons, charts where appropriate) while keeping user-entered names untranslated.
 2. **Digit Normalization:** Every numeric field converts Eastern Arabic numerals (`0x0660..0x0669`) and Persian numerals (`0x06F0..0x06F9`) to standard Western digits before validation and API transmission.
-3. **Null Nutrient Integrity:** Reference food nutrients (`protein`, `carbs`, `fat`, `fiber`, `saturated`, `sodium`, `sugars`) may be `null` when absent in reference datasets (`food.mjs` returns `null` when any entry lacks a metric). **Never coerce `null` to `0`** — render `"Not available in source"` (or `--`) with a subtle provenance indicator.
+3. **Null Nutrient Integrity:** `GET /v1/food-diary` returns `null` for all 8 nutrient totals (`energy, protein, fat, carbs, fiber, saturated, sodium, sugars`) when `entries.length === 0` — clients render `0` when empty. When `entries.length > 0` and any entry lacks a reference metric (`totals[metric] == null`), **never coerce `null` to `0`** — render `"Partial (source N/A)"` (or `--`) with a subtle provenance indicator.
 4. **Provenance & Clinical Transparency:** Clearly distinguish `Verified Source` (`approved`) items from `Calculated / Pending Review` (`estimated`) foods and `System-Generated Guidance` (`reviewScope`) from medical diagnosis. Red-flag safety states (`redFlags == true`) always render urgent non-dismissible stop-and-seek-care guidance.
 5. **Accessibility & Touch Targets:** All interactive chips, water increment buttons, workout set checkboxes, and bottom-bar targets maintain a minimum `48dp x 48dp` (`44pt x 44pt` iOS) hit area and full TalkBack / VoiceOver semantics.
 
@@ -97,11 +97,11 @@ CuraFit Mobile V2 is an end-to-end, clinically guarded, culturally native **Nutr
 
 | Feature Area | Mode / Guarantee | Notes |
 | :--- | :--- | :--- |
-| **Conversational Onboarding Flow (`EPIC-01`)** | **100% Offline** | Persists locally (`onboardingDraft` v2); requires online only at final Auth & `[Start My Plan]` `generate` sync (`US-MOB-09`). |
+| **Conversational Onboarding Flow (`EPIC-01`)** | **100% Offline** | Persists locally (`onboardingDraft`); requires online at final Auth & `[Start My Plan]` `generate` sync (`US-MOB-09`, no offline Today entry before `generate` succeeds). |
 | **Social OAuth Sign-In (`EPIC-02`)** | **Online Required** | Except Step 0 offline new-user bypass (`[Continue without logging in for now]`, `US-AUTH-01`). |
 | **Today Hub, Water, Weight, Food Diary, Favorites & Workouts Player (`Simple`/`Pro`)** | **100% Offline + Auto-Sync** | Reads cached SQLDelight plans/media; writes locally immediately & drains deterministically through `outbox_commands` (`409` auto-rebase). |
 | **Recovery Check-In, Grocery Check-Off, Body Measurements, Local Photos & Language Switch** | **100% Offline + Auto-Sync** | Instant local feedback; syncs asynchronously when connectivity returns. |
-| **AI Photo/Voice Meal Parse, Uncached Barcodes, Pantry Search, AI Coach Chat & Store Billing** | **Online Required** | Degrades gracefully offline with clear retry & offline fallback (`Search` / `Manual` logging); Pro entitlements retain a `48h` offline grace cache. |
+| **Uncached Barcodes, Pantry Search, Store Billing (+ Final AI Phase Photo/Voice Parse & AI Coach Chat)** | **Online Required** | Degrades gracefully offline with clear retry & offline fallback (`Search` / `Manual` logging); Pro entitlements retain a `48h` offline grace cache. |
 | **Plan Regeneration (`generate`, `renew_plan`), Meal/Exercise Swaps & Adaptive Acceptance** | **Online Required** | Requires server deterministic solver & `assertDietDay` / injury validation so unsafe or conflicting versions are never committed offline. |
 | **GDPR Data Export (`GET /v1/account/export`) & Permanent Delete (`DELETE /v1/account/delete`)** | **Online Required** | Never deletes tokens locally unless server confirms `200 OK` deletion. |
 
@@ -120,6 +120,6 @@ CuraFit unifies daily decisions under three coordinated specialist domains (**Cl
 
 | Action Executed on Jira (`KAN`) | Issue Keys / Scope | Result |
 | :--- | :--- | :--- |
-| **KEPT & ANNOTATED** | `KAN-34` (`US-MOB-01`..`US-MOB-09`: `KAN-35`..`KAN-43`) | Preserved all designed Onboarding V2 UX screens/stories intact; added `production-v2`, `mobile-v2`, `onboarding` labels and appended API Alignment comments on `KAN-34` & `KAN-43`. |
+| **KEPT & ANNOTATED** | `KAN-34` (`US-MOB-01`..`US-MOB-09`: `KAN-35`..`KAN-43`) | Preserved all designed Onboarding UX screens/stories intact; added `production`, `mobile`, `onboarding` labels and appended API Alignment comments on `KAN-34` & `KAN-43`. |
 | **DELETED LEGACY V1 ISSUES** | `KAN-4` (*Launch & Onboarding*: `KAN-7`..`KAN-19`)<br>`KAN-5` (*Login*: `KAN-20`..`KAN-22`)<br>`KAN-6` (*Profile*: `KAN-24`..`KAN-33`) | Deleted all **29 legacy V1 work items** (`3` Epics + `26` Stories; `KAN-23` did not exist). Verified 0 legacy issues remain on board. |
-| **CREATED V2 EPICS & STORIES** | Epics `KAN-44`, `KAN-49`, `KAN-56`, `KAN-68`, `KAN-79`, `KAN-86`, `KAN-92`, `KAN-96`, `KAN-104` + Child Stories `KAN-45`..`KAN-108` | Created all **9 new V2 Epics** and **56 new V2 Stories** with Markdown formatting, Priority (`Highest`/`High`/`Medium`), domain labels, and verified Epic parent links. |
+| **CREATED EPICS & STORIES** | Epics `KAN-44`, `KAN-49`, `KAN-56`, `KAN-68`, `KAN-79`, `KAN-86`, `KAN-92`, `KAN-96`, `KAN-104` + Child Stories `KAN-45`..`KAN-108` | Created all **9 new Epics** and **56 new Stories** with Markdown formatting, Priority (`Highest`/`High`/`Medium`), domain labels, and verified Epic parent links. |

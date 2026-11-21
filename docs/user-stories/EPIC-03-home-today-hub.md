@@ -2,14 +2,14 @@
 
 > **Epic ID:** `EPIC-03`
 > **Target Platforms:** KMM (Android Jetpack Compose & iOS SwiftUI)
-> **Scope:** Production V2
-> **Labels:** `production-v2`, `mobile-v2`, `home`, `today-hub`
+> **Scope:** Production
+> **Labels:** `production`, `mobile`, `home`, `today-hub`
 
 ---
 
 ## Epic Overview
 
-`EPIC-03` defines the primary post-onboarding command center (**Today Tab**) and the global **5-Tab Coach-First Navigation Shell** (`Today`, `Nutrition`, `Workouts`, `Coach`, `Profile` + floating `+` Quick-Log Action Button). Designed for sub-3-second daily check-ins, it surfaces calories/macros, fasting/Ramadan timers, next meal, today's workout/rest status, hydration, quick weight, steps/activity, and daily coach priorities — while adapting gracefully when the user's `service_track` is `nutrition_only` or `workouts_only`.
+`EPIC-03` defines the primary post-onboarding command center (**Today Tab**) and the global **5-Tab Coach-First Navigation Shell** (`Today`, `Nutrition`, `Workouts`, `Coach`, `Profile` + floating `+` Quick-Log Action Button). Designed for sub-3-second daily check-ins, it surfaces calories/macros, fasting/Ramadan timers, next meal, today's workout/rest status, hydration, quick weight, steps/activity, and daily coach priorities — while adapting gracefully when the user's `serviceTrack` is `nutrition_only` or `workouts_only`.
 
 ### Child User Stories
 - `US-HOME-01`: Today Dashboard Shell, 5-Tab Adaptive Navigation & Service-Track Adaptation
@@ -29,7 +29,7 @@
 | **Story ID** | `US-HOME-01` |
 | **Epic** | `EPIC-03` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `navigation`, `today-hub` |
+| **Labels** | `production`, `mobile`, `navigation`, `today-hub` |
 | **Target Screens** | `MainTabScaffold`, `TodayDashboardScreen`, `TrackLockedDiscoveryCard` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Modified` (`GET /v1/bootstrap` extended summary fields) |
@@ -45,10 +45,10 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
 1. **Persistent Bottom Navigation Bar (5 Tabs + Elevated Center/Side `+` FAB):**
    - **Tab 1 — `Today`:** Sun/Home icon -> `TodayDashboardScreen`.
    - **Tab 2 — `Nutrition`:** Utensils/Bowl icon -> `NutritionHubScreen` (`EPIC-04`).
-     - *If `service_track == "workouts_only"`:* Shows a clean discovery screen *"Nutrition Plan Inactive"* with quick `[Explore Food & Calorie Catalog]` link and 1-tap `[Enable Nutrition Plan]` CTA (routes to `US-PRF-03`).
+     - *If `serviceTrack == "workouts_only"`:* Shows a clean discovery screen *"Nutrition Plan Inactive"* with quick `[Explore Food & Calorie Catalog]` link and 1-tap `[Enable Nutrition Plan]` CTA (routes to `US-PRF-03`).
    - **Floating Action Button (`+` Quick-Log):** Elevated circular brand-primary button (`56dp`) -> Opens `QuickLogBottomSheet` (`US-HOME-05`).
    - **Tab 3 — `Workouts`:** Dumbbell icon -> `WorkoutScheduleScreen` (`EPIC-05`).
-     - *If `service_track == "nutrition_only"`:* Shows *"Workout Plan Inactive"* with `[Browse 868 Exercise Library]` link and 1-tap `[Add Workout Program]` CTA (routes to `US-PRF-03`).
+     - *If `serviceTrack == "nutrition_only"`:* Shows *"Workout Plan Inactive"* with `[Browse 868 Exercise Library]` link and 1-tap `[Add Workout Program]` CTA (routes to `US-PRF-03`).
    - **Tab 4 — `Coach`:** Sparkle/Coach Avatar icon (with unread red/amber dot if `pendingAdaptations.length > 0` or unread `coachingInbox` items) -> `CoachHubScreen` (`EPIC-06`).
    - **Tab 5 — `Profile`:** User Avatar / Person icon -> `ProfileOverviewScreen` (`EPIC-09`).
 2. **Today Top Header Bar:**
@@ -66,8 +66,8 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
 ### API & BACKEND CONTRACT
 1. **`[MODIFIED BACKEND] GET /v1/bootstrap`**
    - **Headers:** `Authorization: Bearer <accessToken>`, `If-None-Match: <bootstrapEtag>`
-   - **Response Fields Consumed:** `revision`, `serverDate`, `timezone`, `profile` (incl. `seniorMode`, `maternalStatus`, `workoutUiMode`), `eligibility`, `todaySummary` (`nutrition`, `hydration`, `latestWeight`, `recovery`, `scheduledWorkout`, `fastingState`, `ramadanMode`), `pendingAdaptations`, `workoutSafetyIssues`, `entitlements`, `streakSummary`.
-2. **`[EXISTING] GET /v1/coaching/brief`** (Cached via `If-None-Match` ETag)
+   - **Response Fields Consumed:** `revision`, `serverDate`, `timezone`, `consents`, `onboarding` (`serviceTrack`, `journeyStartedOn`, `workoutPrefs`), `profile` (incl. `activity`, `seniorMode`, `maternalStatus`, `workoutUiMode`), `eligibility`, `scheduledSessions` (14d), `todaySummary` (`nutrition` incl. `carbs`/`fat`/`targets`, `activity`, `hydration`, `latestWeight`, `recovery`, `scheduledWorkout` incl. `fromDate`, `fastingState`, `ramadanMode`), `pendingAdaptations`, `workoutSafetyIssues`, `entitlements`, `streakSummary`.
+2. **`[MODIFIED BACKEND] GET /v1/coaching/brief`** (Cached via `If-None-Match` ETag; pure-English + `code`/`params`/`actionTarget`)
 3. **`[EXISTING] GET /v1/coaching/inbox`** (For Coach badge count)
 
 ### RULES & BUSINESS LOGIC
@@ -120,7 +120,7 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
 | **Story ID** | `US-HOME-02` |
 | **Epic** | `EPIC-03` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `nutrition`, `fasting`, `ramadan` |
+| **Labels** | `production`, `mobile`, `nutrition`, `fasting`, `ramadan` |
 | **Target Screens** | `TodayDashboardScreen` (Hero Card Section) |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Mixed` (`[EXISTING]` food-diary + `[NEW BACKEND]` fasting-state) |
@@ -129,7 +129,7 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
 As a user tracking my daily nutrition, I want a prominent visual summary of my remaining calories, Protein/Carbs/Fats progress bars, diary completion state, and live Intermittent Fasting or Ramadan Suhoor/Iftar countdown at the top of my Today screen so I know my nutritional status in one glance.
 
 ### PRECONDITIONS
-- `service_track != "workouts_only"` and an active nutrition plan exists (or user is browsing historical date).
+- `serviceTrack != "workouts_only"` and an active nutrition plan exists (or user is browsing historical date).
 
 ### SCREEN AND UI DETAILS
 1. **Calorie Ring (Primary Visual Anchor):**
@@ -139,23 +139,23 @@ As a user tracking my daily nutrition, I want a prominent visual summary of my r
    - **Protein:** `{consumed}g / {target}g`
    - **Carbs:** `{consumed}g / {target}g`
    - **Fats:** `{consumed}g / {target}g`
-   - **Null-Nutrient Safety Rule (`KMM_BACKEND_INTEGRATION.md`):** If `totals.protein == null` (or carbs/fat is `null`) because one or more logged foods lack macro provenance in the reference source, render `"{knownSum}g + --"` or `"Partial (source N/A)"` with an info tooltip explaining *"One logged item does not report this nutrient in its reference source"* — **never display `0g` as if consumed were zero!**
+   - **Null-Nutrient Safety Rule (`KMM_BACKEND_INTEGRATION.md`):** `GET /v1/food-diary` returns `null` for all 8 nutrients (`energy, protein, fat, carbs, fiber, saturated, sodium, sugars`) when `entries.length === 0` — the client renders `0` (`0 kcal`, `0g / {target}g`) when `entries.length === 0`. Only when **`entries.length > 0 && totals[metric] == null`** (because one or more logged foods lack macro provenance in the reference source) does the client render `"{knownSum}g + --"` or `"Partial (source N/A)"` with an info tooltip explaining *"One logged item does not report this nutrient in its reference source"* — **never display `0g` as if consumed were zero when entries exist!**
 3. **Diary Completion Pill (`food_complete`):**
    - Subtle pill at bottom-right of Hero Card:
      - `Open`: `"Logging in progress"` -> `[Mark Day Complete ✓]` (enabled once `entries.length >= 1`, calls `food_complete`).
      - `Completed`: `"Day Confirmed ✓"` (tappable to view summary or reopen).
-4. **Live Fasting / Ramadan Strip (Conditional — Shown inside Hero Card if `diet_type == "intermittent_fasting"` OR `ramadanMode == true`):**
+4. **Live Fasting / Ramadan Strip (Conditional — Shown inside Hero Card if `dietType == "intermittent_fasting"` OR `ramadanMode == true`):**
    - Shows current phase pill (`"Fasting Window — 03h 18m left"` or `"Eating Window — Closes at 20:00"` / `"Ramadan Mode: Iftar in 02h 10m"`), progress bar along the fasting arc, and quick `[Start/End Fast]` or `[View Ramadan Schedule]` tap action routing to `US-NUT-10`.
 
 ### API & BACKEND CONTRACT
 1. **`[EXISTING] GET /v1/food-diary?date={YYYY-MM-DD}`**
-   - Returns `{ date, entries, totals: { energy, protein, fat, carbs, fiber, sodium }, complete, planEnergy }`.
+   - Returns `{ date, entries, totals: { energy, protein, fat, carbs, fiber, saturated, sodium, sugars }, complete, planEnergy }` (all 8 `totals` fields are `null` when `entries.length === 0`).
 2. **`[NEW BACKEND] GET /v1/nutrition/fasting-state`** (Also summarized in `/v1/bootstrap`)
-   - Returns `{ mode: "if_16_8" | "ramadan" | "off", phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, remainingSeconds }`.
+   - Returns `{ mode: "if_16_8" | "ramadan" | "off", phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, streakDays }`.
 3. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "food_complete"`)
 
 ### RULES & BUSINESS LOGIC
-1. **Deterministic Calculation Consistency:** Displayed consumed totals come directly from `dayTotals` aggregation (`food.mjs`) — exact sum of `entry.snapshot.values[metric]`; if ANY entry has `null` for `protein`/`carbs`/`fat`, that day's aggregate macro is returned as `null` by the server, while the client may show the partial sum explicitly labeled as partial (`+ unknown`).
+1. **Deterministic Calculation Consistency:** Displayed consumed totals come directly from `dayTotals` aggregation (`food.mjs`): when `entries.length === 0`, all 8 metrics (`energy, protein, fat, carbs, fiber, saturated, sodium, sugars`) are returned as `null` and rendered by the client as `0`. When `entries.length > 0`, if ANY entry has `null` for a metric, the server returns `null` for that aggregate metric, and the client renders `"Partial (source N/A)"` (or partial sum labeled `+ unknown`).
 2. **Calories Over Target & Anti-Crash-Dieting Guidance:** Exceeding `planEnergy` shows calm neutral/amber feedback (`"+120 kcal over target"`) with zero shaming graphics. If intake exceeds `120%` of `planEnergy`, Nutrition Specialist displays a brief calm reassurance strip (*"One higher day does not derail your 7-day trend — return right to your normal target tomorrow without fasting or skipping meals to compensate"*).
 3. **Protein Pacing Smart Nudge:** When `consumedEnergy >= 0.75 * planEnergy` AND `consumedProtein < 0.50 * targetProtein` (and `protein != null`), display a subtle actionable pill (`"Protein pace low today — view high-protein picks"`) routing straight to filtered Food Search / Pantry (`US-NUT-04` / `US-NUT-08`).
 4. **Tapping Hero Card:** Navigates straight to `NutritionHubScreen` (`US-NUT-01` / `US-NUT-02`) for that date.
@@ -166,18 +166,18 @@ As a user tracking my daily nutrition, I want a prominent visual summary of my r
 3. After dinner, user taps `[Mark Day Complete ✓]` right from the Hero Card -> `food_complete` command commits and badge updates to `"Day Confirmed ✓"`.
 
 ### EDGE CASES
-- **Zero Meals Logged Today:** Ring starts at `0%` (`"1,850 kcal left"`); `[Mark Day Complete]` is disabled with hint *"Log at least one meal first"* (enforcing `FOOD_LOG_REQUIRED_BEFORE_COMPLETE`).
-- **Manual Food Logged Without Macros (`protein == null`):** Ring displays exact `energy` (`480 kcal`), while Protein bar displays `"Partial (source N/A)"` so the user is never misled into thinking their food had `0g` protein.
+- **Zero Meals Logged Today (`entries.length === 0`):** Server returns `null` for all 8 nutrient totals; client renders `0%` (`"1,850 kcal left"`, `0g / {target}g`, NOT `"Partial (source N/A)"`); `[Mark Day Complete]` is disabled with hint *"Log at least one meal first"* (enforcing `FOOD_LOG_REQUIRED_BEFORE_COMPLETE`).
+- **Manual Food Logged Without Macros (`entries.length > 0 && totals.protein == null`):** Ring displays exact `energy` (`480 kcal`), while Protein bar displays `"Partial (source N/A)"` so the user is never misled into thinking their food had `0g` protein.
 - **Workout-Only Track:** Hero Card swaps cleanly to **Weekly Training Consistency & Readiness Card** (showing `Sessions This Week: 2/4`, current Recovery Readiness status, and target muscle focus).
 - **Ramadan & Pregnancy Active Together (`maternalStatus != "none"`):** Hero ring maintains safe `minCalorieFloor` (`1800` pregnancy) even under Ramadan nighttime eating compression and prominently shows a Nutrition Specialist prenatal adequacy notice.
 
 ### ACCEPTANCE CRITERIA
-- **Scenario 1: Null macro never coerced to zero**
-  - **Given** a logged manual food item has `energy = 500` and `protein = null`
-  - **When** the Today Hero Card renders
-  - **Then** calories update by `+500 kcal`, and protein displays a partial/not-available-in-source indicator rather than showing `0g` as complete.
+- **Scenario 1: Empty diary renders `0`, while logged null macro renders `"Partial (source N/A)"`**
+  - **Given** a day with `entries.length === 0` returns `null` totals -> Hero renders `0 kcal` and `0g` macros
+  - **When** a logged manual food item is added with `energy = 500` and `protein = null` (`entries.length > 0 && totals.protein == null`)
+  - **Then** calories update to `500 kcal`, and protein displays `"Partial (source N/A)"` rather than coercing `null` to `0g`.
 - **Scenario 2: Fasting countdown displays inside Hero Card**
-  - **Given** `diet_type == "intermittent_fasting"` with `if_start_hour = 12` and current time `10:30`
+  - **Given** `dietType == "intermittent_fasting"` with `ifStartHour = 12` and current time `10:30`
   - **When** `TodayDashboardScreen` loads
   - **Then** the Hero Card displays `"Fasting • 01h 30m until 12:00 PM window"`.
 - **Scenario 3: Protein pacing nudge surfaces when calories are high but protein lags**
@@ -199,43 +199,45 @@ As a user tracking my daily nutrition, I want a prominent visual summary of my r
 | **Story ID** | `US-HOME-03` |
 | **Epic** | `EPIC-03` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `today-hub`, `coaching` |
+| **Labels** | `production`, `mobile`, `today-hub`, `coaching` |
 | **Target Screens** | `TodayDashboardScreen` (Action Stream) |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Existing` |
+| **Backend Status** | `Mixed` (`[EXISTING]` plans/commands + `[MODIFIED BACKEND]` `/v1/coaching/brief` pure-English `code`/`params`/`actionTarget` + `/v1/bootstrap` `scheduledSessions`) |
 
 ### STORY
 As a user checking Today to see what to do right now, I want actionable cards showing my Daily Coach Brief insight, my next unlogged meal with a 1-tap Log button, and today's scheduled workout (or Rest & Recovery card) with a 1-tap Start Workout button so I can execute my plan effortlessly.
 
 ### PRECONDITIONS
-- User has an active profile and active nutrition/workout plan(s) for their `service_track`.
+- User has an active profile and active nutrition/workout plan(s) for their `serviceTrack`.
 
 ### SCREEN AND UI DETAILS
 1. **Daily Coach Priority Banner (Top Card in Stream):**
-   - Displays highest-priority note from `GET /v1/coaching/brief` (`priority: "high" | "medium" | "normal"`) with a **Specialist Attribution Badge** (`Nutrition Specialist`, `Strength Coach`, or `Recovery Specialist` mapped from `note.role`).
+   - Displays highest-priority note from `GET /v1/coaching/brief` (`priority: "urgent" | "attention" | "normal"`) with a **Specialist Attribution Badge** mapped from `note.role: "nutrition" | "training" | "followup"` (`Nutrition Specialist`, `Strength Coach`, `Recovery & Follow-Up Specialist`).
+   - All server notes return pure-English `title`/`body`/`action` paired with deterministic `code`, `params` (`contracts/coaching-codes.json`), and `actionTarget` for deep-link navigation; KMM localizes copy on-device by `(code, params)`.
    - Also elevates `Comeback Protocol` (`engagementState.comebackTier != "none"`, `US-CCH-06`) if user returns after `>= 3` days away, OR `Weekly Team Check-In Ready` (`engagementState.weeklyCheckinDue == true`).
    - Examples:
-     - *Recovery Check-in Missing:* `"Recovery Specialist: Check in on your sleep & soreness before today's workout"` -> CTA: `[30-Sec Check-In]` (`US-CCH-02`).
+     - *Recovery Check-in Missing:* `"Recovery & Follow-Up Specialist: Check in on your sleep & soreness before today's workout"` -> CTA: `[30-Sec Check-In]` (`US-CCH-02`).
      - *Pending Adaptation Proposal:* `"Strength Coach suggests a 20% deload today"` -> CTA: `[Review Proposal]` (`US-CCH-03`).
      - *Plan Expired:* `"Nutrition Specialist: Your 7-day meal plan ended"` -> CTA: `[Generate Next Week]` (`US-NUT-01`).
-2. **Next Meal Card (`service_track != "workouts_only"`):**
+2. **Next Meal Card (`serviceTrack != "workouts_only"`):**
    - Automatically selects the next unlogged meal slot for today (`breakfast -> lunch -> dinner -> snack`) based on current local hour and existing `foodEntries`.
    - Shows dish title (localized), calories + `P/C/F` pill, portion summary, and 2 quick actions:
      - Primary: `[Log Meal ✓]` (1-tap logs `quantity = 1.0` via `food_entry`).
      - Secondary: `[Swap]` (opens `US-NUT-03` alternatives sheet) or tap card -> full Meal Detail (`US-NUT-02`).
    - *All Planned Meals Logged State:* Shows celebratory green check card `"All planned meals logged today!"` with `[Log Extra Snack]`.
-3. **Today's Workout / Rest Card (`service_track != "nutrition_only"`):**
+3. **Today's Workout / Rest Card (`serviceTrack != "nutrition_only"`):**
    - **On Scheduled Training Day (`scheduledWorkout != null`):**
      - Displays Focus badge (e.g., `"Upper Body"`, `"Push"`), Location badge (`Gym` or `Home`), Exercise Count & Est. Duration (`"6 exercises • ~42 min"`), and active UI Mode chip (`Simple Mode` / `Pro Mode` `US-WRK-02`).
      - *If `recovery.status == "stop"` (`RED_FLAGS_STOP`):* Card turns urgent warning red, disables `[Start Workout]`, and prompts medical check (`US-CCH-02`).
-     - *If `recovery.status == "caution" | "high"` with active deload:* Shows blue/amber chip `"Deload active: -20% sets"` alongside `[Start Workout]`.
+     - *If `recovery.status == "hold"` (`JOINT_PAIN_HOLD`):* Shows amber safety chip `"Progression Hold Active (Joint Pain Guard)"` — keeps planned sets at maintenance load without progression increases.
+     - *If `recovery.status == "caution" | "high"` with active deload:* Renders dynamic `setFactor` percentage (`setFactor = 0.8` -> `"Deload active: -20% sets"` for `caution`; `setFactor = 0.6` -> `"Deload active: -40% sets"` for `high`) alongside `[Start Workout]`.
      - Primary CTA: `[Start Workout]` (launches Live Workout Player `US-WRK-03` or `US-WRK-04`), Secondary menu: `[Reschedule]` (`US-WRK-09`) or `[Mark Missed]`.
      - *If Session Completed Today:* Displays green `"Workout Completed ✓"` card with Volume & Duration summary (`US-WRK-10`).
    - **On Rest Day:**
      - Displays `"Rest & Recovery Day"`, muscle recovery hint, optional gentle step target (`7,500+ steps`), and `[Reschedule Another Day Here]` option (`US-WRK-09`).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] GET /v1/coaching/brief`** (Supports `If-None-Match` ETag)
+1. **`[MODIFIED BACKEND] GET /v1/coaching/brief`** (Supports `If-None-Match` ETag; returns pure-English notes with `priority: "urgent" | "attention" | "normal"`, `role: "nutrition" | "training" | "followup"`, `code`, `params`, `action`, `actionTarget`)
 2. **`[EXISTING] GET /v1/plans/{planId}/days/{YYYY-MM-DD}`**
 3. **`[EXISTING] GET /v1/workout-plans/{activeWorkoutPlanId}`**
 4. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "food_entry"` for 1-tap Next Meal logging)
@@ -253,8 +255,8 @@ As a user checking Today to see what to do right now, I want actionable cards sh
 
 ### EDGE CASES
 - **Active Nutrition Plan Expired (`end_date < today`):** Next Meal card transforms into `"Weekly Plan Ended"` card with `[Generate Fresh 7-Day Plan]` (`US-NUT-01`).
-- **Two Workouts Rescheduled / Moved:** Backend enforces max 1 session per date (`409 RESCHEDULE_DAY_OCCUPIED`); Today card cleanly renders the moved session with a subtle `"Rescheduled from Mon"` pill.
-- **Ramadan Mode Active (`US-NUT-10`):** Meal slots relabel automatically to `Suhoor`, `Iftar`, `Evening Snack` and workout card suggests optimal pre-Iftar / 2h-post-Iftar window.
+- **Two Workouts Rescheduled / Moved:** Backend enforces max 1 session per date (`409 RESCHEDULE_DAY_OCCUPIED`); Today card cleanly renders the moved session with a subtle `"Rescheduled from Mon"` pill using `scheduledWorkout.fromDate`.
+- **Ramadan Mode Active (`US-NUT-10`):** Meal slots relabel automatically to `Suhoor`, `Iftar`, `Evening Snack` via `displaySlot` (while keeping the planned meal's wire `slot` intact on `food_entry`) and workout card suggests optimal pre-Iftar / 2h-post-Iftar window.
 - **Returning After 3+ Days Inactivity (`engagementState.comebackTier != "none"`):** Top Coach Priority Banner switches gracefully to a welcoming Zero-Guilt Comeback banner (`"Welcome back — let's resume smoothly"` -> `US-CCH-06`) instead of showing stale overdue prompts.
 
 ### ACCEPTANCE CRITERIA
@@ -286,10 +288,10 @@ As a user checking Today to see what to do right now, I want actionable cards sh
 | **Story ID** | `US-HOME-04` |
 | **Epic** | `EPIC-03` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `hydration`, `weight` |
+| **Labels** | `production`, `mobile`, `hydration`, `weight` |
 | **Target Screens** | `TodayDashboardScreen` (Water & Weight Cards), `WeightLogBottomSheet` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Existing` |
+| **Backend Status** | `Mixed` (`[EXISTING]` water/weight commands & logs + `[MODIFIED BACKEND]` unified `dailyWaterTarget` formula) |
 
 ### STORY
 As a user monitoring hydration and body weight, I want one-tap water logging (`+1 cup`, `-1 cup`, custom ml) and fast scale-weight logging directly from the Today screen so tracking takes under 5 seconds daily.
@@ -321,7 +323,7 @@ As a user monitoring hydration and body weight, I want one-tap water logging (`+
 
 ### RULES & BUSINESS LOGIC
 1. **Coalesced Rapid Water Taps:** If the user taps `+1 Cup` 3 times rapidly within `600ms`, coalesce locally and dispatch a single `water` command (`addCups: 3` or final `cups`) with one `Idempotency-Key` to keep revision count clean and responsive.
-2. **Cup-to-Liter & V2 Target Parity (`US-MOB-09` / `BACKEND-API-DELTA-SPEC` `M1`):** Always match server formula (`liters = round((cups * 0.25) * 100) / 100`, `1 cup = 250 ml`, max `30 cups = 7.5 L`). Daily hydration target computes deterministically as `weightKg * 35 ml + workoutDay(+400 ml) + maternal(+300 ml pregnant / +600 ml breastfeeding) + gout(+500 ml) + hotClimate(+200 ml egypt/gulf)`, clamped `2.0..5.0 L` (`8..20` cups).
+2. **Cup-to-Liter & Unified Target Parity (`US-MOB-09` / `BACKEND-API-DELTA-SPEC` `M1`):** Always match server formula (`liters = round((cups * 0.25) * 100) / 100`, `1 cup = 250 ml`, max `30 cups = 7.5 L`). Daily hydration target computes deterministically as `weightKg * 35 ml + activity(+350 ml moderate / +500 ml active) + workoutDay(+500 ml) + maternal(+300 ml pregnant / +600 ml breastfeeding) + gout(+500 ml) + hotClimate(+200 ml egypt/gulf)`, clamped `2.0..5.0 L` (`8..20` cups).
 3. **Same-Day Weight Replacement:** Server retains 1 canonical weight record per `date`; logging a second weight on the same day updates that day's record smoothly with confirmation note if differing by `> 3 kg` from yesterday (typo guard).
 
 ### MAIN FLOW
@@ -332,7 +334,7 @@ As a user monitoring hydration and body weight, I want one-tap water logging (`+
 - **Rapid Double Tap Above 30 Cups:** Client caps at `30` cups and shows toast *"Maximum daily log is 30 cups (7.5 L)"*.
 - **Suspected Weight Typo (e.g. User Types `8.1` or `181` Instead of `81`):** If `|newWeight - prevWeight| > 10 kg`, show gentle inline confirmation *"Did you mean {newWeight} kg? Yesterday was {prevWeight} kg."* before committing.
 - **Weight Already Synced From Smart Scale via HealthKit Today:** Allows manual override (`source: "manual"`) if the user measured separately.
-- **Rest Day vs. Workout Day Hydration Shift:** Displays base vs. workout-day adjusted water target transparently (e.g., `"2.9 L today (includes +400 ml workout boost)"` vs `"2.5 L rest day goal"`).
+- **Rest Day vs. Workout Day Hydration Shift:** Displays base vs. workout-day adjusted water target transparently (e.g., `"3.0 L today (includes +500 ml workout boost)"` vs `"2.5 L rest day goal"`).
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Incrementing water updates liters and target ratio accurately**
@@ -362,7 +364,7 @@ As a user monitoring hydration and body weight, I want one-tap water logging (`+
 | **Story ID** | `US-HOME-05` |
 | **Epic** | `EPIC-03` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `quick-log`, `ux` |
+| **Labels** | `production`, `mobile`, `quick-log`, `ux` |
 | **Target Screens** | `QuickLogBottomSheet` (Accessible from any top-level tab) |
 | **Entitlement** | `Freemium` |
 | **Backend Status** | `Mixed` (Routes to existing & new endpoints across `EPIC-04`..`EPIC-07`) |
@@ -375,8 +377,8 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
 
 ### SCREEN AND UI DETAILS
 1. **Bottom Sheet Layout (Grid of Tactile Action Tiles — Max 2 Rows, Scannable Icons):**
-   - **Nutrition Actions** *(Hidden/Disabled if `service_track == "workouts_only"`)*:
-     - **AI Photo / Voice Meal Log** *(PRO badge if Free)* -> Opens `AIMealLoggerScreen` (`US-NUT-05`).
+   - **Nutrition Actions** *(Hidden/Disabled if `serviceTrack == "workouts_only"`)*:
+     - **AI Photo / Voice Meal Log** *(PRO badge if Free; hidden/coming-soon until Final AI Phase when `capabilities.ai_meal_parse == true`)* -> Opens `AIMealLoggerScreen` (`US-NUT-05`).
      - **Scan Barcode** *(PRO badge if Free)* -> Opens `BarcodeScannerScreen` (`US-NUT-06`).
      - **Search Food & Drinks** -> Opens `FoodSearchScreen` (`US-NUT-04`).
      - **Manual Calories / Quick Repeat** -> Opens `QuickRepeatAndManualSheet` (`US-NUT-07`).
@@ -386,7 +388,7 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
      - **Body Measurements** -> `MeasurementsEntrySheet` (`US-PRG-02`).
    - **Training & Coach Actions:**
      - **Daily Recovery Check-In** -> `RecoveryCheckinModal` (`US-CCH-02`).
-     - **Start Today's Workout** *(Only if `service_track != "nutrition_only"` & workout scheduled/incomplete)* -> `US-WRK-03`/`04`.
+     - **Start Today's Workout** *(Only if `serviceTrack != "nutrition_only"` & workout scheduled/incomplete)* -> `US-WRK-03`/`04`.
 2. **Meal Slot Pre-Selector Pill at Top of Sheet (for Food Actions):**
    - Auto-selects the most likely slot by local time (`05:00–10:59`: `Breakfast`; `11:00–16:59`: `Lunch`; `17:00–20:59`: `Snack` or `Dinner`; `21:00+`: `Dinner` / `Snack`; or `Suhoor`/`Iftar` during Ramadan Mode) — user can tap to override slot before picking an action.
 
@@ -395,7 +397,7 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
 
 ### RULES & BUSINESS LOGIC
 1. **Service-Track Filtering:** Never display Nutrition food-logging tiles to `workouts_only` users, and never display `"Start Today's Workout"` to `nutrition_only` users.
-2. **Pro Feature Preview Behavior:** Free users tapping **AI Photo/Voice** or **Barcode Scanner** still see the tile clearly; tapping opens a brief contextual Soft Paywall preview (`US-MON-01`) showing a live example before offering the 7-day Free Trial.
+2. **Pro Feature Preview Behavior:** Free users tapping **Barcode Scanner** (or **AI Photo/Voice** once enabled in Final AI Phase) still see the tile clearly; tapping opens a brief contextual Soft Paywall preview (`US-MON-01`) showing a live example before offering the 7-day Free Trial.
 3. **Target Date Context:** If the user is currently browsing a past date (e.g., Yesterday) inside `Today` or `Nutrition`, the Quick-Log sheet defaults `targetDate` to that viewed date with an explicit pill `"Logging for Yesterday (Nov 20)"` so entries don't land on the wrong day!
 
 ### MAIN FLOW
@@ -438,7 +440,7 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
 | **Story ID** | `US-HOME-06` |
 | **Epic** | `EPIC-03` |
 | **Priority** | `Medium` |
-| **Labels** | `production-v2`, `mobile-v2`, `activity`, `wearables` |
+| **Labels** | `production`, `mobile`, `activity`, `wearables` |
 | **Target Screens** | `TodayDashboardScreen` (Activity Card), `ManualActivitySheet` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Existing` |
@@ -452,7 +454,7 @@ As a user trying to stay active outside formal gym workouts, I want to see my da
 
 ### SCREEN AND UI DETAILS
 1. **Steps & Activity Card:**
-   - Displays a crisp step progress bar (`6,850 / 8,000 steps` — step goal dynamically aligned with onboarding `dailyActivity`: `sedentary: 6,000`, `light: 7,500`, `moderate: 9,000`, `active: 10,500`).
+   - Displays a crisp step progress bar (`6,850 / 8,000 steps` — step goal dynamically aligned with persisted `profile.activity`: `sedentary: 6,000`, `light: 7,500`, `moderate: 9,000`, `active: 10,500`).
    - Displays **Active Energy** (`310 kcal`) when reported by wearables or manual entry.
    - **Sync Source Badge:**
      - If connected (`US-INT-01`): `"Synced from Apple Health • 5m ago"` (or `Health Connect`) with `[Sync Now]` icon.

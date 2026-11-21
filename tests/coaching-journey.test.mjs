@@ -70,8 +70,8 @@ test('repeated explicitly missed sessions ask for a cause without assuming fatig
 test('due agreement replaces a generic tip but cannot override an urgent safety note',()=>withClock(now,()=>{
  const s=account();command(s,'coaching_feedback',{domain:'nutrition',barrier:'time'});command(s,'coaching_decision',{id:s.coachingCases[0].id,accept:true});
  const state={...s,serverNow:new Date(now+3*86400000).toISOString(),recovery:{status:'ready'}};
- assert.match(personalBrief(state,'2026-10-29').find(n=>n.role==='followup').text,/موعد/);
- state.recovery={status:'stop',reasons:['أعراض تستدعي التقييم']};assert.equal(personalBrief(state,'2026-10-29').find(n=>n.role==='followup').key,'safety-support');
+ assert.match(personalBrief(state,'2026-10-29').find(n=>n.role==='followup').text,/due for review/i);
+ state.recovery={status:'stop',reasons:['Chest pain reported; stop exercise and seek urgent medical care.']};assert.equal(personalBrief(state,'2026-10-29').find(n=>n.role==='followup').key,'safety-support');
 }));
 test('no-data training hold never claims proven optimal volume or progress',()=>withClock(now,()=>{
  const result=volumeReview(account(),{status:'unknown'});

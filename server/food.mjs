@@ -8,6 +8,7 @@ import {apiError} from '../coaching-error.mjs';
 export {library};
 const dateForLog=(date,tz=clockTimeZone())=>validateLogDate(date,clockNow(),tz);
 const metrics=['energy','protein','fat','carbs','fiber','saturated','sodium','sugars'];
+const DISPLAY_SLOTS=new Set(['breakfast','lunch','dinner','snack','snack_1','snack_2','suhoor','iftar','night_snack']);
 export const activePlan=s=>s.plans.find(p=>p.id===s.active_plan_id);
 export function plannedEnergyForDate(s,date){
  const direct=activePlan(s)?.days.find(d=>d.date===date);if(direct?.targets?.energy!=null)return direct.targets.energy;
@@ -35,6 +36,7 @@ export function foodCommand(s,action,p){
  if(action==='food_entry'){
   const date=dateForLog(p.date||localDate(clockNow(),tz),tz);if(!['planned','ingredient','manual'].includes(p.source))throw apiError('INVALID_FOOD_SOURCE','Food entry source must be planned, ingredient, or manual.',{status:400});
   if(!['breakfast','lunch','dinner','snack'].includes(p.slot))throw apiError('INVALID_MEAL_SLOT','slot must be one of breakfast, lunch, dinner, or snack.',{status:400});
+  const displaySlot=p.displaySlot!=null?(DISPLAY_SLOTS.has(String(p.displaySlot))?String(p.displaySlot):(()=>{throw apiError('INVALID_MEAL_SLOT','Invalid displaySlot value.',{status:400});})()):null;
   const previous=s.foodLogs.find(d=>d.date===date);if(previous&&previous.source!=='entries')throw apiError('DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION','This day already has a daily total log; switch to detailed entries before adding individual meals.',{status:400});
   let snapshot,mealId=null,planId=null,quantity;
   if(p.source==='planned'){
@@ -42,21 +44,35 @@ export function foodCommand(s,action,p){
    if(s.foodEntries.some(e=>e.date===date&&e.mealId===meal.id))throw apiError('PLANNED_MEAL_ALREADY_LOGGED','Planned meal has already been logged; delete the entry first to adjust quantity.',{status:400});
    quantity=number(p.quantity,.1,4,'quantity');snapshot=scaleSnapshot(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;
   }else if(p.source==='ingredient'){
-   const i=typeof p.key==='string'&&Object.hasOwn(library.ingredients,p.key)?library.ingredients[p.key]:null;
-   const catItem=!i&&typeof p.key==='string'?getFoodCatalogItem(p.key):null;
-   if(!i&&(!catItem||(catItem.status!=='approved'&&catItem.source!=='regional-serving-models-v1')||!catItem.quantity_basis?.grams_available))throw apiError('FOOD_NOT_FOUND','Food item not found.',{status:404});
-   quantity=number(p.grams,1,2000,'grams');
-   if(i){
-    snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
+   const itemKey=typeof p.key==='string'?p.key:(typeof p.foodId==='string'?p.foodId:null);
+   const i=itemKey&&Object.hasOwn(library.ingredients,itemKey)?library.ingredients[itemKey]:null;
+   const catItem=!i&&itemKey?getFoodCatalogItem(itemKey):null;
+   if(!i&&!catItem)throw apiError('FOOD_NOT_FOUND','Food item not found.',{status:404});
+   const gramsAvailable=Boolean(i||catItem?.quantity_basis?.grams_available);
+   const isReferenceServing=Boolean(!i&&catItem&&(p.unit==='reference'||(!gramsAvailable&&(p.quantity!=null||p.servings!=null))));
+   if(isReferenceServing){
+    quantity=number(p.quantity??p.servings??1,.1,10,'quantity');
+    snapshot={
+     name:catItem.name,
+     is_approximate:catItem.status==='estimated'||Boolean(catItem.isApproximate),
+     values:Object.fromEntries(metrics.map(k=>[k,catItem.values[k]==null?null:String(Math.round(Number(catItem.values[k])*quantity*100)/100)])),
+     ingredients:[{key:catItem.id,name:catItem.name,grams:null,quantity:String(quantity),unit:'reference',state:catItem.state,food_id:catItem.id,source:catItem.source,reference:catItem.reference,values_per_100g:catItem.values}]
+    };
    }else{
-    snapshot={name:catItem.name,is_approximate:catItem.isApproximate,values:Object.fromEntries(metrics.map(k=>[k,catItem.values[k]==null?null:String(Number(catItem.values[k])*quantity/100)])),ingredients:[{key:catItem.id,name:catItem.name,grams:String(quantity),state:catItem.state,food_id:catItem.id,source:catItem.source,values_per_100g:catItem.values}]};
+    if(!gramsAvailable)throw apiError('FOOD_NOT_FOUND','Food item does not have verified gram-basis nutrition; log with unit: "reference" and quantity.',{status:404});
+    quantity=number(p.grams,1,2000,'grams');
+    if(i){
+     snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
+    }else{
+     snapshot={name:catItem.name,is_approximate:catItem.status==='estimated'||Boolean(catItem.isApproximate),values:Object.fromEntries(metrics.map(k=>[k,catItem.values[k]==null?null:String(Number(catItem.values[k])*quantity/100)])),ingredients:[{key:catItem.id,name:catItem.name,grams:String(quantity),state:catItem.state,food_id:catItem.id,source:catItem.source,reference:catItem.reference,values_per_100g:catItem.values}]};
+    }
    }
   }else{
    const name=typeof p.name==='string'?p.name.trim():'';if(!name||name.length>120)throw apiError('INVALID_MEAL_NAME','Manual meal name must be non-empty and at most 120 characters.',{status:400});
    snapshot={name,values:Object.fromEntries(metrics.map(k=>[k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))])),ingredients:[],is_approximate:true};
    if(snapshot.values.energy==null||Number(snapshot.values.energy)<=0)throw apiError('MANUAL_MEAL_ENERGY_REQUIRED','Positive actual energy (kcal > 0) is required for manual food entries.',{status:400});
   }
-  s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,source:p.source,mealId,planId,quantity,at:isoNow(),snapshot:freezeSnapshot(snapshot)});
+  s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,...(displaySlot?{displaySlot}:{}),source:p.source,mealId,planId,quantity,at:isoNow(),snapshot:freezeSnapshot(snapshot)});
   refreshDay(s,date);
   Object.assign(s.foodLogs.find(d=>d.date===date),{complete:false,completionPolicy:1,confirmedAt:null});
  }else if(action==='food_switch_to_entries'){
@@ -74,9 +90,9 @@ export function foodCommand(s,action,p){
  }else throw apiError('INVALID_FOOD_ACTION','Unknown food command action.',{status:400});
  return s;
 }
-export function mealAlternatives(s,mealId){
+export function mealAlternatives(s,mealId,limit=6){
  const {plan,day,meal}=plannedMeal(s,mealId);
- return alternatives(meal,s.preferences,library,6,s.profile,a=>{
+ return alternatives(meal,s.preferences,library,limit,s.profile,a=>{
   try{const snapshots=day.meals.map(m=>m.id===mealId?a.snapshot:m.snapshot);assertDietDay(snapshots,s.preferences.diet,day.targets||plan.targets,s.profile);return !nutritionQualityIssues(sumSnapshots(snapshots),day.targets||plan.targets).length;}catch{return false;}
  });
 }
@@ -86,8 +102,9 @@ export function replaceMeal(s,p){
  if(day.date<localDate(clockNow(),tz))throw apiError('PAST_DAY_PLAN_IMMUTABLE','Past plan days cannot be modified.',{status:400});
  if((s.foodEntries||[]).some(e=>e.mealId===meal.id))throw apiError('MEAL_ALREADY_CONSUMED','Cannot replace a meal that has already been logged as consumed.',{status:400});
  const targetTemplate=p.templateId||p.alternativeId;
- const alternative=mealAlternatives(s,p.mealId).find(a=>a.snapshot.template_id===targetTemplate);if(!alternative)throw apiError('MEAL_ALTERNATIVE_UNAVAILABLE','Selected meal alternative is no longer valid under your current constraints.',{status:400});
- const next=structuredClone(plan);next.id='plan-'+crypto.randomUUID();next.parent_id=plan.id;next.created_at=isoNow();next.changeReason='استبدال وجبة باختيارك';
+ // Validate against the full eligible alternative pool (up to 100) so Pantry alternatives are accepted cleanly.
+ const alternative=mealAlternatives(s,p.mealId,100).find(a=>a.snapshot.template_id===targetTemplate);if(!alternative)throw apiError('MEAL_ALTERNATIVE_UNAVAILABLE','Selected meal alternative is no longer valid under your current constraints.',{status:400});
+ const next=structuredClone(plan);next.id='plan-'+crypto.randomUUID();next.parent_id=plan.id;next.created_at=isoNow();next.changeReason='Meal replaced by user selection';
  const updated=next.days.find(d=>d.date===day.date);updated.meals.find(m=>m.id===meal.id).snapshot=alternative.snapshot;
  updated.summary=sumSnapshots(updated.meals.map(m=>m.snapshot));next.warnings=next.days.flatMap(d=>{const messages=assessDay(d.summary,d.targets||next.targets);return messages.length?[{date:d.date,messages}]:[];});
  s.plans.push(next);s.active_plan_id=next.id;return s;

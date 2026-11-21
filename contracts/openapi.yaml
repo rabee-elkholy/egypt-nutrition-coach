@@ -2,13 +2,14 @@ openapi: 3.1.0
 info:
   title: CuraFit Backend API
   version: 1.0.0
-  summary: REST API integration contract v1 for Kotlin Multiplatform (KMM) Android & iOS clients and Web UI.
+  summary: REST API integration contract for Kotlin Multiplatform (KMM) Android & iOS clients on Cloudflare Workers + D1 + R2.
   description: |
-    Canonical API contract for CuraFit (`v1.0.0`) on Cloudflare Workers + Cloudflare D1.
-    - **Uniform Envelopes:** All `2xx` responses return `{ ok: true, data, meta: { requestId, serverTime, revision? } }`. All `4xx`/`5xx` responses return `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta: { requestId, serverTime } }` with **100% English** error messages (`contracts/error-codes.json`) for KMM localization via `error.code`.
-    - **Authentication (Cloudflare Native):** First-party email/password authentication via `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, and `POST /v1/auth/logout` backed by Cloudflare D1. Mobile KMM and API clients send `Authorization: Bearer <JWT>`.
-    - **Idempotency:** All `POST /v1/commands` writes require a unique `Idempotency-Key` header (UUID) and `revision` integer. Canonical JSON hashing guarantees key-order-independent retry safety.
-    - **Slim Responses:** Append `?view=receipt` or send `Prefer: return=minimal` on `POST /v1/commands` to receive a compact delta receipt instead of the full state aggregate.
+    Canonical API contract for CuraFit (`v1`) on Cloudflare Workers + Cloudflare D1 + Cloudflare R2.
+    - **Uniform Envelopes:** All `2xx` responses return `{ ok: true, data, meta: { requestId, serverTime, revision? } }`. All `4xx`/`5xx` responses return `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta: { requestId, serverTime } }` with **100% English** error messages (`contracts/error-codes.json`) and canonical coaching codes (`contracts/coaching-codes.json`) for KMM mobile localization.
+    - **Authentication (Cloudflare Native + Direct OIDC):** First-party email/password authentication via `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`, plus direct Google/Apple OIDC verification via `POST /v1/auth/oauth/google` and `POST /v1/auth/oauth/apple`. Mobile KMM clients send `Authorization: Bearer <JWT>`.
+    - **Idempotency:** All `POST /v1/commands` writes require a unique `Idempotency-Key` header (UUID) and `revision` integer. Canonical JSON hashing excludes `revision` so timeout + rebase replay succeeds cleanly.
+    - **Slim Responses:** Append `?view=receipt` or send `Prefer: return=minimal` on `POST /v1/commands` to receive a compact delta receipt inside `data`.
+    - **Deferred Final AI Phase:** AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are reserved for the final AI rollout phase and return `501 FEATURE_DEFERRED_TO_AI_PHASE`.
     - **Timezones & Dates:** Timestamps are `ISO-8601 UTC` (`YYYY-MM-DDTHH:mm:ss.sssZ`). Local calendar dates are `YYYY-MM-DD` evaluated in the user's configured IANA timezone (`Africa/Cairo`, `Asia/Riyadh`, `Asia/Dubai`, etc.).
   contact:
     name: CuraFit Platform Engineering
@@ -21,7 +22,6 @@ servers:
     description: Local Miniflare / Wrangler Development Server
 security:
   - BearerAuth: []
-  - AnonymousCookieAuth: []
 paths:
   /v1/health:
     get:
@@ -903,6 +903,16 @@ paths:
       requestBody: *a1
       responses: *a2
   /v1/account/consents:
+    get:
+      operationId: listAccountConsents
+      summary: List persisted legal and medical disclaimer consents
+      responses:
+        "200":
+          description: Consent history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
     post:
       operationId: recordAccountConsent
       summary: Record explicit user privacy/health data consent version
@@ -1012,7 +1022,578 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/plans/preview:
+    post:
+      operationId: previewPlan
+      summary: Stateless onboarding targets, safe floors, and weekly forecast preview
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Preview targets, eligibility, and forecast range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+  /v1/auth/oauth/google:
+    post:
+      operationId: authOAuthGoogle
+      summary: Direct Google OIDC ID token sign-in or registration
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: { type: string }
+                deviceId: { type: string }
+                name: { type: string }
+      responses:
+        "200":
+          description: Signed in existing OAuth user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "201":
+          description: Registered new OAuth user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+  /v1/auth/oauth/apple:
+    post:
+      operationId: authOAuthApple
+      summary: Direct Apple OIDC identity token sign-in or registration
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identityToken]
+              properties:
+                identityToken: { type: string }
+                authorizationCode: { type: string }
+                fullName: { type: string }
+                deviceId: { type: string }
+      responses:
+        "200":
+          description: Signed in existing Apple OAuth user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "201":
+          description: Registered new Apple OAuth user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+  /v1/pantry/catalog:
+    get:
+      operationId: getPantryCatalog
+      summary: List pantry ingredient keys grouped by category
+      responses:
+        "200":
+          description: Pantry catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/pantry/alternatives:
+    post:
+      operationId: postPantryAlternatives
+      summary: Match pantry ingredients to safe meal templates with optional mealId slot scoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keys]
+              properties:
+                keys:
+                  type: array
+                  items: { type: string }
+                mealId: { type: string }
+                limit: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        "200":
+          description: Ranked pantry meal alternatives
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/plans/{planId}/grocery-list:
+    get:
+      operationId: getPlanGroceryList
+      summary: Aggregated shopping list for a nutrition plan with checked state
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: days
+          in: query
+          schema: { type: string, enum: [all, remaining, "3", "7"], default: all }
+      responses:
+        "200":
+          description: Plan grocery list with pantry overlap and checked items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/foods/favorites:
+    get:
+      operationId: listFoodFavorites
+      summary: List pinned/favorite foods for quick logging
+      parameters:
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated favorite foods
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLogsResponse"
+  /v1/foods/barcode/{ean}:
+    get:
+      operationId: lookupBarcode
+      summary: Look up packaged food by EAN/UPC barcode (local D1 cache + OpenFoodFacts fallback)
+      parameters:
+        - name: ean
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Barcode nutrition entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/foods/barcode:
+    post:
+      operationId: submitBarcode
+      summary: Submit a user-contributed barcode nutrition item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ean, name, kcalPer100g]
+      responses:
+        "201":
+          description: Barcode entry stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/nutrition/fasting-state:
+    get:
+      operationId: getFastingState
+      summary: Current intermittent fasting / Ramadan timer state and active window
+      responses:
+        "200":
+          description: Fasting timer state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/workouts/prs:
+    get:
+      operationId: getWorkoutPrs
+      summary: Computed personal records (weight, e1RM, volume, assisted inversion)
+      parameters:
+        - name: since
+          in: query
+          schema: { type: string, format: date }
+        - name: exerciseId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Exercise personal records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/progress/analytics:
+    get:
+      operationId: getProgressAnalytics
+      summary: Aggregated analytics series (weight EWMA, nutrition adherence, training volume, exercise e1RM)
+      parameters:
+        - name: range
+          in: query
+          schema: { type: string, enum: [7d, 30d, 90d, 1y, all], default: 30d }
+        - name: exerciseId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Progress analytics payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/progress/weekly-wrapped:
+    get:
+      operationId: getWeeklyWrapped
+      summary: Shareable weekly recap card metrics
+      parameters:
+        - name: weekEnd
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Weekly recap summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/widgets/snapshot:
+    get:
+      operationId: getWidgetSnapshot
+      summary: Ultra-lightweight (< 1.5 KB) payload for Android Glance and iOS WidgetKit
+      parameters:
+        - $ref: "#/components/parameters/IfNoneMatchHeader"
+      responses:
+        "200":
+          description: Widget snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "304":
+          description: Not Modified
+  /v1/measurements:
+    get:
+      operationId: listBodyMeasurements
+      summary: Paginated body circumference measurements (waist, chest, hips, arms, thighs, neck)
+      parameters:
+        - $ref: "#/components/parameters/FromDateQuery"
+        - $ref: "#/components/parameters/ToDateQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated body measurements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLogsResponse"
+  /v1/profile/avatar:
+    post:
+      operationId: uploadProfileAvatar
+      summary: Upload or replace user profile avatar (binary JPEG/PNG/WebP up to 5 MB stored in R2)
+      responses:
+        "200":
+          description: Avatar uploaded with signed URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+    delete:
+      operationId: deleteProfileAvatar
+      summary: Remove user profile avatar from R2 and clear profile reference
+      responses:
+        "200":
+          description: Avatar deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/progress/photos:
+    get:
+      operationId: listProgressPhotos
+      summary: List progress photos with short-lived Worker-signed URLs (always accessible even after Pro downgrade)
+      parameters:
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated progress photos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/progress/photos/upload-url:
+    post:
+      operationId: createProgressPhotoUploadUrl
+      summary: Issue short-lived HMAC-signed PUT URL for a progress photo (Pro-gated when enforcement is enabled)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType, pose]
+              properties:
+                contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+                pose: { type: string, enum: [front, side, back] }
+                date: { type: string, format: date }
+                weightKg: { type: number }
+      responses:
+        "200":
+          description: Upload URL and photo ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Pro entitlement required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/progress/photos/confirm:
+    post:
+      operationId: confirmProgressPhoto
+      summary: Confirm R2 upload and register photo metadata in D1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [photoId, objectKey, pose]
+      responses:
+        "201":
+          description: Confirmed progress photo record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/progress/photos/{photoId}:
+    delete:
+      operationId: deleteProgressPhoto
+      summary: Delete a progress photo from R2 and D1 (always accessible even after Pro downgrade)
+      parameters:
+        - name: photoId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Photo deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/media/signed/{token}:
+    get:
+      operationId: downloadSignedMedia
+      summary: Stream private R2 media object authorized by short-lived HMAC token
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Binary image stream
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+    put:
+      operationId: uploadSignedMedia
+      summary: Upload private R2 media object authorized by short-lived HMAC PUT token
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Upload stored in R2
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+  /v1/devices/push-token:
+    post:
+      operationId: registerPushToken
+      summary: Register or refresh an FCM/APNs device push token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId, platform, token]
+      responses:
+        "200":
+          description: Push token registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+    delete:
+      operationId: deletePushToken
+      summary: Unregister a device push token
+      responses:
+        "200":
+          description: Push token removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/support/feedback:
+    post:
+      operationId: submitSupportFeedback
+      summary: Submit an in-app support ticket or catalog correction report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, message]
+      responses:
+        "201":
+          description: Support ticket created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/subscriptions/offerings:
+    get:
+      operationId: getSubscriptionOfferings
+      summary: Active StoreKit / Play Billing offerings and trial eligibility
+      parameters:
+        - name: platform
+          in: query
+          schema: { type: string, enum: [android, ios], default: android }
+        - name: region
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Offerings list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/subscriptions/verify:
+    post:
+      operationId: verifySubscription
+      summary: Verify an Apple StoreKit 2 or Google Play purchase and activate entitlements
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+      responses:
+        "200":
+          description: Updated entitlements snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/subscriptions/restore:
+    post:
+      operationId: restoreSubscriptions
+      summary: Restore prior store purchases and reconcile active entitlements
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Restored entitlements snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/webhooks/apple:
+    post:
+      operationId: webhookAppleStore
+      summary: Apple App Store Server Notifications webhook
+      security: []
+      responses:
+        "200":
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/webhooks/google-play:
+    post:
+      operationId: webhookGooglePlay
+      summary: Google Play Real-Time Developer Notifications (RTDN) webhook
+      security: []
+      responses:
+        "200":
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/nutrition/ai-parse:
+    post:
+      operationId: aiParseMealDeferred
+      summary: Deferred to Final AI Phase (returns 501 FEATURE_DEFERRED_TO_AI_PHASE)
+      responses:
+        "501":
+          description: Feature deferred to final AI phase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/coaching/chat:
+    post:
+      operationId: aiCoachChatDeferred
+      summary: Deferred to Final AI Phase (returns 501 FEATURE_DEFERRED_TO_AI_PHASE)
+      responses:
+        "501":
+          description: Feature deferred to final AI phase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/coaching/chat/history:
+    get:
+      operationId: aiCoachChatHistoryDeferred
+      summary: Deferred to Final AI Phase (returns 501 FEATURE_DEFERRED_TO_AI_PHASE)
+      responses:
+        "501":
+          description: Feature deferred to final AI phase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 components:
   securitySchemes:
     BearerAuth:
@@ -1247,87 +1828,136 @@ components:
         meta:
           $ref: "#/components/schemas/SuccessMeta"
     CapabilitiesResponse:
-      type: object
-      required:
-        - apiVersion
-        - schemaVersion
-        - engineVersion
-        - catalogVersion
-        - serverTime
-        - features
-      properties:
-        apiVersion:
-          type: string
-        schemaVersion:
-          type: integer
-        engineVersion:
-          type: string
-        catalogVersion:
-          type: string
-        foodCatalogVersion:
-          type: string
-        serverTime:
-          type: string
-          format: date-time
-        features:
-          type: array
-          items:
-            type: string
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required:
+                - apiVersion
+                - schemaVersion
+                - engineVersion
+                - coachingCodesVersion
+                - catalogVersion
+                - serverTime
+                - requestId
+                - auth
+                - features
+                - deferredFeatures
+              properties:
+                apiVersion:
+                  type: string
+                schemaVersion:
+                  type: integer
+                engineVersion:
+                  type: string
+                coachingCodesVersion:
+                  type: string
+                catalogVersion:
+                  type: string
+                foodCatalogVersion:
+                  type: string
+                serverTime:
+                  type: string
+                  format: date-time
+                requestId:
+                  type: string
+                minSupportedVersion:
+                  type: object
+                  properties:
+                    android: { type: string }
+                    ios: { type: string }
+                maintenanceMode:
+                  type: object
+                  properties:
+                    active: { type: boolean }
+                    message: { type: [string, "null"] }
+                auth:
+                  type: object
+                  properties:
+                    provider: { type: string }
+                    configured: { type: boolean }
+                features:
+                  type: array
+                  items:
+                    type: string
+                deferredFeatures:
+                  type: array
+                  items:
+                    type: string
     BootstrapResponse:
-      type: object
-      required:
-        - schemaVersion
-        - revision
-        - serverNow
-        - serverDate
-        - timezone
-        - profile
-        - preferences
-        - eligibility
-        - todaySummary
-      properties:
-        schemaVersion:
-          type: integer
-        revision:
-          type: integer
-        serverNow:
-          type: string
-          format: date-time
-        serverDate:
-          type: string
-          format: date
-        timezone:
-          type: string
-        profile:
-          type:
-            - object
-            - "null"
-        preferences:
-          type:
-            - object
-            - "null"
-        activeNutritionPlanRef:
-          type:
-            - object
-            - "null"
-        activeWorkoutPlanRef:
-          type:
-            - object
-            - "null"
-        todaySummary:
-          type: object
-        pendingAdaptations:
-          type: array
-          items:
-            type: object
-        workoutSafetyIssues:
-          type: array
-          items:
-            type: object
-        entitlements:
-          type: object
-        notificationPreferences:
-          type: object
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required:
+                - schemaVersion
+                - revision
+                - serverNow
+                - serverDate
+                - timezone
+                - profile
+                - preferences
+                - eligibility
+                - onboarding
+                - serviceTrack
+                - todaySummary
+              properties:
+                schemaVersion:
+                  type: integer
+                revision:
+                  type: integer
+                serverNow:
+                  type: string
+                  format: date-time
+                serverDate:
+                  type: string
+                  format: date
+                timezone:
+                  type: string
+                profile:
+                  type: [object, "null"]
+                preferences:
+                  type: [object, "null"]
+                eligibility:
+                  type: object
+                onboarding:
+                  type: object
+                serviceTrack:
+                  type: [string, "null"]
+                consents:
+                  type: array
+                  items: { type: object }
+                activeNutritionPlanRef:
+                  type: [object, "null"]
+                activeWorkoutPlanRef:
+                  type: [object, "null"]
+                scheduledSessions:
+                  type: array
+                  items: { type: object }
+                todaySummary:
+                  type: object
+                fastingState:
+                  type: object
+                ramadanMode:
+                  type: [object, "null"]
+                streakSummary:
+                  type: object
+                engagementState:
+                  type: object
+                pendingAdaptations:
+                  type: array
+                  items: { type: object }
+                workoutSafetyIssues:
+                  type: array
+                  items: { type: object }
+                entitlements:
+                  type: object
+                notificationPreferences:
+                  type: object
     CoachingFeedbackPayload:
       oneOf:
         - properties:
@@ -1470,6 +2100,11 @@ components:
             - food
             - food_switch_to_entries
             - replace_meal
+            - food_favorite
+            - copy_meal
+            - grocery_toggle
+            - fasting_log
+            - ramadan_mode
             - weight
             - water
             - steps
@@ -1478,7 +2113,13 @@ components:
             - workout
             - session
             - replace_exercise
+            - ad_hoc_exercise
+            - workout_ui_mode
             - reschedule
+            - comeback_restart
+            - profile_update
+            - body_measurement
+            - streak_freeze
             - review
             - adaptation
             - timezone
@@ -1490,65 +2131,67 @@ components:
         payload:
           type: object
     CommandReceiptResponse:
-      type: object
-      required:
-        - ok
-        - revision
-        - serverNow
-        - serverDate
-        - timezone
-        - commandReceipt
-        - affected
-      properties:
-        ok:
-          type: boolean
-        revision:
-          type: integer
-        serverNow:
-          type: string
-          format: date-time
-        serverDate:
-          type: string
-          format: date
-        timezone:
-          type: string
-        commandReceipt:
-          type: object
-          required:
-            - revision
-            - action
-            - replayed
-            - at
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
           properties:
-            revision:
-              type: integer
-            action:
-              type: string
-            replayed:
-              type: boolean
-            at:
-              type: string
-              format: date-time
-        affected:
-          type: array
-          items:
-            type: object
-            required:
-              - entityType
-              - entityId
-              - op
-            properties:
-              entityType:
-                type: string
-              entityId:
-                type: string
-              op:
-                type: string
-                enum:
-                  - upsert
-                  - delete
-              payload:
-                type: object
+            data:
+              type: object
+              required:
+                - revision
+                - serverNow
+                - serverDate
+                - timezone
+                - commandReceipt
+                - affected
+              properties:
+                revision:
+                  type: integer
+                serverNow:
+                  type: string
+                  format: date-time
+                serverDate:
+                  type: string
+                  format: date
+                timezone:
+                  type: string
+                commandReceipt:
+                  type: object
+                  required:
+                    - revision
+                    - action
+                    - replayed
+                    - at
+                  properties:
+                    revision:
+                      type: integer
+                    action:
+                      type: string
+                    replayed:
+                      type: boolean
+                    at:
+                      type: string
+                      format: date-time
+                affected:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - entityType
+                      - entityId
+                      - op
+                    properties:
+                      entityType:
+                        type: string
+                      entityId:
+                        type: string
+                      op:
+                        type: string
+                        enum:
+                          - upsert
+                          - delete
+                      payload:
+                        type: object
     FoodCatalogItem:
       type: object
       required:
@@ -1837,10 +2480,15 @@ components:
           type:
             - string
             - "null"
+        avatarUrl:
+          type:
+            - string
+            - "null"
         entitlement:
           type: string
           enum:
             - free
+            - pro
             - premium
         createdAt:
           type: string

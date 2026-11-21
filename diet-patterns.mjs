@@ -76,8 +76,11 @@ export function medicalContraindicatedKeys(profile={}){
   if(diseases.has('cholesterol')){
     for(const k of ['lamb','liver','wholemilk','shawarma_beef'])out.add(k);
   }
-  if(diseases.has('diabetes')||diseases.has('insulin_resistance')||diseases.has('pcos')){
+  if(diseases.has('diabetes')||diseases.has('diabetes_t1')||diseases.has('diabetes_t2')||diseases.has('insulin_resistance')||diseases.has('pcos')){
     for(const k of ['honey'])out.add(k);
+  }
+  if(diseases.has('celiac')){
+    for(const k of ['bread','wholebread','toast','pasta','bulgur','couscous','tabbouleh','fattoush'])out.add(k);
   }
   return out;
 }
@@ -85,12 +88,14 @@ export function medicalContraindicatedKeys(profile={}){
 export function isDietUnsafeForProfile(diet, profile={}){
   const maternal=profile.maternalStatus&&profile.maternalStatus!=='none';
   const diseases=new Set(Array.isArray(profile.diseases)?profile.diseases:[]);
+  const hasDiabetes=diseases.has('diabetes')||diseases.has('diabetes_t1')||diseases.has('diabetes_t2');
   if(diet==='keto'){
-    if(maternal||diseases.has('diabetes')||diseases.has('gout')||diseases.has('cholesterol')||profile.ketoRisk)return true;
+    if(maternal||hasDiabetes||diseases.has('gout')||diseases.has('cholesterol')||diseases.has('kidney')||profile.goal==='gain'||profile.ketoRisk)return true;
   }
   if(diet==='intermittent_fasting'){
-    if(maternal||diseases.has('diabetes')||profile.fastingRisk)return true;
+    if(maternal||hasDiabetes||profile.goal==='gain'||profile.fastingRisk)return true;
   }
+  if(diet==='high_protein'&&diseases.has('kidney'))return true;
   return false;
 }
 

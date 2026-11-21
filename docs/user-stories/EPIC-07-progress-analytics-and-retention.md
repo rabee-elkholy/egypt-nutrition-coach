@@ -2,8 +2,8 @@
 
 > **Epic ID:** `EPIC-07`
 > **Target Platforms:** KMM (Android Jetpack Compose & Glance + iOS SwiftUI & WidgetKit)
-> **Scope:** Production V2
-> **Labels:** `production-v2`, `mobile-v2`, `progress`, `analytics`, `retention`, `widgets`
+> **Scope:** Production
+> **Labels:** `production`, `mobile`, `progress`, `analytics`, `retention`, `widgets`
 
 ---
 
@@ -28,7 +28,7 @@
 | **Story ID** | `US-PRG-01` |
 | **Epic** | `EPIC-07` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `progress`, `analytics`, `charts` |
+| **Labels** | `production`, `mobile`, `progress`, `analytics`, `charts` |
 | **Target Screens** | `ProgressAnalyticsScreen` (Accessible from Coach Hub, Today Weight Card & Profile) |
 | **Entitlement** | `Freemium` (`Free`: `14D` & `30D` weight/adherence charts; `Pro`: `90D` / `All-Time` trends, strength 1RM curve & trajectory overlay) |
 | **Backend Status** | `Mixed` (`[EXISTING]` `/v1/progress/summary`, `/v1/weight-logs`, `/v1/workout-logs` + `[NEW BACKEND] GET /v1/progress/analytics`) |
@@ -46,9 +46,9 @@ As a user working toward a body transformation goal over months, I want an inter
    - Bold solid curve for **7-Day Rolling Average** + dashed target line toward `targetWeight`.
    - Hero Stats Row: `Start Weight` -> `Current 7d Avg` (`Delta: -3.2 kg`) -> `Weekly Rate` (`-0.55% / wk`) + Goal Trajectory ETA (`"Est. ~8 weeks left"`).
    - **Calm Education Banner (`weightTrend.note`):** *"Your coach tracks 7-day moving averages, not single-day water weight swings."*
-3. **Card 2 — Nutrition Adherence & Macro Consistency (`service_track != "workouts_only"`):**
+3. **Card 2 — Nutrition Adherence & Macro Consistency (`serviceTrack != "workouts_only"`):**
    - Bar chart of daily logged calories vs. target band (`80%–120%` shaded green adherence zone) + 14-day averages (`Avg kcal`, `Avg Protein g`, `Complete Days: X/14`).
-4. **Card 3 — Strength & Volume Progression (`service_track != "nutrition_only"`):**
+4. **Card 3 — Strength & Volume Progression (`serviceTrack != "nutrition_only"`):**
    - Total Weekly Training Volume (`kg`) bar chart + Exercise Picker (`Bench Press`, `Squat`, `Lat Pulldown`, etc.) plotting Estimated 1RM & Top Set Weight over time.
    - Summary chips from `progressSummary.workoutSummary.insights` (`Load Increases`, `Rep Increases`, `Ready for Next Load`).
 5. **Card 4 — Hydration & Sleep/Recovery Consistency:** Compact 14-day visual dot matrix (`water-logs` & `checkins`).
@@ -57,7 +57,7 @@ As a user working toward a body transformation goal over months, I want an inter
 1. **`[EXISTING] GET /v1/progress/summary`** -> 14-day `weightTrend`, `foodCompleteness`, `hydration`, `workoutSummary`.
 2. **`[EXISTING] GET /v1/weight-logs?from={date}&to={date}&limit=100`** & **`GET /v1/workout-logs?from={date}&to={date}&limit=100`**.
 3. **`[NEW BACKEND] GET /v1/progress/analytics?range=14d|30d|90d|all&exerciseId={optional}`**
-   - Returns server-aggregated series (`weightMovingAvg[]`, `dailyCalories[]`, `weeklyVolume[]`, `exerciseEstimated1Rm[]`, `estimatedWeeksRemaining`) so heavy 90d+ aggregation never lags old mobile CPUs!
+   - Returns server-aggregated series (`weightSeries[]`, `weightMovingAvg7d[]`, `calorieAdherence[]`, `weeklyVolume[]`, `exercise1RmSeries[]`, `estimatedWeeksRemaining`) so heavy 90d+ aggregation never lags old mobile CPUs!
    - Error Codes: `400 INVALID_DATE_RANGE`, `402 PRO_ENTITLEMENT_REQUIRED` (for `90d`/`all` if Free).
 
 ### RULES & BUSINESS LOGIC
@@ -104,7 +104,7 @@ As a user working toward a body transformation goal over months, I want an inter
 | **Story ID** | `US-PRG-02` |
 | **Epic** | `EPIC-07` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `progress`, `measurements` |
+| **Labels** | `production`, `mobile`, `progress`, `measurements` |
 | **Target Screens** | `BodyMeasurementsScreen`, `LogMeasurementSheet` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `New` (`GET /v1/measurements`, `action: "body_measurement"`) |
@@ -129,7 +129,7 @@ As a user undergoing body recomposition or fat loss where the scale sometimes st
 1. **`[NEW BACKEND] GET /v1/measurements?from={date}&to={date}&offset=0&limit=30`**
    - Returns paginated `{ id, date, waistCm, hipsCm, chestCm, neckCm, leftArmCm, rightArmCm, leftThighCm, rightThighCm, bodyFatPct, notes }`.
 2. **`[NEW BACKEND] POST /v1/commands?view=receipt`** (`action: "body_measurement"`)
-   - Payload: `{ "date": "2026-11-21", "waistCm": 84.5, "chestCm": 101.0, "hipsCm": 96.0, "rightArmCm": 35.5, "bodyFatPct": 18.2 }`.
+   - Payload: `{ "date": "2026-11-21", "waistCm": 84.5, "chestCm": 101.0, "hipsCm": 96.0, "rightArmCm": 35.5, "bodyFatPct": 18.2, "notes": "Morning fasted" }`.
    - Error Codes: `NUMBER_OUT_OF_RANGE` (`20..250 cm`, `bodyFatPct` `3..65%`), `EMPTY_MEASUREMENT_RECORD`.
 
 ### RULES & BUSINESS LOGIC
@@ -175,10 +175,10 @@ As a user undergoing body recomposition or fat loss where the scale sometimes st
 | **Story ID** | `US-PRG-03` |
 | **Epic** | `EPIC-07` |
 | **Priority** | `Medium` |
-| **Labels** | `production-v2`, `mobile-v2`, `progress`, `photos`, `privacy`, `pro-feature` |
+| **Labels** | `production`, `mobile`, `progress`, `photos`, `privacy`, `pro-feature` |
 | **Target Screens** | `ProgressPhotosVaultScreen`, `GuidedPhotoCaptureScreen`, `PhotoCompareSliderScreen` |
-| **Entitlement** | `Freemium` (`Free`: Local-only device storage up to 6 photos; `Pro`: Unlimited encrypted R2 cloud vault + cross-device sync + Before/After export) |
-| **Backend Status** | `New` (`GET /v1/progress/photos`, `POST /v1/progress/photos/upload-url`, `POST /v1/progress/photos/confirm`, `DELETE /v1/progress/photos/{id}`) |
+| **Entitlement** | `Freemium` (`Free`: Local-only device storage up to 6 photos; `Pro`: Unlimited encrypted R2 cloud vault + cross-device sync + Before/After export; downgraded users retain full `GET`/`DELETE` access to existing cloud photos) |
+| **Backend Status** | `New` (`GET /v1/progress/photos`, `POST /v1/progress/photos/upload-url`, `POST /v1/progress/photos/confirm`, `DELETE /v1/progress/photos/{id}`, `GET /v1/media/signed/{token}`) |
 
 ### STORY
 As a user documenting my visual physique changes, I want a private, passcode/biometric-protected Progress Photos Vault with guided Front/Side/Back alignment frames, a strict choice between Local-Only storage (never leaves my phone) or Encrypted Cloud backup, and a Before & After comparison slider so I can see subtle visual changes safely and privately.
@@ -191,7 +191,7 @@ As a user documenting my visual physique changes, I want a private, passcode/bio
    - Optional **Biometric / Face ID / Fingerprint Lock Toggle** (`"Require Face ID / Fingerprint to open Photos Vault"` — blurred preview cards in app switcher!).
    - Explicit Storage Choice Toggle:
      - `Device-Only (Private Local Vault)`: Zero photos leave the device (encrypted in app sandbox).
-     - `Encrypted Cloud Backup (Pro)`: Synced via private presigned R2 object URLs (`private` bucket, never public URLs!).
+     - `Encrypted Cloud Backup (Pro)`: Synced via private Worker-proxied HMAC-signed R2 URLs (`/v1/media/signed/{token}` — private bucket, never public URLs!).
 2. **Timeline Gallery (`ProgressPhotosVaultScreen`):**
    - Grouped by date (`Nov 21 • 81.4 kg` | `Oct 15 • 85.0 kg`) with Pose tags (`Front`, `Side`, `Back`).
    - `[+ Add Photo]` and `[Compare Two Dates ↔]` buttons.
@@ -202,30 +202,32 @@ As a user documenting my visual physique changes, I want a private, passcode/bio
    - Optional `[Save / Share Comparison]` (offers clean `"Blur Face"` privacy toggle before exporting!).
 
 ### API & BACKEND CONTRACT
-1. **`[NEW BACKEND] POST /v1/progress/photos/upload-url`** (Pro Cloud Sync only)
+1. **`[NEW BACKEND] POST /v1/progress/photos/upload-url`** (Pro Cloud Sync only — **only endpoint gated by `402 PRO_ENTITLEMENT_REQUIRED`**)
    - Request: `{ "date": "2026-11-21", "pose": "front" | "side" | "back", "contentType": "image/webp" | "image/jpeg", "byteSize": 245000 }`.
-   - Response: `{ "photoId": "ph_<uuid>", "uploadUrl": "<short-lived-r2-signed-put-url>", "maxBytes": 2097152 }`.
+   - Response: `{ "photoId": "ph_<uuid>", "uploadUrl": "/v1/media/signed/<hmac-put-token>", "maxBytes": 2097152 }`.
 2. **`[NEW BACKEND] POST /v1/progress/photos/confirm`** -> Finalizes metadata (`photoId`, `date`, `pose`, `weightKgSnapshot`) in D1 (`coaching_progress_photos`).
-3. **`[NEW BACKEND] GET /v1/progress/photos?offset=0&limit=30`** -> Returns metadata + short-lived (`15m`) signed download URLs.
-4. **`[NEW BACKEND] DELETE /v1/progress/photos/{id}`** -> Deletes from both R2 object storage AND D1 metadata immediately.
-   - Error Codes: `402 PRO_ENTITLEMENT_REQUIRED`, `404 PHOTO_NOT_FOUND`, `413 PHOTO_TOO_LARGE` (`> 2 MB`).
+3. **`[NEW BACKEND] GET /v1/progress/photos?offset=0&limit=30`** -> Returns metadata + short-lived (`15m`) Worker-proxied HMAC-signed download URLs (`/v1/media/signed/{token}`). **Always accessible even if a former Pro user downgraded to Free!**
+4. **`[NEW BACKEND] DELETE /v1/progress/photos/{id}`** -> Deletes from both R2 object storage AND D1 metadata immediately (**always accessible to downgraded Free users**).
+5. **`[NEW BACKEND] GET /v1/media/signed/{token}`** (and `PUT /v1/media/signed/{token}`) -> Worker-proxied HMAC-SHA256 signed R2 media streaming & upload endpoint (`15m` TTL, zero raw R2 credentials exposed).
+   - Error Codes: `402 PRO_ENTITLEMENT_REQUIRED` (`upload-url` only), `404 PHOTO_NOT_FOUND`, `413 PHOTO_TOO_LARGE` (`> 2 MB`).
 
 ### RULES & BUSINESS LOGIC
 1. **Never Expose Photos to OS Public Gallery:** Photos taken in-app save strictly inside private app internal directory (`Context.filesDir` / iOS `Application Support`) with `.nomedia` on Android so personal physique photos never appear in Google Photos / Apple Photos or WhatsApp attachments!
 2. **GDPR Complete Erasure:** `DELETE /v1/account/delete` (`US-PRF-06`) also purges all R2 objects under `users/{userId}/photos/*` atomically.
 3. **Biometric Gate:** If `"Vault Lock"` is active, require OS BiometricPrompt / `LAContext` before revealing thumbnails.
+4. **Non-Hostage Downgrade Policy:** If a Pro user cancels and reverts to Free, `402 PRO_ENTITLEMENT_REQUIRED` ONLY gates new `POST /v1/progress/photos/upload-url` requests; existing cloud photos remain 100% viewable (`GET /v1/progress/photos`) and deletable (`DELETE /v1/progress/photos/{id}`).
 
 ### MAIN FLOW
 1. User opens `Progress` -> `Photos Vault`, authenticates with Face ID, and taps `[+ Add Photo]`.
 2. User picks `Front` pose, enables `5s` timer + `Ghost Overlay`, snaps photo (`310 KB` WebP), and reviews.
-3. Since Pro Cloud Backup is enabled, client gets presigned URL via `POST /v1/progress/photos/upload-url`, uploads directly to private R2, and calls `confirm`.
+3. Since Pro Cloud Backup is enabled, client gets a Worker-proxied HMAC-signed upload URL via `POST /v1/progress/photos/upload-url`, uploads to `/v1/media/signed/{token}`, and calls `confirm`.
 4. User taps `[Compare]` -> Selects Oct 15 vs Nov 21 and drags slider cleanly across the visual progress.
 
 ### EDGE CASES
 - **Upload Fails Offline While Cloud Backup Enabled:** Store photo securely in local pending vault queue (`syncStatus: "pending_upload"`) and upload automatically once online.
 - **Biometrics Unavailable / Failed 3 Times:** Fall back gracefully to device passcode (`DEVICE_CREDENTIAL`) via OS biometric API.
 - **Free User Attempts to Add 7th Photo (`> 6` Local Vault Cap):** Displays Soft Paywall value prompt (`[Unlock Unlimited Encrypted Cloud Vault]`) while keeping all 6 existing photos completely accessible & deletable!
-- **Signed R2 Download URL Expires (`15m` TTL) While Gallery Stays Open:** Client transparently refreshes metadata via `GET /v1/progress/photos` on `403/404` signed-URL expiration without breaking image tiles.
+- **Signed Worker Media URL Expires (`15m` TTL) While Gallery Stays Open:** Client transparently refreshes metadata via `GET /v1/progress/photos` on `403/404` signed-URL expiration without breaking image tiles.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Device-only storage prevents any cloud photo upload**
@@ -255,7 +257,7 @@ As a user documenting my visual physique changes, I want a private, passcode/bio
 | **Story ID** | `US-PRG-04` |
 | **Epic** | `EPIC-07` |
 | **Priority** | `Medium` |
-| **Labels** | `production-v2`, `mobile-v2`, `retention`, `streaks`, `gamification` |
+| **Labels** | `production`, `mobile`, `retention`, `streaks`, `gamification` |
 | **Target Screens** | `StreaksAndBadgesSheet`, `WeeklyWrappedModal` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `New` (`GET /v1/progress/weekly-wrapped`, `action: "streak_freeze"`, extended `bootstrap.streakSummary`) |
@@ -331,7 +333,7 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
 | **Story ID** | `US-PRG-05` |
 | **Epic** | `EPIC-07` |
 | **Priority** | `Medium` |
-| **Labels** | `production-v2`, `mobile-v2`, `widgets`, `android-glance`, `ios-widgetkit` |
+| **Labels** | `production`, `mobile`, `widgets`, `android-glance`, `ios-widgetkit` |
 | **Target Screens** | OS Home Screen / Lock Screen Widgets (Small `2x2` & Medium `4x2`) |
 | **Entitlement** | `Free` *(Core daily glanceability drives massive retention)* |
 | **Backend Status** | `New` (`GET /v1/widgets/snapshot`) + `Existing` (`water` command for interactive +1 Cup) |

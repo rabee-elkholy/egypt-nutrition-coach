@@ -1,15 +1,14 @@
-> Current release: **1.0.0 (`CuraFit API v1`)** — Cloudflare Workers + D1 backend ready for Kotlin Multiplatform Mobile (KMM) + clean Web UI for User Stories.
+> Current release: **1.0.0 (`CuraFit API v1`)** — Pure Cloudflare Workers + D1 + R2 backend for Kotlin Multiplatform Mobile (KMM) Android & iOS clients.
 
 # CuraFit (`curafit-api`)
 
-Server-driven Arabic & regional nutrition planning, workout prescription, and adaptive longitudinal coaching for weight, hydration, sleep, and recovery. All planning and coaching engines run deterministically on Cloudflare Workers and D1 with **zero runtime AI API calls**, returning uniform `{ ok, data, error, meta }` KMM JSON envelopes and pure English `error.code` + `error.message` catalogs ([`contracts/error-codes.json`](contracts/error-codes.json), [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md)).
+Server-driven Arabic & regional nutrition planning, workout prescription, and adaptive longitudinal coaching for weight, hydration, sleep, and recovery. All planning and coaching engines run deterministically on Cloudflare Workers, D1, and R2 with **zero runtime AI API calls** (AI meal parsing and Q&A are deferred to the final AI rollout phase), returning uniform `{ ok, data, error, meta }` KMM JSON envelopes and 100% pure-English canonical catalogs ([`contracts/error-codes.json`](contracts/error-codes.json), [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md), [`contracts/coaching-codes.json`](contracts/coaching-codes.json), [`docs/COACHING_CODES.md`](docs/COACHING_CODES.md)).
 
 ## Canonical Hosting & Repository Contract
 
-- **Production App & API (`main` branch):** [https://curafit-api.egypt-nutrition-coach.workers.dev/#planner](https://curafit-api.egypt-nutrition-coach.workers.dev/#planner)
-- **Cloud Dev App & API (`dev` branch):** [https://curafit-api-dev.egypt-nutrition-coach.workers.dev/#planner](https://curafit-api-dev.egypt-nutrition-coach.workers.dev/#planner)
+- **Production API (`main` branch):** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/health`
+- **Cloud Dev API (`dev` branch):** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/health`
 - **Git Repository:** [rabee-elkholy/egypt-nutrition-coach](https://github.com/rabee-elkholy/egypt-nutrition-coach) — Branches: **`dev`** (Cloud Dev) & **`main`** (Production)
-- **Working Directory:** `E:\Egypt_Nutrition_Local\website\dist`
 - **Cloudflare Workers:** `curafit-api` (Production) & `curafit-api-dev` (Cloud Dev)
 - **Cloudflare D1 Databases:** `egypt-nutrition-coaching` (`database_id`: `90fa62f1-7866-4156-ac29-f0aec4814bab`, binding: `DB`) & `curafit-db-dev` (`database_id`: `0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`, full production clone for Cloud Dev)
 - **Deployment Configuration:** [`wrangler.jsonc`](wrangler.jsonc), Worker entrypoint [`server/cloudflare-entry.mjs`](server/cloudflare-entry.mjs)
@@ -18,27 +17,24 @@ Full repository, branching, and AI agent development workflow rules are defined 
 
 ## Nutrition Planning & Adaptive Follow-Up
 
-- **Regional & Constraint-Aware Meal Plans:** Supports regional food availability (`egypt`, `levant`, `gulf`, `maghreb`), dietary patterns (`balanced`, `low_carb`, `keto`, `high_protein`, `intermittent_fasting`, `vegetarian`, `vegan`, `mediterranean`, `dash`), budget tiers (`low`, `medium`, `high`), ingredient/group exclusions, and supported health conditions.
+- **Regional & Constraint-Aware Meal Plans:** Supports regional food availability (`egypt`, `levant`, `gulf`, `maghreb`), dietary patterns (`balanced`, `low_carb`, `keto`, `high_protein`, `intermittent_fasting`, `vegetarian`, `vegan`, `mediterranean`, `dash`), budget tiers (`low`, `medium`, `high`), ingredient/group exclusions, and supported health conditions (including pregnancy/breastfeeding, `seniorMode`, `diabetes_t1`/`diabetes_t2`, `hypothyroid`, `celiac`, and `kidney` guardrails).
 - **Reference-Backed Nutrient Provenance:** All planning ingredients map to verified reference profiles (`data/planning-library.json` version `0.6.0-data.5`, 100g edible basis, explicit household portion rules in [`planner-household.mjs`](planner-household.mjs)).
-- **Bounded Quality-Guided Weekly Solver:** Deterministic multi-pass meal allocation, variety fallback within strict dietary/sodium/budget pools, and bounded swap repair toward `>=85%` protein and `±12%` energy targets without relaxing implemented safety boundaries (`>=80%` protein, `±15%` energy, DASH `<=1800 mg` sodium).
-- **Explicit Day Completion & Meal Alternatives:** Supports logging planned meals at custom multipliers, gram-based ingredient entries, and manual meals. Logging food or reaching a calorie percentage never auto-closes a day; explicit day confirmation is required. Meal replacements honor the active diet and exclusion rules while keeping plan-version history immutable and separate from the food diary.
-- **Personalized Coaching Brief (`/v1/coaching/brief`) & Decision Memory:** Delivers structured, server-authored Arabic follow-up across nutrition, training, hydration, and recovery.
-  - Remembers accepted and declined adaptations (calorie adjustments and recovery deloads) across subsequent reviews and everyday logging (water, meals, workouts, weight) until new underlying data arrives or the active window expires.
+- **Bounded Quality-Guided Weekly Solver:** Deterministic multi-pass meal allocation, variety fallback within strict dietary/sodium/budget pools, and bounded swap repair toward `>=85%` protein and `±12%` energy targets without relaxing implemented safety boundaries (`>=80%` protein, `±15%` energy, DASH `<=1800 mg` sodium, safe floors `1500 M / 1200 F / 1800 Pregnant / 1600 Breastfeeding`).
+- **Explicit Day Completion, Pantry, Grocery, Barcode & Fasting:** Supports logging planned meals at custom multipliers (`0.1..4`), gram-based and reference-serving ingredient entries, manual meals, pantry alternatives (`/v1/pantry/*`), grocery lists (`/v1/plans/{id}/grocery-list`), favorites, copy-meal, EAN barcode lookup/submit, and intermittent fasting / Ramadan mode.
+- **Personalized Coaching Brief (`/v1/coaching/brief`) & Decision Memory:** Delivers structured, server-authored pure-English follow-up with stable `code`, `params`, and deterministic `actionTarget` across nutrition, training, hydration, and recovery for client-side KMM localization.
+  - Remembers accepted and declined adaptations (calorie adjustments and recovery deloads) across subsequent reviews and everyday logging until new underlying data arrives or the active window expires.
   - Renewing a nutrition week after an accepted calorie adjustment generates the new week directly at the accepted calorie target while preserving prior plan snapshots in `plans`.
-  - Distinguishes between lower-floor calorie holds, upper-ceiling holds, and ingredient/portion-fit bounds with accurate Arabic explanations.
+  - Distinguishes between lower-floor calorie holds, upper-ceiling holds, and ingredient/portion-fit bounds with canonical English explanations and reason codes.
   - Automated coaching is transparent: it never claims human clinical review, never treats missing logs as non-compliance, and never treats muscle soreness (DOMS) as proof of hypertrophy.
 
 ## Workout Prescription & Performance Logging
 
-- **Exercise Catalog:** 868 exercises derived from OpenExerciseDB with muscle groups, equipment requirements, movement patterns, English execution notes, and source license metadata.
-- **Training Splits:** Full Body, Upper/Lower, Push/Pull/Legs, and Body-Part (Bro) splits tailored to available days, session duration, equipment, fitness level, and supported injury/joint restrictions.
-- **Bodyweight vs. Weighted Logging Rules:**
-  - Bodyweight and non-kilogram resistance exercises log sets, reps, and RPE **without a weight input field or `0 kg` label** on the workout card. Assisted machines display assistance weight where applicable.
-  - External load inputs are read-only display fields controlled by **2.5 kg** increment/decrement buttons within field bounds.
-- **Progression & Deloads:**
-  - Automatic load-increase recommendations require repeated comparable performance, target reps/RPE completion, and adequate recovery.
-  - Accepting a recovery deload (`sessionAdjustment`) reduces effective sets (e.g., `0.65x` set factor) while keeping the base training program intact.
-- **Draft Persistence & Unilateral Tracking:** Preserves set drafts across tab navigation, updates existing same-day session logs in place instead of duplicating sessions, requires both sides for unilateral exercises, and never fabricates session duration or RPE when omitted.
+- **Bilingual Exercise Catalog:** 868 exercises derived from OpenExerciseDB (`data/exercises.json`) enriched with Arabic & English names, step-by-step instructions, common mistakes, and 69 Arabic muscle translations (`data/exercises-i18n.json`), preserving upstream attribution and license metadata.
+- **Training Splits:** Full Body, Upper/Lower, Push/Pull/Legs, and Body-Part (Bro) splits (up to 7 days) tailored to available days, session duration, equipment, fitness level, `seniorMode`, pregnancy filters, and supported injury/joint restrictions (including `elbow_pain`).
+- **Dual-Mode Logging & PR Engine:**
+  - Supports `simple` and `pro` workout UI modes, ad-hoc bonus exercises, warmup set exclusion, optional weighted bodyweight (`+Added kg`), and personal records (`/v1/workouts/prs`) with assisted-exercise load inversion.
+  - Automatic load-increase recommendations require repeated comparable working-set performance, target reps/RIR completion, and adequate recovery.
+  - Accepting a recovery deload (`sessionAdjustment`) or Comeback Protocol (`comeback_restart`) reduces effective sets while keeping the base training program intact.
 - **8-Week Full-Body Split Review:** Evaluates adherence, recovery, and available training days after 8 weeks from the first completed session before suggesting a split transition ([`split-review.mjs`](split-review.mjs)).
 
 ## Privacy, Account Erasure & API Contract

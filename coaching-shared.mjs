@@ -1,17 +1,64 @@
 import { apiError, hasArabicText } from './coaching-error.mjs';
 
-// The old onboarding IDs name body regions; preserve them in drafts and normalize only for policy lookup.
-export const SUPPORTED_WORKOUT_INJURIES = Object.freeze(['knee_pain', 'lower_back_pain', 'shoulder_pain', 'wrist_pain', 'ankle_pain', 'neck_pain', 'hip_pain', 'diastasis_recti']);
-export const INJURY_ID_ALIASES = Object.freeze({ shoulder_injury: 'shoulder_pain', ankle_injury: 'ankle_pain' });
+// Canonical workout injury IDs; short mobile keys normalize cleanly for policy lookup.
+export const SUPPORTED_WORKOUT_INJURIES = Object.freeze([
+  'knee_pain', 'lower_back_pain', 'shoulder_pain', 'wrist_pain',
+  'ankle_pain', 'neck_pain', 'hip_pain', 'elbow_pain', 'diastasis_recti'
+]);
+export const INJURY_ID_ALIASES = Object.freeze({
+  shoulder_injury: 'shoulder_pain',
+  ankle_injury: 'ankle_pain',
+  knee: 'knee_pain',
+  lower_back: 'lower_back_pain',
+  shoulder: 'shoulder_pain',
+  wrist: 'wrist_pain',
+  ankle: 'ankle_pain',
+  neck: 'neck_pain',
+  hip: 'hip_pain',
+  elbow: 'elbow_pain'
+});
 export function canonicalInjuries(items = []) {
-  return [...new Set(items.filter(x => x && x !== 'none').map(x => Object.hasOwn(INJURY_ID_ALIASES, x) ? INJURY_ID_ALIASES[x] : x))];
+  return [...new Set(
+    items
+      .filter(x => x && x !== 'none')
+      .map(x => {
+        const key = String(x).trim().toLowerCase();
+        return Object.hasOwn(INJURY_ID_ALIASES, key) ? INJURY_ID_ALIASES[key] : key;
+      })
+  )];
 }
+
 export const MUSCLE_REGIONS = {
-  chest: 'الصدر', back: 'الظهر', lower_back: 'أسفل الظهر', shoulders: 'الكتف', biceps: 'البايسبس', triceps: 'الترايسبس', forearms: 'الساعد', abs: 'البطن', glutes: 'المقعدة', quadriceps: 'الأماميات', hamstrings: 'الخلفيات', calves: 'السمانة', hips: 'الحوض', neck: 'الرقبة'
+  chest: 'Chest', back: 'Back', lower_back: 'Lower Back', shoulders: 'Shoulders',
+  biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms', abs: 'Abs',
+  glutes: 'Glutes', quadriceps: 'Quadriceps', hamstrings: 'Hamstrings',
+  calves: 'Calves', hips: 'Hips', neck: 'Neck'
 };
-export const FOCUS_LABELS = { full_body: 'الجسم كله', upper: 'الجزء العلوي', lower: 'الجزء السفلي', push: 'دفع', pull: 'سحب', legs: 'أرجل', chest: 'صدر', back: 'ظهر', shoulders: 'أكتاف', arms: 'ذراع', core: 'بطن' };
-export const SLOTS = { breakfast: 'فطار', lunch: 'غداء', dinner: 'عشاء', snack: 'سناك' };
-export const SUPPORTED_TIMEZONES = new Set(['Africa/Cairo', 'Asia/Riyadh', 'Asia/Dubai', 'Asia/Kuwait', 'Asia/Qatar', 'Asia/Bahrain', 'Asia/Muscat', 'Asia/Amman', 'Asia/Beirut', 'Africa/Casablanca', 'Africa/Tunis', 'Africa/Algiers', 'Europe/London', 'UTC']);
+export const FOCUS_LABELS = {
+  full_body: 'Full Body', upper: 'Upper Body', lower: 'Lower Body',
+  push: 'Push', pull: 'Pull', legs: 'Legs', chest: 'Chest',
+  back: 'Back', shoulders: 'Shoulders', arms: 'Arms', core: 'Core'
+};
+export const SLOTS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
+export const SUPPORTED_TIMEZONES = new Set([
+  'Africa/Cairo', 'Asia/Riyadh', 'Asia/Dubai', 'Asia/Kuwait', 'Asia/Qatar',
+  'Asia/Bahrain', 'Asia/Muscat', 'Asia/Amman', 'Asia/Beirut',
+  'Africa/Casablanca', 'Africa/Tunis', 'Africa/Algiers', 'Europe/London', 'UTC'
+]);
+export const SUPPORTED_LOCALES = new Set([
+  'en', 'ar', 'ar-EG', 'ar-SA', 'ar-AE', 'ar-KW', 'ar-QA', 'ar-BH', 'ar-OM', 'ar-JO', 'ar-LB', 'ar-MA', 'ar-TN', 'ar-DZ'
+]);
+
+export function isPregnantStatus(maternalStatus) {
+  return ['pregnant_t1', 'pregnant_t2', 'pregnant_t3', 'pregnant'].includes(maternalStatus);
+}
+
+export function minSafeEnergyFloor(profile = {}) {
+  const maternal = profile?.maternalStatus || 'none';
+  if (isPregnantStatus(maternal)) return 1800;
+  if (maternal === 'breastfeeding') return 1600;
+  return profile?.sex === 'female' ? 1200 : 1500;
+}
 
 function fieldKey(label) {
   return typeof label === 'string' && label.trim() && !hasArabicText(label) ? label.trim() : 'value';
@@ -94,7 +141,9 @@ export function plainRecord(value, label) {
 export function effectiveSets(s, exercise, date = localDate(Date.now(), s?.profile?.timezone || 'Africa/Cairo'), now = Date.now()) {
   const tz = s?.profile?.timezone || 'Africa/Cairo';
   const a = s.sessionAdjustment;
-  const factor = a && date === localDate(now, tz) && Date.parse(a.expiresAt) > now && (!a.planId || a.planId === s.workoutPlan?.id) ? a.setFactor : 1;
+  const activeWindow = a && Date.parse(a.expiresAt) > now && (!a.planId || a.planId === s.workoutPlan?.id);
+  const dateMatches = a?.multiDay === true ? (date >= (a.startsOn || localDate(now, tz)) && date <= localDate(Date.parse(a.expiresAt), tz)) : date === localDate(now, tz);
+  const factor = activeWindow && dateMatches ? a.setFactor : 1;
   const rounded = Math.round(exercise.sets * factor);
   return Math.max(1, factor < 1 ? Math.min(exercise.sets - 1, rounded) : rounded);
 }
@@ -127,8 +176,8 @@ export function normalizeWeekdayDraft(draft) {
   const result = { ...draft, weekdayConvention: 'js_sunday_0' };
   for (const key of ['selectedWorkoutDays', 'externalTrainingDays']) {
     if (draft[key] != null) {
-      if (!Array.isArray(draft[key]) || draft[key].length > 6) {
-        throw apiError('INVALID_WORKOUT_DAYS', 'Selected training days list is invalid (max 6 days).', { status: 400 });
+      if (!Array.isArray(draft[key]) || draft[key].length > 7) {
+        throw apiError('INVALID_WORKOUT_DAYS', 'Selected training days list is invalid (max 7 days).', { status: 400 });
       }
       result[key] = draft[key].map(convert);
     }

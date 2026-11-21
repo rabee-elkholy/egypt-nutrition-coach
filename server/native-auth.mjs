@@ -123,7 +123,7 @@ function mapSchemaError(error) {
   return error;
 }
 
-async function issueTokenPair({ db, env, user, sessionId, deviceId, existingSession = false }) {
+export async function issueTokenPair({ db, env, user, sessionId, deviceId, existingSession = false }) {
   const secret = requireJwtSecret(env);
   const nowMs = Date.now();
   const nowSec = Math.floor(nowMs / 1000);
@@ -135,7 +135,7 @@ async function issueTokenPair({ db, env, user, sessionId, deviceId, existingSess
 
   const issuer = env?.AUTH_ISSUER || 'https://auth.egypt-nutrition-coach.local';
   const audience = env?.AUTH_AUDIENCE || 'egypt-nutrition-coach-kmm';
-  const entitlement = user.entitlement === 'premium' ? 'premium' : 'free';
+  const entitlement = (user.entitlement === 'pro' || user.entitlement === 'premium') ? 'pro' : 'free';
 
   const accessToken = await signHs256Jwt({
     iss: issuer,
@@ -182,6 +182,7 @@ async function issueTokenPair({ db, env, user, sessionId, deviceId, existingSess
         userId: user.user_id,
         email: user.email,
         name: user.display_name || null,
+        avatarUrl: user.avatar_url || null,
         entitlement,
         createdAt: user.created_at
       }
@@ -380,7 +381,7 @@ export async function refreshUserSession(db, env, body, request) {
         ).bind(nowIso, row.user_id, row.session_id)
       ]);
       throw createApiError('Concurrent refresh token use detected; session revoked to protect your account.', 401, {
-        code: 'AUTH_REFRESH_TOKEN_REUSED'
+        code: 'AUTH_REFRESH_TOKEN_CONCURRENT_REUSE'
       });
     }
 

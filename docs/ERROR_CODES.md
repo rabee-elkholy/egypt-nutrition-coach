@@ -181,7 +181,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `PAST_DAY_PLAN_IMMUTABLE` | `400` | No | — | Past plan days cannot be modified. |
 | `MEAL_ALREADY_CONSUMED` | `400` | No | — | Cannot replace a meal that has already been logged as consumed. |
 | `MEAL_ALTERNATIVE_UNAVAILABLE` | `400` | No | — | Selected meal alternative is no longer valid under your current constraints. |
-| `ENERGY_CHANGE_OUT_OF_RANGE` | `400` | No | — | Adjusted daily calories exceed safe automated bounds (1200/1400..4200 kcal). |
+| `ENERGY_CHANGE_OUT_OF_RANGE` | `400` | No | — | Adjusted daily calories exceed safe automated bounds (1200/1500/1600/1800..4200 kcal). |
 | `ENERGY_CHANGE_TARGETS_UNMET` | `400` | No | — | Proposed calorie change cannot satisfy minimum protein or nutrition targets. |
 | `INVALID_DIET_PLAN_CONFIG` | `400` | No | — | Unsupported diet rule verification mode. |
 | `MEAL_EXCLUDED_BY_HEALTH_CONDITION` | `400` | No | — | Meal conflicts with declared medical/wellness exclusions; changes were not saved. |
@@ -266,3 +266,39 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `AUTH_MIGRATION_REQUIRED` | `503` | Yes | — | Authentication database tables have not been migrated yet; run D1 migrations. |
 | `CURRENT_PASSWORD_REQUIRED` | `400` | No | — | Current password is required to set a new password. |
 | `PASSWORD_UNCHANGED` | `400` | No | — | New password must be different from your current password. |
+| `AUTH_OAUTH_TOKEN_INVALID` | `401` | No | `provider` | Identity provider token is invalid or expired. |
+| `AUTH_PROVIDER_EMAIL_CONFLICT` | `409` | No | `existingProvider` | An account with this email is already linked to another sign-in method. |
+| `PRO_ENTITLEMENT_REQUIRED` | `402` | No | `feature` | This feature requires an active CuraFit Pro subscription. |
+| `AI_FOOD_NOT_RECOGNIZED` | `422` | No | — | Could not recognize any food items from the provided input. |
+| `INVALID_BARCODE_FORMAT` | `400` | No | — | Barcode must be a valid 8 to 14 digit EAN or UPC code. |
+| `BARCODE_NOT_FOUND` | `404` | No | `barcode` | No product nutrition record found for this barcode. |
+| `CHAT_MESSAGE_TOO_LONG` | `400` | No | `maxLength` | Coach chat message must not exceed 1000 characters. |
+| `EMPTY_MEASUREMENT_RECORD` | `400` | No | — | Provide at least one body measurement or body fat value. |
+| `PHOTO_NOT_FOUND` | `404` | No | — | Progress photo record not found. |
+| `PHOTO_TOO_LARGE` | `413` | No | `maxBytes` | Uploaded image exceeds the maximum allowed byte size. |
+| `UNSUPPORTED_IMAGE_FORMAT` | `415` | No | — | Image must be JPEG, PNG, or WebP format. |
+| `STREAK_FREEZE_UNAVAILABLE` | `409` | No | — | Weekly streak freeze allowance has already been used. |
+| `INVALID_PROFILE_NAME` | `400` | No | — | Profile name must be 2 to 50 alphabetic characters. |
+| `INVALID_SUBSCRIPTION_RECEIPT` | `400` | No | `platform` | Store subscription receipt could not be verified. |
+| `SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT` | `409` | No | — | This store subscription is already linked to a different CuraFit account. |
+| `BILLING_VERIFICATION_UNAVAILABLE` | `503` | Yes | — | Subscription verification provider is temporarily unavailable; retry shortly. |
+| `MATERNAL_CALORIE_CUT_BLOCKED` | `422` | No | — | Calorie reductions are disabled during pregnancy for maternal safety. |
+| `MAINTENANCE_MODE` | `503` | Yes | — | Service is temporarily in maintenance mode; offline logging remains active. |
+| `CLIENT_UPDATE_REQUIRED` | `426` | No | `minVersion` | Please update CuraFit to the latest version to continue syncing. |
+| `MEDIA_STORAGE_UNAVAILABLE` | `503` | Yes | — | Media storage is temporarily unavailable; retry shortly. |
+| `INVALID_MEDIA_TOKEN` | `403` | No | — | Signed media token is invalid or expired. |
+| `INVALID_LOCALE` | `400` | No | `locale` | Unsupported locale code. |
+| `EMPTY_ACTIVITY_RECORD` | `400` | No | — | Provide steps or activeEnergyKcal for an activity log. |
+| `INVALID_COMEBACK_REQUEST` | `400` | No | — | Comeback restart payload is invalid. |
+| `INVALID_FASTING_REQUEST` | `400` | No | — | Fasting log operation or timestamp is invalid. |
+| `INVALID_RAMADAN_CONFIG` | `400` | No | — | Ramadan mode requires valid HH:mm iftar and suhoor times and workoutTiming. |
+| `RAMADAN_MEDICAL_CLEARANCE_REQUIRED` | `400` | No | — | Confirm medical clearance before enabling Ramadan fasting mode with declared high-risk conditions. |
+| `INVALID_FAVORITE_PAYLOAD` | `400` | No | — | Favorite food command requires valid op (add or remove) and item details. |
+| `INVALID_COPY_MEAL_PAYLOAD` | `400` | No | — | Copy meal requires valid fromDate, toDate, and slot with existing entries to copy. |
+| `INVALID_SUPPORT_FEEDBACK` | `400` | No | — | Support feedback requires a valid category and message (1..2000 characters). |
+| `INVALID_PUSH_TOKEN` | `400` | No | — | Push token registration requires deviceId, platform (android or ios), and token. |
+| `WEBHOOK_SIGNATURE_INVALID` | `401` | No | `provider` | Store webhook signature or authorization token is invalid. |
+| `AD_HOC_EXERCISE_INVALID` | `400` | No | — | Ad-hoc exercise payload requires a valid catalog exerciseId and 1 to 15 performed sets. |
+| `INVALID_WORKOUT_UI_MODE` | `400` | No | — | workoutUiMode must be simple or pro. |
+| `FEATURE_DEFERRED_TO_AI_PHASE` | `501` | No | `feature` | This AI feature is scheduled for the final AI rollout phase. |
+| `MEDICAL_DIET_CONFLICT` | `400` | No | `dietType` | The selected diet pattern is contraindicated for your declared medical conditions, maternal status, or goal. |

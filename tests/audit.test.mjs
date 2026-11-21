@@ -89,8 +89,8 @@ test('AUD-17: workout-only route cannot bypass an unasked health confirmation',(
  assert.throws(()=>generate(empty(),{...draft,serviceTrack:'workouts_only'}),e=>e.code==='HEALTH_CONFIRMATION_REQUIRED'&&/health readiness/i.test(e.message));
  assert.ok(generate(empty(),{...draft,serviceTrack:'workouts_only',healthConfirmed:true}).workoutPlan);
 });
-test('AUD-18: nutrition-only muscle gain uses confirmed external resistance days',()=>{
- assert.throws(()=>generate(empty(),{...draft,goal:'muscle_gain',serviceTrack:'nutrition_only'}));
+test('AUD-18: nutrition-only muscle gain uses confirmed external resistance days when provided and allows zero external days',()=>{
+ const noExt=generate(empty(),{...draft,goal:'muscle_gain',serviceTrack:'nutrition_only'});assert.equal(noExt.profile.trainingDays,0);assert.equal(noExt.workoutPlan,null);assert.ok(noExt.plans[0]);
  const s=generate(empty(),{...draft,goal:'muscle_gain',serviceTrack:'nutrition_only',externalTrainingDays:[1,3,5]});assert.equal(s.profile.trainingDays,3);assert.equal(s.workoutPlan,null);assert.ok(s.plans[0]);
 });
 test('AUD-19: a late acceptance cannot cut calories with unknown recovery',()=>{
@@ -114,14 +114,14 @@ test('AUD-22: meal times never invent a pre/post-workout relationship',()=>{
  for(const day of fixture.plans[0].days)for(const meal of day.meals)assert.equal(meal.workout_tag,undefined);
 });
 test('AUD-23: bro split without equipment falls back explicitly instead of returning an empty arm day',()=>{
- const plan=workoutPlan({...draft,selectedWorkoutDays:[0,1,2,4,5],workoutDaysCount:5,workoutLocation:'home_only',homeEquipment:['none'],workoutSplitPreference:'bro_split'});assert.equal(plan.split,'full_body');assert.ok(plan.days.every(d=>d.exercises.length));assert.ok(plan.warnings.some(w=>w.includes('فارغ')));
+ const plan=workoutPlan({...draft,selectedWorkoutDays:[0,1,2,4,5],workoutDaysCount:5,workoutLocation:'home_only',homeEquipment:['none'],workoutSplitPreference:'bro_split'});assert.equal(plan.split,'full_body');assert.ok(plan.days.every(d=>d.exercises.length));assert.ok(plan.warnings.some(w=>/empty|full body/i.test(w)));
 });
 test('AUD-24: impossible counts are rejected before allocating a schedule',()=>{
  assert.throws(()=>workoutPlan({...draft,selectedWorkoutDays:[],workoutDaysCount:1e9}));
 });
 test('AUD-25: legacy workout-only accounts require health confirmation before progression/review',()=>{
  let s=generate(empty(),{...draft,serviceTrack:'workouts_only',healthConfirmed:true});delete s.onboarding.workoutPrefs.healthConfirmed;
- s.checkins=[readyCheckin()];s=run(s,'review',{});assert.equal(s.adaptations.filter(a=>a.status==='pending').length,0);assert.match(s.lastReview.message,/الصحية/);
+ s.checkins=[readyCheckin()];s=run(s,'review',{});assert.equal(s.adaptations.filter(a=>a.status==='pending').length,0);assert.match(s.lastReview.message,/health readiness/i);
  s=run(s,'confirm_health',{healthy:true,injuryFree:true});assert.equal(s.onboarding.workoutPrefs.healthConfirmed,true);
 });
 test('AUD-26: invalid ancestry and malformed flags cannot produce a protein/energy change',()=>{
@@ -181,5 +181,5 @@ test('AUD-37: legacy estimates are recomputed after source side metadata is rest
  const {catalog}=await import('../server/workouts.mjs');const {ensureTrainingState}=await import('../server/training-state.mjs');
  const s=clone();s.workoutPlan=workoutPlan({...draft,fitnessLevel:'intermediate',sessionDuration:20});const day=s.workoutPlan.days[0],source=catalog.exercises.find(e=>e.name==='Dumbbell Side Squat');assert.ok(source);
  day.exercises[0]={...source,sets:3,repMin:8,repMax:12,rir:2,restSeconds:120};delete day.exercises[0].laterality;day.estimatedMinutes=estimatedSessionMinutes(day);
- const before=day.estimatedMinutes;ensureTrainingState(s);assert.ok(day.estimatedMinutes>before);assert.equal(day.estimatedMinutes,estimatedSessionMinutes(day));assert.ok(s.workoutPlan.warnings.some(w=>w.includes('خطتك القديمة')));
+ const before=day.estimatedMinutes;ensureTrainingState(s);assert.ok(day.estimatedMinutes>before);assert.equal(day.estimatedMinutes,estimatedSessionMinutes(day));assert.ok(s.workoutPlan.warnings.some(w=>/time budget|unilateral/i.test(w)));
 });

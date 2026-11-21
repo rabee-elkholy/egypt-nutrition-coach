@@ -2,14 +2,14 @@
 
 > **Epic ID:** `EPIC-02` *(Replaces legacy Jira Epic `KAN-5: Login`)*
 > **Target Platforms:** KMM (Android & iOS)
-> **Scope:** Production V2 (Passwordless Social-Only Auth: Google Sign-In + Apple Sign-In — zero email/password forms on mobile)
-> **Labels:** `production-v2`, `mobile-v2`, `auth`, `sync`
+> **Scope:** Production (Passwordless Social-Only Auth: Google Sign-In + Apple Sign-In — zero email/password forms on mobile)
+> **Labels:** `production`, `mobile`, `auth`, `sync`
 
 ---
 
 ## Epic Overview
 
-`EPIC-02` handles every authentication, session lifecycle, token security, account-conflict resolution, and offline-first synchronization scenario in CuraFit Mobile V2. Consistent with modern mobile UX and user choice, CuraFit mobile uses **Social-Only Passwordless Sign-In** (**Google Sign-In** on Android & iOS, plus mandatory **Sign in with Apple** on iOS). Legacy email/password endpoints (`/v1/auth/register`, `/v1/auth/login`, `/v1/auth/change-password`) remain active on the server solely for web/QA backward compatibility and are omitted from mobile UI.
+`EPIC-02` handles every authentication, session lifecycle, token security, account-conflict resolution, and offline-first synchronization scenario in CuraFit Mobile. Consistent with modern mobile UX and user choice, CuraFit mobile uses **Social-Only Passwordless Sign-In** (**Google Sign-In** on Android & iOS, plus mandatory **Sign in with Apple** on iOS). Legacy email/password endpoints (`/v1/auth/register`, `/v1/auth/login`, `/v1/auth/change-password`) remain active on the server solely for web/QA backward compatibility and are omitted from mobile UI.
 
 ### Child User Stories
 - `US-AUTH-01`: Passwordless Social Sign-In Screen (Google & Apple), Entry Routing & Offline Fallback
@@ -27,7 +27,7 @@
 | **Story ID** | `US-AUTH-01` |
 | **Epic** | `EPIC-02` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `auth` |
+| **Labels** | `production`, `mobile`, `auth` |
 | **Target Screens** | `SocialLoginScreen` (Modal / Stack Screen) |
 | **Entitlement** | `Free` |
 | **Backend Status** | `New` (Social OAuth endpoints) |
@@ -127,7 +127,7 @@ As a mobile user who wants to sign in or save my personalized coaching plan with
    - **Notes:** Apple only sends `fullName` on the user's very first sign-in; mobile MUST capture `fullName` if non-null and send it so the backend persists `user.name`. Subsequent Apple sign-ins match by verified `sub` claim (`oauth_subject`).
    - **Error Codes Handled:**
      - `401 AUTH_OAUTH_TOKEN_INVALID`: Expired, malformed, or wrong-audience Google/Apple ID token -> Show *"Sign-in verification failed. Please try again."*
-     - `401 ACCOUNT_DELETED`: Account was permanently erased via GDPR deletion (`__deleted__` tombstone) -> Show *"This account was previously deleted. Please use a different sign-in account."*
+     - *(Note on previously deleted accounts: Because GDPR deletion in `US-PRF-06` unlinks `coaching_oauth_identities`, a previously deleted Google/Apple user signing in fresh creates a brand-new empty account (`isNewUser: true`, `profile: null`), whereas stale tokens from the deleted account fail with `401 ACCOUNT_DELETED`.)*
      - `409 AUTH_PROVIDER_EMAIL_CONFLICT`: Account email exists under a different provider that requires explicit linking -> Prompt user to sign in with the linked provider or confirm link.
      - `429 RATE_LIMITED`: Auth rate limit (`30 req/min/IP`) -> Show cooldown retry message using `error.params.retryAfterSeconds`.
      - `503 AUTH_JWKS_UNAVAILABLE`: Upstream Google/Apple JWKS unreachable -> Show retryable error button.
@@ -185,10 +185,10 @@ As a mobile user who wants to sign in or save my personalized coaching plan with
 | **Story ID** | `US-AUTH-02` |
 | **Epic** | `EPIC-02` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `auth`, `onboarding` |
+| **Labels** | `production`, `mobile`, `auth`, `onboarding` |
 | **Target Screens** | `PostAuthResolutionOverlay`, `PlanConflictModal`, `HealthConsentModal` |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Mixed` (`[EXISTING]` bootstrap/consents/generate + `[MODIFIED BACKEND]` `overwriteExisting`) |
+| **Backend Status** | `Mixed` (`[EXISTING]` consents/generate + `[MODIFIED BACKEND]` bootstrap `consents` & `overwriteExisting`) |
 
 ### STORY
 As a newly authenticated user, I want the app to automatically determine whether my account is brand new, has an existing cloud plan, or has pending local onboarding answers — and let me safely choose how to resolve any conflict — so I never accidentally lose my old progress or my newly generated plan.
@@ -199,7 +199,7 @@ As a newly authenticated user, I want the app to automatically determine whether
 
 ### SCREEN AND UI DETAILS
 1. **Resolving Account State Spinner:**
-   - Full-screen clean loading indicator: *"Checking your coaching profile..."* while fetching `GET /v1/bootstrap` (and checking optional legacy `coach_uid` anonymous session claim if migrating from web).
+   - Full-screen clean loading indicator: *"Checking your coaching profile..."* while fetching `GET /v1/bootstrap`.
 2. **Conflict Resolution Bottom Sheet / Modal (Shown ONLY when `serverProfile != null` AND conflict applies):**
    - **Variant A — `entrySource == "onboarding_account_check"` (Data Recovery Prompt, matching `KAN-35`):**
      - Title: *"Welcome Back! Saved Plan Found"*
@@ -212,21 +212,21 @@ As a newly authenticated user, I want the app to automatically determine whether
      - Primary Button: `[Use My New Plan (Update Account)]`
      - Secondary Button: `[Restore My Old Saved Plan]`
 3. **Mandatory Health & Privacy Consent Gate (`HealthConsentModal`):**
-   - Triggered if user chose a new/restored plan and server has no recorded `health_data_processing` (`v1.0.0`) consent yet (or policy version bumped):
+   - Deterministically gated using `data.consents` returned by `GET /v1/bootstrap` (also queryable via `GET /v1/account/consents`): triggered if the server has no accepted `health_data_processing` (`v1.0.0`) consent yet (or policy version bumped):
    - Plain-language explanation: *"CuraFit calculates personalized nutrition and workout targets using your health, body, and recovery inputs. It provides structured fitness guidance, not medical diagnosis or treatment."*
    - Required checkbox + `[Agree & Continue]` button.
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] GET /v1/bootstrap`**
+1. **`[MODIFIED BACKEND] GET /v1/bootstrap`**
    - **Headers:** `Authorization: Bearer <accessToken>`, `Accept: application/json`
-   - **Key Fields Inspected:** `data.revision`, `data.profile`, `data.preferences`, `data.activeNutritionPlanRef`, `data.activeWorkoutPlanRef`, `data.eligibility`, `data.todaySummary`, `data.entitlements`, `data.notificationPreferences`
-2. **`[EXISTING] POST /v1/account/consents`**
+   - **Key Fields Inspected:** `data.revision`, `data.profile`, `data.consents` (deterministic `HealthConsentModal` gate), `data.onboarding`, `data.preferences`, `data.activeNutritionPlanRef`, `data.activeWorkoutPlanRef`, `data.eligibility`, `data.todaySummary`, `data.entitlements`, `data.notificationPreferences`
+2. **`[EXISTING] POST /v1/account/consents`** (plus **`[NEW BACKEND] GET /v1/account/consents`** for standalone consent audit)
    - **Request Body:** `{ "consentType": "health_data_processing", "version": "1.0.0", "accepted": true }`
 3. **`[MODIFIED BACKEND] POST /v1/commands?view=full` (`action: "generate"`)**
    - Used when uploading `pendingSyncPlan` to either a new account (`revision: 0`) or overwriting an existing account (`revision: <serverRevision>`, `payload.overwriteExisting: true`).
 4. **`[EXISTING] GET /v1/plans/{planId}` & `GET /v1/workout-plans/{id}`**
    - Used when restoring an existing server plan so Today/Nutrition/Workouts load complete 7-day schedules into SQLDelight immediately.
-5. **`[EXISTING] POST /v1/auth/claim-anonymous`** (Optional Web-to-Mobile migration if anonymous cookie exists in WebView/deep-link handoff):
+5. **`[EXISTING — LEGACY / WEB-MIGRATION ONLY] POST /v1/auth/claim-anonymous`** *(Not needed for native mobile fresh auth; retained on the server strictly for legacy anonymous web-session migration)*:
    - Request Body: `{ "anonymousUserId": "anon:...", "consent": true }`
    - Error Codes: `403 ANONYMOUS_OWNERSHIP_REQUIRED`, `409 ANONYMOUS_ALREADY_CLAIMED`, `409 TARGET_ACCOUNT_NOT_EMPTY`.
 
@@ -248,7 +248,7 @@ As a newly authenticated user, I want the app to automatically determine whether
      - If `data.profile != null`, silently reconcile any pending local offline outbox queue (`US-AUTH-04`) against the server (if same `userId`), or clear old user's local cache and hydrate new `userId`'s data if user signed in with a different account!
 2. **Account Switch Guard (`previousUserId != newUserId`):**
    - If the newly authenticated `userId` differs from the previously cached local `userId`, wipe all prior user SQLDelight tables (`food_entries`, `workout_logs`, `plans`, `photos_cache`) **before** hydrating the new account so zero cross-user data leakage occurs.
-3. **Upload Failure Resilience:** Never delete `pendingSyncPlan` until `POST /v1/commands` (`action: "generate"`) returns `200 OK`. If upload fails due to network timeout, allow retry with the **exact same `Idempotency-Key`** or save locally with `"pending_background_sync"`.
+3. **Upload Failure Resilience:** Never delete `pendingSyncPlan` until `POST /v1/commands` (`action: "generate"`) returns `200 OK`. If upload fails due to network timeout, allow retry with the **exact same `Idempotency-Key`** (note: server `Idempotency-Key` digest excludes `revision` so a timeout + revision rebase replays cleanly). Do NOT enter `Today` offline before initial `generate` succeeds.
 
 ### MAIN FLOW
 1. Authentication succeeds in `US-AUTH-01`.
@@ -294,7 +294,7 @@ As a newly authenticated user, I want the app to automatically determine whether
 | **Story ID** | `US-AUTH-03` |
 | **Epic** | `EPIC-02` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `auth`, `security` |
+| **Labels** | `production`, `mobile`, `auth`, `security` |
 | **Target Screens** | Background Ktor Auth Interceptor + `SessionExpiredAlert` -> `SocialLoginScreen` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Existing` |
@@ -308,10 +308,10 @@ As a daily CuraFit user, I want to stay signed in seamlessly across app restarts
 ### SCREEN AND UI DETAILS
 - **Happy Path (Invisible to User):** All refreshes happen silently in the Ktor `AuthInterceptor` without interrupting UI scrolling, workout timers, or meal logging.
 - **Session Revoked / Expired Screen Behavior:**
-  - If refresh fails permanently (30-day inactivity, remote `"Log Out All Devices"`, `AUTH_REFRESH_TOKEN_REUSED`, or `ACCOUNT_DELETED`):
-  - Present a non-alarming modal dialog (never crash or wipe local unsynced diary/workout logs unless `ACCOUNT_DELETED`):
+  - If refresh fails permanently (30-day inactivity, remote `"Log Out All Devices"`, `AUTH_REFRESH_TOKEN_REUSED`, `AUTH_REFRESH_TOKEN_CONCURRENT_REUSE`, `AUTH_REFRESH_TOKEN_REVOKED`, `AUTH_USER_NOT_FOUND`, or `ACCOUNT_DELETED`):
+  - Present a non-alarming modal dialog (never crash or wipe local unsynced diary/workout logs unless `ACCOUNT_DELETED` or `AUTH_USER_NOT_FOUND`):
     - If `AUTH_REFRESH_TOKEN_EXPIRED`: *"Your session expired after inactivity. Sign in again to resume syncing."*
-    - If `AUTH_REFRESH_TOKEN_REUSED` / `AUTH_SESSION_REVOKED`: *"For your security, your session was signed out. Please sign in again."*
+    - If `AUTH_REFRESH_TOKEN_REUSED` / `AUTH_REFRESH_TOKEN_CONCURRENT_REUSE` / `AUTH_REFRESH_TOKEN_REVOKED` / `AUTH_SESSION_REVOKED` / `AUTH_ALL_SESSIONS_REVOKED`: *"For your security, your session was signed out. Please sign in again."*
     - Button: `[Sign In]` -> Navigates to `SocialLoginScreen` (`entrySource = "session_expired"`).
 
 ### API & BACKEND CONTRACT
@@ -322,9 +322,11 @@ As a daily CuraFit user, I want to stay signed in seamlessly across app restarts
    - **Success Response (`200 OK`):** Returns new `accessToken`, `expiresIn` (`900`), `expiresAt`, **newly rotated `refreshToken` (`cfrt_...`)**, `refreshExpiresIn` (`2592000`), `sessionId`, `user`.
    - **Error Codes:**
      - `401 AUTH_REFRESH_TOKEN_INVALID`: Unrecognized token -> Clear tokens, route to `SocialLoginScreen`.
-     - `401 AUTH_REFRESH_TOKEN_REUSED` / `AUTH_REFRESH_TOKEN_CONCURRENT_REUSE`: Already-rotated token replayed; server revokes entire session -> Clear tokens, prompt re-auth.
+     - `401 AUTH_REFRESH_TOKEN_REUSED` / `AUTH_REFRESH_TOKEN_CONCURRENT_REUSE`: Already-rotated token replayed (or concurrent double-refresh race); server revokes entire session -> Clear tokens, prompt re-auth.
+     - `401 AUTH_REFRESH_TOKEN_REVOKED`: Refresh token explicitly revoked -> Clear tokens, prompt re-auth.
      - `401 AUTH_REFRESH_TOKEN_EXPIRED`: 30-day TTL elapsed -> Prompt re-auth.
      - `401 AUTH_SESSION_REVOKED` / `AUTH_ALL_SESSIONS_REVOKED`: Revoked from another device -> Prompt re-auth.
+     - `401 AUTH_USER_NOT_FOUND`: Underlying user record no longer exists -> Clear tokens and local cache cleanly, reset to `US-MOB-01`.
      - `401 ACCOUNT_DELETED`: Account permanently deleted -> Wipe local user data cleanly and return to `US-MOB-01` fresh install state!
 2. **`[EXISTING] GET /v1/auth/session`**
    - **Auth:** `Authorization: Bearer <accessToken>`
@@ -332,7 +334,7 @@ As a daily CuraFit user, I want to stay signed in seamlessly across app restarts
 
 ### RULES & BUSINESS LOGIC
 1. **Single-Flight Mutex Lock (Mandatory for Token Rotation Safety):**
-   - CuraFit backend enforces **strict refresh-token reuse detection** (`401 AUTH_REFRESH_TOKEN_REUSED` revokes the entire session immediately).
+   - CuraFit backend enforces **strict refresh-token reuse detection** (`401 AUTH_REFRESH_TOKEN_REUSED` / `AUTH_REFRESH_TOKEN_CONCURRENT_REUSE` revokes the entire session immediately).
    - Therefore, KMM `TokenManager` MUST serialize all refresh attempts behind a single coroutine `Mutex`:
      - If 5 concurrent API calls receive `401 AUTH_TOKEN_EXPIRED` or proactively refresh at `<= 60s` before `expiresAt`, **only 1** request calls `POST /v1/auth/refresh`.
      - The remaining 4 coroutines await the mutex and retry their HTTP calls using the newly persisted `accessToken`.
@@ -352,7 +354,7 @@ As a daily CuraFit user, I want to stay signed in seamlessly across app restarts
 - **App Killed After Server Rotated Refresh Token But Before Client Saved It (Rare Crash Window):** Subsequent launch gets `401 AUTH_REFRESH_TOKEN_REUSED`; client gracefully signs out local session tokens (preserving offline unsynced outbox items tagged to `userId` in case the same user signs right back in!) and opens `SocialLoginScreen` (`entrySource = "session_expired"`).
 - **Concurrent Calls on App Resume (`bootstrap` + `brief` + `wearables/ingest`):** Single-flight `Mutex` guarantees only 1 `/v1/auth/refresh` call fires across all coroutines.
 - **User Revoked All Devices From Another Phone (`POST /v1/auth/revoke`):** Next API call returns `401 AUTH_ALL_SESSIONS_REVOKED`; client prompts re-auth cleanly.
-- **Widget Extension Refreshes While Main App Refreshes Token (`US-PRG-05`):** Shared Keychain App Group / Android WorkManager inter-process lock serializes `refreshToken` access so OS Widget timeline updates never trigger `AUTH_REFRESH_TOKEN_REUSED` races.
+- **Widget Extension Refreshes While Main App Refreshes Token (`US-PRG-05`):** Shared Keychain App Group / Android WorkManager inter-process lock serializes `refreshToken` access so OS Widget timeline updates never trigger `AUTH_REFRESH_TOKEN_REUSED` / `AUTH_REFRESH_TOKEN_CONCURRENT_REUSE` races.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Concurrent requests on expired JWT trigger only one refresh call**
@@ -365,7 +367,7 @@ As a daily CuraFit user, I want to stay signed in seamlessly across app restarts
   - **Then** the user is NOT logged out, sees cached Today/Nutrition/Workout plans from SQLDelight, and can log actions offline into the outbox.
 - **Scenario 3: Revoked or deleted account clears session cleanly**
   - **Given** the user's account was deleted from another device
-  - **When** refresh returns `401 ACCOUNT_DELETED`
+  - **When** refresh returns `401 ACCOUNT_DELETED` (or `401 AUTH_USER_NOT_FOUND`)
   - **Then** all local tokens and user health records are wiped and the app resets to Onboarding Step 0 (`US-MOB-01`).
 
 ### ANALYTICS
@@ -382,10 +384,10 @@ As a daily CuraFit user, I want to stay signed in seamlessly across app restarts
 | **Story ID** | `US-AUTH-04` |
 | **Epic** | `EPIC-02` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `sync`, `offline` |
+| **Labels** | `production`, `mobile`, `sync`, `offline` |
 | **Target Screens** | Global Sync Engine + Top Subtle Sync Status Pill (`Synced ✓` / `Offline — N Pending` / `Syncing...`) |
 | **Entitlement** | `Free` |
-| **Backend Status** | `Existing` |
+| **Backend Status** | `Mixed` (`[EXISTING]` sync/commands + `[MODIFIED BACKEND]` `/v1/capabilities` `minSupportedVersion`, `maintenanceMode`, `426`, `503`, `Idempotency-Key` revision-free digest, & `/v1/bootstrap` extended payload) |
 
 ### STORY
 As a user who logs meals and workouts inside gyms with poor Wi-Fi or across multiple phones, I want my actions to apply optimistically offline, sync silently with idempotency protection, and automatically resolve multi-device revision conflicts without ever losing my logs or showing cryptic sync errors.
@@ -403,16 +405,17 @@ As a user who logs meals and workouts inside gyms with poor Wi-Fi or across mult
 2. **Pull-to-Refresh:** Supported on `Today`, `Nutrition`, `Workouts`, `Coach`, and `Progress` screens — runs delta sync + `GET /v1/bootstrap` (`If-None-Match`).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] GET /v1/bootstrap`**
+1. **`[MODIFIED BACKEND] GET /v1/bootstrap`**
    - **Headers:** `Authorization: Bearer <accessToken>`, `If-None-Match: <exact-saved-ETag>`
    - **Responses:**
      - `304 Not Modified` (`0 B`): Zero changes since last sync; render directly from SQLDelight.
-     - `200 OK`: Compact (`< 10 KB`) snapshot with new `ETag`, `revision`, `profile`, `preferences`, `activeNutritionPlanRef`, `activeWorkoutPlanRef`, `todaySummary`, `pendingAdaptations`, `entitlements`, `notificationPreferences`.
-2. **`[EXISTING] POST /v1/commands?view=receipt`**
+     - `200 OK`: Compact (`< 10 KB`) snapshot with new `ETag`, `revision`, `profile`, `consents`, `onboarding`, `preferences`, `activeNutritionPlanRef`, `activeWorkoutPlanRef`, `scheduledSessions` (14d), `todaySummary`, `pendingAdaptations`, `entitlements`, `notificationPreferences`.
+2. **`[MODIFIED BACKEND] POST /v1/commands?view=receipt`**
    - **Headers:** `Authorization: Bearer <accessToken>`, `Idempotency-Key: <uuid-v4>`, `Prefer: return=minimal`, `X-Client-Platform: android|ios`, `X-Client-Version: <semver>`
    - **Request Body:** `{ "revision": <localRevision>, "action": "<action>", "payload": { ... } }`
+   - **Idempotency Note:** Server request-digest calculation for `Idempotency-Key` **excludes `revision`** (hashing `action` + normalized `payload` only), so a command whose response timed out and then gets rebased onto a newer `revision` replays cleanly without throwing `409 IDEMPOTENCY_KEY_REUSED_MISMATCH`.
    - **Success Response (`200 OK`):** Returns `< 2 KB` receipt `{ revision, serverNow, serverDate, timezone, commandReceipt: { revision, action, replayed, at }, affected: [{ entityType, entityId, op, payload }] }`.
-3. **`[EXISTING] GET /v1/sync/changes?after={localRev}&afterSeq={lastSeq}`**
+3. **`[EXISTING] GET /v1/sync/changes?after={localRev}`** *(omit `afterSeq` when `lastSeq` is `0` or `null`; append `&afterSeq={lastSeq}` only when `lastSeq > 0`)*
    - **Success Response (`200 OK`):**
      ```json
      {
@@ -427,7 +430,7 @@ As a user who logs meals and workouts inside gyms with poor Wi-Fi or across mult
              "entityId": "m-101",
              "op": "delete",
              "at": "...",
-             "payload": { "requiresFetch": false }
+             "payload": { "id": "m-101", "deletedAt": "2026-11-21T10:15:00.000Z" }
            }
          ],
          "currentRevision": 6,
@@ -439,11 +442,13 @@ As a user who logs meals and workouts inside gyms with poor Wi-Fi or across mult
      }
      ```
 4. **`[EXISTING] GET /v1/state`** *(Fallback Full Resync ONLY when `resyncRequired == true`)*
+5. **`[MODIFIED BACKEND] GET /v1/capabilities`** *(Version & maintenance gating: `minSupportedVersion`, `maintenanceMode`, `426 CLIENT_UPDATE_REQUIRED`, `503 MAINTENANCE_MODE`)*
    - **Error Codes Handled:**
      - `409 REVISION_CONFLICT`: Expected revision < `serverRevision` -> Triggers automatic delta fetch & rebase loop.
-     - `409 IDEMPOTENCY_KEY_REUSED_MISMATCH`: Bug safeguard; mark item failed, generate fresh key if user retries manually.
+     - `409 IDEMPOTENCY_KEY_REUSED_MISMATCH`: Bug safeguard (different `action`/`payload` reused under same key); mark item failed, generate fresh key if user retries manually.
      - `413 STORAGE_LIMIT_REACHED`: Prompt user to export GDPR data (`GET /v1/account/export`) in Profile (`US-PRF-06`).
-     - `429 RATE_LIMITED` / `503 DATABASE_UNAVAILABLE` / `500 INTERNAL_ERROR` (`retryable: true`): Exponential backoff (`2s`, `4s`, `8s`, max `60s`), keeping original `Idempotency-Key`.
+     - `426 CLIENT_UPDATE_REQUIRED`: Blocking update prompt.
+     - `429 RATE_LIMITED` / `503 MAINTENANCE_MODE` / `503 DATABASE_UNAVAILABLE` / `500 INTERNAL_ERROR` (`retryable: true`): Exponential backoff (`2s`, `4s`, `8s`, max `60s`), keeping original `Idempotency-Key`.
 
 ### RULES & BUSINESS LOGIC
 1. **Deterministic Outbox Enqueueing:**
@@ -452,12 +457,12 @@ As a user who logs meals and workouts inside gyms with poor Wi-Fi or across mult
      2. Applies an optimistic update in SQLDelight UI views so the UI feels instant (`< 16ms`).
 2. **Exact `409 REVISION_CONFLICT` Auto-Rebase Protocol:**
    - When `POST /v1/commands` returns `409 REVISION_CONFLICT`:
-     1. Loop `GET /v1/sync/changes?after=<localRevision>&afterSeq=<lastSeqCursor>` while `hasMore == true`.
+     1. Loop `GET /v1/sync/changes?after=<localRevision>` (adding `&afterSeq=<lastSeqCursor>` ONLY when `lastSeqCursor != null && lastSeqCursor > 0`) while `hasMore == true`.
      2. Apply each delta in strict ascending `seq` order (`upsert` / `delete`) into SQLDelight.
      3. If any delta specifies `entityType` in `["nutrition_plan", "workout_plan"]` with `payload.requiresFetch == true` (or `op == "upsert"`), immediately fetch `GET /v1/plans/{entityId}` or `GET /v1/workout-plans/{entityId}` before advancing.
      4. If `resyncRequired == true`, fall back to `GET /v1/state` to rebuild SQLDelight cleanly.
      5. Commit `localRevision = data.currentRevision` and `lastSeqCursor = data.nextSeqCursor`.
-     6. Re-submit the head outbox command with `revision = localRevision` and the **exact same `Idempotency-Key` & `payload`** (bounded max 3 conflict rebases per command to prevent infinite loops).
+     6. Re-submit the head outbox command with `revision = localRevision` and the **exact same `Idempotency-Key` & `payload`** (bounded max 3 conflict rebases per command to prevent infinite loops; because the server `Idempotency-Key` digest excludes `revision`, retries after timeout + rebase replay idempotently).
 3. **Never Synthesize ETags:** Store and resend the **exact** `ETag` response header string (`W/"rev-..."`) from `GET /v1/bootstrap` or `GET /v1/coaching/brief`.
 4. **Payload Size Bound:** Enforce `< 40 KB` per command payload client-side (matching `413 PAYLOAD_TOO_LARGE` on server).
 5. **Sequential FIFO Outbox Drain:** Drain queued outbox commands strictly one-by-one in FIFO order so each receipt increments `localRevision` (`N -> N+1`) cleanly without self-inflicted `409` races.
@@ -472,12 +477,12 @@ As a user who logs meals and workouts inside gyms with poor Wi-Fi or across mult
 3. Meanwhile, on the user's tablet at home, the user replaced tomorrow's breakfast (`replace_meal`), advancing server revision from `12` to `13`.
 4. User leaves the gym and regains 5G connectivity.
 5. Sync worker drains item #1 (`revision: 12`) -> server returns `409 REVISION_CONFLICT` (`currentRevision: 13`).
-6. Sync worker automatically calls `GET /v1/sync/changes?after=12&afterSeq=...`, fetches the updated plan (`GET /v1/plans/{id}`), commits `localRevision = 13`, and retries item #1 with `revision: 13` and the same `Idempotency-Key`.
+6. Sync worker automatically calls `GET /v1/sync/changes?after=12` (with `&afterSeq=...` if `> 0`), fetches the updated plan (`GET /v1/plans/{id}`), commits `localRevision = 13`, and retries item #1 with `revision: 13` and the same `Idempotency-Key`.
 7. All 7 items commit (`rev 13 -> 20`), the top sync pill flashes *"Synced ✓"* and fades out cleanly.
 
 ### EDGE CASES
-- **Network Drops After Server Committed Command #1 (`200 OK` Lost in Transit):** Sync worker retries with the exact same `Idempotency-Key` and body; server returns `200 OK` with header `Idempotency-Replayed: true` and zero duplicate entries are created!
-- **Two Offline Changes Where Item #2 Conflicts With Remote Action (e.g., Remote Deleted Meal That Offline Item #2 Tried to Log):** Server returns `400 PLANNED_MEAL_NOT_FOUND` on Item #2 (`retryable: false`). Sync worker marks Item #2 `failed_terminal`, rolls back its optimistic row in SQLDelight, surfaces a concise dismissible notice, and continues draining Item #3+ cleanly.
+- **Network Drops After Server Committed Command #1 (`200 OK` Lost in Transit):** Sync worker retries with the exact same `Idempotency-Key` and `action`/`payload` (even if `revision` rebased); server returns `200 OK` with header `Idempotency-Replayed: true` and zero duplicate entries are created!
+- **Two Offline Changes Where Item #2 Conflicts With Remote Action (e.g., Remote Deleted Meal That Offline Item #2 Tried to Log):** Server returns `404 PLANNED_MEAL_NOT_FOUND` on Item #2 (`retryable: false`). Sync worker marks Item #2 `failed_terminal`, rolls back its optimistic row in SQLDelight, surfaces a concise dismissible notice, and continues draining Item #3+ cleanly.
 - **`GET /v1/bootstrap` Returns `304 Not Modified`:** Skip JSON parsing and DB writes completely (`0 B` bandwidth).
 - **Device Clock Set 2 Days Fast (`clockSkewMs < -172800000`):** Client validates food/workout dates using `serverDate` so user isn't blocked by accidental `DATE_IN_FUTURE` errors when logging Today!
 

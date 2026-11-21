@@ -2,23 +2,23 @@
 
 > **Epic ID:** `EPIC-06`
 > **Target Platforms:** KMM (Android Jetpack Compose & iOS SwiftUI)
-> **Scope:** Production V2
-> **Labels:** `production-v2`, `mobile-v2`, `coach`, `recovery`, `adaptive-engine`, `ai-coach`
+> **Scope:** Production
+> **Labels:** `production`, `mobile`, `coach`, `recovery`, `adaptive-engine`, `ai-coach`
 
 ---
 
 ## Epic Overview
 
 `EPIC-06` defines the **Coach Tab** using a **Hybrid 3-Specialist Scientific Care Team Architecture**:
-1. **Deterministic Clinical & Scientific Core (100% Backend-Verified):** Every user experiences structured guidance from three coordinated domains — **Clinical Nutritionist (`nutrition` / `hydration`)**, **Strength & Conditioning Coach (`training`)**, and **Recovery & Habit Specialist (`recovery` / `followup`)**. Every nutrition calorie adjustment (`<= 5% / <= 150 kcal`, minimum 14-day cooldown), temporary 24-hour workout deload (`-20%` or `-40%` sets), muscle-gain weekly volume progression (`+1 set`), goal-reached maintenance transition, urgent medical Red-Flag Stop alert, and structured Coaching Agreements run strictly through CuraFit's audited deterministic backend engine (`recovery.mjs`, `coaching.mjs`, `coaching-journey.mjs`, `personal-brief.mjs`).
-2. **Guarded AI Coach Q&A ("Ask the Coach"):** An interactive bilingual Arabic/English conversational assistant grounded in the user's actual logged profile, meals, workouts, and active coaching holds — **strictly non-prescriptive**, prohibited from inventing medical diagnoses, overriding safety holds, or bypassing explicit proposal acceptance!
+1. **Deterministic Clinical & Scientific Core (100% Backend-Verified):** Every user experiences structured guidance from three coordinated domains — **Clinical Nutritionist (`nutrition`)**, **Strength & Conditioning Coach (`training`)**, and **Recovery & Habit Specialist (`followup`)**. Every nutrition calorie adjustment (`<= 5% / <= 150 kcal`, minimum 14-day cooldown), temporary 24-hour workout deload (`-20%` or `-40%` sets), muscle-gain weekly volume progression (`+1 set`), goal-reached maintenance transition, urgent medical Red-Flag Stop alert, and structured Coaching Agreements run strictly through CuraFit's audited deterministic backend engine (`recovery.mjs`, `coaching.mjs`, `coaching-journey.mjs`, `personal-brief.mjs`), returning pure-English copy paired with canonical codes & params (`contracts/coaching-codes.json`) for on-device KMM localization.
+2. **Guarded AI Coach Q&A ("Ask the Coach" — Final AI Phase):** An interactive bilingual Arabic/English conversational assistant grounded in the user's actual logged profile, meals, workouts, and active coaching holds — **strictly non-prescriptive**, prohibited from inventing medical diagnoses, overriding safety holds, or bypassing explicit proposal acceptance *(scheduled for Final AI Phase; `capabilities.ai_coach_qa` disabled until Final AI Phase)*.
 
 ### Child User Stories
 - `US-CCH-01`: Coach Hub Home — 3-Specialist Care Team Strip, Daily Brief, Readiness Pill & Priority Action Queue
 - `US-CCH-02`: Daily Recovery & Readiness Check-In (Body-Map Soreness, Pain Regions & Urgent Red-Flag Safety Stop)
 - `US-CCH-03`: Adaptive Review Engine & Explicit Proposal Cards ("See the Science & Your Data", Calories, 24h Deload, Volume & Maintenance)
 - `US-CCH-04`: Coaching Inbox, Barrier Check-In (`hunger`/`energy`/`satiety`) & Active Coaching Agreements
-- `US-CCH-05`: Guarded AI Coach Q&A ("Ask the Coach" — Log-Grounded Chat with Strict Safety Guardrails)
+- `US-CCH-05`: Guarded AI Coach Q&A ("Ask the Coach" — Log-Grounded Chat with Strict Safety Guardrails) *(Final AI Phase)*
 - `US-CCH-06`: Structured Weekly Care-Team Check-In, Scientific Progress Audit & Zero-Guilt "Comeback Protocol"
 
 ---
@@ -31,10 +31,10 @@
 | **Story ID** | `US-CCH-01` |
 | **Epic** | `EPIC-06` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `coach`, `brief` |
+| **Labels** | `production`, `mobile`, `coach`, `brief` |
 | **Target Screens** | `CoachHubScreen` |
-| **Entitlement** | `Freemium` (`Free`: Daily Brief + Recovery Check-In + Coaching Inbox; `Pro`: Adaptive Review Proposals + AI Coach Q&A) |
-| **Backend Status** | `Existing` |
+| **Entitlement** | `Freemium` (`Free`: Daily Brief + Recovery Check-In + Safety Adaptations + Coaching Inbox; `Pro`: Nutrition/Volume Adaptive Review Proposals + Final AI Phase Coach Q&A) |
+| **Backend Status** | `Modified` (`GET /v1/coaching/brief` pure-English `contracts/coaching-codes.json` `code`/`params`/`action`/`actionTarget` + `bootstrap.engagementState`) |
 
 ### STORY
 As a user opening the Coach tab, I want an organized coaching command center displaying my current Recovery Readiness status, prioritized Daily Coaching Brief notes, any pending adaptation proposals waiting for my approval, active coaching agreements, and quick access to Ask the Coach so I always know what matters most today.
@@ -51,11 +51,11 @@ As a user opening the Coach tab, I want an organized coaching command center dis
      - `hold` -> Red/Amber `"Safety Hold — Pain/Illness"`
      - `stop` -> Urgent Red `"Medical Safety Stop"`
      - `unknown` -> Slate `"Check-In Needed"` + `[30-Sec Check-In]` button!
-   - **3-Specialist Live Status Strip** *(Adapted cleanly to active `service_track`)*:
-     - `Clinical Nutritionist` *(active dot: Green on-track / Amber low-evidence or hunger alert)*
-     - `Strength & Conditioning Coach` *(active dot: Green ready / Amber deload or pain hold / Red safety stop)*
-     - `Recovery & Habit Specialist` *(active dot: Green checked-in / Slate check-in needed or comeback due)*
-   - Prominent header CTA pill: **`[💬 Ask the Coach AI]`** (`US-CCH-05`).
+   - **3-Specialist Live Status Strip** *(Adapted cleanly to active `serviceTrack`)*:
+     - `Clinical Nutritionist` (`role: "nutrition"`) *(active dot: Green on-track / Amber low-evidence or hunger alert)*
+     - `Strength & Conditioning Coach` (`role: "training"`) *(active dot: Green ready / Amber deload or pain hold / Red safety stop)*
+     - `Recovery & Habit Specialist` (`role: "followup"`) *(active dot: Green checked-in / Slate check-in needed or comeback due)*
+   - Prominent header CTA pill: **`[💬 Ask the Coach AI]`** (`US-CCH-05`, enabled in Final AI Phase when `capabilities.ai_coach_qa == true`).
 2. **Urgent / Pending Queue (Shown Only When Non-Empty, Strict Priority Order):**
    - **Slot A (`status == "stop"`):** Non-dismissible urgent Red-Flag Safety Card (`RED_FLAGS_STOP`) advising immediate workout stop & medical assessment (`US-CCH-02`).
    - **Slot B (`engagementState.comebackTier != "none"`):** Warm Zero-Guilt **Comeback Protocol** card (`US-CCH-06`) welcoming the user back smoothly after `>= 3` days off without shame.
@@ -63,15 +63,15 @@ As a user opening the Coach tab, I want an organized coaching command center dis
    - **Slot D (`engagementState.weeklyCheckinDue == true`):** Highlighted `[Start 60-Sec Weekly Care Team Check-In]` banner (`US-CCH-06`).
    - **Slot E (`coachingInbox.items` with `reviewDue == true` or `status == "question" | "proposed"`):** Barrier & Agreement Card (`US-CCH-04`).
 3. **Today's Personal Brief Feed (`GET /v1/coaching/brief`):**
-   - Renders structured `notes[]` ordered by priority (`nutrition`, `training`, `hydration`, `recovery`, `followup`), with specialist avatar & role badge mapped directly from `note.role`.
-   - Each brief note includes a 1-tap contextual deep-link action button (`[Log Recovery]`, `[Open Food Diary]`, `[View Workout]`, `[Run Adaptive Review]`).
+   - Renders structured `notes[]` ordered by `priority` (`"urgent" | "attention" | "normal"`) across the 3 canonical specialist roles (`role: "nutrition" | "training" | "followup"`), with specialist avatar & role badge mapped directly from `note.role`.
+   - Each brief note includes pure-English server `title`/`text`/`action` guidance plus canonical `code`, `params` (`contracts/coaching-codes.json`), and a deterministic `actionTarget` deep-link route (`[Log Recovery]`, `[Open Food Diary]`, `[View Workout]`, `[Run Adaptive Review]`). KMM localizes display copy into Arabic/English on-device by `(code, params)`.
 4. **Adaptive Weekly Checkup Trigger Card:**
    - Displays evidence progress (`"10/10 food days ✓ • 6/6 weigh-ins ✓"` or missing items count) and `[Run Coach Review Now]` button (`US-CCH-03`).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] GET /v1/coaching/brief`** (Sends `If-None-Match` saved `briefEtag` -> `304 Not Modified` when unchanged!)
-   - Returns `{ apiVersion, viewKind: "on_demand_coaching_brief", date, timezone, revision, requiresOnboarding, notes: [{ id, role, priority, text, action, actionTarget, basedOnRevision, relatedPlanId }] }`.
-2. **`[EXISTING] GET /v1/coaching/inbox`** -> Active coaching agreements & barrier questions.
+1. **`[MODIFIED BACKEND] GET /v1/coaching/brief`** (Sends `If-None-Match` saved `briefEtag` -> `304 Not Modified` when unchanged!)
+   - Returns `{ apiVersion, viewKind: "on_demand_coaching_brief", date, timezone, revision, requiresOnboarding, notes: [{ id, role: "nutrition" | "training" | "followup", priority: "urgent" | "attention" | "normal", code, params, text, action, actionTarget, basedOnRevision, relatedPlanId }] }` with 100% pure-English `text` and `action` guidance (zero Arabic from server; localized on KMM via `contracts/coaching-codes.json`).
+2. **`[EXISTING] GET /v1/coaching/inbox`** -> Active coaching agreements & barrier questions (pure-English + `code`/`params`).
 3. **`[EXISTING] GET /v1/progress/summary`** -> Evidence coverage metrics for calorie/workout reviews.
 
 ### RULES & BUSINESS LOGIC
@@ -117,7 +117,7 @@ As a user opening the Coach tab, I want an organized coaching command center dis
 | **Story ID** | `US-CCH-02` |
 | **Epic** | `EPIC-06` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `coach`, `recovery`, `safety` |
+| **Labels** | `production`, `mobile`, `coach`, `recovery`, `safety` |
 | **Target Screens** | `RecoveryCheckinModal`, `BodyMapSorenessPicker`, `RedFlagSafetyStopView` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Existing` |
@@ -146,12 +146,12 @@ As a user wanting safe, personalized training loads, I want a 30-second daily re
    - **Currently Ill / Fever / Infection?** (`illness`: `true | false`, Required)
    - **Any Urgent Red Flags (chest pain, severe dizziness/fainting, shortness of breath at rest, sudden numbness)?** (`redFlags`: `true | false`, Required)
 4. **Submit & Immediate Assessment View:**
-   - CTA: `[Submit Recovery Check-In]` -> Calls `POST /v1/commands?view=receipt` (`action: "recovery"`) followed by `review` if Pro/requested, OR reads returned `todaySummary.recovery` via bootstrap/local evaluation.
+   - CTA: `[Submit Recovery Check-In]` -> Calls `POST /v1/commands?view=full` (`action: "recovery"`) to receive the full computed readiness evaluation immediately (or uses `?view=receipt` followed by `GET /v1/bootstrap` refresh).
    - **Urgent Red-Flag Stop Screen (`redFlags == true`):**
      - Full-attention red alert card: *"Urgent Safety Notice: Stop all exercise immediately and seek prompt medical evaluation from a physician or emergency service. CuraFit has paused workout progression and training recommendations for your safety."*
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "recovery"`)
+1. **`[EXISTING] POST /v1/commands?view=full`** (`action: "recovery"` — returns full readiness immediately on `view=full`; `?view=receipt` returns the stored check-in delta and client refreshes readiness via `GET /v1/bootstrap`)
    - Payload:
      ```json
      {
@@ -194,8 +194,8 @@ As a user wanting safe, personalized training loads, I want a 30-second daily re
 5. Coach immediately updates Readiness to `Caution` and surfaces a 24h `-20% sets` deload proposal card (`US-CCH-03`).
 
 ### EDGE CASES
-- **User Skips Stress Field:** Payload sends `"stress": null` — never defaults to `0` or `1` (`INVALID_INTEGER` `1..5`).
-- **User Reports Joint Pain in `shoulders` (`painRegions: ["shoulders"]`, `pain: true`):** Even with great sleep, shoulder region status turns `hold`, progression on shoulder exercises pauses, and workout preview recommends skipping/swapping painful movements (`JOINT_PAIN_HOLD`).
+- **User Skips Stress Field:** Payload sends `"stress": null` — never defaults to `0` or `1` (sending `stress: 0` throws `400 NUMBER_OUT_OF_RANGE` for `1..5`).
+- **User Reports Joint Pain in `shoulders` (`painRegions: ["shoulders"]`, `pain: true`):** Even with great sleep, backend triggers conservative global `JOINT_PAIN_HOLD` (`status == "hold"`, pausing progression safely across the session) while the UI highlights the affected `shoulders` region on the body map and recommends skipping/swapping painful movements.
 - **User Accidentally Taps `redFlags: true`:** Can submit a corrected check-in same-day with `redFlags: false` if tapped by mistake (with gentle confirmation prompt `"Are you sure? Only turn off if you selected chest pain / dizziness by mistake"`).
 - **Offline Check-In Submission in Zero-Signal Gym Locker Room:** Computes provisional local Readiness badge immediately (especially locking `redFlags: true` locally if flagged!), writes to SQLDelight `outbox_commands` (`action: "recovery"`), and syncs seamlessly when online.
 
@@ -227,10 +227,10 @@ As a user wanting safe, personalized training loads, I want a 30-second daily re
 | **Story ID** | `US-CCH-03` |
 | **Epic** | `EPIC-06` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `coach`, `adaptive-engine`, `pro-feature` |
+| **Labels** | `production`, `mobile`, `coach`, `adaptive-engine`, `pro-feature` |
 | **Target Screens** | `CoachProposalsList`, `AdaptiveReviewExplainSheet` |
-| **Entitlement** | `Pro` *(Free users see current Readiness status + evidence checklist + Soft Paywall preview on adaptive proposals)* |
-| **Backend Status** | `Existing` |
+| **Entitlement** | `Freemium` (`Free`: Safety-critical adaptations `kind: "recovery"` & `kind: "schedule"`, Readiness status & evidence checklist; `Pro`: `calories`, `weekly_volume`, & `maintenance` proposals) |
+| **Backend Status** | `Modified` (`action: "review"` & `action: "adaptation"` floors `1500/1200/1800/1600`, ceiling `4200`, pure-English `contracts/coaching-codes.json`, and Pro gating strictly on `calories`/`weekly_volume`/`maintenance`) |
 
 ### STORY
 As a user committed to long-term results, I want my Smart Coach to analyze my 14-day weigh-ins, food adherence, performance, and recovery, explain *why* it proposes or holds any plan change, and require my explicit **Accept** or **Decline** before modifying tomorrow's calories, today's workout sets, muscle-gain volume, or transitioning me to Maintenance.
@@ -242,47 +242,51 @@ As a user committed to long-term results, I want my Smart Coach to analyze my 14
 1. **Explicit Pending Proposal Card (`pendingAdaptations[]`):**
    - Clearly displays specialist attribution + proposal type badge + clear plain-language reason + `expiresAt` countdown + expandable **`[🔬 See the Science & Your Data]`** proof accordion:
      - **Science Proof Accordion:** Shows exact verified equation inputs (`prev7` avg weight `82.1 kg` vs `curr7` avg weight `81.9 kg` = `-0.24%/wk`; `11/14` verified food days; gym progression status = `stable`; safety bounds check = `Passed > 1500 kcal floor`) so the user feels genuine clinical transparency!
-     - **Type 1 — `recovery` (24-Hour Temporary Deload):**
+     - **Type 1 — `recovery` (24-Hour Temporary Deload — 100% Free Safety Adaptation):**
        - Title: *"Recommended Today: Lighten Volume by {20% / 40%}"*
        - Subtitle: Explains exact triggered domains (e.g., *"Sleep 5h & Fatigue 4/5"*). Note: *"Applies to today only (24h); never alters your baseline plan (`effectiveSets >= 1`)."*
        - Buttons: `[Apply Light Session Today]` (`accept: true`) | `[Keep Normal Sets]` (`accept: false`).
-     - **Type 2 — `calories` (Bounded Nutrition Adjustment `<= 5% / <= 150 kcal`):**
+     - **Type 2 — `calories` (Bounded Nutrition Adjustment `<= 5% / <= 150 kcal` — Pro):**
        - Title: *"Suggested Calorie Update: {+100 or -100 kcal}/day (Effective Tomorrow)"*
        - Evidence pill: Shows 14-day weight trend rate (`-0.1%/wk vs 0.25–1% target`), `10+` complete food days verified, and confirms protein stays protected (`protein` never cut!).
        - Buttons: `[Approve Calorie Update]` | `[Keep Current Calories]`.
-     - **Type 3 — `weekly_volume` (Muscle-Gain Volume Escalation `+1 set`):**
+     - **Type 3 — `weekly_volume` (Muscle-Gain Volume Escalation `+1 set` — Pro):**
        - Title: *"Volume Boost Ready: +1 Weekly Set on {ExerciseName}"*
        - Evidence pill: Shows `>= 80%` 2-week completion, ready recovery, and 3 comparable stable exposures.
        - Buttons: `[Add +1 Set to Program]` | `[Keep Current Sets]`.
-     - **Type 4 — `maintenance` (Goal Weight Reached Celebration!):**
+     - **Type 4 — `maintenance` (Goal Weight Reached Celebration! — Pro):**
        - Title: *"Congratulations! You Reached {targetWeight} kg 🎉"*
        - Subtitle: *"Ready to transition your meal plan to Weight Maintenance tomorrow?"*
        - Buttons: `[Start Maintenance Plan]` | `[Stay on Current Goal]`.
+     - *(Note: `kind: "schedule"` reschedule proposals from `US-WRK-09` are also 100% Free!)*
 2. **"Why No Change Yet?" Explainability Sheet (`lastReview`):**
    - Opens when user taps `[Run Coach Review Now]` (`action: "review"`) and `proposals` is empty (`action: "hold"`), with full `[🔬 See the Science & Your Data]` transparency.
-   - Maps `lastReview.reasonCode` cleanly to transparent Arabic/English explanations:
+   - Maps `lastReview.reasonCode` (`contracts/coaching-codes.json`) cleanly to transparent Arabic/English explanations:
      - `INSUFFICIENT_EVIDENCE_COVERAGE` -> Visual progress checklist (`3/3 prev week weights`, `2/3 this week weights`, `8/10 complete food days`).
      - `PERFORMANCE_DROP_CALORIE_CUT_HOLD` -> *"Your gym performance dropped slightly despite stable scale weight, so we held your calories steady to protect muscle and energy!"*
      - `APPETITE_ENERGY_REVIEW_REQUIRED` -> *"High hunger/low energy logged recently — we held calorie cuts to look after your adherence."*
      - `MATERNAL_CALORIE_CUT_BLOCKED` -> *"Prenatal safety guard: calorie cuts are disabled during pregnancy so maternal & fetal nutrition stay protected."*
+     - `MIN_SAFE_ENERGY_FLOOR_HOLD` -> *"Your calories are already at the minimum clinical safety floor (`1500` M / `1200` F / `1800` Pregnant / `1600` Breastfeeding) — we will not cut further."*
+     - `MAX_SAFE_ENERGY_CEILING_HOLD` -> *"Your calories have reached the maximum clinical safety ceiling (`4200 kcal`) — further increases are held."*
      - `COOLDOWN_14D` -> *"14-day observation window active since last change."*
      - `TREND_ON_TRACK` -> *"Your 2-week trend is right inside your target zone — stay the course!"*
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING/MODIFIED] POST /v1/commands?view=full`** (`action: "review"`, `payload: {}`) -> Computes fresh `lastReview` and `pendingAdaptations`, enforcing V2 `validateEnergyChange` floors (`1500` M / `1200` F / `1800` pregnant / `1600` breastfeeding), maternal cut blocks, and Senior `-400 kcal` bounds.
-2. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "adaptation"`)
+1. **`[MODIFIED BACKEND] POST /v1/commands?view=full`** (`action: "review"`, `payload: {}`) -> Computes fresh `lastReview` and `pendingAdaptations`, enforcing `validateEnergyChange` floors (`1500` M / `1200` F / `1800` pregnant / `1600` breastfeeding; ceiling `4200`), maternal cut blocks, Senior `-400 kcal` bounds, and pure-English `contracts/coaching-codes.json` reason messages.
+2. **`[MODIFIED BACKEND] POST /v1/commands?view=receipt`** (`action: "adaptation"`)
    - Payload: `{ "id": "<proposal-uuid>", "accept": true | false }`.
+   - **Entitlement Enforcement:** Safety-critical adaptations (`kind: "recovery"` and `kind: "schedule"`) are **always 100% Free**; Pro entitlement (`402 PRO_ENTITLEMENT_REQUIRED`) gates only `kind: "calories"`, `"weekly_volume"`, and `"maintenance"`.
    - After `accept: true` on `calories`, `maintenance`, or `weekly_volume`, immediately fetch the newly generated plan (`GET /v1/plans/{id}` or `GET /v1/workout-plans/{id}`) into SQLDelight!
-   - Error Codes: `ADAPTATION_NOT_FOUND`, `ADAPTATION_STALE_REVISION` (`409` -> prompt re-running `review`), `ADAPTATION_EXPIRED`, `ADAPTATION_CONFIRMATION_REQUIRED`, `ADAPTATION_UNSAFE_WORKOUT`, `ADAPTATION_RECOVERY_STALE`, `ADAPTATION_NEEDS_FRESH_RECOVERY`, `ADAPTATION_VOLUME_NO_LONGER_SUPPORTED`, `ADAPTATION_CALORIE_CUT_BLOCKED`, `MATERNAL_CALORIE_CUT_BLOCKED`, `ENERGY_CHANGE_OUT_OF_RANGE`, `FUTURE_FOOD_ENTRIES_CONFLICT`.
+   - Error Codes: `ADAPTATION_NOT_FOUND`, `ADAPTATION_STALE_REVISION` (`409` -> prompt re-running `review`), `ADAPTATION_EXPIRED`, `ADAPTATION_CONFIRMATION_REQUIRED`, `ADAPTATION_UNSAFE_WORKOUT`, `ADAPTATION_RECOVERY_STALE`, `ADAPTATION_NEEDS_FRESH_RECOVERY`, `ADAPTATION_VOLUME_NO_LONGER_SUPPORTED`, `ADAPTATION_CALORIE_CUT_BLOCKED`, `MATERNAL_CALORIE_CUT_BLOCKED`, `ENERGY_CHANGE_OUT_OF_RANGE`, `FUTURE_FOOD_ENTRIES_CONFLICT`, `402 PRO_ENTITLEMENT_REQUIRED`.
 
 ### RULES & BUSINESS LOGIC
 1. **Never Auto-Accept:** Adaptations ONLY apply when the user taps the explicit Approve button (`adaptation` with `accept: true`). Declined proposals are remembered (`CALORIE_ADVICE_DECLINED`, `MAINTENANCE_ADVICE_DECLINED`) so the app doesn't nag until evidence changes.
 2. **Future Food Entries Guard (`FUTURE_FOOD_ENTRIES_CONFLICT`):** Calorie/Maintenance adaptations take effect `tomorrow` (`dateOffset(currDate, 1)`); client ensures tomorrow has no prematurely backdated logs.
 3. **Fresh Recovery Prerequisite:** Approving `calories`, `maintenance`, or `weekly_volume` requires a valid `ready` check-in within `24h` (`ADAPTATION_NEEDS_FRESH_RECOVERY`). If user's check-in expired before tapping `[Approve]`, guide them seamlessly through `US-CCH-02` first!
-4. **Maternal, Senior & Calorie Floor Protections (`US-MOB-03/04/09` Parity):**
+4. **Maternal, Senior & Calorie Floor/Ceiling Protections (`US-MOB-03/04/09` Parity):**
    - Strictly block any negative calorie adjustment (`delta < 0`) during `pregnant_t1 | t2 | t3` (`MATERNAL_CALORIE_CUT_BLOCKED`).
    - During `breastfeeding`, keep calorie targets `>= 1600 kcal` and total deficit `<= 300 kcal` below TDEE+400.
-   - Standard adaptive calorie floors match onboarding (`1500 kcal` Male, `1200 kcal` Female — upgrading legacy `coaching.mjs` `validateEnergyChange` `1400` M -> `1500` M!).
+   - Standard adaptive calorie floors match onboarding (`1500 kcal` Male, `1200 kcal` Female, `1800 kcal` Pregnant, `1600 kcal` Breastfeeding; ceiling `4200 kcal`), emitting `MIN_SAFE_ENERGY_FLOOR_HOLD` / `MAX_SAFE_ENERGY_CEILING_HOLD` when bounded.
    - During `seniorMode` (`age >= 70`), cap deficit at `-400 kcal` and maintain `protein >= 1.2 g/kg`.
 
 ### MAIN FLOW
@@ -294,7 +298,7 @@ As a user committed to long-term results, I want my Smart Coach to analyze my 14
 ### EDGE CASES
 - **Stale Proposal (`ADAPTATION_STALE_REVISION`):** User logged food after the proposal was created -> Prompt `[Refresh Coach Review]` (`action: "review"`) to regenerate proposal at current revision cleanly.
 - **High Hunger Feedback (`coaching_feedback` `hunger >= 4`):** Approving a negative calorie delta returns `ADAPTATION_CALORIE_CUT_BLOCKED`; Coach explains why calories are held and prioritizes satiety barriers first.
-- **Adaptive Cut Reaches `1500 kcal` Male / `1200 kcal` Female Clinical Floor:** Client/server cap or reject cuts below safe floor (`ENERGY_CHANGE_OUT_OF_RANGE`), explaining clearly why lowering calories further hurts muscle & metabolic health and suggesting gentle movement or maintenance break instead.
+- **Adaptive Cut Reaches `1500 kcal` Male / `1200 kcal` Female Clinical Floor (or `4200 kcal` Ceiling):** Server holds via `MIN_SAFE_ENERGY_FLOOR_HOLD` / `MAX_SAFE_ENERGY_CEILING_HOLD` (or `ENERGY_CHANGE_OUT_OF_RANGE`), explaining clearly why lowering calories further hurts muscle & metabolic health and suggesting gentle movement or maintenance break instead.
 - **Pregnant User Triggers Coach Review:** Emits supportive prenatal energy-adequacy feedback without ever proposing weight-loss calorie cuts.
 
 ### ACCEPTANCE CRITERIA
@@ -306,10 +310,10 @@ As a user committed to long-term results, I want my Smart Coach to analyze my 14
   - **Given** weight loss stalled AND `hasPerformanceDrop == true`
   - **When** `review` runs
   - **Then** `lastReview.nutrition.reasonCode == "PERFORMANCE_DROP_CALORIE_CUT_HOLD"` and no calorie-cut proposal is emitted.
-- **Scenario 3: Maternal pregnancy guard blocks calorie reduction proposals**
-  - **Given** user profile has `maternalStatus == "pregnant_t2"`
-  - **When** `review` runs
-  - **Then** zero negative-calorie (`delta < 0`) proposals emit and `lastReview` explains prenatal nutrition protection (`MATERNAL_CALORIE_CUT_BLOCKED`).
+- **Scenario 3: Safety-critical adaptations remain Free while performance adaptations gate on Pro**
+  - **Given** a Free user receives a `recovery` deload proposal and a `calories` proposal
+  - **When** accepting the `recovery` proposal vs the `calories` proposal
+  - **Then** `recovery` (and `schedule`) accept with `200 OK` on Free tier, while `calories`/`weekly_volume`/`maintenance` trigger `402 PRO_ENTITLEMENT_REQUIRED` (`US-MON-01`).
 
 ### ANALYTICS
 - `coach_review_triggered` (`reason_code`: `string`, `proposals_count`: `integer`)
@@ -325,7 +329,7 @@ As a user committed to long-term results, I want my Smart Coach to analyze my 14
 | **Story ID** | `US-CCH-04` |
 | **Epic** | `EPIC-06` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `coach`, `coaching-agreements`, `feedback` |
+| **Labels** | `production`, `mobile`, `coach`, `coaching-agreements`, `feedback` |
 | **Target Screens** | `CoachingInboxSection`, `BarrierFeedbackSheet`, `CoachingHistoryScreen` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Existing` |
@@ -367,7 +371,7 @@ As a user struggling with time, hunger, budget, equipment, or motivation — or 
 4. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "coaching_ack"`) -> `{ id }`.
 5. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "coaching_decision"`) -> `{ id, accept: true | false }`.
 6. **`[EXISTING] POST /v1/commands?view=receipt`** (`action: "coaching_outcome"`) -> `{ id, outcome: "helped" | "not_helped" | "not_tried" }`.
-   - Error Codes: `COACHING_FEEDBACK_INVALID`, `COACHING_RATING_OUT_OF_RANGE`, `COACHING_HUNGER_NUTRITION_ONLY`, `COACHING_TRACK_NOT_ENABLED`, `COACHING_CASE_NOT_FOUND`, `COACHING_CONTEXT_CHANGED`, `COACHING_CASE_ALREADY_DECIDED`, `COACHING_CASE_EXPIRED`, `COACHING_OUTCOME_REQUIRES_ACCEPTED_CASE`, `COACHING_REVIEW_DATE_NOT_REACHED`.
+   - Error Codes: `COACHING_FEEDBACK_INVALID`, `COACHING_RATING_OUT_OF_RANGE`, `COACHING_HUNGER_NUTRITION_ONLY` (applies to both `hunger` AND `satiety` when `domain == "training"`), `COACHING_TRACK_NOT_ENABLED`, `COACHING_CASE_NOT_FOUND`, `COACHING_CONTEXT_CHANGED`, `COACHING_CASE_ALREADY_DECIDED`, `COACHING_CASE_EXPIRED`, `COACHING_OUTCOME_REQUIRES_ACCEPTED_CASE`, `COACHING_REVIEW_DATE_NOT_REACHED`.
 
 ### RULES & BUSINESS LOGIC
 1. **Pain Barrier Safety Hold (`coachingSafetyHold`):** Submitting `domain: "training", barrier: "pain"` immediately places a safety hold on workout progression until a fresh pain-free `recovery` check-in (`US-CCH-02`) clears it; client reflects this hold immediately in Today & Workouts.
@@ -384,7 +388,7 @@ As a user struggling with time, hunger, budget, equipment, or motivation — or 
 ### EDGE CASES
 - **Plan Changed Mid-Agreement (`COACHING_CONTEXT_CHANGED`):** Server automatically supersedes stale agreements when plan changes; Inbox refreshes cleanly without throwing errors.
 - **Proposal Expired After 7 Days (`expired == true`):** Hide stale `[Accept]` buttons and prompt `[Log Updated Check-In]`.
-- **Single-Track User Submits Barrier Feedback:** Only valid `domain` (`nutrition` for `nutrition_only`, `training` for `workouts_only`) is selectable so `COACHING_TRACK_NOT_ENABLED` is never triggered; `hunger` rating is strictly hidden for `domain == "training"` (`COACHING_HUNGER_NUTRITION_ONLY`).
+- **Single-Track User Submits Barrier Feedback:** Only valid `domain` (`nutrition` for `nutrition_only`, `training` for `workouts_only`) is selectable so `COACHING_TRACK_NOT_ENABLED` is never triggered; both `hunger` and `satiety` ratings are strictly hidden for `domain == "training"` (`COACHING_HUNGER_NUTRITION_ONLY`).
 - **Offline Feedback / Decision / Outcome:** Queues `coaching_feedback`, `coaching_decision`, or `coaching_outcome` in SQLDelight outbox seamlessly while reflecting the new state locally.
 
 ### ACCEPTANCE CRITERIA
@@ -410,16 +414,18 @@ As a user struggling with time, hunger, budget, equipment, or motivation — or 
 
 ## US-CCH-05: Guarded AI Coach Q&A ("Ask the Coach" — Log-Grounded Chat with Strict Safety Guardrails)
 
+> **Rollout Phase:** Scheduled for Final AI Phase (after core launch); capabilities flags `ai_meal_parse` and `ai_coach_qa` remain disabled until Final AI Phase.
+
 ### METADATA
 | Field | Value |
 | :--- | :--- |
 | **Story ID** | `US-CCH-05` |
 | **Epic** | `EPIC-06` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `coach`, `ai-coach`, `pro-feature` |
+| **Labels** | `production`, `mobile`, `coach`, `ai-coach`, `pro-feature`, `final-ai-phase` |
 | **Target Screens** | `AskCoachChatScreen` |
 | **Entitlement** | `Pro` (Free users get 3 starter questions teaser + Soft Paywall) |
-| **Backend Status** | `New` (`POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) |
+| **Backend Status** | `New` (`POST /v1/coaching/chat`, `GET /v1/coaching/chat/history` — Final AI Phase) |
 
 ### STORY
 As a user with specific day-to-day questions (like *"What can I order at a Lebanese restaurant tonight within my 600 remaining calories?"*, *"Why didn't my coach cut my calories this week?"*, or *"Can I swap squats while my knee hurts?"*), I want a conversational AI Coach in Arabic or English that knows my exact profile, remaining macros, active conditions, and recovery holds — and gives practical answers with quick deep-links to app actions without ever overriding CuraFit's clinical safety rules.
@@ -521,10 +527,10 @@ As a user with specific day-to-day questions (like *"What can I order at a Leban
 | **Story ID** | `US-CCH-06` |
 | **Epic** | `EPIC-06` |
 | **Priority** | `Highest` |
-| **Labels** | `production-v2`, `mobile-v2`, `coach`, `retention`, `weekly-checkin`, `comeback-protocol` |
+| **Labels** | `production`, `mobile`, `coach`, `retention`, `weekly-checkin`, `comeback-protocol` |
 | **Target Screens** | `WeeklyCheckinFlowScreen`, `ComebackProtocolModal` |
-| **Entitlement** | `Free` *(Weekly Care-Team Check-In & Comeback Protocol are Free; applying Pro adaptive proposals triggers `US-MON-01`)* |
-| **Backend Status** | `Mixed` (`[EXISTING]` `weight`, `coaching_feedback`, `recovery`, `review`, `renew_plan` + `[MODIFIED BACKEND]` `bootstrap.engagementState`) |
+| **Entitlement** | `Free` *(Weekly Care-Team Check-In & Comeback Protocol are Free; applying Pro performance/nutrition adaptive proposals triggers `US-MON-01`)* |
+| **Backend Status** | `Mixed` (`[EXISTING]` `weight`, `coaching_feedback`, `recovery`, `review`, `renew_plan` + `[NEW BACKEND]` `action: "comeback_restart"`, `action: "body_measurement"` + `[MODIFIED BACKEND]` `bootstrap.engagementState`) |
 
 ### STORY
 As a user who wants the reassuring accountability of a full scientific coaching team checking in on my week — and an empathetic, non-punitive way to restart cleanly if I fall off track for a few days due to travel, work, or illness — I want a guided 60-second Weekly Team Check-In and a personalized Zero-Guilt Comeback Protocol so I stay consistent long-term without ever crashing or feeling judged.
@@ -535,7 +541,7 @@ As a user who wants the reassuring accountability of a full scientific coaching 
 
 ### SCREEN AND UI DETAILS
 1. **Guided 60-Second Weekly Care-Team Check-In (`WeeklyCheckinFlowScreen` — 3 Short Interactive Cards):**
-   - **Card 1 — Scale & Tape Pulse:** Confirms current weight (pre-filled with today's or HealthKit's latest weight) + optional 1-tap `Waist (cm)` (`weight` + `body_measurement`).
+   - **Card 1 — Scale & Tape Pulse:** Confirms current weight (pre-filled with today's or HealthKit's latest weight) + optional 1-tap `Waist (cm)` (`weight` + `[NEW BACKEND] body_measurement`).
    - **Card 2 — Biofeedback & Weekly Barriers:** Quick 1–5 ratings for **Hunger**, **Energy**, and **Sleep/Recovery**, plus top barrier chips (`coaching_feedback` + optional `recovery`).
    - **Card 3 — 3-Specialist Scientific Verdict:**
      - **Clinical Nutritionist:** Evaluates 7-day/14-day weight trend + adherence + proposes or holds calories (with `[See the Science]` link -> `US-CCH-03`), plus `[Generate Next 7-Day Meal Plan]` button if expired (`US-NUT-01`).
@@ -544,16 +550,19 @@ As a user who wants the reassuring accountability of a full scientific coaching 
 2. **Zero-Guilt Comeback Protocol Modal (`ComebackProtocolModal`):**
    - Headline: *"Welcome Back, {name} — No Guilt, Only Smart Momentum"*
    - Explicit anti-punishment guarantee banner: *"Missed days never require 'makeup workouts' or crash dieting. Let's pick up right where your body is today."*
-   - **1-Tap Context Chips:** `"Busy / Work"` | `"Travel / Ramadan"` | `"Sick / Needed Rest"` | `"Lost Motivation"` (optional note -> logs `coaching_feedback`).
-   - **Tiered Automatic Re-Entry Prescription:**
+   - **1-Tap Context Chips:** `"Busy / Work"` | `"Travel / Ramadan"` | `"Sick / Needed Rest"` | `"Lost Motivation"` (optional note -> recorded cleanly in `comeback_restart` / `coaching_feedback`).
+   - **Tiered Automatic Re-Entry Prescription (`action: "comeback_restart"`):**
      - **Tier 1 (`short_3_6d`, 3–6 days off):** Resumes active workout & nutrition plan immediately at current weights, auto-offers fresh 7-day meal plan if expired (`renew_plan`).
-     - **Tier 2 (`medium_7_13d`, 7–13 days off):** Recommends a **24-Hour `-20%` Re-Entry Workout Deload** (`recovery` fatigued preset -> soft deload proposal) so returning to the gym prevents excessive soreness/injury, and skips past missed calendar dates cleanly.
-     - **Tier 3 (`detrained_14d_plus`, >= 14 days off):** 20-second fresh Weight & Injury confirmation -> Activates gentle **`-20%` First-Week Ramp-In** + generates a fresh 7-day meal plan (`renew_plan` / `generate`) tailored to updated weight -> Sends motivational streak restart badge!
+     - **Tier 2 (`medium_7_13d`, 7–13 days off):** Activates a **24-Hour `-20%` Re-Entry Workout Deload** via dedicated `action: "comeback_restart"` (never fabricating a fake fatigued `recovery` check-in that would pollute sleep/fatigue baselines!) and skips past missed calendar dates cleanly.
+     - **Tier 3 (`detrained_14d_plus`, >= 14 days off):** 20-second fresh Weight & Injury confirmation -> `action: "comeback_restart"` activates a gentle **7-Day `-20%` First-Week Ramp-In Deload** + optional `profile.weight` refresh before renewing/generating a fresh 7-day meal plan (`renew_plan` / `generate`) tailored to updated weight -> Sends motivational streak restart badge!
 
 ### API & BACKEND CONTRACT
 1. **`[MODIFIED BACKEND] GET /v1/bootstrap`**
    - Returns `data.engagementState`: `{ "daysSinceLastLog": 9, "lastLoggedAt": "2026-11-12", "weeklyCheckinDue": false, "comebackTier": "medium_7_13d" }`.
-2. **`[EXISTING] POST /v1/commands?view=full`** (Executes standard sequence cleanly: `weight`, optional `body_measurement`, `coaching_feedback`, `recovery`, `review`, and optional `renew_plan`).
+2. **`[NEW BACKEND] POST /v1/commands?view=full`** (`action: "comeback_restart"`)
+   - Payload: `{ "tier": "short_3_6d" | "medium_7_13d" | "detrained_14d_plus", "applyDeload": true, "deloadDurationDays": 1 | 7, "updatedWeightKg": 82.2, "reason": "busy_work", "renewMealPlan": true }`.
+   - Applies clean `sessionAdjustment` (`setFactor: 0.8` for 24h in Tier 2 or 7 days in Tier 3) without fabricating fake `recovery` sleep/fatigue check-ins, optionally refreshes `profile.weight` (logging `weight` cleanly) before invoking `renew_plan` when expired.
+3. **`[EXISTING]` + `[NEW BACKEND]` Weekly Check-In Sequence:** Executes `weight`, optional `[NEW BACKEND] body_measurement`, `coaching_feedback`, optional `recovery`, `review`, and optional `renew_plan`.
 
 ### RULES & BUSINESS LOGIC
 1. **Zero-Doubling Rule (`IMPLEMENTATION.md`):** Never stack missed workout days onto today or tomorrow, and never slash calories below baseline/floor to "compensate" for missed diary days!
@@ -564,23 +573,23 @@ As a user who wants the reassuring accountability of a full scientific coaching 
 1. User opens app after a 10-day work trip (`engagementState.comebackTier == "medium_7_13d"`).
 2. Welcoming `ComebackProtocolModal` appears smoothly over Today: *"Welcome back! 10 days away is totally normal."*
 3. User taps `"Busy / Work"`, reviews weight (`82.2 kg`), and taps `[Start Gently (-20% Today)]`.
-4. App submits `weight` + `coaching_feedback` + gentle `recovery` check-in -> Triggers `-20%` 24h deload on today's Gym Upper session and restores fresh focus without guilt!
+4. App submits `POST /v1/commands?view=full` (`action: "comeback_restart"`, `tier: "medium_7_13d"`, `applyDeload: true`, `deloadDurationDays: 1`, `updatedWeightKg: 82.2`, `reason: "busy_work"`) -> Activates `-20%` 24h re-entry deload on today's Gym Upper session and refreshes weight cleanly without falsifying sleep/fatigue baselines!
 
 ### EDGE CASES
 - **Active Pregnancy (`maternalStatus != "none"`) During Check-In or Comeback:** Suppresses weight-loss prompts, keeps calories above maternal floor, and offers gentle physician check reminder if away `>= 14` days due to medical reasons.
 - **Red-Flag Illness Selected as Return Reason (`illness: true` / `redFlags: true`):** Immediately routes into `RedFlagSafetyStopView` (`US-CCH-02`) advising medical clearance instead of pushing a workout!
 - **Weekly Check-In Triggered on `workouts_only` Track:** Skips meal hunger/meal renewal prompts and focuses purely on Weight + Training Soreness/Volume + Strength Coach PR audit.
-- **Offline Comeback / Weekly Check-In:** Allows completing all step cards offline, queues `weight` / `coaching_feedback` / `recovery` commands via SQLDelight outbox (`US-AUTH-04`), and runs server `review` automatically on reconnect.
+- **Offline Comeback / Weekly Check-In:** Allows completing all step cards offline, queues `weight` / `body_measurement` / `coaching_feedback` / `comeback_restart` commands via SQLDelight outbox (`US-AUTH-04`), and runs server `review` automatically on reconnect.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Returning after 8 days inactive surfaces non-punitive Comeback Protocol**
   - **Given** `bootstrap.engagementState.daysSinceLastLog == 8` and `comebackTier == "medium_7_13d"`
-  - **When** the user opens Today or Coach Hub
-  - **Then** `ComebackProtocolModal` offers gentle `-20%` re-entry deload without stacking missed workouts or cutting calories aggressively.
+  - **When** the user opens Today or Coach Hub and confirms `[Start Gently (-20% Today)]`
+  - **Then** `action: "comeback_restart"` activates a clean 24h `-20%` re-entry deload without fabricating a fatigued `recovery` check-in, stacking missed workouts, or cutting calories aggressively.
 - **Scenario 2: Weekly Care-Team Check-In aggregates biofeedback and triggers review**
   - **Given** `engagementState.weeklyCheckinDue == true`
-  - **When** user submits updated weight, hunger/energy ratings, and taps Finish
-  - **Then** `weight`, `coaching_feedback`, and `review` execute cleanly and the 3-Specialist verdict summary renders.
+  - **When** user submits updated weight, optional waist (`body_measurement`), hunger/energy ratings, and taps Finish
+  - **Then** `weight`, `body_measurement`, `coaching_feedback`, and `review` execute cleanly and the 3-Specialist verdict summary renders.
 - **Scenario 3: Single-track `workouts_only` user sees training-focused check-in**
   - **Given** `serviceTrack == "workouts_only"` and `weeklyCheckinDue == true`
   - **When** `WeeklyCheckinFlowScreen` opens

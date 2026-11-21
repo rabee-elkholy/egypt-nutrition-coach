@@ -103,8 +103,9 @@ test('legacy onboarding injury IDs and canonical API IDs enforce the same exclus
   assert.deepEqual(a.workoutPlan.days.map(d=>d.exercises.map(e=>e.id)),b.workoutPlan.days.map(d=>d.exercises.map(e=>e.id)));
   assert.deepEqual(a.onboarding.workoutPrefs.injuries,[legacy]);
  }
- assert.equal(evaluateEligibility({...draft,injuries:['elbow_pain']}).status,'requires_review');
- assert.throws(()=>generate(empty(),{...draft,injuries:['elbow_pain']}),e=>e.code==='UNSUPPORTED_ELBOW_PAIN'&&/Elbow pain/i.test(e.message));
+ assert.equal(evaluateEligibility({...draft,injuries:['elbow_pain']}).status,'eligible');
+ const elbowPlan=generate(empty(),{...draft,injuries:['elbow_pain']},'elbow-safe');
+ assert.ok(elbowPlan.workoutPlan.days.every(d=>d.exercises.length>0));
 });
 
 test('account deletion fails closed before the revocation schema is installed',async()=>{

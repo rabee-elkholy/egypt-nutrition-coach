@@ -5,7 +5,7 @@
     "message": "Account was updated; refresh and try again.",
     "params": {
       "expectedRevision": 10,
-      "serverRevision": 12
+      "currentRevision": 12
     },
     "fieldErrors": [],
     "retryable": false,

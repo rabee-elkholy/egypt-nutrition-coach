@@ -1,5 +1,6 @@
 import { regionalFoodTemplates } from './regional-foods.mjs';
 import { apiError } from './coaching-error.mjs';
+import { minSafeEnergyFloor, isPregnantStatus } from './coaching-shared.mjs';
 import {DIETS,FIXED_DIET_MEALS,dietIngredientAllowed,medicalContraindicatedKeys,isDietUnsafeForProfile,dietTemplates,assertDietDay,fastingTimes} from './diet-patterns.mjs';
 import {sportsEnergy} from './sports.mjs';
 import {practicalParts,roundedHouseholdGrams} from './planner-household.mjs';
@@ -80,12 +81,12 @@ const product = (v, q) =>
     .nutrients.v.total;
 
 export function estimateNeeds(input) {
-  const maxAge = input.allowSenior ? 90 : 70;
+  const maxAge = input.allowSenior === false ? 70 : 95;
   const weight = finite(input.weight, 35, 250, "weight"),
     height = finite(input.height, 120, 230, "height"),
     age = finite(input.age, 18, maxAge, "age");
   if (!Number.isInteger(age))
-    throw apiError('INVALID_AGE', 'age must be a whole number of years between 18 and 70.', {
+    throw apiError('INVALID_AGE', 'age must be a whole number of years between 18 and 95.', {
       status: 400,
       fieldErrors: [{ field: 'age', code: 'INVALID_AGE', message: 'age must be a whole integer.' }],
     });
@@ -115,11 +116,11 @@ export function estimateNeeds(input) {
     "trainingDays",
   );
   if (!Number.isInteger(trainingDays))
-    throw apiError('INVALID_TRAINING_DAYS', 'trainingDays must be an integer between 0 and 6.', {
+    throw apiError('INVALID_TRAINING_DAYS', 'trainingDays must be an integer between 0 and 7.', {
       status: 400,
       fieldErrors: [{ field: 'trainingDays', code: 'INVALID_TRAINING_DAYS', message: 'trainingDays must be a whole integer.' }],
     });
-  if (input.goal === "muscle_gain" && trainingDays === 0)
+  if (input.goal === "muscle_gain" && trainingDays === 0 && input.allowZeroExternalTraining !== true)
     throw apiError(
       'MUSCLE_GAIN_REQUIRES_RESISTANCE_DAYS',
       'Muscle gain goal requires at least one weekly resistance training day.',
@@ -128,10 +129,15 @@ export function estimateNeeds(input) {
 
   const diseases = new Set(Array.isArray(input.diseases) ? input.diseases : []);
   const maternalStatus = input.maternalStatus || "none";
+  const seniorMode = age >= 70 || input.seniorMode === true;
   const notes = [];
 
   let ree =
     10 * weight + 6.25 * height - 5 * age + (input.sex === "male" ? 5 : -161);
+  if (diseases.has("hypothyroid")) {
+    ree *= 0.95;
+    notes.push("Applied conservative 5% REE calibration for hypothyroidism; monitor actual weight trend.");
+  }
 
   const baseline = ree * ACTIVITY[input.activity],
     exercise = sportsEnergy(input, weight, baseline),
@@ -140,46 +146,50 @@ export function estimateNeeds(input) {
   const pace = input.goalPace || 'moderate';
   if(!['slow','moderate','fast'].includes(pace))throw apiError('INVALID_GOAL_PACE','goalPace must be one of slow, moderate, or fast.',{status:400});
   let change = 0;
-  if(input.goal === 'lose')change=-Math.min(tdee*{slow:.1,moderate:.15,fast:.2}[pace],500);
-  else if(input.goal === 'muscle_gain'&&(input.recomposition||Number(input.targetWeight)===weight)){change=0;notes.push('هدف بناء العضلات مع نفس الوزن يبدأ بسعرات التثبيت وتمارين المقاومة؛ نراجع الاتجاه والأداء من متابعتك.');}
+  if(input.goal === 'lose'){
+    const maxDeficit = seniorMode ? 400 : 500;
+    change = -Math.min(tdee * {slow:.1, moderate:.15, fast:.2}[pace], maxDeficit);
+    if (seniorMode) notes.push("Senior safety mode (70+): daily calorie deficit capped at -400 kcal.");
+  }
+  else if(input.goal === 'muscle_gain'&&(input.recomposition||Number(input.targetWeight)===weight)){change=0;notes.push('Body recomposition starts at maintenance calories with progressive resistance training.');}
   else if(input.goal === 'muscle_gain')change=Math.min(tdee*{slow:.05,moderate:.08,fast:.1}[pace],250);
   else if(input.goal === 'gain')change=Math.min(tdee*{slow:.08,moderate:.12,fast:.15}[pace],400);
-  notes.push('سرعة الهدف تحدد عجزًا أو فائضًا مبدئيًا محدودًا؛ معدل تغير الوزن الفعلي بيتراجع من قياساتك، ومش ضمان لتاريخ وصول.');
+  notes.push('Goal pace sets a bounded initial offset; actual energy needs are calibrated from recorded weight trends.');
 
   // Maternal adjustments
   if (maternalStatus === "pregnant_t1") {
-    change = Math.max(0, change) + 50;
-    notes.push("تم ضبط الاحتياج للثلث الأول من الحمل (منع عجز السعرات).");
+    change = Math.max(0, change);
+    notes.push("First-trimester pregnancy calibration applied (calorie deficits disabled).");
   } else if (maternalStatus === "pregnant_t2" || maternalStatus === "pregnant") {
     change = Math.max(0, change) + 340;
-    notes.push("تمت إضافة +340 سعرة للثلث الثاني من الحمل لدعم نمو الجنين.");
+    notes.push("Second-trimester pregnancy calibration applied (+340 kcal/day, deficits disabled).");
   } else if (maternalStatus === "pregnant_t3") {
     change = Math.max(0, change) + 450;
-    notes.push("تمت إضافة +450 سعرة للثلث الثالث من الحمل.");
+    notes.push("Third-trimester pregnancy calibration applied (+450 kcal/day, deficits disabled).");
   } else if (maternalStatus === "breastfeeding") {
-    change = input.goal === "lose" ? Math.max(-200, change + 300) : change + 480;
-    notes.push("تمت مراعاة سعرات الرضاعة الطبيعية للحفاظ على إدرار الحليب.");
+    change = input.goal === "lose" ? Math.max(-300, change + 400) : change + 400;
+    notes.push("Breastfeeding calibration applied (+400 kcal baseline, max deficit -300 kcal/day).");
   }
 
   let energy = Math.round((tdee + change) / 10) * 10;
-  const minEnergyFloor = maternalStatus !== "none" ? 1600 : (input.sex === "female" && input.goal === "lose" && tdee < 1750 ? 1200 : 1400);
+  const minEnergyFloor = minSafeEnergyFloor({ sex: input.sex, maternalStatus });
   if (energy < minEnergyFloor) {
     energy = minEnergyFloor;
     notes.push(
-      `رُفع الهدف إلى الحد الأدنى للتخطيط الآلي (${minEnergyFloor} kcal) وقد تحتاج مراجعة فردية لتقييم كفاية العناصر الغذائية.`,
+      `Daily energy raised to the safe automated planning floor (${minEnergyFloor} kcal).`,
     );
   }
   if (energy > 4200)
     throw apiError(
       'ENERGY_CHANGE_OUT_OF_RANGE',
-      'Adjusted daily calories exceed safe automated bounds (1200/1400..4200 kcal).',
+      'Adjusted daily calories exceed safe automated bounds (1200/1500/1600/1800..4200 kcal).',
       { status: 400 },
     );
 
   if (bmi < 18.5) {
-    notes.push("مؤشر كتلة الجسم أقل من 18.5 (نحافة): ركّز على الوجبات عالية الكثافة الغذائية وتوزيع السعرات تدريجيًا.");
+    notes.push("BMI is below 18.5 (underweight): focus on nutrient-dense meals and gradual intake progression.");
   } else if (bmi > 30) {
-    notes.push("تم حساب البروتين على أساس الوزن المعدّل لتجنب المبالغة في الحصص مع الحفاظ على الكتلة العضلية.");
+    notes.push("Protein targets use Adjusted Body Weight (ABW) for BMI > 30 to avoid excessive portions.");
   }
 
   const effectiveWeight =
@@ -198,45 +208,51 @@ export function estimateNeeds(input) {
           ? 1.3
           : 1;
 
+  if (seniorMode) factor = Math.max(factor, 1.2);
   if (maternalStatus !== "none") factor = Math.max(factor, 1.4);
   if (diseases.has("gout")) {
     factor = Math.min(factor, 1.4);
-    notes.push("تم اعتدال البروتين واستبعاد اللحوم الحمراء العالية بالبيورين لمراعاة النقرس.");
+    notes.push("Protein capped at 1.4 g/kg and high-purine red meats/offal excluded for gout.");
+  }
+  if (diseases.has("kidney")) {
+    factor = Math.min(factor, 1.1);
+    notes.push("Protein conservatively capped at <= 1.1 g/kg for kidney condition support.");
   }
   if (diseases.has("ibs")) {
-    notes.push("تم استبعاد البقوليات الثقيلة والكرنب والبصل النيء لمراعاة القولون العصبي.");
+    notes.push("Heavy legumes, cabbage, and raw alliums excluded for IBS comfort.");
   }
   if (diseases.has("hypertension")) {
-    notes.push("تم تفعيل سقف الصوديوم المنخفض واستبعاد الأجبان عالية الملوحة لمراعاة ضغط الدم.");
+    notes.push("Low-sodium ceiling and high-sodium cheese exclusions enabled for blood pressure support.");
+  }
+  if (diseases.has("celiac")) {
+    notes.push("Gluten-containing grains and breads automatically excluded for celiac safety.");
   }
 
   let fatShare = diseases.has("cholesterol") ? 0.25 : 0.3;
-  let proteinGrams = round(effectiveWeight * factor);
+  const maternalProteinAddon = maternalStatus === "pregnant_t2" || maternalStatus === "pregnant" ? 15 : maternalStatus === "pregnant_t3" ? 25 : maternalStatus === "breastfeeding" ? 20 : 0;
+  let proteinGrams = round(effectiveWeight * factor + (diseases.has("kidney") ? 0 : maternalProteinAddon));
   let fatGrams = round((energy * fatShare) / 9);
   let carbGrams = round(Math.max(0, energy - proteinGrams * 4 - fatGrams * 9) / 4);
 
-  if (diseases.has("diabetes") || diseases.has("insulin_resistance") || diseases.has("pcos")) {
+  if (diseases.has("diabetes") || diseases.has("diabetes_t1") || diseases.has("diabetes_t2") || diseases.has("insulin_resistance") || diseases.has("pcos")) {
     const maxCarbEnergy = energy * 0.38;
     if (carbGrams * 4 > maxCarbEnergy) {
       carbGrams = round(maxCarbEnergy / 4);
       const remaining = Math.max(0, energy - carbGrams * 4);
-      proteinGrams = round(Math.min(effectiveWeight * 1.8, remaining * 0.45 / 4));
+      const maxProtFactor = diseases.has("kidney") ? 1.1 : diseases.has("gout") ? 1.4 : 1.8;
+      proteinGrams = round(Math.min(effectiveWeight * maxProtFactor, remaining * 0.45 / 4));
       fatGrams = round(Math.max(0, energy - carbGrams * 4 - proteinGrams * 4) / 9);
-      notes.push("ضبطنا نسبة الكربوهيدرات إلى نحو 38% من السعرات كبداية للتخطيط؛ النسبة لا تثبت المؤشر الجلايسيمي للوجبات ولا تغني عن خطة مختص.");
+      notes.push("Carbohydrate share calibrated to ~38% of daily energy for glycemic support.");
     }
   }
 
   if (input.goal === "gain" && trainingDays === 0)
-    notes.push(
-      "زيادة السعرات وحدها لا تعني زيادة عضلات؛ تمارين المقاومة مهمة لهذا الهدف.",
-    );
+    notes.push("Calorie surplus without resistance training does not guarantee lean mass gain.");
   if (input.goal === "muscle_gain")
-    notes.push(
-      "هدف بناء العضلات تقديري: فائض معتدل وبروتين 1.6 جرام/كجم مع المقاومة. راقب الوزن والأداء؛ الزيادة ليست ضمانًا لكتلة عضلية صافية.",
-    );
+    notes.push("Muscle gain targets use a moderate surplus (<= 250 kcal) and progressive resistance training.");
   const targetWeightNum =
     input.targetWeight != null && String(input.targetWeight).trim() !== ""
-      ? finite(input.targetWeight, 35, 250, "الوزن المستهدف")
+      ? finite(input.targetWeight, 35, 250, "targetWeight")
       : null;
   const actualChange = round(energy - tdee);
   const targetDeltaKg =
@@ -251,7 +267,7 @@ export function estimateNeeds(input) {
         weekly_rate_kg: 0,
         estimated_weeks_min: 0,
         estimated_weeks_max: 0,
-        basis: "ثبات الوزن أو إعادة تشكيل الجسم حول الوزن الحالي.",
+        basis: "Weight maintenance or body recomposition around current weight.",
       };
     } else {
       const weeklyKg = round((Math.abs(actualChange) * 7) / 7700, 2);
@@ -263,37 +279,41 @@ export function estimateNeeds(input) {
         weekly_rate_kg: actualChange < 0 ? -weeklyKg : weeklyKg,
         estimated_weeks_min: Math.max(1, Math.floor(centerWeeks * 0.85)),
         estimated_weeks_max: Math.ceil(centerWeeks * 1.25),
-        basis: "تقدير مبدئي مبني على فرق السعرات الفعلي بعد تطبيق حدود الأمان؛ يُحدّث من اتجاه الوزن الفعلي.",
+        basis: "Initial estimate based on post-floor daily energy delta (7700 kcal/kg); refined from actual weigh-in trends.",
       };
     }
   }
+
+  const maxProteinFactor = diseases.has("kidney") ? 1.1 : diseases.has("gout") ? 1.4 : 1.8;
 
   return {
     training_days: trainingDays,
     ...(input.exerciseMode || input.sports?.length ? {exercise, baseline_tdee:round(baseline)} : {}),
     training_calorie_scope:
-      exercise.mode === "separate" ? "النشاط اليومي بدون التمرين، وتضاف زيادة تقديرية من الرياضات موزعة على الأسبوع بعد خصم الطاقة الأساسية لنفس الوقت." : "النشاط المختار يشمل تمرينك؛ لا نضيف سعرات التمرين مرة ثانية.",
+      exercise.mode === "separate" ? "Baseline daily activity excludes workouts; estimated sports expenditure is added separately." : "Selected activity multiplier includes weekly training; workout calories are not double-counted.",
     energy,
+    min_energy_floor: minEnergyFloor,
     protein: proteinGrams,
     protein_factor: factor,
     effective_weight: round(effectiveWeight, 2),
-    max_protein_factor: diseases.has("gout") ? 1.4 : 1.8,
+    max_protein_factor: maxProteinFactor,
     fat: fatGrams,
     carbs: carbGrams,
     carb_target_scope:
-      "تقسيم استرشادي للطاقة؛ القيم الغذائية المرجعية لا تُعاد اشتقاقها بمعادلة 4/4/9",
+      "Guideline macro distribution; reference food nutrients are summed directly from verified tables.",
     bmi: round(bmi),
     ree: round(ree),
     tdee: round(tdee),
     activity_factor: ACTIVITY[input.activity],
     energy_change: actualChange,
     goal_pace: pace,
+    senior_mode: seniorMode,
     ...(forecast ? { forecast } : {}),
     ...(maternalStatus !== "none" ? { maternal_status: maternalStatus } : {}),
     ...(diseases.size ? { medical_conditions: [...diseases] } : {}),
     notes,
     method:
-      "Mifflin–St Jeor 1990; activity multipliers and moderate goal offsets are product heuristics, not measured expenditure",
+      "Mifflin-St Jeor 1990; activity multipliers and bounded goal offsets are deterministic product heuristics, not measured expenditure",
     sources: [
       "https://pubmed.ncbi.nlm.nih.gov/2305711/",
       "https://pubmed.ncbi.nlm.nih.gov/28642676/",
@@ -338,9 +358,9 @@ export function validatePreferences(p, library) {
       (id) => typeof id !== "string" || !id || id.length > 120,
     ) ||
     !Array.isArray(excludedGroups) ||
-    excludedGroups.some((id) => !EXCLUSIONS.some((g) => g.id === id))
+    excludedGroups.some((id) => !EXCLUSIONS.some((g) => g.id === String(id).toLowerCase()))
   )
-    throw apiError("INVALID_EXCLUDED_INGREDIENTS", "excludedKeys must be a valid array of known ingredient keys.", { status: 400 });
+    throw apiError("INVALID_EXCLUDED_INGREDIENTS", "excludedKeys or excludedGroups contains an unknown entry.", { status: 400 });
   const region = p.region ?? "egypt";
   if (!Object.hasOwn(REGIONS, region))
     throw apiError("INVALID_REGION", "region must be a supported regional catalog selection.", { status: 400 });
@@ -852,7 +872,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
   // preserving protein, instead of scaling a newly generated higher-energy week.
   if(acceptedEnergy!=null){
     const before=targets.energy;
-    targets.energy=finite(acceptedEnergy,profile.sex==='female'?1200:1400,4200,'السعرات المعدلة');
+    targets.energy=finite(acceptedEnergy,minSafeEnergyFloor(profile),4200,'adjustedEnergy');
     targets.fat=round(targets.fat*targets.energy/before);
     targets.carbs=round(Math.max(0,targets.energy-targets.protein*4-targets.fat*9)/4);
     targets.energy_change=round(targets.energy-targets.tdee);
@@ -870,11 +890,11 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
     targets.protein_factor=resolvedFactor;
     targets.carbs=round(Math.max(0,targets.energy-targets.protein*4-targets.fat*9)/4);
   }
-  if(p.diet==='low_carb'){targets.carbs=100;targets.fat=round(Math.max(0,targets.energy-targets.protein*4-400)/9);targets.carb_target_scope='كربوهيدرات كلية حتى 130 جرام يوميًا؛ ليست خطة كيتو.';}
+  if(p.diet==='low_carb'){targets.carbs=100;targets.fat=round(Math.max(0,targets.energy-targets.protein*4-400)/9);targets.carb_target_scope='Total carbohydrates capped at <= 130 g/day (not a ketogenic plan).';}
   if(p.diet==='keto'){
     if(profile.ketoAcknowledged!==true || isDietUnsafeForProfile('keto', profile))throw apiError('KETO_REQUIRES_CONFIRMATION','Keto diet requires explicit acknowledgment and is blocked with contraindicated medical conditions.',{status:400});
     targets.carbs=30;targets.fat=round(Math.max(0,targets.energy-targets.protein*4-120)/9);
-    targets.carb_target_scope='هدف 30 جرام كربوهيدرات كلية، مع حد قبول 50 جرام يوميًا؛ لا نحسب صافي الكربوهيدرات.';
+    targets.carb_target_scope='Target 30 g total carbohydrates (strict ceiling <= 50 g/day; total carbs, not net carbs).';
   }
   if((p.fasting&&p.fasting!=='none')||p.diet==='intermittent_fasting'){
     if(isDietUnsafeForProfile('intermittent_fasting', profile)||(p.diet!=='intermittent_fasting'&&profile.fastingAcknowledged!==true))throw apiError('FASTING_REQUIRES_CONFIRMATION','Intermittent fasting requires explicit acknowledgment and is blocked with contraindicated conditions.',{status:400});
@@ -1178,7 +1198,7 @@ export function simplifyPlannedSnapshot(snapshot){
  return {...copy(snapshot),ingredients,values,fruit_veg_g:ingredients.filter(i=>['veg','fruit'].includes(i.role)).reduce((n,i)=>n+Number(i.grams),0)};
 }
 export function scaleSnapshot(snapshot, multiplier) {
-  const q = finite(multiplier, 0.1, 3, "عدد المرات");
+  const q = finite(multiplier, 0.1, 4, "quantity");
   const values = Object.fromEntries(
     METRICS.map((k) => [
       k,
@@ -1500,20 +1520,26 @@ export function combineSnapshots(name, snapshots) {
       "المجموع للمكونات والكميات التي اخترتها، وليس ملفًا غذائيًا جديدًا معتمدًا.",
   };
 }
-export function groceryList(plan, mode = "whole", diary = []) {
-  const done = new Set(diary.map((e) => e.plan_meal_id)),
+export function groceryList(plan, mode = "whole", diary = [], todayDate = null) {
+  const done = new Set(diary.map((e) => e.mealId || e.plan_meal_id).filter(Boolean)),
     map = new Map();
-  for (const day of plan.days)
+  let days = plan.days || [];
+  if (mode === "3") {
+    const startIdx = todayDate ? Math.max(0, days.findIndex((d) => d.date >= todayDate)) : 0;
+    days = days.slice(startIdx, startIdx + 3);
+  }
+  for (const day of days)
     for (const m of day.meals) {
-      if (mode === "remaining" && done.has(m.id)) continue;
+      if (mode === "remaining" && (done.has(m.id) || (todayDate && day.date < todayDate))) continue;
       for (const i of m.snapshot.ingredients || []) {
         const key =
-          i.food_id +
+          (i.key || i.food_id) +
           "|" +
           i.state +
           "|" +
           (i.grams == null ? i.unit : "grams");
         const row = map.get(key) || {
+          ingredientKey: i.key || i.food_id,
           food_id: i.food_id,
           name: i.name,
           state: i.state,
@@ -1521,9 +1547,11 @@ export function groceryList(plan, mode = "whole", diary = []) {
           quantity: i.grams == null ? 0 : null,
           unit: i.grams == null ? i.unit : "grams",
           serving_label: i.serving_label,
+          mealRefs: [],
           notes:
-            "المطبوخ: أوزان جاهزة للأكل؛ ليست وزن شراء خامًا ولا تُحوّل دون معامل موثق.",
+            "Cooked weights represent ready-to-eat portions, not raw purchase weight, and are not converted without a documented yield factor.",
         };
+        if (!row.mealRefs.includes(m.id)) row.mealRefs.push(m.id);
         const field = i.grams != null ? "grams" : "quantity";
         row[field] = referenceTotals(
           [
@@ -1535,5 +1563,5 @@ export function groceryList(plan, mode = "whole", diary = []) {
         map.set(key, row);
       }
     }
-  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "en"));
 }

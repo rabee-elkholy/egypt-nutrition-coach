@@ -5,7 +5,6 @@ import { join, resolve } from 'node:path';
 import { Miniflare } from 'miniflare';
 import { migrateLocal } from '../scripts/local-migrations.mjs';
 import cloudflareEntry from '../server/cloudflare-entry.mjs';
-import { formatArabicError } from '../error-messages-ar.mjs';
 
 const ARABIC_RE = /[\u0600-\u06FF]/;
 const TEST_ENV = {
@@ -37,6 +36,7 @@ test('KMM Error Contract: pure English error catalog, source audit, and live HTT
       'AGENTS.md',
       'contracts/openapi.yaml',
       'contracts/error-codes.json',
+      'contracts/coaching-codes.json',
       ...(await readdir('contracts/examples')).map(f => join('contracts/examples', f)),
       ...(await readdir('postman')).filter(f => f.endsWith('.json')).map(f => join('postman', f)),
     ];
@@ -47,7 +47,7 @@ test('KMM Error Contract: pure English error catalog, source audit, and live HTT
     }
   });
 
-  await t.test('contracts/error-codes.json and docs/ERROR_CODES.md contain zero Arabic characters', () => {
+  await t.test('contracts/error-codes.json, contracts/coaching-codes.json, and generated docs contain zero Arabic characters', async () => {
     assert.ok(!ARABIC_RE.test(catalogRaw), 'contracts/error-codes.json must not contain Arabic text');
     assert.ok(!ARABIC_RE.test(docsRaw), 'docs/ERROR_CODES.md must not contain Arabic text');
     assert.equal(catalog.fieldLabelsAr, undefined, 'contracts/error-codes.json must not include fieldLabelsAr');
@@ -58,13 +58,16 @@ test('KMM Error Contract: pure English error catalog, source audit, and live HTT
       assert.ok(Number.isInteger(def.httpStatus) && def.httpStatus >= 400 && def.httpStatus <= 599);
       assert.ok(docsRaw.includes(`\`${code}\``), `docs/ERROR_CODES.md missing code ${code}`);
     }
-  });
-
-  await t.test('legacy frontend error-messages-ar.mjs translates key codes independently for Web UI', () => {
-    const ar = formatArabicError('NUMBER_OUT_OF_RANGE', { field: 'age', min: 18, max: 70 });
-    assert.ok(ARABIC_RE.test(ar));
-    assert.ok(ar.includes('18') && ar.includes('70'));
-    assert.ok(ARABIC_RE.test(formatArabicError('REVISION_CONFLICT')));
+    const coachingRaw = await readFile('contracts/coaching-codes.json', 'utf8');
+    const coachingDocsRaw = await readFile('docs/COACHING_CODES.md', 'utf8');
+    assert.ok(!ARABIC_RE.test(coachingRaw), 'contracts/coaching-codes.json must not contain Arabic text');
+    assert.ok(!ARABIC_RE.test(coachingDocsRaw), 'docs/COACHING_CODES.md must not contain Arabic text');
+    const coachingCatalog = JSON.parse(coachingRaw);
+    for (const [code, def] of Object.entries(coachingCatalog.codes)) {
+      assert.match(code, /^[A-Z][A-Z0-9_]+$/);
+      assert.ok(typeof def.message === 'string' && def.message.length > 0);
+      assert.ok(coachingDocsRaw.includes(`\`${code}\``), `docs/COACHING_CODES.md missing code ${code}`);
+    }
   });
 
   await t.test('all server & engine error calls use cataloged codes and zero Arabic characters', async () => {

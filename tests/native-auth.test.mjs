@@ -51,9 +51,10 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       const res = await edge('capabilities');
       assert.equal(res.status, 200);
       const data = await unwrap(res);
-      assert.equal(data.auth.provider, 'cloudflare_d1_native');
+      assert.equal(data.auth.provider, 'cloudflare_d1_native_and_oidc');
       assert.equal(data.auth.configured, true);
       assert.ok(data.features.includes('native_cloudflare_auth'));
+      assert.ok(data.features.includes('social_oauth'));
       assert.ok(!data.features.includes('simulation_90d'));
     });
 
@@ -241,7 +242,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       assert.equal((await edge('bootstrap', { headers: { Authorization: `Bearer ${reg.accessToken}` } })).status, 401);
     });
 
-    await t.test('Postman collection & environments are valid v2.1, cover 100% of OpenAPI routes & 30 command actions, and execute live', async () => {
+    await t.test('Postman collection & environments are valid v2.1, cover 100% of OpenAPI routes & 38 command actions, and execute live', async () => {
       const col = JSON.parse(await readFile('postman/CuraFit_API.postman_collection.json', 'utf8'));
       const cloudDevEnv = JSON.parse(await readFile('postman/CuraFit_Cloud_Dev.postman_environment.json', 'utf8'));
       const prodEnv = JSON.parse(await readFile('postman/CuraFit_Production.postman_environment.json', 'utf8'));
@@ -273,7 +274,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
         }
       };
       walk(col.item);
-      assert.equal(requests.length, 77, `Expected 77 requests in Postman collection, got ${requests.length}`);
+      assert.equal(requests.length, 123, `Expected 123 requests in Postman collection, got ${requests.length}`);
 
       for (const r of requests) {
         const desc = r.request.description || '';
@@ -300,8 +301,12 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
           .replace('/{{sampleFoodId}}', '/{id}')
           .replace('/{{sampleCatalogExerciseId}}', '/{id}')
           .replace('/{{activeWorkoutPlanId}}', '/{id}')
+          .replace('/{{activePlanId}}/grocery-list', '/{planId}/grocery-list')
           .replace('/{{activePlanId}}/days/{{todayDate}}', '/{id}/days/{date}')
-          .replace('/{{activePlanId}}', '/{id}');
+          .replace('/{{activePlanId}}', '/{id}')
+          .replace('/{{sampleBarcode}}', '/{ean}')
+          .replace('/{{samplePhotoId}}', '/{photoId}')
+          .replace('/{{signedMediaToken}}', '/{token}');
         postmanPaths.add(normalized);
 
         if (rawUrl === '/v1/commands' && item.request.body?.raw) {

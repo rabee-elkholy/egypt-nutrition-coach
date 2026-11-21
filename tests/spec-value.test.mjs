@@ -137,12 +137,12 @@ test('SPEC-C01: joint nutrition and training evaluation holds calorie cut when w
 
   s = command(s, 'review', {});
   assert.equal(s.lastReview.nutrition.action, 'hold');
-  assert.match(s.lastReview.nutrition.reason, /انخفاضًا في أداء التمرين/);
+  assert.match(s.lastReview.nutrition.reason, /Training performance declined/i);
   assert.ok(!s.adaptations.some(a => a.status === 'pending' && a.kind === 'calories'));
 });
 
 test('SPEC-ELIGIBILITY-AND-PROGRESS: evaluateEligibility and progressSummary return structured contracts', () => {
-  const rev = evaluateEligibility({ age: 30, weight: 80, height: 175, sex: 'male', goal: 'lose', diseases: ['diabetes'] });
+  const rev = evaluateEligibility({ age: 30, weight: 80, height: 175, sex: 'male', goal: 'lose', diseases: ['heart_failure'] });
   assert.equal(rev.status, 'requires_review');
   assert.ok(rev.clinicalSummary);
 
@@ -159,7 +159,7 @@ test('SPEC-ELIGIBILITY-AND-PROGRESS: evaluateEligibility and progressSummary ret
   assert.equal(typeof summary.weightTrend.note, 'string');
 });
 
-test('SPEC-WELLNESS-BRIDGE: supported wellness conditions and mild joint discomforts generate tailored plans while clinical diabetes still requires review', () => {
+test('SPEC-WELLNESS-BRIDGE: supported wellness conditions and mild joint discomforts generate tailored plans while severe clinical conditions still require review', () => {
   const elig = evaluateEligibility({
     age: 32,
     weight: 85,
@@ -191,7 +191,7 @@ test('SPEC-WELLNESS-BRIDGE: supported wellness conditions and mild joint discomf
   assert.deepEqual(state.profile.diseases, ['insulin_resistance', 'pcos', 'ibs', 'favism']);
   assert.ok(state.preferences.excludedGroups.includes('fava'));
   assert.deepEqual(state.onboarding.workoutPrefs.injuries, ['knee_pain', 'lower_back_pain']);
-  assert.ok(state.workoutPlan.goalNote.includes('حماية العضلات'));
+  assert.ok(/preserve lean muscle/i.test(state.workoutPlan.goalNote));
 });
 
 test('SPEC-AUTO-COMPLETION: logging planned meals requires explicit day confirmation and autoSession completes workout session behind the scenes', () => {
@@ -343,6 +343,6 @@ test('SPEC-WATER-AND-WORKOUT-PROGRESSION: water tracking and workout weight/rep 
 
   s = command(s, 'review', {});
   assert.ok(s.lastReview.hydration?.reason);
-  assert.ok(s.lastReview.workoutInsights?.summaryText.includes('زودت أوزانك'));
-  assert.ok(s.lastReview.workoutInsights?.summaryText.includes('خففت الوزن'));
+  assert.ok(s.lastReview.workoutInsights?.summaryText.includes('Load increased'));
+  assert.ok(s.lastReview.workoutInsights?.summaryText.includes('Load decreased'));
 });

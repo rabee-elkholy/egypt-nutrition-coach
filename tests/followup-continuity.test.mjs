@@ -29,7 +29,7 @@ test('declined recovery advice is respected until new check-in evidence arrives'
 }));
 test('personal follow-up acknowledges an active accepted adjustment rather than asking for agreement again',()=>withClock(now,()=>{
  const s=decide(true),message=personalBrief(view(s),date).find(m=>m.role==='training');
- assert.equal(message.key,'adjustment-active');assert.match(message.text,/وافقت/);
+ assert.equal(message.key,'adjustment-active');assert.match(message.text,/approved temporary set reduction/i);
  const expired={...s,sessionAdjustment:{...s.sessionAdjustment,expiresAt:new Date(now-1).toISOString()}};
  assert.notEqual(personalBrief(view(expired),date).find(m=>m.role==='training').key,'adjustment-active');
  const wrongPlan={...s,sessionAdjustment:{...s.sessionAdjustment,planId:'other-plan'}};
@@ -38,7 +38,7 @@ test('personal follow-up acknowledges an active accepted adjustment rather than 
 test('recovery proposal text describes variable set reduction truthfully',()=>withClock(now,()=>{
  const {s,proposal}=reviewed();const accepted=command(s,'adaptation',{id:proposal.id,accept:true});
  assert.equal(effectiveSets(accepted,{sets:5},date,now),3);
- assert.doesNotMatch(proposal.reason,/تخفيف جولة واحدة/);
+ assert.doesNotMatch(proposal.reason,/reduce by one set/i);
 }));
 test('an adaptation cannot be accepted exactly at its expiry boundary',()=>withClock(now,()=>{
  const {s,proposal}=reviewed();proposal.expiresAt=new Date(now).toISOString();
@@ -47,24 +47,24 @@ test('an adaptation cannot be accepted exactly at its expiry boundary',()=>withC
 }));
 test('first check-in follow-up cites measured sleep without inventing a personal baseline',()=>{
  const result=recovery([checkin],now,[],'Africa/Cairo');assert.equal(result.baselineReady,false);
- assert.doesNotMatch(result.reasons.join(' '),/المعتاد/);
+ assert.doesNotMatch(result.reasons.join(' '),/your usual/i);
  assert.match(result.reasons.join(' '),/4/);
 });
 test('muscle soreness is not attributed to a previous workout without workout evidence',()=>{
  const result=recovery([checkin],now,[],'Africa/Cairo');
- assert.ok(result.domains.includes('soreness'));assert.doesNotMatch(result.reasons.join(' '),/من التمرين السابق/);
+ assert.ok(result.domains.includes('soreness'));assert.doesNotMatch(result.reasons.join(' '),/from your previous workout/i);
 });
 
 test('logging water after declining advice does not make personal follow-up forget that decision',()=>withClock(now,()=>{
  const s=decide(false),next=command(s,'water',{date,cups:3});
  assert.equal(next.lastReview,null,'Ordinary logging invalidates the cached review');
  const note=personalBrief(view(next),date).find(m=>m.role==='training');
- assert.equal(note.key,'fatigue-declined');assert.match(note.text,/رفضك السابق/);
+ assert.equal(note.key,'fatigue-declined');assert.match(note.text,/choice to decline/i);
 }));
 
 test('a completed session is acknowledged even without a recovery check-in, without clearing the unknown state',()=>{
- const state={profile:{name:'متابعة',goal:'maintain'},workoutPlan:{id:'p',programId:'program',days:[]},sessions:[{date,planId:'p',programId:'program',status:'completed',duration:30}],recovery:{status:'unknown',reasons:[]},serverNow:new Date(now).toISOString()};
+ const state={profile:{name:'Followup',goal:'maintain'},workoutPlan:{id:'p',programId:'program',days:[]},sessions:[{date,planId:'p',programId:'program',status:'completed',duration:30}],recovery:{status:'unknown',reasons:[]},serverNow:new Date(now).toISOString()};
  const note=personalBrief(state,date).find(m=>m.role==='training');
- assert.equal(note.key,'completed');assert.match(note.text,/30/);assert.match(note.text,/مفيش متابعة استشفاء حديثة/);
- assert.equal(state.recovery.status,'unknown');assert.match(note.action,/حالتي|حالتك/);
+ assert.equal(note.key,'completed');assert.match(note.text,/30/);assert.match(note.text,/recovery check-in/i);
+ assert.equal(state.recovery.status,'unknown');assert.match(note.action,/check-in|recovery/i);
 });

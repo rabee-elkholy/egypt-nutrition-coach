@@ -1,10 +1,9 @@
 import {build} from 'esbuild';
-import {mkdir,rm,copyFile,cp,readFile,readdir,writeFile} from 'node:fs/promises';
-await rm('dist',{recursive:true,force:true});await mkdir('dist/server',{recursive:true});await mkdir('dist/client',{recursive:true});await mkdir('dist/.openai',{recursive:true});
+import {mkdir,rm,cp,writeFile} from 'node:fs/promises';
+await rm('dist',{recursive:true,force:true});
+await mkdir('dist/server',{recursive:true});
 await build({entryPoints:['server/worker.mjs'],outfile:'dist/server/index.js',bundle:true,format:'esm',platform:'browser',external:['node:async_hooks'],target:'es2022',minify:true});
 await build({entryPoints:['server/cloudflare-entry.mjs'],outfile:'dist/server/cloudflare.js',bundle:true,format:'esm',platform:'browser',external:['node:async_hooks'],target:'es2022',minify:true});
-for(const f of await readdir('.'))if(/\.(mjs|css|html)$/.test(f))await copyFile(f,'dist/client/'+f);
-for(const dir of ['data','fonts'])await cp(dir,'dist/client/'+dir,{recursive:true});
-await cp('drizzle','dist/drizzle',{recursive:true});await copyFile('.openai/hosting.json','dist/.openai/hosting.json');
-await writeFile('dist/server/wrangler.json',JSON.stringify({name:'curafit-api',main:'index.js',compatibility_date:'2025-10-11',compatibility_flags:['nodejs_als'],assets:{directory:'../client',binding:'ASSETS',run_worker_first:['/v1/*']},d1_databases:[{binding:'DB',database_name:'coaching',database_id:'local',migrations_dir:'../drizzle'}]}));
-console.log('Built Worker, static assets, and schema migrations.');
+await cp('drizzle','dist/drizzle',{recursive:true});
+await writeFile('dist/server/wrangler.json',JSON.stringify({name:'curafit-api',main:'index.js',compatibility_date:'2025-10-11',compatibility_flags:['nodejs_als'],d1_databases:[{binding:'DB',database_name:'coaching',database_id:'local',migrations_dir:'../drizzle'}]}));
+console.log('Built CuraFit KMM API Worker and schema migrations.');

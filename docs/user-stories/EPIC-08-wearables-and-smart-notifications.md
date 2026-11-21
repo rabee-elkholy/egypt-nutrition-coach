@@ -2,8 +2,8 @@
 
 > **Epic ID:** `EPIC-08`
 > **Target Platforms:** KMM (Android Health Connect + FCM; iOS HealthKit + APNs)
-> **Scope:** Production V2
-> **Labels:** `production-v2`, `mobile-v2`, `wearables`, `notifications`, `integrations`
+> **Scope:** Production
+> **Labels:** `production`, `mobile`, `wearables`, `notifications`, `integrations`
 
 ---
 
@@ -28,7 +28,7 @@
 | **Story ID** | `US-INT-01` |
 | **Epic** | `EPIC-08` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `wearables`, `healthkit`, `health-connect` |
+| **Labels** | `production`, `mobile`, `wearables`, `healthkit`, `health-connect` |
 | **Target Screens** | `HealthSyncSetupScreen` (Accessible from Today Activity Card & Profile > Connected Apps) |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Existing` (`POST /v1/wearables/ingest`, `GET /v1/activity-logs`, `GET /v1/weight-logs`) |
@@ -75,7 +75,7 @@ As a user with an Apple Watch, Garmin, Xiaomi Band, or smartphone step counter, 
        ]
      }
      ```
-   - **Response (`200 OK`):** `{ ok: true, data: { ok: true, revision, ingested } }`.
+   - **Response (`200 OK`):** `{ ok: true, data: { revision, ingested }, meta: { requestId, serverTime, revision } }`.
    - **Error Codes:** `400 INVALID_WEARABLES_BATCH` (`> 100` records), `400 DATE_TOO_OLD` (`> 90` days), `409 IDEMPOTENCY_KEY_REUSED_MISMATCH`.
 2. **`[EXISTING] GET /v1/activity-logs?offset=0&limit=30`** & **`GET /v1/weight-logs?offset=0&limit=30`**
 
@@ -128,7 +128,7 @@ As a user with an Apple Watch, Garmin, Xiaomi Band, or smartphone step counter, 
 | **Story ID** | `US-INT-02` |
 | **Epic** | `EPIC-08` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `notifications`, `settings` |
+| **Labels** | `production`, `mobile`, `notifications`, `settings` |
 | **Target Screens** | `NotificationSettingsScreen`, `PrePermissionPrimerSheet` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Mixed` (`[MODIFIED BACKEND]` `/v1/notifications/preferences` + `[NEW BACKEND]` `/v1/devices/push-token`) |
@@ -155,10 +155,10 @@ As a user managing my daily wellness routine, I want control over exactly which 
    - `[Save Preferences]` (or auto-save toggle debounced cleanly).
 
 ### API & BACKEND CONTRACT
-1. **`[EXISTING/MODIFIED BACKEND] GET /v1/notifications/preferences`**
+1. **`[MODIFIED BACKEND] GET /v1/notifications/preferences`**
    - Existing fields: `{ dailyReminder, workoutReminder, waterReminder, weeklyReviewReminder, quietHoursStart, quietHoursEnd, channels }`.
-   - Extended V2 fields (`[MODIFIED BACKEND]`): `mealReminders` (boolean), `fastingReminder` (boolean), `ramadanSuhoorReminder` (boolean), `preferredWorkoutReminderMinutesBefore` (`30 | 60 | 120`).
-2. **`[EXISTING/MODIFIED BACKEND] POST /v1/commands?view=receipt`** (`action: "notification_preferences"`)
+   - Extended fields (`[MODIFIED BACKEND]`): `mealReminders` (boolean), `fastingReminder` (boolean), `ramadanSuhoorReminder` (boolean), `preferredWorkoutReminderMinutesBefore` (`15 | 30 | 60 | 120`).
+2. **`[MODIFIED BACKEND] POST /v1/commands?view=receipt`** (`action: "notification_preferences"`)
    - Error Codes: `INVALID_QUIET_HOURS` (`HH:mm` 24-hour format required), `INVALID_BOOLEAN`.
 3. **`[NEW BACKEND] POST /v1/devices/push-token`**
    - Registers/refreshes FCM (Android) or APNs (iOS) token + `deviceId`, `platform`, `locale`, `timezone`, `appVersion` for server-driven push delivery (`coachingInbox` & `planRenewal`).
@@ -209,7 +209,7 @@ As a user managing my daily wellness routine, I want control over exactly which 
 | **Story ID** | `US-INT-03` |
 | **Epic** | `EPIC-08` |
 | **Priority** | `High` |
-| **Labels** | `production-v2`, `mobile-v2`, `notifications`, `deep-linking` |
+| **Labels** | `production`, `mobile`, `notifications`, `deep-linking` |
 | **Target Screens** | Background Notification Scheduler + App Deep-Link Router |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Mixed` (Local smart scheduling + `[NEW BACKEND]` server-triggered pushes for agreements & weekly expiry) |
@@ -226,10 +226,10 @@ As a user relying on timely nudges to stay consistent, I want my reminders to fi
 | Trigger ID | Trigger Timing & Smart Suppression | Notification Copy (Localized AR/EN) | Tap Deep-Link Route |
 | :--- | :--- | :--- | :--- |
 | `morning_recovery` | `09:00` (or `quietHoursEnd + 30m`) — *Skipped if recovery already logged today!* | *"30-sec Readiness Check: How did you sleep last night?"* | `curafit://coach/checkin` (`US-CCH-02`) |
-| `workout_prep` | `60m` before usual time on `scheduledWorkout` days ONLY (*Skipped if session already completed/missed or `status == "stop"`*) | *"Today's {FocusLabel} session ({EstMin}m) is ready when you are!"* | `curafit://workouts/today` (`US-WRK-01`) |
+| `workout_prep` | `preferredWorkoutReminderMinutesBefore` (`15|30|60|120m`) before usual time on `scheduledWorkout` days ONLY (*Skipped if session already completed/missed or `status == "stop"`*) | *"Today's {FocusLabel} session ({EstMin}m) is ready when you are!"* | `curafit://workouts/today` (`US-WRK-01`) |
 | `rest_timer_done` | Exact `restEndsAt` timestamp during backgrounded Live Workout Player | *"Rest complete — time for Set {N}!"* | `curafit://workouts/player` |
 | `hydration_nudge` | Max 3/day (`11:30`, `15:30`, `19:30` — or `Iftar..Suhoor` in Ramadan) — *Skipped if `cups >= targetCups`!* | *"Hydration check: {remainingCups} cups left to hit today's {targetLiters}L goal."* | `curafit://today?action=water` |
-| `fasting_window` | `if_start_hour` & `if_start_hour + 8h` (IF Mode) OR `Iftar - 10m` & `Suhoor - 45m` (Ramadan Mode) | *"Eating window opens in 10 min!"* / *"45 min until Suhoor ends — prioritize protein & water."* | `curafit://nutrition/fasting` (`US-NUT-10`) |
+| `fasting_window` | `ifStartHour` & `ifStartHour + 8h` (IF Mode) OR `Iftar - 10m` & `Suhoor - 45m` (Ramadan Mode) | *"Eating window opens in 10 min!"* / *"45 min until Suhoor ends — prioritize protein & water."* | `curafit://nutrition/fasting` (`US-NUT-10`) |
 | `weekly_weigh_in` | 2x/week (`Sun` & `Wed` mornings if `< 3` weigh-ins this week) | *"Quick mid-week weigh-in keeps your 7-day trend accurate."* | `curafit://today?action=weight` |
 | `plan_renewal` | Morning after active 7-day `end_date` expires | *"Your new week awaits! Tap to generate your next 7-day meal plan."* | `curafit://nutrition/renew` (`US-NUT-01`) |
 | `coaching_review_due` | Server push on `coachingCase.reviewOn` date (when active agreement is due) | *"Quick check-in: Did your coaching step help this week?"* | `curafit://coach/inbox?caseId={id}` (`US-CCH-04`) |
@@ -246,7 +246,7 @@ As a user relying on timely nudges to stay consistent, I want my reminders to fi
 ### RULES & BUSINESS LOGIC
 1. **Smart Cancel-on-Action Rule:** If user already completed their workout at `10:00 AM` or hit `10/10` water cups by `2:00 PM`, cancel remaining same-day reminders for that domain immediately so the app never sends annoying outdated nudges!
 2. **Privacy on Lock Screen:** Never display raw body weight (`81.4 kg`), medical conditions, or pregnancy status inside lock-screen notification text — keep text safe for shoulder-surfing privacy.
-3. **Cold-Start & Auth-Gated Deep-Link Handling (`US-AUTH-01`):** Tapping any notification while killed OR while logged out / mid-onboarding saves `pendingDeepLinkRoute` (`curafit://...`), completes required Auth / Onboarding recovery first, and then navigates directly to the target screen/sheet (or falls back cleanly to `Today` if incompatible with user's `service_track`).
+3. **Cold-Start & Auth-Gated Deep-Link Handling (`US-AUTH-01`):** Tapping any notification while killed OR while logged out / mid-onboarding saves `pendingDeepLinkRoute` (`curafit://...`), completes required Auth / Onboarding recovery first, and then navigates directly to the target screen/sheet (or falls back cleanly to `Today` if incompatible with user's `serviceTrack`).
 
 ### MAIN FLOW
 1. User enables Ramadan Mode (`Iftar 18:05`, `Suhoor Cutoff 04:20`).

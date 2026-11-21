@@ -7,7 +7,6 @@ import {library,foodCommand} from '../server/food.mjs';
 import {empty,generate} from '../server/coaching.mjs';
 import {withClock} from '../server/clock.mjs';
 import {getFoodCatalogItem,searchFoodCatalog} from '../server/food-catalog.mjs';
-import {createInitialOnboardingDraft} from '../onboarding-chat.mjs';
 const date='2026-11-02',now=Date.parse(date+'T12:00:00Z');
 test('2437 unique regional models cover every requested country with usable ingredient references',()=>{
  assert.equal(REGIONAL_RECIPES.length,2437);assert.equal(new Set(REGIONAL_RECIPES.map(r=>r.id)).size,2437);
@@ -20,7 +19,6 @@ test('2437 unique regional models cover every requested country with usable ingr
 });
 test('selected cuisine survives onboarding and generates region-compatible real weekly plans',()=>withClock(now,()=>{
  for(const region of Object.keys(REGION_COUNTRIES)){
-  assert.equal(createInitialOnboardingDraft({preferences:{region}}).region,region);
   const s=generate(empty(),{name:'Regional',age:30,sex:'male',height:175,weight:80,goal:'maintain',region,serviceTrack:'nutrition_only',dietType:'balanced',budget:'high'},'regional-'+region);
   assert.equal(s.preferences.region,region);
   const plan=s.plans.find(p=>p.id===s.active_plan_id);assert.equal(plan.days.length,7);

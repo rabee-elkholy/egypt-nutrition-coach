@@ -1,0 +1,474 @@
+{
+  "version": "1.0.0",
+  "description": "Canonical pure-English CuraFit coaching, brief, readiness, eligibility, and plan guidance codes. Server emits canonical English text plus code and params; KMM clients localize into Arabic and other languages by code + params.",
+  "codes": {
+    "RED_FLAGS_STOP": {
+      "domain": "recovery",
+      "severity": "urgent",
+      "params": [],
+      "message": "Urgent safety notice: stop exercising immediately and seek medical evaluation for symptoms such as chest pain or severe dizziness."
+    },
+    "WORKOUT_PAIN_HOLD": {
+      "domain": "recovery",
+      "severity": "hold",
+      "params": [],
+      "message": "Pain was logged during your recent workout, so load progression is paused. Update your recovery check-in before resuming heavy effort."
+    },
+    "FEEDBACK_PAIN_HOLD": {
+      "domain": "recovery",
+      "severity": "hold",
+      "params": [],
+      "message": "You reported pain as a training barrier. Stop painful movements and submit a pain-free recovery check-in before increasing load."
+    },
+    "CHECKIN_MISSING_OR_STALE": {
+      "domain": "recovery",
+      "severity": "normal",
+      "params": [],
+      "message": "Submit today's recovery check-in (sleep, fatigue, and pain status) so the engine can safely calibrate today's workout load."
+    },
+    "ILLNESS_HOLD": {
+      "domain": "recovery",
+      "severity": "hold",
+      "params": [],
+      "message": "Health comes first: pause today's workout while experiencing illness symptoms and consult a clinician if symptoms persist."
+    },
+    "JOINT_PAIN_HOLD": {
+      "domain": "recovery",
+      "severity": "hold",
+      "params": ["painRegions"],
+      "message": "Joint pain reported; pause painful movements, use safe alternatives or rest, and pause progression until pain resolves."
+    },
+    "RECOVERY_READY": {
+      "domain": "recovery",
+      "severity": "normal",
+      "params": [],
+      "message": "Current recovery check-in supports normal training intensity while monitoring technique and perceived effort."
+    },
+    "RECOVERY_DELOAD_SUGGESTED": {
+      "domain": "recovery",
+      "severity": "attention",
+      "params": ["setFactor", "domains"],
+      "message": "Multiple fatigue or sleep indicators are elevated; a temporary 24-hour set reduction is recommended pending your approval."
+    },
+    "RECOVERY_DELOAD_PROPOSAL": {
+      "domain": "adaptation",
+      "severity": "attention",
+      "params": ["setFactor", "regions"],
+      "message": "Based on recent recovery strain, we propose temporarily reducing working sets for 24 hours; applying this adjustment requires your approval."
+    },
+    "RECOVERY_ADJUSTMENT_ACTIVE": {
+      "domain": "review",
+      "severity": "attention",
+      "params": ["setFactor", "expiresAt"],
+      "message": "Your approved temporary set reduction is currently active for today's workout."
+    },
+    "RECOVERY_ADVICE_DECLINED": {
+      "domain": "review",
+      "severity": "normal",
+      "params": [],
+      "message": "Your previous choice to decline the set reduction is saved. Your workout plan remains unchanged until a new recovery check-in is logged."
+    },
+    "SCHEDULE_CONFIRMATION_REQUIRED": {
+      "domain": "review",
+      "severity": "attention",
+      "params": [],
+      "message": "Confirm your weekly workout days before automated training and adaptive reviews run."
+    },
+    "HEALTH_CONFIRMATION_REQUIRED": {
+      "domain": "review",
+      "severity": "attention",
+      "params": [],
+      "message": "Confirm health readiness clearance before automated coaching reviews run."
+    },
+    "WORKOUT_SAFETY_EXCLUSION_HOLD": {
+      "domain": "review",
+      "severity": "hold",
+      "params": ["count"],
+      "message": "Your current workout plan contains movements excluded for your declared injuries; swap them or regenerate your plan before progressing."
+    },
+    "PLAN_CONSTRAINTS_VERIFICATION_FAILED": {
+      "domain": "review",
+      "severity": "hold",
+      "params": [],
+      "message": "Your existing nutrition plan no longer satisfies current dietary constraints; regenerate your plan."
+    },
+    "RECOVERY_NOT_READY_FOR_CALORIE_CHANGE": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [],
+      "message": "Calorie adjustments are paused until sleep and recovery readiness stabilize."
+    },
+    "WORKOUTS_ONLY_TRACK": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [],
+      "message": "Your account is currently on the workouts-only track with no active nutrition plan."
+    },
+    "GOAL_WEIGHT_REACHED_MAINTENANCE": {
+      "domain": "adaptation",
+      "severity": "normal",
+      "params": ["averageWeight", "targetWeight"],
+      "message": "Your 7-day average weight has reached your target weight ({averageWeight} kg). We propose transitioning to a maintenance plan."
+    },
+    "MAINTENANCE_ADVICE_DECLINED": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [],
+      "message": "Your choice to decline the maintenance transition is saved. Your current goal remains unchanged until new data arrives."
+    },
+    "COOLDOWN_14D": {
+      "domain": "review",
+      "severity": "normal",
+      "params": [],
+      "message": "Monitoring your response to the last adjustment; at least 14 days are required before proposing another calorie or volume change."
+    },
+    "INSUFFICIENT_EVIDENCE_COVERAGE": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": ["previousWeights", "currentWeights", "completeFoodDays"],
+      "message": "Keep logging: adaptive calorie reviews require at least 3 weigh-ins in each of the last 2 weeks and 10 adherent complete food days."
+    },
+    "WEIGHT_SAMPLING_TOO_CLOSE": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [],
+      "message": "Spread weigh-ins across the week so trend velocity can be calculated reliably."
+    },
+    "TREND_ON_TRACK": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": ["rate"],
+      "message": "Your 2-week weight trend ({rate}%/week) is within the expected target range; no calorie adjustment is needed."
+    },
+    "CALORIE_DEFICIT_STEP": {
+      "domain": "adaptation",
+      "severity": "normal",
+      "params": ["delta", "rate"],
+      "message": "Based on adherent food logs and a {rate}%/week weight trend, we propose a modest {delta} kcal daily reduction."
+    },
+    "CALORIE_SURPLUS_STEP": {
+      "domain": "adaptation",
+      "severity": "normal",
+      "params": ["delta", "rate"],
+      "message": "Based on adherent food logs and a {rate}%/week weight trend, we propose a modest +{delta} kcal daily increase."
+    },
+    "PERFORMANCE_DROP_CALORIE_CUT_HOLD": {
+      "domain": "nutrition",
+      "severity": "attention",
+      "params": [],
+      "message": "Training performance declined recently; calories are held steady to protect lean mass and recovery instead of cutting further."
+    },
+    "APPETITE_ENERGY_REVIEW_REQUIRED": {
+      "domain": "nutrition",
+      "severity": "attention",
+      "params": [],
+      "message": "High hunger or low energy was recently logged; calories are held steady pending follow-up instead of reducing automatically."
+    },
+    "CALORIE_ADVICE_DECLINED": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [],
+      "message": "Your previous choice to decline a calorie change is saved; your plan was not modified."
+    },
+    "MIN_SAFE_ENERGY_FLOOR_HOLD": {
+      "domain": "nutrition",
+      "severity": "attention",
+      "params": ["minEnergyFloor"],
+      "message": "Calories were held at the safe automated planning floor ({minEnergyFloor} kcal) instead of reducing further."
+    },
+    "MAX_SAFE_ENERGY_CEILING_HOLD": {
+      "domain": "nutrition",
+      "severity": "attention",
+      "params": ["maxEnergyCeiling"],
+      "message": "Calories were held at the safe automated planning ceiling ({maxEnergyCeiling} kcal)."
+    },
+    "MATERNAL_CALORIE_CUT_BLOCKED": {
+      "domain": "nutrition",
+      "severity": "hold",
+      "params": [],
+      "message": "Calorie reductions are disabled during pregnancy for maternal safety."
+    },
+    "PLAN_CONSTRAINTS_ADJUSTMENT_HOLD": {
+      "domain": "nutrition",
+      "severity": "attention",
+      "params": [],
+      "message": "Current calories were kept because the proposed change could not satisfy your dietary, macro, or exclusion constraints."
+    },
+    "HEALTH_OR_SCHEDULE_UNCONFIRMED": {
+      "domain": "training",
+      "severity": "attention",
+      "params": [],
+      "message": "Confirm health readiness and workout schedule before volume progression is evaluated."
+    },
+    "GOAL_NOT_MUSCLE_GAIN": {
+      "domain": "training",
+      "severity": "normal",
+      "params": [],
+      "message": "Automated weekly set increases apply to muscle-gain plans; holding volume does not mean your current training is insufficient."
+    },
+    "RECOVERY_BASELINE_NOT_READY": {
+      "domain": "training",
+      "severity": "normal",
+      "params": [],
+      "message": "At least 7 valid recovery check-ins are needed to establish a baseline before proposing extra weekly sets."
+    },
+    "INSUFFICIENT_SESSION_ADHERENCE": {
+      "domain": "training",
+      "severity": "normal",
+      "params": [],
+      "message": "Complete at least 80% of scheduled sessions over the past 2 weeks before adding weekly volume."
+    },
+    "WEEKLY_VOLUME_INCREASE_PROPOSED": {
+      "domain": "adaptation",
+      "severity": "normal",
+      "params": ["exerciseId", "region", "extraSets"],
+      "message": "Strong adherence and stable performance over the last 3 exposures support adding +{extraSets} weekly set."
+    },
+    "VOLUME_INCREASE_NOT_JUSTIFIED": {
+      "domain": "training",
+      "severity": "normal",
+      "params": [],
+      "message": "Current workout logs do not yet meet criteria for adding weekly volume; continue consistent logging."
+    },
+    "WORKOUT_RESCHEDULE_PROPOSAL": {
+      "domain": "adaptation",
+      "severity": "normal",
+      "params": ["dayIndex", "fromDate", "toDate"],
+      "message": "Confirm moving your scheduled workout from {fromDate} to {toDate} while keeping daily calorie targets steady."
+    },
+    "ADAPTATION_PROPOSED": {
+      "domain": "review",
+      "severity": "normal",
+      "params": [],
+      "message": "A new coaching recommendation is ready for your review and approval."
+    },
+    "NO_CHANGE_NEEDED": {
+      "domain": "review",
+      "severity": "normal",
+      "params": [],
+      "message": "No plan adjustment is proposed based on current evidence; review coverage and readiness details below."
+    },
+    "INSUFFICIENT_EXPOSURES_OR_RECOVERY": {
+      "domain": "progression",
+      "severity": "normal",
+      "params": [],
+      "message": "Log at least two comparable sessions with ready recovery before load increases are suggested."
+    },
+    "UNILATERAL_BOTH_SIDES_REQUIRED": {
+      "domain": "progression",
+      "severity": "normal",
+      "params": [],
+      "message": "Confirm both left and right sides are completed equally before increasing load on unilateral exercises."
+    },
+    "REP_OR_RIR_THRESHOLD_NOT_MET": {
+      "domain": "progression",
+      "severity": "normal",
+      "params": [],
+      "message": "Reach the top of the prescribed rep range at or above target RIR across two sessions before increasing weight."
+    },
+    "UNIFORM_LOAD_REQUIRED": {
+      "domain": "progression",
+      "severity": "normal",
+      "params": [],
+      "message": "Complete all working sets at the same load across two sessions before increasing weight."
+    },
+    "BODYWEIGHT_PROGRESSION_REPS_ONLY": {
+      "domain": "progression",
+      "severity": "normal",
+      "params": [],
+      "message": "Progress bodyweight movements through additional reps and tempo control."
+    },
+    "VALID_INCREMENT_REQUIRED": {
+      "domain": "progression",
+      "severity": "normal",
+      "params": [],
+      "message": "Current weight increment exceeds conservative progression bounds (<= 5%); build reps and control first."
+    },
+    "DOUBLE_PROGRESSION_READY": {
+      "domain": "progression",
+      "severity": "normal",
+      "params": ["kg"],
+      "message": "Target reps achieved cleanly across two consecutive sessions; consider progressing to {kg} kg if technique and recovery feel solid."
+    },
+    "AGE_UNSUPPORTED_OR_MISSING": {
+      "domain": "eligibility",
+      "severity": "requires_review",
+      "params": [],
+      "message": "Automated planning is available for adults aged 18 to 95 only."
+    },
+    "SENIOR_MODE_ACTIVE": {
+      "domain": "eligibility",
+      "severity": "info",
+      "params": [],
+      "message": "Senior safety mode (70+) is active: moderate deficit cap (-400 kcal), protein floor >= 1.2 g/kg, and joint-friendly low-impact exercises."
+    },
+    "CLINICAL_OR_INJURY_REQUIRES_REVIEW": {
+      "domain": "eligibility",
+      "severity": "requires_review",
+      "params": [],
+      "message": "Declared clinical conditions or injuries require direct specialist review before automated plan generation."
+    },
+    "BMI_OUT_OF_RANGE": {
+      "domain": "eligibility",
+      "severity": "requires_review",
+      "params": [],
+      "message": "Height and weight fall outside the automated planning BMI range (12.5 to 65)."
+    },
+    "UNDERWEIGHT_LOSS_FORBIDDEN": {
+      "domain": "eligibility",
+      "severity": "requires_review",
+      "params": [],
+      "message": "Weight loss goals are unsafe when current BMI is below 18.5."
+    },
+    "MATERNAL_WEIGHT_LOSS_FORBIDDEN": {
+      "domain": "eligibility",
+      "severity": "requires_review",
+      "params": [],
+      "message": "Weight loss goals are disabled during pregnancy for maternal and fetal safety."
+    },
+    "CONFIRM_WORKOUT_HEALTH": {
+      "domain": "eligibility",
+      "severity": "needs_input",
+      "params": [],
+      "message": "Confirm that you have no acute condition or injury requiring specialist clearance before starting workouts."
+    },
+    "CONFIRM_EXTERNAL_TRAINING_DAYS": {
+      "domain": "eligibility",
+      "severity": "needs_input",
+      "params": [],
+      "message": "Optional: specify external resistance training days per week for muscle-gain nutrition calibration."
+    },
+    "BRIEF_FOOD_COMPLETE": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["date"],
+      "message": "Food diary for {date} is complete. Consistent logging enables accurate weekly reviews."
+    },
+    "BRIEF_FOOD_PARTIAL": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["entriesCount"],
+      "message": "You have logged {entriesCount} meal(s) today and your day is still open; finish logging as you eat."
+    },
+    "BRIEF_FOOD_MISSING": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "No meals logged yet today; start by logging your next actual meal."
+    },
+    "BRIEF_PROTEIN_STATUS": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["actualProtein", "targetProtein"],
+      "message": "Logged protein today is {actualProtein} g against your {targetProtein} g target."
+    },
+    "BRIEF_WEIGHT_TREND": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["currentAvg", "currentCount", "previousAvg", "previousCount"],
+      "message": "Current 7-day average weight is {currentAvg} kg ({currentCount} logs) vs. {previousAvg} kg ({previousCount} logs) last week."
+    },
+    "BRIEF_WEIGHT_COVERAGE": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["count"],
+      "message": "You have {count} weigh-ins in the last 14 days; log at least 3 weigh-ins per week for reliable trend comparisons."
+    },
+    "BRIEF_PLAN_EXPIRED": {
+      "domain": "brief",
+      "severity": "attention",
+      "params": [],
+      "message": "Your previous 7-day nutrition plan has ended. Renew your plan to generate targets for the upcoming week."
+    },
+    "BRIEF_HIGH_HUNGER": {
+      "domain": "brief",
+      "severity": "attention",
+      "params": ["hunger", "date"],
+      "message": "You logged hunger {hunger}/5 on {date}; calorie reductions are paused while we monitor appetite and energy."
+    },
+    "BRIEF_TRAINING_SAFETY": {
+      "domain": "brief",
+      "severity": "urgent",
+      "params": [],
+      "message": "Current recovery or safety flags indicate pausing heavy exercise and reviewing symptoms first."
+    },
+    "BRIEF_TRAINING_SCHEDULED": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["focus"],
+      "message": "Today's scheduled workout is {focus}. Current readiness supports your planned session."
+    },
+    "BRIEF_TRAINING_REST": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["nextDate", "nextFocus"],
+      "message": "Rest day today. Focus on sleep, hydration, and nutrition ahead of your next session."
+    },
+    "BRIEF_TRAINING_COMPLETED": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["date", "duration"],
+      "message": "Workout session for {date} is logged as completed. Great consistency."
+    },
+    "BRIEF_TRAINING_PARTIAL": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Today's workout is logged as partial; logging actual effort protects recovery and progression accuracy."
+    },
+    "BRIEF_TRAINING_MISSED": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Today's workout is marked missed. Resume normally on your next scheduled day without doubling volume."
+    },
+    "BRIEF_FOLLOWUP_WATER": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["cups", "targetCups"],
+      "message": "Hydration logged today: {cups} of {targetCups} cups."
+    },
+    "BRIEF_FOLLOWUP_SHORT_SLEEP": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["sleepHours", "date"],
+      "message": "Last logged sleep was {sleepHours} hours on {date}; prioritize recovery and earlier wind-down tonight."
+    },
+    "BRIEF_FOLLOWUP_RETURN": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["lastDate"],
+      "message": "Welcome back! Last logged activity was on {lastDate}. Resume smoothly without trying to compensate for missed days."
+    },
+    "BRIEF_FIRST_WEEK": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": ["day", "activeDays"],
+      "message": "First-week onboarding guidance (Day {day}/7): build a simple, repeatable logging habit."
+    },
+    "COACHING_BARRIER_AGREEMENT": {
+      "domain": "coaching",
+      "severity": "normal",
+      "params": ["domain", "barrier"],
+      "message": "A structured coaching agreement is proposed for your reported {barrier} barrier."
+    },
+    "COACHING_BARRIER_QUESTION": {
+      "domain": "coaching",
+      "severity": "normal",
+      "params": ["domain"],
+      "message": "Tell us the main barrier affecting your recent {domain} consistency so we can choose a realistic next step."
+    },
+    "COACHING_REVIEW_DUE": {
+      "domain": "coaching",
+      "severity": "attention",
+      "params": ["caseId"],
+      "message": "Your agreed coaching step is due for review. Report whether it helped, did not help, or was not tried."
+    },
+    "COMEBACK_DELOAD_ACTIVE": {
+      "domain": "training",
+      "severity": "normal",
+      "params": ["tier", "setFactor", "expiresAt"],
+      "message": "Gentle comeback ramp-in is active ({setFactor}x sets) to help you rebuild momentum safely."
+    }
+  }
+}

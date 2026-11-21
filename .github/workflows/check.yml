@@ -1,4 +1,4 @@
-name: Verify coaching engines
+name: Verify CuraFit API engines
 on:
   push:
     branches: [main, dev]
@@ -18,16 +18,6 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=moderate
       - run: npm run check
-      - run: npx playwright install --with-deps chromium
-      - name: Verify onboarding, coaching, and network recovery in the browser
-        run: |
-          npm run dev > /tmp/coach-preview.log 2>&1 &
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8787/v1/health; then break; fi
-            sleep 1
-          done
-          npm run test:browser
-          npm run test:browser:release
       - run: npm run audit:matrix
       - run: npm run benchmark
       - uses: actions/upload-artifact@v4

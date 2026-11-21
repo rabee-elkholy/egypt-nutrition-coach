@@ -1,6 +1,6 @@
 # CuraFit AI & Developer Workflow (`dev` -> `main`)
 
-This document is the authoritative end-to-end engineering workflow for **CuraFit API v1** (Cloudflare Workers + Cloudflare D1 backend serving Kotlin Multiplatform Mobile clients and Web UI User Stories). Every AI coding agent and developer working in this repository **must** follow this lifecycle strictly.
+This document is the authoritative end-to-end engineering workflow for **CuraFit API v1** (pure Cloudflare Workers + Cloudflare D1 + Cloudflare R2 backend serving Kotlin Multiplatform Mobile Android & iOS clients). Every AI coding agent and developer working in this repository **must** follow this lifecycle strictly.
 
 ---
 
@@ -17,7 +17,7 @@ CuraFit uses **strictly two Git branches (`dev` and `main`)** mapped 1:1 to **tw
 - **Repository Root:** `e:\Egypt_Nutrition_Local\website\dist`
 - **Remote Repository:** `https://github.com/rabee-elkholy/egypt-nutrition-coach.git`
 - **Worker Entrypoint:** `server/cloudflare-entry.mjs` (built into `dist/server/cloudflare.js` by `npm.cmd run build`)
-- **Postman Public Docs:** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `12` groups / `77` endpoints)
+- **Postman Public Docs:** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `123` endpoints)
 
 ---
 
@@ -33,13 +33,13 @@ git pull --ff-only origin dev
 ```
 
 ### Phase 2 — Implement Changes & Synchronize Contracts
-Keep every API contract, error catalog, database schema, and Postman definition synchronized with code changes:
+Keep every API contract, error & coaching catalog, database schema, and Postman definition synchronized with code changes:
 
-1. **API Error Codes (`100% English Contract`):**
-   - Never hardcode Arabic error messages or arbitrary ad-hoc error strings in backend endpoints (`server/*.mjs`) or shared domain modules.
-   - Add or update error definitions in `contracts/error-codes.json` (English-only `message`, `httpStatus`, `retryable`, `params`).
-   - Run `node scripts/sync-error-contracts.mjs` to regenerate `docs/ERROR_CODES.md` and validate zero Arabic characters.
-   - Update client-facing Web UI Arabic localization separately in `error-messages-ar.mjs` when needed, and notify KMM mobile engineers of new `error.code` keys.
+1. **API Error & Coaching Codes (`100% English Contract`):**
+   - Never hardcode Arabic error or coaching messages in backend endpoints (`server/*.mjs`) or shared domain modules.
+   - Add or update error definitions in `contracts/error-codes.json` and coaching definitions in `contracts/coaching-codes.json` (English-only `message`, `params`).
+   - Run `node scripts/sync-error-contracts.mjs` to regenerate `docs/ERROR_CODES.md` and `docs/COACHING_CODES.md` and validate zero Arabic characters.
+   - KMM mobile clients localize user-facing copy on-device by `code` and `params`.
 2. **Endpoints, Request Schemas & Postman Collection:**
    - Update `contracts/openapi.yaml` and `scripts/generate-postman.mjs` (zero Arabic text or sample values in docs/collection).
    - Run `npm.cmd run postman:generate` to regenerate all 4 `postman/CuraFit_*.json` files and `docs/API_REFERENCE.md`.
@@ -68,15 +68,12 @@ npm.cmd run check
 This executes:
 - `tsc -p tsconfig.quality.json` (TypeScript verification)
 - `node scripts/check-data-manifest.mjs` (verifies food & recipe catalog counts and integrity)
-- `node scripts/build.mjs` (builds `dist/server/cloudflare.js`, `dist/server/index.js`, `dist/client/`, and migrations)
+- `node scripts/build.mjs` (builds `dist/server/cloudflare.js`, `dist/server/index.js`, and migrations)
 - `scripts/quality/check-modules.mjs` & `scripts/quality/check-reference.mjs`
-- `node --test --test-concurrency=2 tests/*.test.mjs` (`297+` unit, D1 API, native auth, OpenAPI, Postman parity, and zero-Arabic doc/error-contract tests)
+- `node --test --test-concurrency=2 tests/*.test.mjs` (`306+` unit, D1/R2 API, native auth + OIDC, OpenAPI, Postman parity, and zero-Arabic doc/contract tests)
 
-Optional deep verification suites (also executed automatically in CI on every push):
+Optional deep verification suites:
 ```powershell
-# On Windows, set PLAYWRIGHT_CHANNEL="chrome" and start `node scripts/dev.mjs` on port 8787 first:
-npm.cmd run test:browser
-npm.cmd run test:browser:release
 npm.cmd run audit:matrix     # 2,250 workout + 333 nutrition scenarios
 npm.cmd run benchmark        # Payload sizes & D1 latency
 ```

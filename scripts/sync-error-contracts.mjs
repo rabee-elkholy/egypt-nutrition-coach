@@ -9,20 +9,15 @@ const rawCatalog = await readFile(resolve(ROOT, 'contracts/error-codes.json'), '
 if (/[\u0600-\u06FF]/.test(rawCatalog)) {
   throw new Error('contracts/error-codes.json must be 100% English and must not contain Arabic text!');
 }
-
 const catalog = JSON.parse(rawCatalog);
 
 for (const [code, def] of Object.entries(catalog.codes)) {
-  if (!/^[A-Z][A-Z0-9_]+$/.test(code)) {
-    throw new Error(`Invalid error code format: ${code}`);
-  }
-  if (/[\u0600-\u06FF]/.test(def.message)) {
-    throw new Error(`English error message for ${code} must not contain Arabic text!`);
-  }
-  if (!Number.isInteger(def.httpStatus) || def.httpStatus < 400 || def.httpStatus > 599) {
-    throw new Error(`Invalid httpStatus for ${code}: ${def.httpStatus}`);
-  }
+  if (!/^[A-Z][A-Z0-9_]+$/.test(code)) throw new Error(`Invalid error code format: ${code}`);
+  if (/[\u0600-\u06FF]/.test(def.message)) throw new Error(`English error message for ${code} must not contain Arabic text!`);
+  if (!Number.isInteger(def.httpStatus) || def.httpStatus < 400 || def.httpStatus > 599) throw new Error(`Invalid httpStatus for ${code}: ${def.httpStatus}`);
 }
+
+const escPipe = s => String(s).replace(/\|/g, '\\|');
 
 const mdLines = [
   '# CuraFit API v1 — Canonical Error Codes Reference',
@@ -62,16 +57,36 @@ const mdLines = [
 
 for (const [code, def] of Object.entries(catalog.codes)) {
   const paramsStr = def.params?.length ? def.params.map(p => `\`${p}\``).join(', ') : '—';
-  const escPipe = s => String(s).replace(/\|/g, '\\|');
-  mdLines.push(
-    `| \`${code}\` | \`${def.httpStatus}\` | ${def.retryable ? 'Yes' : 'No'} | ${paramsStr} | ${escPipe(def.message)} |`
-  );
+  mdLines.push(`| \`${code}\` | \`${def.httpStatus}\` | ${def.retryable ? 'Yes' : 'No'} | ${paramsStr} | ${escPipe(def.message)} |`);
 }
 
 const mdContent = mdLines.join('\n') + '\n';
-if (/[\u0600-\u06FF]/.test(mdContent)) {
-  throw new Error('Generated docs/ERROR_CODES.md must not contain Arabic text!');
-}
-
+if (/[\u0600-\u06FF]/.test(mdContent)) throw new Error('Generated docs/ERROR_CODES.md must not contain Arabic text!');
 await writeFile(resolve(ROOT, 'docs/ERROR_CODES.md'), mdContent, 'utf8');
-console.log(`Synced ${Object.keys(catalog.codes).length} English error codes -> docs/ERROR_CODES.md (0 Arabic characters)`);
+
+const rawCoaching = await readFile(resolve(ROOT, 'contracts/coaching-codes.json'), 'utf8');
+if (/[\u0600-\u06FF]/.test(rawCoaching)) {
+  throw new Error('contracts/coaching-codes.json must be 100% English and must not contain Arabic text!');
+}
+const coachingCat = JSON.parse(rawCoaching);
+const coachLines = [
+  '# CuraFit API — Canonical Coaching & Brief Codes Reference',
+  '',
+  'Generated automatically from [`contracts/coaching-codes.json`](../contracts/coaching-codes.json).',
+  '',
+  '> **KMM Localization Rule:** Server coaching, readiness, brief, eligibility, and adaptation responses emit canonical pure-English text alongside a stable `code` / `reasonCode` and structured `params`. Mobile clients localize into Arabic and any other locale strictly by `code` + `params`.',
+  '',
+  '| Code | Domain | Severity | Params | Canonical English Message |',
+  '| :--- | :--- | :---: | :--- | :--- |'
+];
+for (const [code, def] of Object.entries(coachingCat.codes)) {
+  if (!/^[A-Z][A-Z0-9_]+$/.test(code)) throw new Error(`Invalid coaching code format: ${code}`);
+  if (/[\u0600-\u06FF]/.test(def.message)) throw new Error(`Coaching message for ${code} must not contain Arabic text!`);
+  const paramsStr = def.params?.length ? def.params.map(p => `\`${p}\``).join(', ') : '—';
+  coachLines.push(`| \`${code}\` | \`${def.domain}\` | \`${def.severity}\` | ${paramsStr} | ${escPipe(def.message)} |`);
+}
+const coachMd = coachLines.join('\n') + '\n';
+if (/[\u0600-\u06FF]/.test(coachMd)) throw new Error('Generated docs/COACHING_CODES.md must not contain Arabic text!');
+await writeFile(resolve(ROOT, 'docs/COACHING_CODES.md'), coachMd, 'utf8');
+
+console.log(`Synced ${Object.keys(catalog.codes).length} error codes -> docs/ERROR_CODES.md and ${Object.keys(coachingCat.codes).length} coaching codes -> docs/COACHING_CODES.md (0 Arabic characters)`);
