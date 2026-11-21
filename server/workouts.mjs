@@ -1,5 +1,6 @@
 import {clockNow,isoNow,clockDate} from './clock.mjs';
 import {localDate,dateOffset,integer,stringList,plainRecord,canonicalInjuries} from '../coaching-shared.mjs';
+import {apiError} from '../coaching-error.mjs';
 import catalog from '../data/exercises.json' with {type:'json'};
 export {catalog};
 const equipmentMap={dumbbells:['dumbbell'],resistance_bands:['resistance_band'],bench:['flat_bench'],yoga_mat:['mat'],pullup_bar:['pullup_bar'],barbell:['barbell'],kettlebell:['kettlebell'],jump_rope:['jump_rope'],cardio_machine:['cardio_machine']};
@@ -60,23 +61,23 @@ export const repetitionSeconds=e=>e.repMax*3*(eachSide(e)?2:1);
 export function estimatedSessionMinutes(day){return Math.ceil((300+day.exercises.reduce((sum,e)=>sum+e.sets*repetitionSeconds(e)+(e.sets-1)*e.restSeconds+60,0))/60);}
 export function weeklySetTotals(days){const totals={};for(const d of days)for(const e of d.exercises)for(const r of new Set(e.muscles.filter(m=>m.role==='primary').map(m=>regionForMuscle(m.muscle_id))))totals[r]=(totals[r]||0)+e.sets;return totals;}
 export function workoutPlan(draft){
- const count=integer(draft.workoutDaysCount??3,1,6,'عدد أيام التدريب');
- if(draft.selectedWorkoutDays!=null&&(!Array.isArray(draft.selectedWorkoutDays)||draft.selectedWorkoutDays.length>6))throw Error('أيام التدريب غير صالحة.');
+ const count=integer(draft.workoutDaysCount??3,1,6,'workoutDaysCount');
+ if(draft.selectedWorkoutDays!=null&&(!Array.isArray(draft.selectedWorkoutDays)||draft.selectedWorkoutDays.length>6))throw apiError('INVALID_WORKOUT_DAYS','Selected training days list is invalid (max 6 days).',{status:400});
  const selected=draft.selectedWorkoutDays?.length?draft.selectedWorkoutDays:Array.from({length:count},(_,i)=>Math.floor(i*7/count));
- const days=[...new Set(selected.map(d=>integer(d,0,6,'يوم التدريب')))].sort();
- const level=draft.fitnessLevel??'beginner',duration=integer(draft.sessionDuration??45,20,90,'مدة التمرين');
- if(!['beginner','intermediate','advanced'].includes(level)||![20,30,45,60,90].includes(duration))throw Error('مستوى التمرين أو مدته غير صالح.');
+ const days=[...new Set(selected.map(d=>integer(d,0,6,'dayIndex')))].sort();
+ const level=draft.fitnessLevel??'beginner',duration=integer(draft.sessionDuration??45,20,90,'sessionDuration');
+ if(!['beginner','intermediate','advanced'].includes(level)||![20,30,45,60,90].includes(duration))throw apiError('INVALID_WORKOUT_SETTINGS','fitnessLevel must be beginner/intermediate/advanced and sessionDuration must be 20, 30, 45, 60, or 90.',{status:400});
  const workoutLocation=draft.workoutLocation??'gym_only';
- if(!['gym_only','home_only','home_and_gym'].includes(workoutLocation))throw Error('مكان التمرين غير صالح.');
- const homeEquipment=draft.homeEquipment==null?['none']:stringList(draft.homeEquipment,'المعدات',20);
- if(homeEquipment.some(e=>e!=='none'&&!Object.hasOwn(equipmentMap,e)))throw Error('معدات غير معروفة.');
- const dayLocations=draft.dayLocations==null?{}:plainRecord(draft.dayLocations,'أماكن الأيام');
- if(Object.entries(dayLocations).some(([key,value])=>!/^\d$/.test(key)||Number(key)>6||!['home','gym','home_only','gym_only'].includes(value)))throw Error('مكان أحد الأيام غير صالح.');
+ if(!['gym_only','home_only','home_and_gym'].includes(workoutLocation))throw apiError('INVALID_WORKOUT_LOCATION','workoutLocation must be gym_only, home_only, or home_and_gym.',{status:400});
+ const homeEquipment=draft.homeEquipment==null?['none']:stringList(draft.homeEquipment,'homeEquipment',20);
+ if(homeEquipment.some(e=>e!=='none'&&!Object.hasOwn(equipmentMap,e)))throw apiError('UNKNOWN_EQUIPMENT','homeEquipment contains one or more unknown equipment IDs.',{status:400});
+ const dayLocations=draft.dayLocations==null?{}:plainRecord(draft.dayLocations,'dayLocations');
+ if(Object.entries(dayLocations).some(([key,value])=>!/^\d$/.test(key)||Number(key)>6||!['home','gym','home_only','gym_only'].includes(value)))throw apiError('INVALID_DAY_LOCATIONS','dayLocations keys must be weekday indices 0..6 with valid location values.',{status:400});
  const injuries=Array.isArray(draft.injuries)?canonicalInjuries(draft.injuries):[];
  const goal=draft.goal||'maintain';
  draft={...draft,workoutLocation,homeEquipment,dayLocations,fitnessLevel:level,injuries,goal};
  let split=draft.workoutSplitPreference==='auto'||!draft.workoutSplitPreference?(days.length<=3?'full_body':'upper_lower'):draft.workoutSplitPreference;
- if(!['full_body','upper_lower','ppl','bro_split'].includes(split))throw Error('تقسيمة التمرين غير صالحة.');
+ if(!['full_body','upper_lower','ppl','bro_split'].includes(split))throw apiError('INVALID_WORKOUT_SPLIT','workoutSplitPreference must be auto, full_body, upper_lower, ppl, or bro_split.',{status:400});
  const warnings=[];
  if(injuries.length)warnings.push('استبعدنا حركات احترازيًا حسب الإصابة؛ الاختيارات المتبقية ليست تصريحًا طبيًا. أوقف الحركة المؤلمة وراجع مختصًا.');
  if(split==='upper_lower'&&days.length<2){warnings.push('تقسيمة علوي/سفلي تحتاج يومين؛ استخدمنا الجسم كله لتغطية العضلات.');split='full_body';}
@@ -122,7 +123,7 @@ export function workoutPlan(draft){
    const fallback=workoutPlan({...draft,workoutSplitPreference:'full_body'});
    fallback.warnings.unshift('التقسيمة المطلوبة تحتاج معدات غير متاحة؛ استخدمنا الجسم كله بنفس المعدات والوقت بدل يوم تدريب فارغ.');return fallback;
   }
-  throw Error('المعدات والوقت الحاليان لا يسمحان بجلسة مناسبة؛ راجع اختياراتك قبل إنشاء الخطة.');
+  throw apiError('WORKOUT_INFEASIBLE','Current equipment, injury exclusions, and duration cannot build a valid workout session.',{status:400});
  }
  if(sessions.some(s=>s.missing.length))warnings.push('بعض الحركات لا تناسب الوقت أو المعدات المتاحة؛ النقص موضح في كل يوم.');
  if(sessions.some(s=>s.exercises.length===0))warnings.push('في يوم لا يحتوي على تمرين مناسب؛ راجع المعدات أو مستوى التمرين قبل البدء.');
@@ -150,9 +151,9 @@ export function workoutPlan(draft){
  };
 }
 export function exerciseAlternatives(s,dayIndex,exerciseId){
- const index=integer(dayIndex,0,6,'يوم التمرين');
+ const index=integer(dayIndex,0,6,'dayIndex');
  const day=s.workoutPlan?.days.find(d=>d.dayIndex===index),exercise=day?.exercises.find(e=>e.id===exerciseId);
- if(!exercise)throw Error('التمرين غير موجود في اليوم ده.');
+ if(!exercise)throw apiError('EXERCISE_NOT_IN_DAY','Exercise is not scheduled in the specified workout day.',{status:400});
  const primary=primaryRegions(exercise);
  return candidates(exercise.pattern,s.onboarding?.workoutPrefs||{},day.location,day.exercises.map(e=>e.id)).filter(e=>primary.length>0&&primary.every(r=>primaryRegions(e).includes(r))).filter(e=>{
   const next={...day,exercises:day.exercises.map(x=>x===exercise?{...e,sets:exercise.sets,repMax:exercise.repMax,restSeconds:exercise.restSeconds}:x)};

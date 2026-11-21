@@ -1,5 +1,4 @@
-import {clockNow,isoNow,withClock,simulationTime} from './clock.mjs';
-import {simulationSummary} from './simulation.mjs';
+import {clockNow,isoNow} from './clock.mjs';
 import {assertDietDay} from '../diet-patterns.mjs';
 import {nutritionQualityIssues} from '../planner-core.mjs';
 import {progressSummary,dailyWaterTarget} from './coaching.mjs';
@@ -8,7 +7,8 @@ import {accountRecovery} from './recovery.mjs';
 import {deriveSyncDeltas} from './store.mjs';
 import {dayTotals} from './food.mjs';
 import {localDate,needsHealthConfirmation,needsScheduleConfirmation} from '../coaching-shared.mjs';
-export const present=s=>withClock(simulationTime(s),()=>{
+
+export const present=s=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
  const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=accountRecovery(s,clockNow(),tz),needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
@@ -22,16 +22,15 @@ export const present=s=>withClock(simulationTime(s),()=>{
   serverNow:isoNow(),
   serverDate:currDate,
   timezone:tz,
-  simulationToday:s.simulation?simulationSummary(s):null,
   eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
   planQuality:plan?.days.flatMap(d=>nutritionQualityIssues(d.summary,d.targets||plan.targets).map(message=>({date:d.date,message})))||[],
   scheduledSessions:scheduledSessions(s,currDate),
   progressSummary:progressSummary(s),
   recovery:{...ready,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule}
  };
-});
+};
 
-export const presentBootstrap=s=>withClock(simulationTime(s),()=>{
+export const presentBootstrap=s=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
  const plan=s.plans.find(p=>p.id===s.active_plan_id);
@@ -66,14 +65,13 @@ export const presentBootstrap=s=>withClock(simulationTime(s),()=>{
   entitlements:s.entitlements||{tier:'free',features:['core_nutrition','core_workouts','offline_sync','arabic_food_search']},
   notificationPreferences:s.notificationPreferences
  };
-});
+};
 
-export const presentReceipt=(s,action,payload={},replayed=false)=>withClock(simulationTime(s),()=>{
+export const presentReceipt=(s,action,payload={},replayed=false)=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
  const deltas=s._lastReceipt?.affected||deriveSyncDeltas(s,action,payload,isoNow());
  return {
-  ok:true,
   revision:s.revision,
   serverNow:isoNow(),
   serverDate:currDate,
@@ -86,4 +84,4 @@ export const presentReceipt=(s,action,payload={},replayed=false)=>withClock(simu
   },
   affected:deltas
  };
-});
+};

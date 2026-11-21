@@ -55,6 +55,13 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       const req = new Request('https://api.egypt-nutrition-coach.local/v1/' + path, opts);
       return await cloudflareEntry.fetch(req, env, { waitUntil() {} });
     };
+    const unwrap = async (r) => {
+      const j = await r.json();
+      assert.equal(j.ok, r.ok);
+      assert.ok(j.meta?.requestId);
+      assert.ok(j.meta?.serverTime);
+      return r.ok ? j.data : j.error;
+    };
 
     // =========================================================================
     // E01 & F03: Anonymous MVP -> Verified Signup + Explicit Account Claim
@@ -65,7 +72,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         headers: { 'oai-authenticated-user-id': 'user:victim-account' }
       });
       assert.equal(spoofRes.status, 200);
-      const spoofSession = await spoofRes.json();
+      const spoofSession = await unwrap(spoofRes);
       assert.ok(spoofSession.userId.startsWith('anon:'), 'Spoofed header must be stripped and replaced with anon cookie');
       assert.notEqual(spoofSession.userId, 'user:victim-account');
 
@@ -105,7 +112,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         })
       });
       assert.equal(claimRes.status, 200);
-      const claimBody = await claimRes.json();
+      const claimBody = await unwrap(claimRes);
       assert.equal(claimBody.claimed, true);
       assert.equal(claimBody.toUserId, 'user:user-e01-verified');
 
@@ -114,7 +121,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         headers: { Authorization: `Bearer ${tokenA}` }
       });
       assert.equal(bootRes.status, 200);
-      const boot = await bootRes.json();
+      const boot = await unwrap(bootRes);
       assert.equal(boot.profile.name, 'Anon E01');
 
       // 5. Another account cannot claim the same anonymous ID again
@@ -132,7 +139,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         })
       });
       assert.equal(secondClaim.status, 409);
-      const errBody = await secondClaim.json();
+      const errBody = await unwrap(secondClaim);
       assert.equal(errBody.code, 'ANONYMOUS_ALREADY_CLAIMED');
     });
 
@@ -158,7 +165,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       // Device A is now rejected with 401 AUTH_SESSION_REVOKED
       const afterARes = await api('bootstrap', { headers: { Authorization: `Bearer ${tokenDeviceA}` } });
       assert.equal(afterARes.status, 401);
-      assert.equal((await afterARes.json()).code, 'AUTH_SESSION_REVOKED');
+      assert.equal((await unwrap(afterARes)).code, 'AUTH_SESSION_REVOKED');
 
       // Device B still works
       const afterBRes = await api('bootstrap', { headers: { Authorization: `Bearer ${tokenDeviceB}` } });
@@ -173,7 +180,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
 
       // IDOR check: user-e02 cannot read user-e01-verified's nutrition plan or workout plan
       const e01Token = await makeToken('user-e01-verified');
-      const e01Boot = await (await api('bootstrap', { headers: { Authorization: `Bearer ${e01Token}` } })).json();
+      const e01Boot = await unwrap(await api('bootstrap', { headers: { Authorization: `Bearer ${e01Token}` } }));
       const e01PlanId = e01Boot.activeNutritionPlanRef.id;
       const e01WorkoutId = e01Boot.activeWorkoutPlanRef.id;
 
@@ -213,7 +220,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         body: payloadOrder1
       });
       assert.equal(firstWater.status, 200);
-      const firstReceipt = await firstWater.json();
+      const firstReceipt = await unwrap(firstWater);
       assert.equal(firstReceipt.revision, 2);
       assert.equal(firstReceipt.commandReceipt.replayed, false);
 
@@ -226,13 +233,13 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         });
         assert.equal(retryRes.status, 200);
         assert.equal(retryRes.headers.get('Idempotency-Replayed'), 'true');
-        const rBody = await retryRes.json();
+        const rBody = await unwrap(retryRes);
         assert.equal(rBody.commandReceipt.revision, 2);
         assert.equal(rBody.commandReceipt.replayed, true);
       }
 
       // Verify exactly one water log record exists
-      const waterLogs = await (await api('water-logs', { headers: authH })).json();
+      const waterLogs = await unwrap(await api('water-logs', { headers: authH }));
       assert.equal(waterLogs.total, 1);
       assert.equal(waterLogs.items[0].cups, 4);
 
@@ -247,7 +254,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         })
       });
       assert.equal(mealAddRes.status, 200);
-      const mealAddReceipt = await mealAddRes.json();
+      const mealAddReceipt = await unwrap(mealAddRes);
       const addedMealId = mealAddReceipt.affected.find(d => d.entityType === 'food_entry').entityId;
       assert.ok(addedMealId);
 
@@ -274,15 +281,16 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         })
       });
       assert.equal(conflictRes.status, 409);
-      const conflictBody = await conflictRes.json();
+      const conflictBody = await unwrap(conflictRes);
       assert.equal(conflictBody.code, 'REVISION_CONFLICT');
-      assert.equal(conflictBody.currentRevision, 4);
-      assert.ok(conflictBody.mergeHints?.syncChangesEndpoint.includes('after=3'));
+      assert.equal(conflictBody.params.currentRevision, 4);
+      assert.equal(conflictBody.details.currentRevision, 4);
+      assert.ok(conflictBody.details?.mergeHints?.syncChangesEndpoint.includes('after=3'));
 
       // Phone A fetches `/v1/sync/changes?after=2` and sees both the upsert and the delete tombstone
       const syncRes = await api('sync/changes?after=2', { headers: authH });
       assert.equal(syncRes.status, 200);
-      const syncBody = await syncRes.json();
+      const syncBody = await unwrap(syncRes);
       assert.equal(syncBody.currentRevision, 4);
       assert.ok(syncBody.deltas.some(d => d.entityType === 'food_entry' && d.entityId === addedMealId && d.op === 'upsert'));
       assert.ok(syncBody.deltas.some(d => d.entityType === 'food_entry' && d.entityId === addedMealId && d.op === 'delete'));
@@ -298,7 +306,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       for (const query of ['كشري', 'ملوخية', 'محشي', 'كنافة', 'طعمية', 'عيش بلدي', 'شاي بسكر', 'قهوة بلبن', 'عصير مانجا']) {
         const res = await api(`foods?q=${encodeURIComponent(query)}`, { headers: authH });
         assert.equal(res.status, 200);
-        const body = await res.json();
+        const body = await unwrap(res);
         assert.ok(body.total > 0, `Query "${query}" should return catalog results`);
         assert.ok(['verified_reference_available', 'mixed_verified_and_estimated', 'estimated_model_only_requires_specialist_review'].includes(body.coverageStatus));
         for (const item of body.items) {
@@ -313,13 +321,13 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       // Beverages endpoint
       const bevRes = await api(`beverages?q=${encodeURIComponent('كركديه')}&includeEstimated=true`, { headers: authH });
       assert.equal(bevRes.status, 200);
-      const bevBody = await bevRes.json();
+      const bevBody = await unwrap(bevRes);
       assert.ok(bevBody.items.length > 0 && bevBody.items.every(b => b.beverage === true));
 
       // Density guardrail: converting mL without documented density or volume_evidence must fail closed
       assert.throws(
         () => calculatePreparedBeverageOrRecipe({ unit: 'ml', ingredients: [{ key: 'fava', ml: 200 }] }),
-        /كثافة/
+        e => e.code === 'DENSITY_REQUIRED_FOR_ML' && /density/i.test(e.message)
       );
 
       // External Egypt Nutrition Database snapshot adapter contract test
@@ -340,7 +348,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       // 1. Unsupported clinical disease (diabetes) is blocked from autonomous planning
       const eligDiabetes = evaluateEligibilityForTest({ ...baseDraft, diseases: ['diabetes'] });
       assert.equal(eligDiabetes.status, 'requires_review');
-      assert.throws(() => generate(empty(), { ...baseDraft, diseases: ['diabetes'] }), /متخصص/);
+      assert.throws(() => generate(empty(), { ...baseDraft, diseases: ['diabetes'] }), e => e.code === 'CLINICAL_REVIEW_REQUIRED' && /specialist review/i.test(e.message));
 
       // 2. Hypertension + balanced diet: every generated day has non-null reference sodium <= 2300 mg
       const htnState = generate(empty(), { ...baseDraft, diseases: ['hypertension'], dietType: 'balanced' }, 'e06-htn');
@@ -417,12 +425,12 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       assert.ok(waterBytes < 2000, `Water log delta receipt (${waterBytes} bytes) must be < 20 KB (actual: ${waterBytes} B)`);
 
       // Lazy single day fetch from nutrition plan
-      const bootJson = JSON.parse(bootText);
+      const bootJson = JSON.parse(bootText).data;
       const planId = bootJson.activeNutritionPlanRef.id;
       const startDay = bootJson.activeNutritionPlanRef.start_date;
       const dayRes = await api(`plans/${planId}/days/${startDay}`, { headers: authH });
       assert.equal(dayRes.status, 200);
-      const dayJson = await dayRes.json();
+      const dayJson = await unwrap(dayRes);
       assert.equal(dayJson.day.date, startDay);
       assert.ok(dayJson.day.meals.length >= 3);
     });
@@ -461,14 +469,14 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       }
 
       // Page 1 of weight-logs (limit 10)
-      const p1 = await (await api('weight-logs?limit=10&offset=0', { headers: authH })).json();
+      const p1 = await unwrap(await api('weight-logs?limit=10&offset=0', { headers: authH }));
       assert.equal(p1.total, 30);
       assert.equal(p1.items.length, 10);
       assert.equal(p1.nextOffset, 10);
       assert.ok(p1.items[0].date > p1.items[9].date, 'Items must be ordered newest date first');
 
       // Page 2 of weight-logs
-      const p2 = await (await api('weight-logs?limit=10&offset=10', { headers: authH })).json();
+      const p2 = await unwrap(await api('weight-logs?limit=10&offset=10', { headers: authH }));
       assert.equal(p2.items.length, 10);
       assert.equal(p2.nextOffset, 20);
     });
@@ -567,7 +575,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
           payload: { name: 'Adapt User', age: 30, weight: 80, height: 175, sex: 'male', goal: 'lose', targetWeight: 75, serviceTrack: 'nutrition_and_workouts', dietType: 'balanced', selectedWorkoutDays: [1, 3, 5] }
         })
       });
-      const initial = await genRes.json();
+      const initial = await unwrap(genRes);
       const originalPlanId = initial.active_plan_id;
 
       // Log poor recovery so review proposes a recovery deload
@@ -586,7 +594,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         headers: { ...authH, 'Idempotency-Key': 'e11-rev' },
         body: JSON.stringify({ revision: 2, action: 'review', payload: {} })
       });
-      const revState = await revRes.json();
+      const revState = await unwrap(revRes);
       const pending = revState.adaptations.find(a => a.status === 'pending');
       assert.ok(pending, 'Review should propose a pending adaptation');
 
@@ -599,7 +607,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       assert.equal(rejRes.status, 200);
 
       // Reload state (simulating app restart)
-      const reloaded = await (await api('state', { headers: authH })).json();
+      const reloaded = await unwrap(await api('state', { headers: authH }));
       assert.equal(reloaded.active_plan_id, originalPlanId);
       assert.equal(reloaded.sessionAdjustment, null);
       assert.equal(reloaded.adaptations.find(a => a.id === pending.id).status, 'rejected');
@@ -625,7 +633,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
       // 1. Export full account data
       const expRes = await api('account/export', { headers: authH });
       assert.equal(expRes.status, 200);
-      const exported = await expRes.json();
+      const exported = await unwrap(expRes);
       assert.equal(exported.userId, 'user:user-e12');
       assert.equal(exported.profile.name, 'Delete Me');
       assert.ok(exported.archivedNutritionPlans.length >= 1);
@@ -637,7 +645,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         body: JSON.stringify({ confirm: true })
       });
       assert.equal(delRes.status, 200);
-      const delBody = await delRes.json();
+      const delBody = await unwrap(delRes);
       assert.equal(delBody.deleted, true);
 
       // 3. Verify coaching_accounts and coaching_plans have 0 rows for user:user-e12
@@ -688,7 +696,7 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
 
       const bfRes = await api('account/backfill', { method: 'POST', headers: authH, body: '{}' });
       assert.equal(bfRes.status, 200);
-      const bfBody = await bfRes.json();
+      const bfBody = await unwrap(bfRes);
       assert.equal(bfBody.migrated, true);
       assert.equal(bfBody.counts.weights, 365);
       assert.equal(bfBody.counts.waterLogs, 365);
@@ -716,10 +724,12 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
         body: '{invalid_json'
       });
       assert.equal(badJsonRes.status, 400);
-      const badJsonBody = await badJsonRes.json();
-      assert.equal(badJsonBody.code, 'INVALID_JSON');
-      assert.ok(badJsonBody.requestId);
-      assert.equal(typeof badJsonBody.retryable, 'boolean');
+      const rawBadJson = await badJsonRes.json();
+      assert.equal(rawBadJson.ok, false);
+      assert.equal(rawBadJson.error.code, 'INVALID_JSON');
+      assert.ok(rawBadJson.meta?.requestId);
+      assert.equal(typeof rawBadJson.error.retryable, 'boolean');
+      assert.ok(!/[\u0600-\u06FF]/.test(rawBadJson.error.message));
 
       // Redaction check: sensitive fields are never leaked in structured logs
       const redacted = redactObject({
@@ -767,10 +777,11 @@ test('Release E2E Scenarios E01–E16 & Findings F01–F22 Verification Suite', 
     await t.test('E16 (F22): server operates deterministically without external Auth/DB/Push credentials and reports explicit adapter status', async () => {
       const capRes = await api('capabilities');
       assert.equal(capRes.status, 200);
-      const cap = await capRes.json();
+      const cap = await unwrap(capRes);
       assert.equal(cap.apiVersion, '1');
       assert.ok(cap.features.includes('kmm_bootstrap'));
       assert.ok(cap.features.includes('offline_sync_v2'));
+      assert.ok(!cap.features.includes('simulation_90d'));
     });
 
   } finally {

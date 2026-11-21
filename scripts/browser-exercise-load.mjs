@@ -6,7 +6,7 @@ try{
  for(const location of ['home_only','gym_only']){
   const context=await browser.newContext({viewport:{width:390,height:844},extraHTTPHeaders:{'oai-authenticated-user-id':`load-audit-${location}-${Date.now()}`}});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(10000);
-  const read=async()=>await (await context.request.get(origin+'/v1/state')).json();
+  const read=async()=>(await (await context.request.get(origin+'/v1/state')).json()).data;
   const initial=await read(),dayIndex=new Date(initial.serverDate+'T12:00:00Z').getUTCDay();
   const r=await context.request.post(origin+'/v1/commands',{headers:{'Idempotency-Key':crypto.randomUUID()},data:{revision:0,action:'generate',payload:{name:'اختبار نهائي',age:30,weight:80,height:175,sex:'male',goal:'maintain',serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[dayIndex],workoutLocation:location,homeEquipment:['none'],sessionDuration:60}}});assert.equal(r.status(),200,await r.text());
   await page.goto(origin+'/#planner');await page.locator('[data-tab=workout]').click();

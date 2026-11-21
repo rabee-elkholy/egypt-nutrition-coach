@@ -14,7 +14,7 @@ test('actual planned portions freeze quantity; duplicates are rejected; deleting
  const source=structuredClone(fixture),meal=source.plans[0].days[0].meals[0],energy=Number(meal.snapshot.values.energy);
  let s=run(source,'food_entry',{date:today(),source:'planned',mealId:meal.id,slot:meal.slot,quantity:.5});
  assert.ok(Math.abs(dayTotals(s,today()).totals.energy-energy*.5)<.01);assert.equal(source.foodEntries.length,0);
- assert.throws(()=>run(s,'food_entry',{date:today(),source:'planned',mealId:meal.id,slot:meal.slot,quantity:1}),/متسجلة/);
+ assert.throws(()=>run(s,'food_entry',{date:today(),source:'planned',mealId:meal.id,slot:meal.slot,quantity:1}),e=>e.code==='PLANNED_MEAL_ALREADY_LOGGED'&&/already been logged/i.test(e.message));
  s=run(s,'food_complete',{date:today(),complete:true});assert.equal(s.foodLogs[0].complete,true);
  s=run(s,'food_delete',{id:s.foodEntries[0].id});assert.equal(s.foodLogs[0].complete,false);assert.equal(dayTotals(s,today()).totals.energy,null);
 });
@@ -29,7 +29,7 @@ test('logged meals cannot be replaced, alternatives retain exclusions, unlogged 
  const original=JSON.stringify(s.plans[0]);const next=run(s,'replace_meal',{mealId:meal.id,templateId:choices[0].snapshot.template_id});
  assert.equal(JSON.stringify(next.plans[0]),original);assert.notEqual(next.active_plan_id,s.active_plan_id);
  const logged=run(s,'food_entry',{source:'planned',date:today(),mealId:meal.id,slot:meal.slot,quantity:1});
- assert.throws(()=>run(logged,'replace_meal',{mealId:meal.id,templateId:choices[0].snapshot.template_id}),/اتسجلت/);
+ assert.throws(()=>run(logged,'replace_meal',{mealId:meal.id,templateId:choices[0].snapshot.template_id}),e=>e.code==='MEAL_ALREADY_CONSUMED'&&/already been logged/i.test(e.message));
 });
 test('meal replacement accepts the existing alternativeId alias and retains templateId precedence',()=>{
  const s=structuredClone(fixture),meal=s.plans[0].days[0].meals[0],choices=mealAlternatives(s,meal.id);
@@ -40,7 +40,7 @@ test('meal replacement accepts the existing alternativeId alias and retains temp
   assert.equal(next.plans.find(p=>p.id===next.active_plan_id).days[0].meals.find(m=>m.id===meal.id).snapshot.template_id,target);
   assert.equal(JSON.stringify(next.plans[0]),original);
  }
- assert.throws(()=>run(s,'replace_meal',{mealId:meal.id,alternativeId:'unavailable'}),/متاح/);
+ assert.throws(()=>run(s,'replace_meal',{mealId:meal.id,alternativeId:'unavailable'}),e=>e.code==='MEAL_ALTERNATIVE_UNAVAILABLE'&&/no longer valid/i.test(e.message));
 });
 test('regional pain blocks progression; duplicated and future reports cannot create a personal baseline',()=>{
  const now=Date.now(),base={at:new Date(now).toISOString(),date:today(),sleepHours:8,sleepQuality:4,fatigue:2,stress:2,soreness:0,sorenessByRegion:{quadriceps:8},painRegions:[],pain:false,illness:false,redFlags:false};
@@ -126,5 +126,5 @@ test('calorie acceptance rejects an infeasible future protein prescription witho
  const s=structuredClone(fixture);s.checkins=[healthyCheckin()];
  for(const meal of s.plans[0].days[1].meals)meal.snapshot.values.protein='1';
  s.adaptations=[{id:'invalid-quality',kind:'calories',delta:-100,reason:'test',status:'pending',baseRevision:s.revision}];
- const before=JSON.stringify(s);assert.throws(()=>run(s,'adaptation',{id:'invalid-quality',accept:true}),/حدود السعرات والبروتين/);assert.equal(JSON.stringify(s),before);
+ const before=JSON.stringify(s);assert.throws(()=>run(s,'adaptation',{id:'invalid-quality',accept:true}),e=>e.code==='ENERGY_CHANGE_TARGETS_UNMET'&&/protein or nutrition targets/i.test(e.message));assert.equal(JSON.stringify(s),before);
 });

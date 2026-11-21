@@ -1,134 +1,150 @@
-> نتيجة التحقق اللاحق والتصحيحات وحدود الجاهزية موثقة في [فحص استيراد 0.12](IMPORT_VERIFICATION_012_AR.md). تُقدّم نتائجه على ادعاءات الاكتمال والقياسات السابقة في هذا المستند.
+# KMM Backend Integration Guide (`CuraFit API v1`)
 
-# دليل تكامل تطبيق الموبايل (KMM) — KMM Backend Integration Guide (`v1`)
+Practical integration specification for the **Kotlin Multiplatform Mobile (Android & iOS)** client connecting to **CuraFit API v1** on Cloudflare Workers + D1.
 
-يوفر هذا الدليل لفريق تطوير **Kotlin Multiplatform (Android & iOS)** المواصفات العملية للربط مع الباك إند، بما يشمل المصادقة، بدء التشغيل السريع، طابور الأوامر الأوفلاين (Offline Outbox)، معالجة التعارضات (`409`)، المناطق الزمنية، وتوليد العميل من [contracts/openapi.yaml](../contracts/openapi.yaml).
+- **Cloud Dev Server (`dev` branch):** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev`
+- **Production Server (`main` branch):** `https://curafit-api.egypt-nutrition-coach.workers.dev`
+- **OpenAPI 3.1 Contract:** [`contracts/openapi.yaml`](../contracts/openapi.yaml)
+- **Postman Collection & API Docs:** [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) and [`docs/API_REFERENCE.md`](API_REFERENCE.md)
+- **Pure-English Error Codes Catalog:** [`contracts/error-codes.json`](../contracts/error-codes.json) and [`docs/ERROR_CODES.md`](ERROR_CODES.md)
 
 ---
 
-## 1. توليد الـSDK والعميل المهيكل (Typed Client Generation)
+## 1. Uniform KMM Envelopes & Client-Side Error Localization
 
-العقد الرسمي موثق بصيغة **OpenAPI 3.1.0** في المسار [contracts/openapi.yaml](../contracts/openapi.yaml)، مع أمثلة حقيقية في [contracts/examples/](../contracts/examples/).
+Every JSON response from `/v1/*` uses a uniform envelope:
 
-لتوليد عميل Kotlin (`Ktor` + `kotlinx.serialization`) باستخدام OpenAPI Generator:
+### Success (`2xx`)
+```json
+{
+  "ok": true,
+  "data": { ... },
+  "meta": {
+    "requestId": "197fd531-bb73-41f2-822e-63664ad450df",
+    "serverTime": "2026-11-21T15:24:05.997Z",
+    "revision": 4
+  }
+}
+```
+
+### Error (`4xx` / `5xx`)
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 10,
+      "serverRevision": 12
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 12,
+      "mergeHints": {
+        "expectedRevision": 10,
+        "serverRevision": 12,
+        "syncChangesEndpoint": "/v1/sync/changes?after=10",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "9a1c4b22-6e81-4f09-b812-33d4e5f6a7b8",
+    "serverTime": "2026-11-21T15:24:08.797Z"
+  }
+}
+```
+
+- **Zero Arabic in API Errors:** `error.message` and `fieldErrors[].message` are strictly canonical English. KMM must key UI localization (`ar` / `en`) by `error.code` (and `error.params` interpolation) using the 235 cataloged codes in [`contracts/error-codes.json`](../contracts/error-codes.json).
+- **Coaching Review Reason Codes:** Similarly, map `lastReview.reasonCode` (e.g. `RECOVERY_DELOAD_PROPOSED`, `PERFORMANCE_DROP_CALORIE_CUT_HOLD`, `INSUFFICIENT_EVIDENCE_COVERAGE`) to localized client copy.
+
+---
+
+## 2. Typed Ktor / `kotlinx.serialization` Client Generation
+
+Generate a starter Kotlin Multiplatform client from OpenAPI 3.1:
 
 ```bash
 npx @openapitools/openapi-generator-cli generate \
   -i contracts/openapi.yaml \
   -g kotlin \
   --library multiplatform \
-  --additional-properties=serializationLibrary=kotlinx_serialization,packageName=eg.nutritioncoach.shared.api,useCoroutines=true \
+  --additional-properties=serializationLibrary=kotlinx_serialization,packageName=com.curafit.shared.api,useCoroutines=true \
   -o kmm-api-client
 ```
 
 ---
 
-## 2. مصادقة الجلسات وترحيل الحساب التجريبي (Auth & Account Claim)
+## 3. Native Cloudflare Authentication & Token Lifecycle
 
-1. **إرسال رمز الدخول (Bearer Token):**
-   - يرسل تطبيق KMM الهيدر `Authorization: Bearer <ID_TOKEN>` و`X-Client-Device-Id: <device-uuid>` في كل طلب إلى `/v1/*`.
-   - لا ترسل أبدًا الهيدر `oai-authenticated-user-id` من تطبيق الموبايل؛ يقوم `server/cloudflare-entry.mjs` بحذفه تلقائيًا على الحافة.
-2. **التحقق من الجلسة:**
-   - `GET /v1/auth/session` يعيد `userId` (`user:<sub>`)، `sessionId`، `scopes`، ومستوى الباقة `entitlement` (`free` أو `premium`).
-3. **إبطال الجلسة (Logout / Revoke):**
-   - عند تسجيل الخروج على الجهاز الحالي: `POST /v1/auth/revoke` مع `{"sessionId": "<sid>"}`.
-   - عند تسجيل الخروج من جميع الأجهزة: `POST /v1/auth/revoke` مع `{"allDevices": true}`.
-4. **دمج بيانات الجلسة المجهولة (Anonymous-to-Verified Claim):**
-   - إذا استخدم الزائر نسخة الويب أو وضع التجربة (`anon:<uuid>`) ثم أنشأ حسابًا موثقًا، استدعِ `POST /v1/auth/claim-anonymous` مع رمز Bearer والكوكي `coach_uid` المالكة للحساب؛ لا يكفي معرفة المعرّف وحده. جسم الطلب:
-     ```json
-     {
-       "anonymousUserId": "anon:550e8400-e29b-41d4-a716-446655440000",
-       "consent": true
-     }
-     ```
-   - تُنقل البيانات مرة واحدة فقط ويُغلق المعرّف المجهول بعلامة `__claimed__` لمنع أي مطالبة ثانية.
+1. **Register / Login (`POST /v1/auth/register`, `POST /v1/auth/login`):**
+   - Returns `{ accessToken, expiresIn: 900, refreshToken, refreshExpiresIn: 2592000, sessionId, user }` inside `data`.
+   - Attach `Authorization: Bearer <accessToken>`, `X-Client-Platform: android|ios`, and `X-Client-Version: <semver>` to authenticated requests. Never send custom identity headers (`oai-authenticated-user-id` is stripped at the edge).
+2. **Rotating Refresh Tokens (`POST /v1/auth/refresh`):**
+   - `refreshToken` (`cfrt_...`) rotates on every refresh. Persist the newly returned `refreshToken` atomically before issuing the next request; replaying a rotated token revokes the entire session with `401 AUTH_REFRESH_TOKEN_REUSED`.
+3. **Session & Logout (`GET /v1/auth/session`, `POST /v1/auth/revoke`, `POST /v1/auth/logout`):**
+   - Revoke current session (`{ sessionId }`) or all devices (`{ allDevices: true }`).
+   - Account deletion (`DELETE /v1/account/delete` with `{ confirm: true }`) writes a permanent `__deleted__` tombstone so prior JWTs fail with `401 ACCOUNT_DELETED`.
 
 ---
 
-## 3. بدء التشغيل السريع والتخزين المؤقت (Bootstrap & Lazy Loading)
+## 4. Bootstrap, Lazy Plan Loading & Pagination
 
-بدلًا من استدعاء `GET /v1/state` (الذي يعيد الخطة الكاملة بحجم ~500 KB)، يتبع تطبيق KMM المسار التالي:
+Prefer lightweight endpoints over `GET /v1/state` (full legacy Web UI snapshot):
 
-1. عند فتح التطبيق: استدعِ `GET /v1/bootstrap` مع الهيدر `If-None-Match` بقيمة `ETag` المحفوظة من آخر استجابة (لا تُنشئها من revision).
-   - إذا لم يتغير الحساب، يعيد الخادم `304 Not Modified` (صفر بايت).
-   - إذا تغير الحساب، يعيد الخادم ملخصًا خفيفًا (**~3.1 KB**) يشمل: `revision`، `serverNow`، `serverDate`، `timezone`، `profile`، معرف الخطة النشطة `activeNutritionPlanRef`، `todaySummary`، والتوصيات المعلقة `pendingAdaptations`.
-2. عند فتح شاشة تفاصيل وجبات يوم معين: استدعِ `GET /v1/plans/{planId}/days/{YYYY-MM-DD}`.
-3. عند استعراض السجلات التاريخية: استخدم المسارات المقسمة لصفحات:
-   - `GET /v1/food-diary?date=YYYY-MM-DD`
-   - `GET /v1/water-logs?from=2026-10-01&to=2026-10-24&limit=30&offset=0`
-   - `GET /v1/weight-logs?limit=30&offset=0`
-   - `GET /v1/workout-logs?limit=30&offset=0`
-   - `GET /v1/sessions?limit=30&offset=0`
-   - `GET /v1/checkins?limit=30&offset=0`
+1. **App Startup (`GET /v1/bootstrap`):**
+   - Send the exact server `ETag` from the previous response in `If-None-Match` (do not synthesize ETags locally).
+   - Returns `304 Not Modified` (`0 B`) when unchanged, or a compact (~3.25 KB) snapshot (`revision`, `serverNow`, `serverDate`, `timezone`, `profile`, `activeNutritionPlanRef`, `activeWorkoutPlanRef`, `todaySummary`, `pendingAdaptations`).
+2. **On-Demand Day Details:** `GET /v1/plans/{planId}/days/{YYYY-MM-DD}` and `GET /v1/workout-plans/{id}`.
+3. **Paginated Logs:** Use `from`, `to`, `offset`, `limit` (`1..100`) on `/v1/food-diary`, `/v1/water-logs`, `/v1/weight-logs`, `/v1/workout-logs`, `/v1/sessions`, and `/v1/checkins`.
 
 ---
 
-## 4. طابور الأوامر الأوفلاين وحل التعارضات (Offline Outbox & 409 Protocol)
+## 5. Offline Outbox & `409 REVISION_CONFLICT` Protocol
 
-### 4.1. إرسال الأوامر (Command Execution)
+### 5.1. Command Execution (`POST /v1/commands?view=receipt`)
+- Always pass `?view=receipt` (or `Prefer: return=minimal`) to receive compact delta receipts (~535 B).
+- Generate a deterministic UUID v4 `Idempotency-Key` per user action and store it in your local SQLDelight outbox before transmission. Canonical JSON key sorting on the server guarantees safe idempotent retries (`Idempotency-Replayed: true`).
 
-لتقليل استهلاك باقة الإنترنت والبطارية على الموبايل، أضف `?view=receipt` (أو الهيدر `Prefer: return=minimal`) عند استدعاء `POST /v1/commands`:
-
-- **حجم الاستجابة:** **~413 بايت** فقط (بدل 500 KB).
-- **Idempotency-Key:** ولّد UUID v4 فريدًا لكل فعل يقوم به المستخدم واحفظه في جدول `local_outbox` داخل SQLite/SQLDelight على الموبايل قبل الإرسال.
-- **Canonical JSON Hashing:** يقوم الخادم بترتيب مفاتيح JSON معياريًا قبل حساب بصمة `SHA-256`، لذا فإن إعادة إرسال نفس الأمر بعد انقطاع الشبكة تعيد نفس الإيصال (`200 OK` مع الهيدر `Idempotency-Replayed: true`) دون تكرار التسجيل.
-
-### 4.2. معالجة التعارض (`409 REVISION_CONFLICT`)
-
-عندما يعدّل المستخدم حسابه من جهاز ثانٍ، يعيد الخادم `409 Conflict` بالغلاف الموحد:
-
-```json
-{
-  "code": "REVISION_CONFLICT",
-  "currentRevision": 12,
-  "mergeHints": {
-    "expectedRevision": 10,
-    "serverRevision": 12,
-    "syncChangesEndpoint": "/v1/sync/changes?after=10",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
-  }
-}
-```
-
-**خطوات المعالجة في KMM SyncManager:**
-1. استدعِ `GET /v1/sync/changes?after=10` (أو `?afterSeq=<lastSeq>`).
-2. طبّق مصفوفة `deltas` بالترتيب حسب `seq`:
-   - `op: "upsert"` → حدّث السجل المحلي في SQLDelight بالـ`payload` المرفق.
-   - `op: "delete"` → احذف السجل المحلي المطابق لـ`entityId` (tombstone).
-3. حدّث `localRevision = currentRevision` (12).
-4. أعد إرسال الأمر المعلق في الطابور المحلي برقم المراجعة الجديد (`revision: 12`) مع الاحتفاظ بنفس `Idempotency-Key` إذا كان الطلب السابق رُفض بتعارض ولم يُحفظ. عند فقدان الرد أعد نفس الطلب الأصلي أولًا للتأكد من إيصال التنفيذ.
+### 5.2. Resolving `409 REVISION_CONFLICT`
+When another device advances `revision`:
+1. Call `GET /v1/sync/changes?after=<localRev>&afterSeq=<lastSeq>`.
+2. Apply returned `deltas` in ascending `seq` order (`op: "upsert"` or `op: "delete"`). Continue paginating while `hasMore == true`.
+3. If `requiresFetch == true` on a `nutrition_plan` or `workout_plan` delta, fetch the full resource from `/v1/plans/{id}` or `/v1/workout-plans/{id}`.
+4. Advance `localRevision = data.currentRevision` only after all deltas up to that revision are committed locally.
+5. Re-submit the queued command with the updated `revision`.
 
 ---
 
-## 5. المناطق الزمنية والوحدات والترجمة (Timezones, Units & Localization)
+## 6. Timezones & Units
 
-- **المناطق الزمنية (`IANA Timezone`):**
-  - يُحفظ التوقيت في `profile.timezone` (مثل `Africa/Cairo`، `Asia/Riyadh`، `Asia/Dubai`).
-  - عند سفر المستخدم واكتشاف تغير `TimeZone.currentSystemDefault().id` في KMM، اعرض خيار تحديث المنطقة الزمنية عبر الأمر:
-    ```json
-    {"revision": 12, "action": "timezone", "payload": {"timezone": "Asia/Riyadh", "locale": "ar-SA"}}
-    ```
-- **الوحدات القياسية (SI Units):**
-  - الأوزان: `kg` (للجسم والأحمال التدريبية) و`grams` (للأطعمة).
-  - السوائل: `cups` (كوب قياسي = 250 mL) و`liters`.
-  - الطاقة: `kcal`.
-  - المغذيات المجهولة: تُعاد دائمًا `null` (سلسلة نصية عشرية عند توفرها، أو `null` عند غيابها في المصدر). **تحذير:** لا تحوّل `null` في واجهة KMM إلى `0`؛ اعرض `"غير متوفر في المصدر"`.
-- **أكواد الأخطاء والأسباب (`code` & `reasonCode`):**
-  - اعتمد على `code` في غلاف الخطأ (مثل `REVISION_CONFLICT`, `AUTH_TOKEN_EXPIRED`, `RATE_LIMITED`) وعلى `lastReview.reasonCode` (مثل `RECOVERY_DELOAD_PROPOSED`, `PERFORMANCE_DROP_CALORIE_CUT_HOLD`, `INSUFFICIENT_EVIDENCE_COVERAGE`) لربط الترجمة المحلية `ar`/`en` في KMM بدل تحليل النصوص العربية برمجيًا.
+- **Timezones:** Store IANA timezones in `profile.timezone` (`Africa/Cairo`, `Asia/Riyadh`, `Asia/Dubai`). When device timezone changes, send `POST /v1/commands` with `action: "timezone"`.
+- **Units:** Body/training loads in `kg`; food weights in `grams`; water in standard `cups` (`250 mL`) and `liters`; energy in `kcal`.
+- **Null Nutrient Handling:** Nutrient fields (`protein`, `carbs`, `fat`, `fiber`, `sodium`, etc.) may be `null` when absent in reference sources. Never coerce `null` to `0` in UI; display a localized `"Not available in source"` label.
 
 ---
 
-## 6. مثال كود مختصر لعميل KMM (Kotlin / Ktor Snippet)
+## 7. Minimal Ktor Client Sketch (Illustrative)
 
 ```kotlin
-class CoachApiClient(
+@Serializable
+data class ApiEnvelope<T>(
+    val ok: Boolean,
+    val data: T? = null,
+    val error: ApiErrorBody? = null,
+    val meta: ApiMeta
+)
+
+class CuraFitApiClient(
     private val http: HttpClient,
     private val baseUrl: String,
     private val tokenProvider: suspend () -> String
 ) {
     private var bootstrapEtag: String? = null
 
-    suspend fun fetchBootstrap(): BootstrapDto? {
+    suspend fun fetchBootstrap(): ApiEnvelope<BootstrapData>? {
         val response = http.get("$baseUrl/v1/bootstrap") {
             header(HttpHeaders.Authorization, "Bearer ${tokenProvider()}")
             bootstrapEtag?.let { header(HttpHeaders.IfNoneMatch, it) }
@@ -143,7 +159,7 @@ class CoachApiClient(
         revision: Int,
         action: String,
         payload: JsonObject
-    ): CommandReceiptDto {
+    ): ApiEnvelope<CommandReceiptData> {
         return http.post("$baseUrl/v1/commands?view=receipt") {
             header(HttpHeaders.Authorization, "Bearer ${tokenProvider()}")
             header("Idempotency-Key", idempotencyKey)
@@ -158,9 +174,3 @@ class CoachApiClient(
     }
 }
 ```
-
-## ملاحظات المزامنة بعد التحقق
-
-احتفظ بقيمة ETag نفسها من الاستجابة؛ المفتاح يشمل تاريخ المستخدم وانتهاء بيانات الوقت. عند وجود صفحات deltas، استعمل nextSeqCursor مع afterSeq حتى نهاية الصفحات. لا تقدّم currentRevision المحلي إلى مراجعات لم تطبق فروقها بعد. فروق nutrition_plan وworkout_plan قد تحمل requiresFetch=true؛ اجلب المورد من مساره بدل اعتبار مرجع الخطة خطة كاملة. تأكيد الأكل ونتائج الجلسة قد يصلان كفروق إضافية لنفس الأمر.
-
-مثال Kotlin أعلاه توضيحي ويحتفظ بقيمة ETag في الذاكرة؛ خزّنها مع النسخة المحلية إذا احتجت استمرار التخزين المؤقت بعد إغلاق التطبيق. لم يتم توليد أو تجميع مشروع KMM فعلي ضمن هذه الجولة.

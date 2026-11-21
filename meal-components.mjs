@@ -2,6 +2,7 @@ import {METRICS,ingredientAllowed,fitMeal,combineSnapshots,validatePreferences,p
 import {aggregate} from './calculator.mjs';
 import {MENU_PARTS} from './egyptian-menu.mjs';
 import {displayIngredientName,displayMealName} from './meal-presentation.mjs';
+import {apiError} from './coaching-error.mjs';
 const clone=x=>JSON.parse(JSON.stringify(x));
 const tiers={low:1,medium:2,high:3};
 const roleOf=i=>({protein:'main',carb:'starch',veg:'side',fruit:'fruit',fat:'fat'}[i.role]||'other');
@@ -22,7 +23,7 @@ export function mealComponents(snapshot) {
 }
 export function componentAlternatives(snapshot,index,prefs,lib,slot=null) {
   const p=validatePreferences(prefs,lib),parts=mealComponents(snapshot),current=parts[index];
-  if(!current)throw Error('الجزء المطلوب غير موجود');
+  if(!current)throw apiError('MEAL_COMPONENT_NOT_FOUND','Requested meal component index not found.',{status:404});
   if(current.values.energy == null || Number(current.values.energy)<=0)return [];
   const role=current.component_role||roleOf(current.ingredients?.[0]||{});
   const fingerprint=s=>s.ingredients.map(i=>i.food_id).sort().join('|');
@@ -48,8 +49,8 @@ export function componentAlternatives(snapshot,index,prefs,lib,slot=null) {
 }
 export function replaceMealComponent(snapshot,index,replacement) {
   const parts=mealComponents(snapshot);
-  if(!Number.isInteger(index)||index<0||index>=parts.length)throw Error('الجزء المطلوب غير موجود');
-  if(!replacement?.ingredients?.length)throw Error('اختار بديلًا له بيانات وكمية');
+  if(!Number.isInteger(index)||index<0||index>=parts.length)throw apiError('MEAL_COMPONENT_NOT_FOUND','Requested meal component index not found.',{status:404});
+  if(!replacement?.ingredients?.length)throw apiError('MEAL_COMPONENT_REPLACEMENT_INVALID','Replacement component must have valid ingredients.',{status:400});
   const role=parts[index].component_role||roleOf(parts[index].ingredients?.[0]||{});
   parts[index]={...clone(replacement),component_role:role};
   const name=parts.map(displayMealName).join(' + ').slice(0,120);

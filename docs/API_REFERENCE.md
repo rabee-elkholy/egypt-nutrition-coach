@@ -1,6 +1,6 @@
-# Egypt Nutrition Coach (CuraFit) — Cloudflare Workers API v1
+# CuraFit API v1 — Cloudflare Workers & D1
 
-Complete, production-ready REST API running natively on **Cloudflare Workers + Cloudflare D1** (`egypt-nutrition-coach`). Zero Supabase or external IdP dependency.
+Production-grade REST API running natively on **Cloudflare Workers + Cloudflare D1** (`curafit-api` for Production, `curafit-api-dev` for Cloud Dev). Designed for **Kotlin Multiplatform Mobile (KMM)** and clean Web User Stories with uniform JSON envelopes and 100% English machine-coded errors.
 
 ---
 
@@ -8,10 +8,11 @@ Complete, production-ready REST API running natively on **Cloudflare Workers + C
 
 Switch between environments from the top-right **Environment selector** in Postman:
 
-| Environment Name | `baseUrl` | Purpose |
-| :--- | :--- | :--- |
-| **Production Server (Cloudflare Workers)** | `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev` | Live Cloudflare Workers + Cloudflare D1 production server |
-| **Dev Server (Local Miniflare / Dev)** | `http://127.0.0.1:8787` | Local development server (`npm run dev`) or custom dev/staging URL |
+| Environment Name | `baseUrl` | Cloudflare Worker / D1 | Purpose |
+| :--- | :--- | :--- | :--- |
+| **CuraFit — Cloud Dev** | `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` | `curafit-api-dev` / `curafit-db-dev` | Feature development & staging on Cloudflare edge (`dev` branch, full clone of Prod D1) |
+| **CuraFit — Production** | `https://curafit-api.egypt-nutrition-coach.workers.dev` | `curafit-api` / `egypt-nutrition-coaching` | Live Cloudflare Workers + D1 production server (`main` branch) |
+| **CuraFit — Local Dev** | `http://127.0.0.1:8787` | Local Miniflare | Local development server (`npm run dev`) |
 
 ---
 
@@ -21,7 +22,7 @@ Switch between environments from the top-right **Environment selector** in Postm
 - **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).
 - **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).
 - **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).
-- **Web MVP Fallback:** Browser clients without Bearer token continue to use the `HttpOnly` `coach_uid` anonymous cookie and can migrate via `POST /v1/auth/claim-anonymous`.
+- **Web Fallback:** Browser clients without Bearer token continue to use the `HttpOnly` `coach_uid` anonymous cookie and can migrate via `POST /v1/auth/claim-anonymous`.
 
 ---
 
@@ -29,26 +30,29 @@ Switch between environments from the top-right **Environment selector** in Postm
 
 All domain mutations pass through `POST /v1/commands`:
 - **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and body on network timeout.
-- **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `currentRevision` and `mergeHints`.
-- **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt; `?view=full` returns the full account snapshot.
-- **Simulation Mode (`?simulation=1`):** Isolates all reads/writes into the user's 90-day virtual simulation namespace without touching real account data.
+- **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.details.currentRevision` and `error.details.mergeHints`.
+- **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt inside `data`; `?view=full` returns the full account snapshot inside `data`.
 
 ---
 
-## 4. Standard Error Envelope
+## 4. Uniform KMM Envelopes & Pure-English Error Contract
 
-All `4xx` / `5xx` errors return:
+Every JSON endpoint returns the canonical envelope:
+
+- **Success (`2xx`):** `{ "ok": true, "data": <T>, "meta": { "requestId": "<uuid>", "serverTime": "<iso8601>", "revision"?: <int> } }`
+- **Error (`4xx` / `5xx`):** `{ "ok": false, "error": { "code", "message", "params", "fieldErrors", "retryable", "details"?: {...} }, "meta": { "requestId": "<uuid>", "serverTime": "<iso8601>" } }`
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `error` | `string` | Human-readable Arabic error message |
-| `code` | `string` | Stable machine-readable code (e.g. `VALIDATION_ERROR`, `UNAUTHENTICATED`, `REVISION_CONFLICT`, `RATE_LIMITED`) |
-| `message` | `string` | Same as `error` |
-| `fieldErrors` | `Array<{field, code, message}>` | Optional per-field validation errors |
-| `requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |
-| `retryable` | `boolean` | Whether the client may safely retry (`true` for `429`/`503`/`500`) |
-| `currentRevision` | `integer` (optional) | Returned on `409 REVISION_CONFLICT` |
-| `mergeHints` | `object` (optional) | Sync recovery hints on `409` |
+| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |
+| `error.code` | `string` | Stable uppercase error code (235 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
+| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |
+| `error.params` | `object` | Interpolation parameters for client-side localization |
+| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |
+| `error.retryable` | `boolean` | Whether the client may safely retry (`true` for `429`/`503`/`500`) |
+| `error.details` | `object` (optional) | Structured recovery data such as `currentRevision` and `mergeHints` on `409` |
+| `meta.requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |
+| `meta.serverTime` | `string (ISO-8601)` | Server UTC timestamp |
 
 ---
 
@@ -56,7 +60,7 @@ All `4xx` / `5xx` errors return:
 
 | Variable | Type | Scope | Description |
 | :--- | :--- | :--- | :--- |
-| `baseUrl` | `string (URL)` | Environment | Server base URL (`Production` or `Dev`) |
+| `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |
 | `testEmail` | `string (email)` | Environment | Email used in Register / Login |
 | `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) |
 | `testNewPassword` | `string (secret)` | Environment | New password for Change Password |
@@ -67,8 +71,7 @@ All `4xx` / `5xx` errors return:
 | `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by Register / Login / Refresh |
 | `sessionId` | `string` | Collection (auto) | Current D1 session ID |
 | `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |
-| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision (real account) |
-| `simRevision` | `integer` | Collection (auto) | Current revision for `?simulation=1` namespace |
+| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |
 | `idempotencyKey` | `string (UUID)` | Pre-request (auto) | Fresh UUID generated before every request |
 | `todayDate` | `string (YYYY-MM-DD)` | Collection (auto) | Current server local date |
 | `lastEtag` | `string` | Collection (auto) | Last `ETag` response header for `If-None-Match` |
@@ -90,7 +93,7 @@ All `4xx` / `5xx` errors return:
 
 ---
 
-## 6. Complete Endpoint Reference (13 Groups / 81 Endpoints)
+## 6. Complete Endpoint Reference (12 Groups / 77 Endpoints)
 
 ## 01. System & Health
 
@@ -103,8 +106,9 @@ Public health probe returning API version, engine version, and trace `requestId`
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/health`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/health`
-- **Dev URL:** `http://127.0.0.1:8787/v1/health`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/health`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/health`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/health`
 - **Auth:** Public (`No Auth`)
 
 ### Headers
@@ -115,7 +119,7 @@ Public health probe returning API version, engine version, and trace `requestId`
 ### Response Fields
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `ok` | `boolean` | `true` when Worker is healthy. |
+| `status` | `string` | `"ok"` when Worker is healthy. |
 | `apiVersion` | `string` | API major version (`"1"`). |
 | `engineVersion` | `string` | Backend engine semver (e.g. `"0.13.0"`). |
 | `requestId` | `string (UUID)` | Request trace ID. |
@@ -124,9 +128,16 @@ Public health probe returning API version, engine version, and trace `requestId`
 ```json
 {
   "ok": true,
-  "apiVersion": "1",
-  "engineVersion": "0.13.0",
-  "requestId": "req-uuid"
+  "data": {
+    "status": "ok",
+    "apiVersion": "1",
+    "engineVersion": "0.13.0",
+    "requestId": "req-uuid"
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 
@@ -139,8 +150,9 @@ Returns API/schema/catalog versions, enabled feature flags, and native Cloudflar
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/capabilities`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/capabilities`
-- **Dev URL:** `http://127.0.0.1:8787/v1/capabilities`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/capabilities`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/capabilities`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/capabilities`
 - **Auth:** Public (`No Auth`)
 
 ### Headers
@@ -163,23 +175,30 @@ Returns API/schema/catalog versions, enabled feature flags, and native Cloudflar
 #### Example Response — 200 OK — Capabilities
 ```json
 {
-  "apiVersion": "1",
-  "schemaVersion": 3,
-  "engineVersion": "0.13.0",
-  "catalogVersion": "open-exercise-db-2026",
-  "foodCatalogVersion": "0.6.0",
-  "serverTime": "2026-11-21T12:30:00.000Z",
-  "auth": {
-    "provider": "cloudflare_d1_native",
-    "configured": true
+  "ok": true,
+  "data": {
+    "apiVersion": "1",
+    "schemaVersion": 3,
+    "engineVersion": "0.13.0",
+    "catalogVersion": "202610112340",
+    "foodCatalogVersion": "0.6.0-data.4",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "auth": {
+      "provider": "cloudflare_d1_native",
+      "configured": true
+    },
+    "features": [
+      "adaptive_nutrition",
+      "adaptive_workouts",
+      "native_cloudflare_auth",
+      "kmm_bootstrap",
+      "offline_sync_v2"
+    ]
   },
-  "features": [
-    "adaptive_nutrition",
-    "adaptive_workouts",
-    "native_cloudflare_auth",
-    "kmm_bootstrap",
-    "offline_sync_v2"
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 
@@ -196,8 +215,9 @@ Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/auth/register`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/auth/register`
-- **Dev URL:** `http://127.0.0.1:8787/v1/auth/register`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/register`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/register`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/register`
 - **Auth:** Public (`No Auth`)
 
 ### Headers
@@ -219,7 +239,7 @@ Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and
 {
   "email": "{{testEmail}}",
   "password": "{{testPassword}}",
-  "name": "أحمد محمد",
+  "name": "Ahmed Mohamed",
   "deviceId": "{{deviceId}}"
 }
 ```
@@ -247,20 +267,27 @@ Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and
 #### Example Response — 201 Created — Token Pair
 ```json
 {
-  "tokenType": "Bearer",
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
-  "expiresIn": 900,
-  "expiresAt": "2026-11-21T12:45:00.000Z",
-  "refreshToken": "cfrt_example_opaque_refresh_token_32bytes",
-  "refreshExpiresIn": 2592000,
-  "refreshExpiresAt": "2026-12-21T12:30:00.000Z",
-  "sessionId": "sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b",
-  "user": {
-    "userId": "user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
-    "email": "demo.user@curafit.app",
-    "name": "أحمد محمد",
-    "entitlement": "free",
-    "createdAt": "2026-11-21T12:30:00.000Z"
+  "ok": true,
+  "data": {
+    "tokenType": "Bearer",
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
+    "expiresIn": 900,
+    "expiresAt": "2026-11-21T12:45:00.000Z",
+    "refreshToken": "cfrt_example_opaque_refresh_token_32bytes",
+    "refreshExpiresIn": 2592000,
+    "refreshExpiresAt": "2026-12-21T12:30:00.000Z",
+    "sessionId": "sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b",
+    "user": {
+      "userId": "user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "email": "demo.user@curafit.app",
+      "name": "Ahmed Mohamed",
+      "entitlement": "free",
+      "createdAt": "2026-11-21T12:30:00.000Z"
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -274,8 +301,9 @@ Authenticates an existing user via email & password using constant-time PBKDF2 v
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/auth/login`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/auth/login`
-- **Dev URL:** `http://127.0.0.1:8787/v1/auth/login`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/login`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/login`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/login`
 - **Auth:** Public (`No Auth`)
 
 ### Headers
@@ -322,20 +350,27 @@ Authenticates an existing user via email & password using constant-time PBKDF2 v
 #### Example Response — 200 OK — Token Pair
 ```json
 {
-  "tokenType": "Bearer",
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
-  "expiresIn": 900,
-  "expiresAt": "2026-11-21T12:45:00.000Z",
-  "refreshToken": "cfrt_example_opaque_refresh_token_32bytes",
-  "refreshExpiresIn": 2592000,
-  "refreshExpiresAt": "2026-12-21T12:30:00.000Z",
-  "sessionId": "sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b",
-  "user": {
-    "userId": "user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
-    "email": "demo.user@curafit.app",
-    "name": "أحمد محمد",
-    "entitlement": "free",
-    "createdAt": "2026-11-21T12:30:00.000Z"
+  "ok": true,
+  "data": {
+    "tokenType": "Bearer",
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
+    "expiresIn": 900,
+    "expiresAt": "2026-11-21T12:45:00.000Z",
+    "refreshToken": "cfrt_example_opaque_refresh_token_32bytes",
+    "refreshExpiresIn": 2592000,
+    "refreshExpiresAt": "2026-12-21T12:30:00.000Z",
+    "sessionId": "sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b",
+    "user": {
+      "userId": "user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "email": "demo.user@curafit.app",
+      "name": "Ahmed Mohamed",
+      "entitlement": "free",
+      "createdAt": "2026-11-21T12:30:00.000Z"
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -349,8 +384,9 @@ Exchanges a valid `refreshToken` for a fresh Access JWT and a newly rotated `ref
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/auth/refresh`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/auth/refresh`
-- **Dev URL:** `http://127.0.0.1:8787/v1/auth/refresh`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/refresh`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/refresh`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/refresh`
 - **Auth:** Public (`No Auth`)
 
 ### Headers
@@ -396,20 +432,27 @@ Exchanges a valid `refreshToken` for a fresh Access JWT and a newly rotated `ref
 #### Example Response — 200 OK — Token Pair
 ```json
 {
-  "tokenType": "Bearer",
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
-  "expiresIn": 900,
-  "expiresAt": "2026-11-21T12:45:00.000Z",
-  "refreshToken": "cfrt_example_opaque_refresh_token_32bytes",
-  "refreshExpiresIn": 2592000,
-  "refreshExpiresAt": "2026-12-21T12:30:00.000Z",
-  "sessionId": "sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b",
-  "user": {
-    "userId": "user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
-    "email": "demo.user@curafit.app",
-    "name": "أحمد محمد",
-    "entitlement": "free",
-    "createdAt": "2026-11-21T12:30:00.000Z"
+  "ok": true,
+  "data": {
+    "tokenType": "Bearer",
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
+    "expiresIn": 900,
+    "expiresAt": "2026-11-21T12:45:00.000Z",
+    "refreshToken": "cfrt_example_opaque_refresh_token_32bytes",
+    "refreshExpiresIn": 2592000,
+    "refreshExpiresAt": "2026-12-21T12:30:00.000Z",
+    "sessionId": "sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b",
+    "user": {
+      "userId": "user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "email": "demo.user@curafit.app",
+      "name": "Ahmed Mohamed",
+      "entitlement": "free",
+      "createdAt": "2026-11-21T12:30:00.000Z"
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -423,8 +466,9 @@ Returns authenticated caller identity, session ID, auth method, scopes, entitlem
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/auth/session`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/auth/session`
-- **Dev URL:** `http://127.0.0.1:8787/v1/auth/session`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/session`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/session`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/session`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -449,19 +493,26 @@ Returns authenticated caller identity, session ID, auth method, scopes, entitlem
 #### Example Response — 200 OK — Session Info
 ```json
 {
-  "userId": "user:1a2b",
-  "subject": "user:1a2b",
-  "sessionId": "sess_123",
-  "deviceId": "postman-prod-01",
-  "authMethod": "bearer_jwt",
-  "isAnonymous": false,
-  "scopes": [
-    "coach:read",
-    "coach:write"
-  ],
-  "entitlement": "free",
-  "issuedAt": "2026-11-21T12:30:00.000Z",
-  "expiresAt": "2026-11-21T12:45:00.000Z"
+  "ok": true,
+  "data": {
+    "userId": "user:1a2b",
+    "subject": "user:1a2b",
+    "sessionId": "sess_123",
+    "deviceId": "postman-prod-01",
+    "authMethod": "bearer_jwt",
+    "isAnonymous": false,
+    "scopes": [
+      "coach:read",
+      "coach:write"
+    ],
+    "entitlement": "free",
+    "issuedAt": "2026-11-21T12:30:00.000Z",
+    "expiresAt": "2026-11-21T12:45:00.000Z"
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 
@@ -474,8 +525,9 @@ Verifies `currentPassword`, updates the PBKDF2-SHA256 hash in D1, and optionally
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/auth/change-password`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/auth/change-password`
-- **Dev URL:** `http://127.0.0.1:8787/v1/auth/change-password`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/change-password`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/change-password`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/change-password`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -516,9 +568,16 @@ Verifies `currentPassword`, updates the PBKDF2-SHA256 hash in D1, and optionally
 #### Example Response — 200 OK — Password Changed
 ```json
 {
-  "changed": true,
-  "revokedOtherSessions": true,
-  "updatedAt": "2026-11-21T12:35:00.000Z"
+  "ok": true,
+  "data": {
+    "changed": true,
+    "revokedOtherSessions": true,
+    "updatedAt": "2026-11-21T12:35:00.000Z"
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 
@@ -531,8 +590,9 @@ Atomically migrates an anonymous Web MVP trial account (`anon:...`) into the log
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/auth/claim-anonymous`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/auth/claim-anonymous`
-- **Dev URL:** `http://127.0.0.1:8787/v1/auth/claim-anonymous`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/claim-anonymous`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/claim-anonymous`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/claim-anonymous`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -572,10 +632,18 @@ Atomically migrates an anonymous Web MVP trial account (`anon:...`) into the log
 #### Example Response — 200 OK — Claimed
 ```json
 {
-  "claimed": true,
-  "fromAnonymousId": "anon:abc",
-  "toUserId": "user:1a2b",
-  "revision": 3
+  "ok": true,
+  "data": {
+    "claimed": true,
+    "fromAnonymousId": "anon:abc",
+    "toUserId": "user:1a2b",
+    "revision": 3
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 3
+  }
 }
 ```
 
@@ -588,8 +656,9 @@ Immediately revokes a specific `sessionId` or all sessions (`allDevices: true`) 
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/auth/revoke`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/auth/revoke`
-- **Dev URL:** `http://127.0.0.1:8787/v1/auth/revoke`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/revoke`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/revoke`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/revoke`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -622,9 +691,16 @@ Immediately revokes a specific `sessionId` or all sessions (`allDevices: true`) 
 #### Example Response — 200 OK — Revoked
 ```json
 {
-  "revoked": true,
-  "sessionId": "sess_123",
-  "revokedAt": "2026-11-21T12:35:00.000Z"
+  "ok": true,
+  "data": {
+    "revoked": true,
+    "sessionId": "sess_123",
+    "revokedAt": "2026-11-21T12:35:00.000Z"
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 
@@ -637,8 +713,9 @@ Logs out the current session (or all devices) and revokes associated refresh tok
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/auth/logout`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/auth/logout`
-- **Dev URL:** `http://127.0.0.1:8787/v1/auth/logout`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/logout`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/logout`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/logout`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -671,10 +748,17 @@ Logs out the current session (or all devices) and revokes associated refresh tok
 #### Example Response — 200 OK — Logged Out
 ```json
 {
-  "loggedOut": true,
-  "sessionId": "sess_123",
-  "allDevices": false,
-  "revokedAt": "2026-11-21T12:36:00.000Z"
+  "ok": true,
+  "data": {
+    "loggedOut": true,
+    "sessionId": "sess_123",
+    "allDevices": false,
+    "revokedAt": "2026-11-21T12:36:00.000Z"
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 
@@ -691,8 +775,9 @@ Fast deterministic pre-onboarding screening checking age (18..70), BMI boundarie
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/eligibility`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/eligibility`
-- **Dev URL:** `http://127.0.0.1:8787/v1/eligibility`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/eligibility`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/eligibility`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/eligibility`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -743,20 +828,27 @@ Fast deterministic pre-onboarding screening checking age (18..70), BMI boundarie
 #### Example Response — 200 OK — Eligible
 ```json
 {
-  "status": "eligible",
-  "reviewScope": "system_generated_screening_not_medical_diagnosis",
-  "reasons": [],
-  "questions": [],
-  "supportedAdaptations": {
-    "diseases": [],
-    "injuries": []
+  "ok": true,
+  "data": {
+    "status": "eligible",
+    "reviewScope": "system_generated_screening_not_medical_diagnosis",
+    "reasons": [],
+    "questions": [],
+    "supportedAdaptations": {
+      "diseases": [],
+      "injuries": []
+    },
+    "permittedFunctions": [
+      "generate_plan",
+      "log_execution",
+      "adaptive_review"
+    ],
+    "clinicalSummary": null
   },
-  "permittedFunctions": [
-    "generate_plan",
-    "log_execution",
-    "adaptive_review"
-  ],
-  "clinicalSummary": null
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 
@@ -769,8 +861,9 @@ Creates the user profile, generates a personalized 7-day regional nutrition plan
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=full`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=full`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=full`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=full`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=full`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=full`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -820,7 +913,7 @@ Creates the user profile, generates a personalized 7-day regional nutrition plan
   "revision": {{revision}},
   "action": "generate",
   "payload": {
-    "name": "أحمد محمد",
+    "name": "Ahmed Mohamed",
     "age": 29,
     "weight": 82,
     "height": 178,
@@ -870,42 +963,60 @@ Creates the user profile, generates a personalized 7-day regional nutrition plan
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "generate",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "generate",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "generate",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "generate",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -919,8 +1030,9 @@ Explicit health confirmation for legacy `workouts_only` accounts that have not y
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -980,42 +1092,60 @@ Explicit health confirmation for legacy `workouts_only` accounts that have not y
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "confirm_health",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "confirm_health",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "confirm_health",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "confirm_health",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -1029,8 +1159,9 @@ Maps legacy workout day indexes to canonical `js_sunday_0` (`0=Sun .. 6=Sat`).
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1092,42 +1223,60 @@ Maps legacy workout day indexes to canonical `js_sunday_0` (`0=Sun .. 6=Sat`).
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "confirm_schedule",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "confirm_schedule",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "confirm_schedule",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "confirm_schedule",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -1141,8 +1290,9 @@ Generates the next 7-day nutrition plan after the active plan's end date has ela
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1197,42 +1347,60 @@ Generates the next 7-day nutrition plan after the active plan's end date has ela
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "renew_plan",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "renew_plan",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "renew_plan",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "renew_plan",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -1250,8 +1418,9 @@ Lightweight mobile startup payload (`< 10 KB`) returning profile, preferences, a
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/bootstrap`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/bootstrap`
-- **Dev URL:** `http://127.0.0.1:8787/v1/bootstrap`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/bootstrap`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/bootstrap`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/bootstrap`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1277,24 +1446,32 @@ Lightweight mobile startup payload (`< 10 KB`) returning profile, preferences, a
 #### Example Response — 200 OK — Bootstrap
 ```json
 {
-  "schemaVersion": 3,
-  "revision": 1,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "profile": {
-    "name": "أحمد محمد",
-    "goal": "lose",
-    "weight": 82
+  "ok": true,
+  "data": {
+    "schemaVersion": 3,
+    "revision": 1,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "profile": {
+      "name": "Ahmed Mohamed",
+      "goal": "lose",
+      "weight": 82
+    },
+    "activeNutritionPlanRef": {
+      "id": "plan-uuid"
+    },
+    "activeWorkoutPlanRef": {
+      "id": "wp-uuid"
+    },
+    "todaySummary": {},
+    "pendingAdaptations": []
   },
-  "activeNutritionPlanRef": {
-    "id": "plan-uuid"
-  },
-  "activeWorkoutPlanRef": {
-    "id": "wp-uuid"
-  },
-  "todaySummary": {},
-  "pendingAdaptations": []
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 1
+  }
 }
 ```
 
@@ -1307,8 +1484,9 @@ Returns the complete account aggregate including active 7-day nutrition plan, wo
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/state`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/state`
-- **Dev URL:** `http://127.0.0.1:8787/v1/state`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/state`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/state`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/state`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1338,8 +1516,9 @@ Returns 14-day weight trend (7d vs previous 7d average), food completeness, hydr
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/progress/summary`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/progress/summary`
-- **Dev URL:** `http://127.0.0.1:8787/v1/progress/summary`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/summary`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/summary`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/summary`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1370,8 +1549,9 @@ Returns actual food entries, nullable nutrient totals, completion status, and pl
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/food-diary?date={{todayDate}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/food-diary?date={{todayDate}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/food-diary?date={{todayDate}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/food-diary?date={{todayDate}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/food-diary?date={{todayDate}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/food-diary?date={{todayDate}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1402,8 +1582,9 @@ Logs consumption of a planned meal from the active nutrition plan. Reopens day c
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1469,42 +1650,60 @@ Logs consumption of a planned meal from the active nutrition plan. Reopens day c
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "food_entry",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_entry",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_entry",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "food_entry",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -1518,8 +1717,9 @@ Logs a verified reference ingredient by planning key (e.g. `chicken`, `rice`, `f
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1585,42 +1785,60 @@ Logs a verified reference ingredient by planning key (e.g. `chicken`, `rice`, `f
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "food_entry",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_entry",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_entry",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "food_entry",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -1634,8 +1852,9 @@ Logs a custom manual food item with calories and optional protein/carbs/fat.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1675,7 +1894,7 @@ Logs a custom manual food item with calories and optional protein/carbs/fat.
   "payload": {
     "date": "{{todayDate}}",
     "source": "manual",
-    "name": "طبق كشري متوسط",
+    "name": "Medium Koshary Bowl",
     "slot": "dinner",
     "energy": 480,
     "protein": 16,
@@ -1707,42 +1926,60 @@ Logs a custom manual food item with calories and optional protein/carbs/fat.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "food_entry",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_entry",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_entry",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "food_entry",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -1756,8 +1993,9 @@ Explicitly confirms whether all food intake for `date` has been recorded (indepe
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1817,42 +2055,60 @@ Explicitly confirms whether all food intake for `date` has been recorded (indepe
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "food_complete",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_complete",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_complete",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "food_complete",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -1866,8 +2122,9 @@ Deletes a logged food entry by ID and reopens that day's completion status.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -1925,42 +2182,60 @@ Deletes a logged food entry by ID and reopens that day's completion status.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "food_delete",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_delete",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_delete",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "food_delete",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -1974,8 +2249,9 @@ Logs a single daily calorie total for a date that has no detailed entries.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2037,42 +2313,60 @@ Logs a single daily calorie total for a date that has no detailed entries.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "food",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "food",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -2086,8 +2380,9 @@ Archives a legacy daily total so detailed food entries can be logged for that da
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2147,42 +2442,60 @@ Archives a legacy daily total so detailed food entries can be logged for that da
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "food_switch_to_entries",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_switch_to_entries",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_switch_to_entries",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "food_switch_to_entries",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -2196,8 +2509,9 @@ Returns up to 6 validated culinary substitutes matching diet, budget, exclusions
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/meal-alternatives?mealId={{sampleMealId}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/meal-alternatives?mealId={{sampleMealId}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/meal-alternatives?mealId={{sampleMealId}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/meal-alternatives?mealId={{sampleMealId}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/meal-alternatives?mealId={{sampleMealId}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/meal-alternatives?mealId={{sampleMealId}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2224,8 +2538,9 @@ Substitutes a planned meal with a validated `templateId` from `GET /v1/meal-alte
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2285,42 +2600,60 @@ Substitutes a planned meal with a validated `templateId` from `GET /v1/meal-alte
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "replace_meal",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "replace_meal",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "replace_meal",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "replace_meal",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -2338,8 +2671,9 @@ Sets total water intake (cups, 250 mL each) for the given date.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2399,42 +2733,60 @@ Sets total water intake (cups, 250 mL each) for the given date.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "water",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "water",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "water",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "water",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -2448,8 +2800,9 @@ Increments or decrements water intake relative to the date's existing total.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2509,42 +2862,60 @@ Increments or decrements water intake relative to the date's existing total.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "water",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "water",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "water",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "water",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -2558,8 +2929,9 @@ Paginated water intake logs ordered by date descending.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/water-logs?offset=0&limit=30`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/water-logs?offset=0&limit=30`
-- **Dev URL:** `http://127.0.0.1:8787/v1/water-logs?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/water-logs?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/water-logs?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/water-logs?offset=0&limit=30`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2593,8 +2965,9 @@ Records or updates scale weight (kg) for a date (same-date entries update in pla
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2656,42 +3029,60 @@ Records or updates scale weight (kg) for a date (same-date entries update in pla
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "weight",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "weight",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "weight",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "weight",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -2705,8 +3096,9 @@ Paginated weight measurements ordered by date descending.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/weight-logs?offset=0&limit=30`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/weight-logs?offset=0&limit=30`
-- **Dev URL:** `http://127.0.0.1:8787/v1/weight-logs?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/weight-logs?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/weight-logs?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/weight-logs?offset=0&limit=30`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2740,8 +3132,9 @@ Logs daily step count.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2803,42 +3196,60 @@ Logs daily step count.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "steps",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "steps",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "steps",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "steps",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -2852,8 +3263,9 @@ Logs daily steps and active energy burn with optional deduplication via `externa
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -2919,42 +3331,60 @@ Logs daily steps and active energy burn with optional deduplication via `externa
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "activity",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "activity",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "activity",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "activity",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -2968,8 +3398,9 @@ Paginated activity and step logs.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/activity-logs?offset=0&limit=30`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/activity-logs?offset=0&limit=30`
-- **Dev URL:** `http://127.0.0.1:8787/v1/activity-logs?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/activity-logs?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/activity-logs?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/activity-logs?offset=0&limit=30`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3003,8 +3434,9 @@ Idempotent batch ingestion of up to 100 weight/steps/activity records from Andro
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/wearables/ingest`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/wearables/ingest`
-- **Dev URL:** `http://127.0.0.1:8787/v1/wearables/ingest`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/wearables/ingest`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/wearables/ingest`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/wearables/ingest`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3058,8 +3490,16 @@ Idempotent batch ingestion of up to 100 weight/steps/activity records from Andro
 ```json
 {
   "ok": true,
-  "revision": 6,
-  "ingested": 2
+  "data": {
+    "ok": true,
+    "revision": 6,
+    "ingested": 2
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 6
+  }
 }
 ```
 
@@ -3076,8 +3516,9 @@ Lists active and archived workout plan version references owned by the user.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/workout-plans`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/workout-plans`
-- **Dev URL:** `http://127.0.0.1:8787/v1/workout-plans`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/workout-plans`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/workout-plans`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/workout-plans`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3099,8 +3540,9 @@ Fetches full owned workout plan with days, exercises, target reps/RIR, rest seco
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/workout-plans/{{activeWorkoutPlanId}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/workout-plans/{{activeWorkoutPlanId}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/workout-plans/{{activeWorkoutPlanId}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/workout-plans/{{activeWorkoutPlanId}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/workout-plans/{{activeWorkoutPlanId}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/workout-plans/{{activeWorkoutPlanId}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3122,8 +3564,9 @@ Logs performed sets (`kg`, `reps`, `rir`, `pain`) for a scheduled exercise and c
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3211,42 +3654,60 @@ Logs performed sets (`kg`, `reps`, `rir`, `pain`) for a scheduled exercise and c
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "workout",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "workout",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "workout",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "workout",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -3260,8 +3721,9 @@ Paginated exercise set/rep/load logs.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/workout-logs?offset=0&limit=30`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/workout-logs?offset=0&limit=30`
-- **Dev URL:** `http://127.0.0.1:8787/v1/workout-logs?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/workout-logs?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/workout-logs?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/workout-logs?offset=0&limit=30`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3295,8 +3757,9 @@ Marks a workout session as `completed`, `partial`, or `missed`. Completion ratio
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3362,42 +3825,60 @@ Marks a workout session as `completed`, `partial`, or `missed`. Completion ratio
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "session",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "session",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "session",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "session",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -3411,8 +3892,9 @@ Paginated workout session completion records.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/sessions?offset=0&limit=30`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/sessions?offset=0&limit=30`
-- **Dev URL:** `http://127.0.0.1:8787/v1/sessions?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/sessions?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/sessions?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/sessions?offset=0&limit=30`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3446,8 +3928,9 @@ Returns up to 6 biomechanically equivalent, injury-safe, equipment-matched, time
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/exercise-alternatives?dayIndex={{sampleDayIndex}}&exerciseId={{sampleExerciseId}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/exercise-alternatives?dayIndex={{sampleDayIndex}}&exerciseId={{sampleExerciseId}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/exercise-alternatives?dayIndex={{sampleDayIndex}}&exerciseId={{sampleExerciseId}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/exercise-alternatives?dayIndex={{sampleDayIndex}}&exerciseId={{sampleExerciseId}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/exercise-alternatives?dayIndex={{sampleDayIndex}}&exerciseId={{sampleExerciseId}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/exercise-alternatives?dayIndex={{sampleDayIndex}}&exerciseId={{sampleExerciseId}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3475,8 +3958,9 @@ Forks the workout plan replacing `exerciseId` with a validated `alternativeId` w
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3538,42 +4022,60 @@ Forks the workout plan replacing `exerciseId` with a validated `alternativeId` w
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "replace_exercise",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "replace_exercise",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "replace_exercise",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "replace_exercise",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -3587,8 +4089,9 @@ Creates a pending schedule adaptation proposal moving a workout day to a rest da
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3648,42 +4151,60 @@ Creates a pending schedule adaptation proposal moving a workout day to a rest da
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "reschedule",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "reschedule",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "reschedule",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "reschedule",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -3701,8 +4222,9 @@ Records daily sleep, fatigue, stress, regional muscle soreness, pain regions, il
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3783,42 +4305,60 @@ Records daily sleep, fatigue, stress, regional muscle soreness, pain regions, il
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "recovery",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "recovery",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "recovery",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "recovery",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -3832,8 +4372,9 @@ Paginated daily recovery check-ins.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/checkins?offset=0&limit=30`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/checkins?offset=0&limit=30`
-- **Dev URL:** `http://127.0.0.1:8787/v1/checkins?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/checkins?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/checkins?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/checkins?offset=0&limit=30`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3867,8 +4408,9 @@ Evaluates recovery readiness, 14-day weight & nutrition evidence, and workout vo
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=full`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=full`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=full`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=full`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=full`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=full`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -3923,42 +4465,60 @@ Evaluates recovery readiness, 14-day weight & nutrition evidence, and workout vo
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "review",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "review",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "review",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "review",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -3972,8 +4532,9 @@ Accepts (`accept: true`) or declines (`accept: false`) a current, unexpired pend
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4033,42 +4594,60 @@ Accepts (`accept: true`) or declines (`accept: false`) a current, unexpired pend
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "adaptation",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "adaptation",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "adaptation",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "adaptation",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -4082,8 +4661,9 @@ Returns deterministic personalized nutrition, training, and follow-up coaching n
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/coaching/brief`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/coaching/brief`
-- **Dev URL:** `http://127.0.0.1:8787/v1/coaching/brief`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/coaching/brief`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/coaching/brief`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/coaching/brief`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4111,8 +4691,9 @@ Lists active in-app coaching agreements and review dates (read-only; never auto-
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/coaching/inbox`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/coaching/inbox`
-- **Dev URL:** `http://127.0.0.1:8787/v1/coaching/inbox`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/coaching/inbox`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/coaching/inbox`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/coaching/inbox`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4137,8 +4718,9 @@ Paginated historical coaching cases/agreements.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/coaching/history?offset=0&limit=30`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/coaching/history?offset=0&limit=30`
-- **Dev URL:** `http://127.0.0.1:8787/v1/coaching/history?offset=0&limit=30`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/coaching/history?offset=0&limit=30`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/coaching/history?offset=0&limit=30`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/coaching/history?offset=0&limit=30`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4172,8 +4754,9 @@ Logs nutrition or training adherence barriers and subjective scores (1..5), open
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4239,42 +4822,60 @@ Logs nutrition or training adherence barriers and subjective scores (1..5), open
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "coaching_feedback",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "coaching_feedback",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "coaching_feedback",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "coaching_feedback",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -4288,8 +4889,9 @@ Explicitly marks a coaching agreement/message as read/acknowledged.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4347,42 +4949,60 @@ Explicitly marks a coaching agreement/message as read/acknowledged.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "coaching_ack",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "coaching_ack",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "coaching_ack",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "coaching_ack",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -4396,8 +5016,9 @@ Accepts or declines a proposed coaching agreement.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4457,42 +5078,60 @@ Accepts or declines a proposed coaching agreement.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "coaching_decision",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "coaching_decision",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "coaching_decision",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "coaching_decision",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -4506,8 +5145,9 @@ Records user-reported outcome for an accepted coaching agreement.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4567,42 +5207,60 @@ Records user-reported outcome for an accepted coaching agreement.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "coaching_outcome",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "coaching_outcome",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "coaching_outcome",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "coaching_outcome",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -4620,8 +5278,9 @@ Lists active and archived nutrition plan references owned by the caller.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/plans`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/plans`
-- **Dev URL:** `http://127.0.0.1:8787/v1/plans`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/plans`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/plans`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/plans`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4643,8 +5302,9 @@ Fetches the full 7-day owned nutrition plan by ID.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/plans/{{activePlanId}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/plans/{{activePlanId}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/plans/{{activePlanId}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/plans/{{activePlanId}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/plans/{{activePlanId}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/plans/{{activePlanId}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4666,8 +5326,9 @@ Lazy-loads a single day's meals, summary, and historical macro targets from an o
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/plans/{{activePlanId}}/days/{{todayDate}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/plans/{{activePlanId}}/days/{{todayDate}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/plans/{{activePlanId}}/days/{{todayDate}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/plans/{{activePlanId}}/days/{{todayDate}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/plans/{{activePlanId}}/days/{{todayDate}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/plans/{{activePlanId}}/days/{{todayDate}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4694,8 +5355,9 @@ Returns pinned versions, source hashes, licenses, and item counts for both exerc
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/catalog/manifest`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/catalog/manifest`
-- **Dev URL:** `http://127.0.0.1:8787/v1/catalog/manifest`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/catalog/manifest`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/catalog/manifest`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/catalog/manifest`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4712,8 +5374,9 @@ Returns canonical muscle IDs and Arabic/English translations.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/catalog/muscles`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/catalog/muscles`
-- **Dev URL:** `http://127.0.0.1:8787/v1/catalog/muscles`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/catalog/muscles`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/catalog/muscles`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/catalog/muscles`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4729,9 +5392,10 @@ Searches the Egyptian/Gulf & reference food catalog with Arabic normalization, c
 
 ### Endpoint Info
 - **Method:** `GET`
-- **URL:** `{{baseUrl}}/v1/foods?q=فول&scope=all&includeEstimated=true&offset=0&limit=20`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/foods?q=فول&scope=all&includeEstimated=true&offset=0&limit=20`
-- **Dev URL:** `http://127.0.0.1:8787/v1/foods?q=فول&scope=all&includeEstimated=true&offset=0&limit=20`
+- **URL:** `{{baseUrl}}/v1/foods?q=chicken&scope=all&includeEstimated=true&offset=0&limit=20`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/foods?q=chicken&scope=all&includeEstimated=true&offset=0&limit=20`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/foods?q=chicken&scope=all&includeEstimated=true&offset=0&limit=20`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/foods?q=chicken&scope=all&includeEstimated=true&offset=0&limit=20`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4765,8 +5429,9 @@ Returns full provenance, nutrient basis, household portions, and recipe estimate
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/foods/{{sampleFoodId}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/foods/{{sampleFoodId}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/foods/{{sampleFoodId}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/foods/{{sampleFoodId}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/foods/{{sampleFoodId}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/foods/{{sampleFoodId}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4787,9 +5452,10 @@ Searches prepared Egyptian, cafe, Ramadan, and fresh juice beverages.
 
 ### Endpoint Info
 - **Method:** `GET`
-- **URL:** `{{baseUrl}}/v1/beverages?q=شاي&includeEstimated=true&offset=0&limit=20`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/beverages?q=شاي&includeEstimated=true&offset=0&limit=20`
-- **Dev URL:** `http://127.0.0.1:8787/v1/beverages?q=شاي&includeEstimated=true&offset=0&limit=20`
+- **URL:** `{{baseUrl}}/v1/beverages?q=tea&includeEstimated=true&offset=0&limit=20`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/beverages?q=tea&includeEstimated=true&offset=0&limit=20`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/beverages?q=tea&includeEstimated=true&offset=0&limit=20`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/beverages?q=tea&includeEstimated=true&offset=0&limit=20`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4814,8 +5480,9 @@ Calculates aggregate nutrients and per-100g cooked yield from verified ingredien
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/foods/calculate`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/foods/calculate`
-- **Dev URL:** `http://127.0.0.1:8787/v1/foods/calculate`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/foods/calculate`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/foods/calculate`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/foods/calculate`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4860,17 +5527,24 @@ Calculates aggregate nutrients and per-100g cooked yield from verified ingredien
 #### Example Response — 200 OK — Recipe Calculated
 ```json
 {
-  "qualityTier": "Calculated from Verified Ingredients",
-  "inputWeightGrams": "270",
-  "finalWeightGrams": "240",
-  "yieldRatio": "0.8889",
-  "per100gAvailable": true,
-  "nutrients": {
-    "energy": {
-      "total": "412",
-      "per100g": "171.7",
-      "coverageByWeight": "1"
+  "ok": true,
+  "data": {
+    "qualityTier": "Calculated from Verified Ingredients",
+    "inputWeightGrams": "270",
+    "finalWeightGrams": "240",
+    "yieldRatio": "0.8889",
+    "per100gAvailable": true,
+    "nutrients": {
+      "energy": {
+        "total": "412",
+        "per100g": "171.7",
+        "coverageByWeight": "1"
+      }
     }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -4884,8 +5558,9 @@ Searches and filters the 868-exercise catalog (30 items per page).
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/exercises?q=bench&offset=0`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/exercises?q=bench&offset=0`
-- **Dev URL:** `http://127.0.0.1:8787/v1/exercises?q=bench&offset=0`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/exercises?q=bench&offset=0`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/exercises?q=bench&offset=0`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/exercises?q=bench&offset=0`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4910,8 +5585,9 @@ Returns full exercise metadata, target muscles, equipment, and instructions.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/exercises/{{sampleCatalogExerciseId}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/exercises/{{sampleCatalogExerciseId}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/exercises/{{sampleCatalogExerciseId}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/exercises/{{sampleCatalogExerciseId}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/exercises/{{sampleCatalogExerciseId}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/exercises/{{sampleCatalogExerciseId}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4937,8 +5613,9 @@ Returns incremental revision metadata and entity-level outbox deltas (`upsert` a
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/sync/changes?after=0&afterSeq={{nextSeqCursor}}`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/sync/changes?after=0&afterSeq={{nextSeqCursor}}`
-- **Dev URL:** `http://127.0.0.1:8787/v1/sync/changes?after=0&afterSeq={{nextSeqCursor}}`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/sync/changes?after=0&afterSeq={{nextSeqCursor}}`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/sync/changes?after=0&afterSeq={{nextSeqCursor}}`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/sync/changes?after=0&afterSeq={{nextSeqCursor}}`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -4972,8 +5649,9 @@ Updates user IANA timezone and optional UI locale.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -5033,42 +5711,60 @@ Updates user IANA timezone and optional UI locale.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "timezone",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "timezone",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "timezone",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "timezone",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -5082,8 +5778,9 @@ Returns stored reminder flags and quiet-hours window.
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/notifications/preferences`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/notifications/preferences`
-- **Dev URL:** `http://127.0.0.1:8787/v1/notifications/preferences`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/notifications/preferences`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/notifications/preferences`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/notifications/preferences`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -5100,8 +5797,9 @@ Updates reminder toggles and HH:mm quiet-hours window.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/commands?view=receipt`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -5169,42 +5867,60 @@ Updates reminder toggles and HH:mm quiet-hours window.
 ```json
 {
   "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
+  "data": {
     "revision": 2,
-    "action": "notification_preferences",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "notification_preferences",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "notification_preferences",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
   },
-  "affected": [
-    {
-      "entityType": "notification_preferences",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
 }
 ```
 
 #### Example Response — 409 Conflict — Stale Revision
 ```json
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -5218,8 +5934,9 @@ Returns current account subscription tier (`free` | `premium`) and enabled featu
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/entitlements`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/entitlements`
-- **Dev URL:** `http://127.0.0.1:8787/v1/entitlements`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/entitlements`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/entitlements`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/entitlements`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -5229,360 +5946,7 @@ Returns current account subscription tier (`free` | `premium`) and enabled featu
 
 ---
 
-## 12. 90-Day Simulation Mode (?simulation=1)
-
-Isolated per-user 90-day virtual simulation sandbox (`?simulation=1`). Runs the real deterministic nutrition & workout engines on a virtual clock without touching real account data.
-
-### Reset / Start Simulation Round (simulation_reset)
-
-Starts or resets a 90-day virtual simulation round using either `sample` persona or a copy of the user's `current` profile.
-
-### Endpoint Info
-- **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/commands?view=full&simulation=1`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=full&simulation=1`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=full&simulation=1`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Content-Type` | `string` | Yes | Must be application/json |
-| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
-| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
-| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Query Parameters
-| Parameter | Type | Required | Constraints / Default | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
-| `simulation` | `string (const)` | Yes | "1" | Routes command to isolated 90-day simulation namespace. |
-
-### Request Body Fields
-| Field | Type | Required | Constraints / Allowed Values | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
-| `action` | `string (const)` | Yes | "simulation_reset" | Domain command action identifier. |
-| `payload` | `object` | Yes | JSON object | Action-specific payload for `simulation_reset`. |
-| `payload.source` | `string (enum)` | Yes | `sample` | `current` | Initial profile source. |
-| `payload.confirm` | `boolean` | No | Required `true` when resetting an active round | Explicit reset confirmation. |
-
-### Request Body Example
-```json
-{
-  "revision": {{simRevision}},
-  "action": "simulation_reset",
-  "payload": {
-    "source": "sample",
-    "confirm": true
-  }
-}
-```
-
-### Response Fields
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `ok` | `boolean` | `true` when committed or idempotently replayed. |
-| `revision` | `integer` | New monotonic account revision. |
-| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
-| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
-| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
-| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
-
-### Possible Error Responses
-| HTTP Status | Error Code | When |
-| :---: | :--- | :--- |
-| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
-| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
-| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
-| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
-
-#### Example Response — 200 OK — simulation_reset Receipt
-```json
-{
-  "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
-    "revision": 2,
-    "action": "simulation_reset",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
-  },
-  "affected": [
-    {
-      "entityType": "simulation_reset",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
-}
-```
-
-#### Example Response — 409 Conflict — Stale Revision
-```json
-{
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
-  }
-}
-```
-
----
-
-### Get Simulation State
-
-Reads the isolated simulation namespace state, virtual clock, and `simulationToday` summary.
-
-### Endpoint Info
-- **Method:** `GET`
-- **URL:** `{{baseUrl}}/v1/state?simulation=1`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/state?simulation=1`
-- **Dev URL:** `http://127.0.0.1:8787/v1/state?simulation=1`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Query Parameters
-| Parameter | Type | Required | Constraints / Default | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `simulation` | `string (const)` | Yes | "1" | Selects simulation namespace. |
-
----
-
-### Fill Simulation Day Scenario (simulation_fill)
-
-Fills an empty virtual day with synthetic logs via real domain commands and triggers adaptive review.
-
-### Endpoint Info
-- **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/commands?view=receipt&simulation=1`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt&simulation=1`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt&simulation=1`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Content-Type` | `string` | Yes | Must be application/json |
-| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
-| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
-| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Query Parameters
-| Parameter | Type | Required | Constraints / Default | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
-| `simulation` | `string (const)` | Yes | "1" | Routes command to isolated 90-day simulation namespace. |
-
-### Request Body Fields
-| Field | Type | Required | Constraints / Allowed Values | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
-| `action` | `string (const)` | Yes | "simulation_fill" | Domain command action identifier. |
-| `payload` | `object` | Yes | JSON object | Action-specific payload for `simulation_fill`. |
-| `payload.scenario` | `string (enum)` | Yes | `consistent` | `plateau` | `poor_recovery` | `missed_workout` | `low_adherence` | `pain` | Synthetic day behavior scenario. |
-
-### Request Body Example
-```json
-{
-  "revision": {{simRevision}},
-  "action": "simulation_fill",
-  "payload": {
-    "scenario": "consistent"
-  }
-}
-```
-
-### Response Fields
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `ok` | `boolean` | `true` when committed or idempotently replayed. |
-| `revision` | `integer` | New monotonic account revision. |
-| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
-| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
-| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
-| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
-
-### Possible Error Responses
-| HTTP Status | Error Code | When |
-| :---: | :--- | :--- |
-| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
-| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
-| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
-| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
-
-#### Example Response — 200 OK — simulation_fill Receipt
-```json
-{
-  "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
-    "revision": 2,
-    "action": "simulation_fill",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
-  },
-  "affected": [
-    {
-      "entityType": "simulation_fill",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
-}
-```
-
-#### Example Response — 409 Conflict — Stale Revision
-```json
-{
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
-  }
-}
-```
-
----
-
-### Advance Simulation by 1 Day (simulation_next)
-
-Freezes current virtual day summary, advances virtual clock by 1 day (up to day 90), supersedes stale proposals, and renews expired nutrition week.
-
-### Endpoint Info
-- **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/commands?view=receipt&simulation=1`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt&simulation=1`
-- **Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt&simulation=1`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Content-Type` | `string` | Yes | Must be application/json |
-| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
-| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
-| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Query Parameters
-| Parameter | Type | Required | Constraints / Default | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
-| `simulation` | `string (const)` | Yes | "1" | Routes command to isolated 90-day simulation namespace. |
-
-### Request Body Fields
-| Field | Type | Required | Constraints / Allowed Values | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
-| `action` | `string (const)` | Yes | "simulation_next" | Domain command action identifier. |
-| `payload` | `object` | Yes | JSON object | Action-specific payload for `simulation_next`. |
-
-### Request Body Example
-```json
-{
-  "revision": {{simRevision}},
-  "action": "simulation_next",
-  "payload": {}
-}
-```
-
-### Response Fields
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `ok` | `boolean` | `true` when committed or idempotently replayed. |
-| `revision` | `integer` | New monotonic account revision. |
-| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
-| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
-| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
-| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
-
-### Possible Error Responses
-| HTTP Status | Error Code | When |
-| :---: | :--- | :--- |
-| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
-| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
-| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
-| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
-
-#### Example Response — 200 OK — simulation_next Receipt
-```json
-{
-  "ok": true,
-  "revision": 2,
-  "serverNow": "2026-11-21T12:30:00.000Z",
-  "serverDate": "2026-11-21",
-  "timezone": "Africa/Cairo",
-  "commandReceipt": {
-    "revision": 2,
-    "action": "simulation_next",
-    "replayed": false,
-    "at": "2026-11-21T12:30:00.000Z"
-  },
-  "affected": [
-    {
-      "entityType": "simulation_next",
-      "entityId": "example-id",
-      "op": "upsert",
-      "payload": {}
-    }
-  ]
-}
-```
-
-#### Example Response — 409 Conflict — Stale Revision
-```json
-{
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "req-uuid",
-  "retryable": false,
-  "currentRevision": 5,
-  "mergeHints": {
-    "expectedRevision": 4,
-    "serverRevision": 5,
-    "syncChangesEndpoint": "/v1/sync/changes?after=4",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
-  }
-}
-```
-
----
-
-## 13. Privacy, Export & GDPR Deletion
+## 12. Privacy, Export & GDPR Deletion
 
 Versioned health/privacy consent recording, normalized table backfill, full machine-readable GDPR JSON export, and irreversible GDPR account erasure.
 
@@ -5593,8 +5957,9 @@ Records versioned explicit user consent in Cloudflare D1 (`coaching_account_cons
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/account/consents`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/account/consents`
-- **Dev URL:** `http://127.0.0.1:8787/v1/account/consents`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/account/consents`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/account/consents`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/account/consents`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -5630,10 +5995,17 @@ Records versioned explicit user consent in Cloudflare D1 (`coaching_account_cons
 #### Example Response — 200 OK — Consent Recorded
 ```json
 {
-  "consentType": "health_data_processing",
-  "version": "1.0.0",
-  "accepted": true,
-  "at": "2026-11-21T12:30:00.000Z"
+  "ok": true,
+  "data": {
+    "consentType": "health_data_processing",
+    "version": "1.0.0",
+    "accepted": true,
+    "at": "2026-11-21T12:30:00.000Z"
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 
@@ -5646,8 +6018,9 @@ Backfills legacy aggregate logs into normalized Cloudflare D1 tables atomically.
 ### Endpoint Info
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/v1/account/backfill`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/account/backfill`
-- **Dev URL:** `http://127.0.0.1:8787/v1/account/backfill`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/account/backfill`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/account/backfill`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/account/backfill`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -5675,14 +6048,21 @@ Backfills legacy aggregate logs into normalized Cloudflare D1 tables atomically.
 #### Example Response — 200 OK — Backfilled
 ```json
 {
-  "migrated": true,
-  "counts": {
-    "foodEntries": 12,
-    "waterLogs": 7,
-    "weights": 7,
-    "workoutLogs": 9,
-    "sessions": 3,
-    "checkins": 7
+  "ok": true,
+  "data": {
+    "migrated": true,
+    "counts": {
+      "foodEntries": 12,
+      "waterLogs": 7,
+      "weights": 7,
+      "workoutLogs": 9,
+      "sessions": 3,
+      "checkins": 7
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
   }
 }
 ```
@@ -5696,8 +6076,9 @@ Exports complete machine-readable JSON of profile, preferences, active & archive
 ### Endpoint Info
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/v1/account/export`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/account/export`
-- **Dev URL:** `http://127.0.0.1:8787/v1/account/export`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/account/export`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/account/export`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/account/export`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -5721,13 +6102,14 @@ Exports complete machine-readable JSON of profile, preferences, active & archive
 
 ### Delete Account Permanently (GDPR — Destructive)
 
-**IRREVERSIBLE:** Permanently erases all account data, simulation copies, auth credentials (`coaching_users`), and refresh tokens (`coaching_refresh_tokens`) in one atomic D1 batch, and writes revocation tombstones. Must be called outside `?simulation=1`.
+**IRREVERSIBLE:** Permanently erases all account data, auth credentials (`coaching_users`), and refresh tokens (`coaching_refresh_tokens`) in one atomic D1 batch, and writes revocation tombstones.
 
 ### Endpoint Info
 - **Method:** `DELETE`
 - **URL:** `{{baseUrl}}/v1/account/delete`
-- **Production URL:** `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/account/delete`
-- **Dev URL:** `http://127.0.0.1:8787/v1/account/delete`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/account/delete`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/account/delete`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/account/delete`
 - **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
 
 ### Headers
@@ -5755,22 +6137,28 @@ Exports complete machine-readable JSON of profile, preferences, active & archive
 | `userId` | `string` | Deleted account ID. |
 | `deletedAt` | `string (ISO-8601 UTC)` | Erasure timestamp. |
 | `tablesCleared` | `integer` | Number of D1 tables cleared. |
-| `namespacesCleared` | `integer` | Number of namespaces cleared (real + simulation + claimed). |
+| `namespacesCleared` | `integer` | Number of namespaces cleared (primary + claimed). |
 
 ### Possible Error Responses
 | HTTP Status | Error Code | When |
 | :---: | :--- | :--- |
 | `400` | `DELETE_CONFIRMATION_REQUIRED` | Missing `confirm: true`. |
-| `400` | `ACCOUNT_DELETION_SIMULATION_FORBIDDEN` | Called with `?simulation=1`. |
 
 #### Example Response — 200 OK — Permanently Deleted
 ```json
 {
-  "deleted": true,
-  "userId": "user:1a2b",
-  "deletedAt": "2026-11-21T12:40:00.000Z",
-  "tablesCleared": 18,
-  "namespacesCleared": 2
+  "ok": true,
+  "data": {
+    "deleted": true,
+    "userId": "user:1a2b",
+    "deletedAt": "2026-11-21T12:40:00.000Z",
+    "tablesCleared": 18,
+    "namespacesCleared": 1
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
 }
 ```
 

@@ -1,54 +1,43 @@
-> نتيجة التحقق اللاحق والتصحيحات وحدود الجاهزية موثقة في [فحص استيراد 0.12](IMPORT_VERIFICATION_012_AR.md). تُقدّم نتائجه على ادعاءات الاكتمال والقياسات السابقة في هذا المستند.
+# Security, Authentication & Privacy Review
 
-# مراجعة الأمان والخصوصية ونموذج التهديدات — Security & Privacy Review (`v0.12.0`)
-
-يوثّق هذا المستند نموذج التهديدات (Threat Model)، وضوابط المصادقة وتفويض الموارد، وتنقية السجلات، وسياسة الخصوصية وحذف البيانات الحساسة في **Egypt Nutrition Coach**.
+This document summarizes the threat model, authentication architecture, RBAC boundaries, structured log redaction, and GDPR data-lifecycle controls implemented in **CuraFit API v1**.
 
 ---
 
-## 1. نموذج التهديدات وضوابط الحماية (Threat Model & Mitigations)
+## 1. Threat Model & Implemented Controls
 
-| التهديد (Threat) | مستوى الخطر | الضابط المنفذ في الكود (Mitigation) | دليل الاختبار |
-| --- | --- | --- | --- |
-| **انتحال الهوية عبر الهيدر (`oai-authenticated-user-id` Spoofing)** | حرج (P0) | يقوم `server/cloudflare-entry.mjs` بحذف الهيدر `oai-authenticated-user-id` من أي طلب وارد على الحافة قبل تمريره إلى `server/worker.mjs`. | `tests/e2e-release-scenarios.test.mjs` (`E01`) |
-| **الوصول لبيانات مستخدم آخر (IDOR / Cross-Account Leakage)** | حرج (P0) | جميع استعلامات D1 (`coaching_accounts`, `coaching_plans`, `coaching_workout_plans`, `coaching_sync_outbox`, والجداول المفهرسة) مقيّدة بـ`WHERE user_id = ?` المشتق حصريًا من التوكن الموثق على الخادم. | `tests/api.test.mjs`, `tests/e2e-release-scenarios.test.mjs` (`E02`) |
-| **سرقة أو انتهاء صلاحية JWT أو استخدام جهاز مفقود** | عالٍ (P0) | التحقق التشفيري الكامل في `server/auth.mjs` (`RS256`/`ES256`/`HS256`)، فحص `exp`/`nbf`/`iat`/`iss`/`aud`، ورفض خوارزمية `none`، مع جدول `coaching_auth_sessions` لإبطال جلسة جهاز محدد أو جميع الأجهزة فورًا عبر `/v1/auth/revoke`. | `tests/e2e-release-scenarios.test.mjs` (`E02`) |
-| **الاستحواذ غير المصرح به على الجلسة المجهولة (Anonymous Claim Hijack)** | عالٍ (P0) | يتطلب `/v1/auth/claim-anonymous` توكن مستخدم موثق + موافقة صريحة (`consent: true`)، ويسجل tombstone `__claimed__` يمنع المطالبة بنفس الجلسة المجهولة مرة ثانية. | `tests/e2e-release-scenarios.test.mjs` (`E01`) |
-| **إعادة استخدام توكن قديم بعد حذف الحساب (Deleted Account Resurrection)** | عالٍ (P0) | يسجل `/v1/account/delete` علامة `__deleted__` في `coaching_auth_sessions` بعد مسح جميع الجداول، ما يجعل أي توكن سابق يُرفض فورًا بـ`401 ACCOUNT_DELETED`. | `tests/e2e-release-scenarios.test.mjs` (`E12`) |
-| **تسرب البيانات الصحية أو الرموز في السجلات (PII / Health Log Leakage)** | عالٍ (P0) | وحدة `server/logger.mjs` تطبق `redactObject` و`maskSubject` لتعمية `Authorization`, `Cookie`, `weight`, `diseases`, `injuries`, `painRegions`, `checkins`, وأي حقول صحية قبل كتابة السجل. | `tests/e2e-release-scenarios.test.mjs` (`E14`) |
-| **إغراق الخادم أو استنزاف الذاكرة (DoS / Oversized Body / Abuse)** | متوسط (P1) | إلغاء القراءة المتدفقة (Streaming Cancel) فور تجاوز 40,000 بايت (`413 PAYLOAD_TOO_LARGE`)، وتحديد معدل الطلبات لكل مستخدم في `checkRateLimit` (`429 RATE_LIMITED`)، وفحص `Origin` ضد هجمات CSRF. | `tests/api-audit.test.mjs`, `tests/e2e-release-scenarios.test.mjs` (`E14`) |
-
----
-
-## 2. صلاحيات الحسابات والأدوار (Role Scopes & Least Privilege)
-
-- **نطاقات المستخدم القياسية (`scopes`):**
-  - `coach:read` — قراءة حالة الحساب، الخطط، السجلات، والكتالوج.
-  - `coach:write` — تنفيذ الأوامر على الحساب المملوك للمستخدم فقط.
-- **عدم الثقة بأي دور يرسله العميل:**
-  - لا يقبل الخادم أي صلاحيات إدارية أو استحقاقات باقات (`entitlements`) من جسم الطلب؛ تُقرأ الصلاحيات فقط من ادعاءات التوكن الموقع (`payload.scopes` و`payload.entitlement`) أو من حالة الحساب المحفوظة على الخادم.
+| Threat Vector | Severity | Implemented Control | Verification Suite |
+| :--- | :---: | :--- | :--- |
+| **Edge Identity Header Spoofing (`oai-authenticated-user-id`)** | P0 | `server/cloudflare-entry.mjs` strips untrusted identity headers at the Cloudflare edge before passing requests to `server/worker.mjs`. | `tests/e2e-release-scenarios.test.mjs` |
+| **Cross-Account Access (IDOR)** | P0 | Every D1 query (`coaching_accounts`, `coaching_plans`, `coaching_workout_plans`, `coaching_sync_outbox`, and all relational tables) scopes by `WHERE user_id = ?` derived solely from verified server auth context. | `tests/api.test.mjs`, `tests/e2e-release-scenarios.test.mjs` |
+| **Token Theft, Weak Algorithms, or Stolen Device** | P0 | `server/auth.mjs` enforces cryptographic WebCrypto signature validation (`HS256` / `RS256` / `ES256`), validates `exp`/`nbf`/`iat`/`iss`/`aud`, rejects `alg: "none"`, checks `coaching_auth_sessions` revocation state, and supports per-session or all-device revocation via `/v1/auth/revoke` & `/v1/auth/logout`. | `tests/native-auth.test.mjs`, `tests/e2e-release-scenarios.test.mjs` |
+| **Refresh Token Replay / Session Hijack** | P0 | `server/native-auth.mjs` hashes opaque refresh tokens (`cfrt_...`) with SHA-256 and rotates on every `POST /v1/auth/refresh`. Replaying a previously rotated token revokes the entire session immediately (`401 AUTH_REFRESH_TOKEN_REUSED`). | `tests/native-auth.test.mjs` |
+| **Unauthorized Anonymous Account Claim** | P0 | `POST /v1/auth/claim-anonymous` requires an authenticated Bearer user token, matching ownership cookie, and explicit `{ consent: true }`, then writes a `__claimed__` marker preventing duplicate claims. | `tests/native-auth.test.mjs`, `tests/e2e-release-scenarios.test.mjs` |
+| **Resurrecting Deleted Accounts with Old Tokens** | P0 | `DELETE /v1/account/delete` atomically erases user rows across 18 tables in `db.batch` and writes a `__deleted__` tombstone so prior JWTs fail closed with `401 ACCOUNT_DELETED`. | `tests/native-auth.test.mjs`, `tests/e2e-release-scenarios.test.mjs` |
+| **PII / Health Telemetry Leakage in Logs** | P0 | `server/logger.mjs` applies `redactObject` and `maskSubject` to redact `Authorization`, `Cookie`, passwords, weights, diseases, injuries, pain regions, and check-ins before emitting logs. | `tests/e2e-release-scenarios.test.mjs` |
+| **Payload DoS, Rate Abuse & Origin CSRF** | P1 | Streaming body byte cap (`40 KB` -> `413 PAYLOAD_TOO_LARGE`), rate limiting (`429 RATE_LIMITED`), `Origin` verification, and pure-English error contracts (`contracts/error-codes.json`). | `tests/api-audit.test.mjs`, `tests/error-contract.test.mjs` |
 
 ---
 
-## 3. الخصوصية حسب التصميم، التصدير، والحذف الشامل (Privacy-by-Design, Export & Deletion)
+## 2. Authorization & Least Privilege
 
-نظرًا لأن التطبيق يتعامل مع بيانات صحية وغذائية حساسة (الوزن، الأمراض المعلنة، الإصابات، النوم، الاستشفاء):
-
-1. **توثيق الموافقات الصريحة (`POST /v1/account/consents`):**
-   - يسجل نوع الموافقة (`privacy_policy`, `health_data_processing`, `medical_disclaimer`) وإصدارها وطابعها الزمني في جدول `coaching_account_consents`.
-2. **الحق في نقل البيانات (`GET /v1/account/export`):**
-   - يصدر ملف JSON مهيكل وكامل يضم الملف الشخصي، التفضيلات، جميع السجلات اليومية، جميع نسخ خطط التغذية والتمرين المؤرشفة، سجل التغييرات، والموافقات المسجلة.
-3. **الحق في المسح الشامل (`POST /v1/account/delete`):**
-   - يحذف في معاملة ذرية واحدة (`db.batch`) جميع صفوف المستخدم من الجداول الـ14 (`coaching_accounts`, `coaching_requests`, `coaching_plans`, `coaching_changes`, `coaching_workout_plans`, `coaching_food_entries`, `coaching_water_logs`, `coaching_weight_logs`, `coaching_workout_logs`, `coaching_sessions`, `coaching_checkins`, `coaching_sync_outbox`, `coaching_account_consents`, `coaching_auth_sessions`)، ويضع شاهد قبر (`__deleted__`) يمنع إعادة تنشيط الحساب بتوكن قديم.
-4. **ملاحظة قانونية وتنظيمية (مصر والخليج):**
-   - البنية البرمجية للتصدير والحذف وتوثيق الموافقة وتنقية السجلات منفذة ومختبرة، لكن **لا يُدّعى امتثال قانوني رسمي (مثل قانون حماية البيانات الشخصية المصري رقم 151 لسنة 2020 أو نظام PDPL السعودي)** إلا بعد مراجعة مستشار قانوني لنص سياسة الخصوصية ومكان استضافة المزود النهائي.
+- **Granted Scopes:** `coach:read` (state, plans, logs, catalogs, exports) and `coach:write` (commands, consents, account mutations scoped to the caller's own `user_id`).
+- **No Client-Trusted Roles:** Server endpoints ignore client-supplied admin flags or entitlement tiers in request bodies; entitlements are read strictly from verified server claims or server-persisted records.
 
 ---
 
-## 4. قرار المالك المطلوب لاختيار موفر الهوية (Identity Provider Decision Gate)
+## 3. Privacy-by-Design, Export & Deletion Controls
 
-الكود في `server/auth.mjs` جاهز للعمل الفوري مع أي موفر متوافق مع OIDC/JWT عبر متغيرات البيئة التالية في Cloudflare Worker:
+1. **Consent Ledger (`POST /v1/account/consents`):** Persists versioned consents (`privacy_policy`, `health_data_processing`, `medical_disclaimer`) with UTC timestamps in `coaching_account_consents`.
+2. **Data Portability (`GET /v1/account/export`):** Returns complete machine-readable JSON covering profile, preferences, logs, archived plans, change history, and recorded consents.
+3. **Permanent Erasure (`DELETE /v1/account/delete`):** Requires `{ confirm: true }` and deletes all user data, credentials (`coaching_users`), and tokens (`coaching_refresh_tokens`) atomically while recording erasure tombstones.
+4. **Compliance Disclaimer:** Technical consent, export, and deletion controls are implemented in code; formal regulatory compliance statements (e.g., Egyptian Law No. 151/2020 or Saudi PDPL) require legal review of deployed privacy notices and hosting disclosures.
 
-- `AUTH_ISSUER`: رابط مُصدِر التوكن (مثل `https://securetoken.google.com/<project-id>` لـFirebase أو `https://<ref>.supabase.co/auth/v1` لـSupabase).
-- `AUTH_AUDIENCE`: جمهور التطبيق (`<project-id>` أو `authenticated`).
-- `AUTH_JWKS_URI` أو `AUTH_JWKS_JSON`: رابط أو محتوى مفاتيح التوقيع العامة (`RS256` / `ES256`)، أو `AUTH_JWT_SECRET` في حالة `HS256`.
+---
+
+## 4. Native Cloudflare Authentication Configuration
+
+CuraFit uses first-party Cloudflare D1 + Worker authentication (`cloudflare_d1_native`):
+
+- `AUTH_JWT_SECRET`: Required Wrangler secret (`>= 32` chars; `64` random bytes hex provisioned on both `curafit-api-dev` and `curafit-api`). Missing secrets fail closed with `503 AUTH_SECRET_NOT_CONFIGURED`.
+- `AUTH_ISSUER` & `AUTH_AUDIENCE` (optional overrides): Default cleanly for first-party JWT issuance and verification (`server/auth.mjs`).

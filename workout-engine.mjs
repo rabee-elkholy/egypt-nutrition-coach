@@ -1,3 +1,4 @@
+import { apiError } from './coaching-error.mjs';
 export const FITNESS_LEVELS = {
   beginner: {
     id: 'beginner',
@@ -1018,7 +1019,7 @@ export function generateWorkoutWeek(workoutPrefs = {}, profile = {}) {
     }
 
     if (!exercises.length) {
-      throw Error('لا توجد تمارين مناسبة تجمع بين المعدات المختارة والقيود الصحية الحالية؛ يُرجى مراجعة مختص أو تعديل المعدات المتاحة.');
+      throw apiError('NO_ELIGIBLE_EXERCISES', 'No exercises satisfy both the selected equipment and declared injury exclusions.', { status: 400 });
     }
 
     const estimatedMinutes = Math.min(duration, Math.max(10, Math.ceil(elapsedSeconds / 60)));

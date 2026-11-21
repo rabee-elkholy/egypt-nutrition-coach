@@ -8,7 +8,7 @@ import {build} from 'esbuild';
 /** Establish source bytes independently of Git metadata shared by archived workspaces. */
 export async function runtimeProof({sourceRoot,referenceCommit=null,repositoryRoot=sourceRoot}){
  const root=path.resolve(sourceRoot),hash=value=>createHash('sha256').update(value).digest('hex');
- const bundle=await build({absWorkingDir:root,entryPoints:['scripts/cohort/local-worker.mjs'],outfile:'quality-runtime.js',bundle:true,format:'esm',platform:'browser',external:['node:async_hooks'],target:'es2022',minify:true,write:false,metafile:true});
+ const bundle=await build({absWorkingDir:root,entryPoints:['server/cloudflare-entry.mjs'],outfile:'quality-runtime.js',bundle:true,format:'esm',platform:'browser',external:['node:async_hooks'],target:'es2022',minify:true,write:false,metafile:true});
  const inputs={};
  for(const file of Object.keys(bundle.metafile.inputs)){
   assert.ok(!path.isAbsolute(file)&&!file.split('/').includes('..'),'Runtime input outside captured source: '+file);

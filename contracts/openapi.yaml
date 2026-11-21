@@ -1,19 +1,22 @@
 openapi: 3.1.0
 info:
-  title: Egypt Nutrition Coach Backend API
+  title: CuraFit Backend API
   version: 1.0.0
-  summary: REST API integration contract v1 for Kotlin Multiplatform (KMM) Android & iOS clients and Web MVP.
+  summary: REST API integration contract v1 for Kotlin Multiplatform (KMM) Android & iOS clients and Web UI.
   description: |
-    Canonical API contract for Egypt Nutrition Coach (`v0.13.0`) on Cloudflare Workers + Cloudflare D1.
-    - **Authentication (Cloudflare Native)**: First-party email/password authentication via `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, and `POST /v1/auth/logout` backed by Cloudflare D1. Mobile KMM and API clients send `Authorization: Bearer <JWT>` (HS256 signed by the Worker; RS256/ES256 JWKS also supported). Web MVP continues to support the `HttpOnly` `coach_uid` anonymous session cookie adapter.
-    - **Idempotency**: All `POST /v1/commands` writes require a unique `Idempotency-Key` header (UUID) and `revision` integer. Canonical JSON hashing guarantees key-order-independent retry safety.
-    - **Slim Responses**: Append `?view=receipt` or send `Prefer: return=minimal` on `POST /v1/commands` to receive a compact delta receipt (size depends on affected entities) instead of the full state aggregate.
-    - **Timezones & Dates**: Timestamps are `ISO-8601 UTC` (`YYYY-MM-DDTHH:mm:ss.sssZ`). Local calendar dates are `YYYY-MM-DD` evaluated in the user's configured IANA timezone (`Africa/Cairo`, `Asia/Riyadh`, `Asia/Dubai`, etc.).
+    Canonical API contract for CuraFit (`v1.0.0`) on Cloudflare Workers + Cloudflare D1.
+    - **Uniform Envelopes:** All `2xx` responses return `{ ok: true, data, meta: { requestId, serverTime, revision? } }`. All `4xx`/`5xx` responses return `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta: { requestId, serverTime } }` with **100% English** error messages (`contracts/error-codes.json`) for KMM localization via `error.code`.
+    - **Authentication (Cloudflare Native):** First-party email/password authentication via `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, and `POST /v1/auth/logout` backed by Cloudflare D1. Mobile KMM and API clients send `Authorization: Bearer <JWT>`.
+    - **Idempotency:** All `POST /v1/commands` writes require a unique `Idempotency-Key` header (UUID) and `revision` integer. Canonical JSON hashing guarantees key-order-independent retry safety.
+    - **Slim Responses:** Append `?view=receipt` or send `Prefer: return=minimal` on `POST /v1/commands` to receive a compact delta receipt instead of the full state aggregate.
+    - **Timezones & Dates:** Timestamps are `ISO-8601 UTC` (`YYYY-MM-DDTHH:mm:ss.sssZ`). Local calendar dates are `YYYY-MM-DD` evaluated in the user's configured IANA timezone (`Africa/Cairo`, `Asia/Riyadh`, `Asia/Dubai`, etc.).
   contact:
-    name: Egypt Nutrition Coach Platform Engineering
+    name: CuraFit Platform Engineering
 servers:
-  - url: https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev
-    description: Canonical Cloudflare Worker Production / Trial Host
+  - url: https://curafit-api-dev.egypt-nutrition-coach.workers.dev
+    description: Cloudflare Cloud Dev Environment (dev branch, full production clone DB)
+  - url: https://curafit-api.egypt-nutrition-coach.workers.dev
+    description: Cloudflare Production Environment (main branch)
   - url: http://127.0.0.1:8787
     description: Local Miniflare / Wrangler Development Server
 security:
@@ -31,21 +34,22 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - ok
-                  - apiVersion
-                  - engineVersion
-                  - requestId
-                properties:
-                  ok:
-                    type: boolean
-                  apiVersion:
-                    type: string
-                  engineVersion:
-                    type: string
-                  requestId:
-                    type: string
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [status, apiVersion, engineVersion, requestId]
+                        properties:
+                          status:
+                            type: string
+                          apiVersion:
+                            type: string
+                          engineVersion:
+                            type: string
+                          requestId:
+                            type: string
   /v1/capabilities:
     get:
       operationId: getCapabilities
@@ -64,7 +68,6 @@ paths:
       summary: Lightweight KMM startup payload (< 10 KB) with profile, active plan refs, today summary, and pending adaptations
       parameters:
         - $ref: "#/components/parameters/IfNoneMatchHeader"
-        - $ref: "#/components/parameters/SimulationQuery"
       responses:
         "200":
           description: Lightweight bootstrap payload
@@ -87,7 +90,6 @@ paths:
       summary: Full account state including active nutrition/workout plans and logs (used by Web MVP and initial full sync)
       parameters:
         - $ref: "#/components/parameters/IfNoneMatchHeader"
-        - $ref: "#/components/parameters/SimulationQuery"
       responses:
         "200":
           description: Full account state
@@ -129,7 +131,6 @@ paths:
               - minimal
               - delta
               - full
-        - $ref: "#/components/parameters/SimulationQuery"
       requestBody:
         required: true
         content:
@@ -608,7 +609,6 @@ paths:
         Unonboarded accounts return requiresOnboarding=true and no notes.
       parameters:
         - $ref: "#/components/parameters/IfNoneMatchHeader"
-        - $ref: "#/components/parameters/SimulationQuery"
       responses:
         "200":
           description: Current personalized coaching view
@@ -860,8 +860,8 @@ paths:
   /v1/account/delete:
     post:
       operationId: deleteAccountData
-      summary: Erase account data and owned simulation copies, and revoke sessions
-      description: Call outside simulation mode. Clears the account namespace, its simulation namespace and legacy claimed anonymous namespaces within one database batch. Revocation tombstones remain to reject old tokens and already authenticated writes. simulation=1 is rejected with ACCOUNT_DELETION_SIMULATION_FORBIDDEN.
+      summary: Erase account data and revoke all sessions
+      description: Atomically clears all account tables and legacy claimed anonymous namespaces within one database batch. Revocation tombstones remain to reject old tokens and concurrent writes.
       requestBody: &a1
         required: true
         content:
@@ -898,8 +898,8 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
     delete:
       operationId: deleteAccountUsingDelete
-      summary: Erase account data and owned simulation copies, and revoke sessions
-      description: Same scope and simulation-mode rejection as POST /v1/account/delete.
+      summary: Erase account data and revoke all sessions
+      description: Same atomic erasure scope as POST /v1/account/delete.
       requestBody: *a1
       responses: *a2
   /v1/account/consents:
@@ -1030,14 +1030,6 @@ components:
       required: false
       schema:
         type: string
-    SimulationQuery:
-      name: simulation
-      in: query
-      required: false
-      schema:
-        type: string
-        enum:
-          - "1"
     FromDateQuery:
       name: from
       in: query
@@ -1193,44 +1185,67 @@ components:
         namespacesCleared:
           type: integer
           minimum: 1
-    ErrorEnvelope:
+    SuccessMeta:
       type: object
-      required:
-        - error
-        - code
-        - message
-        - fieldErrors
-        - requestId
-        - retryable
+      required: [requestId, serverTime]
       properties:
-        error:
-          type: string
-          description: Legacy human-readable Arabic error message
-        code:
-          type: string
-          description: Stable machine-readable error code for KMM localization. PLAN_CONSTRAINTS_UNMET is a non-retryable 400 for finite plan coverage/search failures; it does not prove mathematical infeasibility.
-        message:
-          type: string
-        fieldErrors:
-          type: array
-          items:
-            type: object
-            properties:
-              field:
-                type: string
-              code:
-                type: string
-                description: Plan coverage stages include NO_ELIGIBLE_MEAL_FOR_SLOT, NO_CANDIDATE_WITHIN_DIET_LIMITS, and NUTRIENT_TARGETS_UNMET.
-              message:
-                type: string
         requestId:
           type: string
-        retryable:
-          type: boolean
-        currentRevision:
+        serverTime:
+          type: string
+          format: date-time
+        revision:
           type: integer
-        mergeHints:
+    SuccessEnvelope:
+      type: object
+      required: [ok, data, meta]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
           type: object
+        meta:
+          $ref: "#/components/schemas/SuccessMeta"
+    ErrorEnvelope:
+      type: object
+      required: [ok, error, meta]
+      properties:
+        ok:
+          type: boolean
+          const: false
+        error:
+          type: object
+          required: [code, message, params, fieldErrors, retryable]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code (`contracts/error-codes.json`) for client localization.
+            message:
+              type: string
+              description: English fallback error message (zero Arabic characters).
+            params:
+              type: object
+              additionalProperties: true
+            fieldErrors:
+              type: array
+              items:
+                type: object
+                required: [field, code, message]
+                properties:
+                  field:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string
+            retryable:
+              type: boolean
+            details:
+              type: object
+              additionalProperties: true
+        meta:
+          $ref: "#/components/schemas/SuccessMeta"
     CapabilitiesResponse:
       type: object
       required:
@@ -1472,9 +1487,6 @@ components:
             - coaching_decision
             - coaching_outcome
             - coaching_ack
-            - simulation_reset
-            - simulation_next
-            - simulation_fill
         payload:
           type: object
     CommandReceiptResponse:

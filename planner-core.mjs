@@ -1,4 +1,5 @@
 import { regionalFoodTemplates } from './regional-foods.mjs';
+import { apiError } from './coaching-error.mjs';
 import {DIETS,FIXED_DIET_MEALS,dietIngredientAllowed,medicalContraindicatedKeys,isDietUnsafeForProfile,dietTemplates,assertDietDay,fastingTimes} from './diet-patterns.mjs';
 import {sportsEnergy} from './sports.mjs';
 import {practicalParts,roundedHouseholdGrams} from './planner-household.mjs';
@@ -53,15 +54,21 @@ const FALLBACK_MICROS = {
   babaghanouj: { fiber: "2.5", saturated: "0.4", sodium: "190", sugars: "1.5" },
 };
 
-const finite = (x, min, max, label) => {
+const finite = (x, min, max, field) => {
   if (
     (typeof x !== "number" && typeof x !== "string") ||
     String(x).trim() === "" ||
     !Number.isFinite(Number(x)) ||
     Number(x) < min ||
     Number(x) > max
-  )
-    throw Error(label + " خارج النطاق المقبول");
+  ) {
+    const message = `${field} must be between ${min} and ${max}.`;
+    throw apiError('NUMBER_OUT_OF_RANGE', message, {
+      status: 400,
+      params: { field, min, max },
+      fieldErrors: [{ field, code: 'NUMBER_OUT_OF_RANGE', message }],
+    });
+  }
   return Number(x);
 };
 const round = (x, p = 1) => Math.round(x * 10 ** p) / 10 ** p;
@@ -74,35 +81,49 @@ const product = (v, q) =>
 
 export function estimateNeeds(input) {
   const maxAge = input.allowSenior ? 90 : 70;
-  const weight = finite(input.weight, 35, 250, "الوزن"),
-    height = finite(input.height, 120, 230, "الطول"),
-    age = finite(input.age, 18, maxAge, "العمر");
-  if (!Number.isInteger(age)) throw Error("العمر يكون عدد سنوات كاملًا");
+  const weight = finite(input.weight, 35, 250, "weight"),
+    height = finite(input.height, 120, 230, "height"),
+    age = finite(input.age, 18, maxAge, "age");
+  if (!Number.isInteger(age))
+    throw apiError('INVALID_AGE', 'age must be a whole number of years between 18 and 70.', {
+      status: 400,
+      fieldErrors: [{ field: 'age', code: 'INVALID_AGE', message: 'age must be a whole integer.' }],
+    });
   if (
     !["male", "female"].includes(input.sex) ||
     !Object.hasOwn(ACTIVITY, input.activity) ||
     !Object.hasOwn(GOALS, input.goal)
   )
-    throw Error("راجع النوع ومستوى النشاط والهدف");
+    throw apiError('INVALID_PROFILE_METRICS', 'Invalid sex, activity level, or goal selection.', { status: 400 });
   if (input.healthNeeds && !input.maternalStatus && (!Array.isArray(input.diseases) || !input.diseases.length))
-    throw Error(
-      "التخطيط التلقائي غير متاح للحمل والرضاعة أو الحساسية الغذائية أو الحالات التي تحتاج تغذية علاجية. استخدم خطة مختص؛ تصفح الأطعمة متاح.",
+    throw apiError(
+      'CLINICAL_REVIEW_REQUIRED',
+      'Declared clinical conditions or age require specialist review before automated plan generation.',
+      { status: 400 },
     );
   const bmi = weight / (height / 100) ** 2;
   if (bmi < 12.5 || bmi > 65)
-    throw Error(
-      "الوزن والطول المدخلان خارج النطاق الفسيولوجي المقبول؛ راجع الأرقام المدخلة.",
+    throw apiError(
+      'BMI_OUT_OF_RANGE',
+      'Calculated BMI is outside the automated planning range (12.5..65).',
+      { status: 400 },
     );
   const trainingDays = finite(
     input.trainingDays ?? input.resistance ?? 0,
     0,
     7,
-    "أيام التمرين أسبوعيًا",
+    "trainingDays",
   );
-  if (!Number.isInteger(trainingDays)) throw Error("أيام التمرين عدد صحيح");
+  if (!Number.isInteger(trainingDays))
+    throw apiError('INVALID_TRAINING_DAYS', 'trainingDays must be an integer between 0 and 6.', {
+      status: 400,
+      fieldErrors: [{ field: 'trainingDays', code: 'INVALID_TRAINING_DAYS', message: 'trainingDays must be a whole integer.' }],
+    });
   if (input.goal === "muscle_gain" && trainingDays === 0)
-    throw Error(
-      "لهدف زيادة الكتلة العضلية اختار يوم تمرين واحدًا على الأقل أسبوعيًا.",
+    throw apiError(
+      'MUSCLE_GAIN_REQUIRES_RESISTANCE_DAYS',
+      'Muscle gain goal requires at least one weekly resistance training day.',
+      { status: 400 },
     );
 
   const diseases = new Set(Array.isArray(input.diseases) ? input.diseases : []);
@@ -117,7 +138,7 @@ export function estimateNeeds(input) {
     tdee = baseline + exercise.daily_extra;
 
   const pace = input.goalPace || 'moderate';
-  if(!['slow','moderate','fast'].includes(pace))throw Error('سرعة الهدف غير صالحة');
+  if(!['slow','moderate','fast'].includes(pace))throw apiError('INVALID_GOAL_PACE','goalPace must be one of slow, moderate, or fast.',{status:400});
   let change = 0;
   if(input.goal === 'lose')change=-Math.min(tdee*{slow:.1,moderate:.15,fast:.2}[pace],500);
   else if(input.goal === 'muscle_gain'&&(input.recomposition||Number(input.targetWeight)===weight)){change=0;notes.push('هدف بناء العضلات مع نفس الوزن يبدأ بسعرات التثبيت وتمارين المقاومة؛ نراجع الاتجاه والأداء من متابعتك.');}
@@ -149,8 +170,10 @@ export function estimateNeeds(input) {
     );
   }
   if (energy > 4200)
-    throw Error(
-      "الاحتياج خارج نطاق المكتبة الحالية (1200–4200 kcal). نحتاج خطة فردية بأحجام وتوزيع مناسبين.",
+    throw apiError(
+      'ENERGY_CHANGE_OUT_OF_RANGE',
+      'Adjusted daily calories exceed safe automated bounds (1200/1400..4200 kcal).',
+      { status: 400 },
     );
 
   if (bmi < 18.5) {
@@ -279,13 +302,14 @@ export function estimateNeeds(input) {
 }
 export function validatePreferences(p, library) {
   const diet = p.diet ?? "balanced";
-  if (!Object.hasOwn(DIETS, diet)) throw Error("اختار نظامًا غذائيًا متاحًا");
+  if (!Object.hasOwn(DIETS, diet))
+    throw apiError("INVALID_DIET_TYPE", "Selected dietType is not supported.", { status: 400 });
   const mealsCount = Number(p.meals ?? (FIXED_DIET_MEALS[diet]?.meals || 4));
   if (
     !["low", "medium", "high"].includes(p.budget) ||
     ![2, 3, 4, 5].includes(mealsCount)
   )
-    throw Error("راجع الميزانية وعدد الوجبات");
+    throw apiError("INVALID_BUDGET_OR_MEALS", "Invalid budget tier or daily meal count (2..5).", { status: 400 });
   const allowed = [
     "legumes",
     "eggs",
@@ -300,7 +324,7 @@ export function validatePreferences(p, library) {
     !p.proteins.length ||
     p.proteins.some((g) => !allowed.includes(g))
   )
-    throw Error("اختار مصدر بروتين رئيسي واحدًا على الأقل");
+    throw apiError("PROTEIN_SOURCE_REQUIRED", "Select at least one primary protein source.", { status: 400 });
   const excludedKeys = p.excludedKeys || [],
     excludedFoodIds = p.excludedFoodIds || [],
     excludedGroups = p.excludedGroups || [];
@@ -316,10 +340,10 @@ export function validatePreferences(p, library) {
     !Array.isArray(excludedGroups) ||
     excludedGroups.some((id) => !EXCLUSIONS.some((g) => g.id === id))
   )
-    throw Error("استبعاد المكونات غير صحيح");
+    throw apiError("INVALID_EXCLUDED_INGREDIENTS", "excludedKeys must be a valid array of known ingredient keys.", { status: 400 });
   const region = p.region ?? "egypt";
   if (!Object.hasOwn(REGIONS, region))
-    throw Error("اختار منطقة من القائمة المتاحة");
+    throw apiError("INVALID_REGION", "region must be a supported regional catalog selection.", { status: 400 });
   const result = {
     ...p,
     diet,
@@ -770,7 +794,10 @@ export function validDate(date) {
     !Number.isFinite(d.getTime()) ||
     d.toISOString().slice(0, 10) !== date
   )
-    throw Error("تاريخ الأسبوع غير صحيح");
+    throw apiError("INVALID_DATE", "Invalid calendar date format; expected YYYY-MM-DD.", {
+      status: 400,
+      params: { field: "date" },
+    });
   return date;
 }
 export function addDays(date, offset) {
@@ -780,7 +807,7 @@ export function addDays(date, offset) {
   return d.toISOString().slice(0, 10);
 }
 function planCoverageError(stage,message){
- return Object.assign(Error(message),{status:400,code:'PLAN_CONSTRAINTS_UNMET',retryable:false,fieldErrors:[{field:'preferences',code:stage,message}]});
+ return apiError('PLAN_CONSTRAINTS_UNMET',message,{status:400,params:{stage},retryable:false,fieldErrors:[{field:'preferences',code:stage,message}]});
 }
 export function makeWeek(profile, prefs, lib, startDate, seed = "1", acceptedEnergy = null) {
   let lastError, bestPlan = null, bestScore = Infinity;
@@ -845,12 +872,12 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
   }
   if(p.diet==='low_carb'){targets.carbs=100;targets.fat=round(Math.max(0,targets.energy-targets.protein*4-400)/9);targets.carb_target_scope='كربوهيدرات كلية حتى 130 جرام يوميًا؛ ليست خطة كيتو.';}
   if(p.diet==='keto'){
-    if(profile.ketoAcknowledged!==true || isDietUnsafeForProfile('keto', profile))throw Error('الكيتو غير متاح تلقائيًا عند وجود سكري أو أدوية خفض السكر أو مرض بالكلى أو الكبد أو البنكرياس أو اضطراب أكل. راجع مختصًا؛ أكّد قراءة شروط الكيتو إذا لم تنطبق عليك.');
+    if(profile.ketoAcknowledged!==true || isDietUnsafeForProfile('keto', profile))throw apiError('KETO_REQUIRES_CONFIRMATION','Keto diet requires explicit acknowledgment and is blocked with contraindicated medical conditions.',{status:400});
     targets.carbs=30;targets.fat=round(Math.max(0,targets.energy-targets.protein*4-120)/9);
     targets.carb_target_scope='هدف 30 جرام كربوهيدرات كلية، مع حد قبول 50 جرام يوميًا؛ لا نحسب صافي الكربوهيدرات.';
   }
   if((p.fasting&&p.fasting!=='none')||p.diet==='intermittent_fasting'){
-    if(isDietUnsafeForProfile('intermittent_fasting', profile)||(p.diet!=='intermittent_fasting'&&profile.fastingAcknowledged!==true))throw Error('الصيام المتقطع يحتاج تأكيد ملاءمته؛ مع السكري أو أدوية خفض السكر أو اضطراب أكل استخدم خطة مختص.');
+    if(isDietUnsafeForProfile('intermittent_fasting', profile)||(p.diet!=='intermittent_fasting'&&profile.fastingAcknowledged!==true))throw apiError('FASTING_REQUIRES_CONFIRMATION','Intermittent fasting requires explicit acknowledgment and is blocked with contraindicated conditions.',{status:400});
   }
   const schedule=fastingTimes(p,slots.length);
   validDate(startDate);
@@ -866,14 +893,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
   for (const slot of slots)
     if (!pool.some((t) => t.meal_slots.includes(slot.slot)))
       throw planCoverageError('NO_ELIGIBLE_MEAL_FOR_SLOT',
-        "مفيش وجبات مناسبة لكل اختياراتك في " +
-          {
-            breakfast: "الفطار",
-            lunch: "الغداء",
-            dinner: "العشاء",
-            snack: "السناك",
-          }[slot.slot] +
-          ". أضف مصدر بروتين أو غيّر الميزانية أو قلّل الاستبعادات. لم نغيّر اختياراتك تلقائيًا.",
+        `No eligible meals match your dietary exclusions for meal slot ${slot.slot}. Update protein sources, budget, or exclusions; your current choices were not modified.`,
       );
 
   const workoutDayIndices = new Set(
@@ -953,7 +973,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
       // Variety is a preference within the strict pool. If it removes every
       // eligible option, reconsider that pool with the same nutrient checks.
       if(!candidates.length&&slotPool.length<eligibleSlotPool.length)candidates=rankCandidates(eligibleSlotPool);
-      if(!candidates.length)throw planCoverageError('NO_CANDIDATE_WITHIN_DIET_LIMITS','لا يوجد اختيار يحقق حدود النظام لهذا الموعد مع تفضيلاتك. لم نغيّر اختياراتك أو نحفظ خطة ناقصة.');
+      if(!candidates.length)throw planCoverageError('NO_CANDIDATE_WITHIN_DIET_LIMITS','No candidate satisfies diet rules for this meal slot with your current preferences.');
       const best = candidates[0];
       const mealFamily = egyptianMealFamily(best.t, lib, p.region);
       counts.set(mealFamily, (counts.get(mealFamily) || 0) + 1);
@@ -1028,7 +1048,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
     assertDietDay(meals.map(m=>m.snapshot),p.diet,targets);
     const summary = sumSnapshots(meals.map((m) => m.snapshot));
     const quality=nutritionQualityIssues(summary,targets);
-    if(quality.length)throw planCoverageError('NUTRIENT_TARGETS_UNMET','البحث الحالي لم يصل لخطة تحقق حدود السعرات والبروتين مع كل اختياراتك. لم نغيّر القيود أو نحفظ خطة ناقصة.');
+    if(quality.length)throw planCoverageError('NUTRIENT_TARGETS_UNMET','Meal search could not meet daily calorie and protein tolerances under your constraints.');
     const checks = assessDay(summary, targets);
     if (checks.length)
       warnings.push({ date: addDays(startDate, day), messages: checks });
@@ -1100,7 +1120,8 @@ export function assessDay(summary, targets) {
   return out;
 }
 export function alternatives(meal, prefs, lib, limit = 8, profile = null, accept = () => true) {
-  if (!Number.isInteger(limit) || limit < 0 || limit > 100) throw new Error("عدد البدائل غير صالح.");
+  if (!Number.isInteger(limit) || limit < 0 || limit > 100)
+    throw apiError("INVALID_ALTERNATIVE_LIMIT", "Alternative limit must be an integer between 0 and 100.", { status: 400 });
   if (limit === 0) return [];
   if (
     meal.snapshot.values.energy == null ||
@@ -1221,8 +1242,8 @@ export function snapshotFood(
     (detail?.food_id && detail.food_id !== food.id) ||
     (detail?.id && detail.id !== food.id)
   )
-    throw Error("تفاصيل الطعام لا تطابق هويته");
-  const q = finite(quantity, 0.001, 100000, "الكمية");
+    throw apiError("FOOD_DETAIL_MISMATCH", "Food detail metadata does not match the requested food ID.", { status: 400 });
+  const q = finite(quantity, 0.001, 100000, "quantity");
   let grams = null,
     scale,
     raw,
@@ -1230,25 +1251,28 @@ export function snapshotFood(
       food.status === "estimated" ? "calculated_estimate" : "reference_food";
   if (food.status === "estimated") {
     if (!acknowledged)
-      throw Error("الملف تقريبي أو بديل؛ وافق على قراءة حدوده أولًا");
+      throw apiError("FOOD_APPROXIMATE_CONFIRMATION_REQUIRED", "Approximate recipe/proxy food requires explicit acknowledgment.", { status: 400 });
     if (unit !== "reference")
-      throw Error("النموذج ليس له وزن نهائي موثق؛ استخدم عدد المقادير المحددة");
+      throw apiError("RECIPE_WEIGHT_MISSING", "Approximate recipe lacks verified cooked final weight; use reference servings.", { status: 400 });
     scale = String(q);
   } else if (food.basis === "reference_serving") {
     if (unit !== "reference")
-      throw Error("وزن الحصة غير معروف؛ استخدم عدد الحصص المصدرية فقط");
+      throw apiError("PORTION_WEIGHT_UNKNOWN", "Serving gram weight is unknown; use source reference serving count.", { status: 400 });
     scale = String(q);
   } else {
     if (unit === "grams") grams = q;
     else if (unit === "portion") {
       const p = detail.portions.find((p) => p.id === portionId);
-      if (!p || p.grams == null) throw Error("لا يوجد وزن موثق لهذه الحصة");
+      if (!p || p.grams == null)
+        throw apiError("PORTION_GRAMS_MISSING", "Selected portion has no verified gram weight.", { status: 400 });
       grams = product(p.grams, String(q));
     } else if (unit === "ml") {
-      if (!food.volume_evidence) throw Error("لا يوجد تحويل حجم موثق");
+      if (!food.volume_evidence)
+        throw apiError("VOLUME_CONVERSION_UNAVAILABLE", "No verified volume-to-gram conversion exists for this food.", { status: 400 });
       grams = volumeGrams(String(q), food.volume_evidence);
-    } else throw Error("وحدة كمية غير صحيحة");
-    if (grams > 100000 || grams <= 0) throw Error("الكمية خارج النطاق");
+    } else throw apiError("INVALID_QUANTITY_UNIT", "Quantity unit must be grams, portion, ml, or reference.", { status: 400 });
+    if (grams > 100000 || grams <= 0)
+      throw apiError("QUANTITY_OUT_OF_RANGE", "Calculated food weight must be between 0 and 100000 grams.", { status: 400 });
     scale = product(String(grams), "0.01");
   }
   if (food.status === "estimated") {
@@ -1366,29 +1390,30 @@ export function snapshotFood(
 }
 export function customFood(input, id) {
   const name = String(input.name || "").trim();
-  if (!name || name.length > 120) throw Error("اكتب اسمًا واضحًا للأكلة");
+  if (!name || name.length > 120)
+    throw apiError("INVALID_CUSTOM_FOOD_NAME", "Custom food name must be non-empty and at most 120 characters.", { status: 400 });
   if (!["per100g", "serving"].includes(input.basis))
-    throw Error("حدد أساس البيانات");
+    throw apiError("INVALID_NUTRITION_BASIS", "Invalid nutrition declaration basis.", { status: 400 });
   const cap = input.basis === "per100g" ? 900 : 5000;
   const values = {
-    energy: String(finite(input.energy, 0, cap, "السعرات")),
+    energy: String(finite(input.energy, 0, cap, "energy")),
     protein: String(
       finite(
         input.protein,
         0,
         input.basis === "per100g" ? 100 : 500,
-        "البروتين",
+        "protein",
       ),
     ),
     fat: String(
-      finite(input.fat, 0, input.basis === "per100g" ? 100 : 500, "الدهون"),
+      finite(input.fat, 0, input.basis === "per100g" ? 100 : 500, "fat"),
     ),
     carbs: String(
       finite(
         input.carbs,
         0,
         input.basis === "per100g" ? 100 : 500,
-        "الكربوهيدرات",
+        "carbs",
       ),
     ),
     fiber: null,
@@ -1400,9 +1425,9 @@ export function customFood(input, id) {
     input.basis === "per100g" &&
     Number(values.protein) + Number(values.fat) + Number(values.carbs) > 110
   )
-    throw Error("مجموع الماكروز غير متسق مع أساس 100 جرام؛ راجع الوحدة");
+    throw apiError("MACROS_INCONSISTENT_WITH_100G", "Sum of macronutrients per 100g exceeds 100g.", { status: 400 });
   if (!["fdc:1005", "cofid:CHO", "user:unknown"].includes(input.carb_id))
-    throw Error("حدد تعريف الكربوهيدرات");
+    throw apiError("INVALID_CARB_DEFINITION", "Specify a valid carbohydrate definition.", { status: 400 });
   return {
     id,
     name,
@@ -1421,9 +1446,10 @@ export function customFood(input, id) {
   };
 }
 export function customSnapshot(food, quantity) {
-  const q = finite(quantity, 0.001, 100000, "الكمية"),
+  const q = finite(quantity, 0.001, 100000, "quantity"),
     scale = food.basis === "per100g" ? product(String(q), "0.01") : String(q);
-  if (scale > 1000) throw Error("الكمية خارج النطاق");
+  if (scale > 1000)
+    throw apiError("QUANTITY_OUT_OF_RANGE", "Calculated food weight must be between 0 and 100000 grams.", { status: 400 });
   return {
     name: food.name,
     template_id: null,
@@ -1453,9 +1479,9 @@ export function customSnapshot(food, quantity) {
 }
 export function combineSnapshots(name, snapshots) {
   if (!name?.trim() || !snapshots.length)
-    throw Error("أضف اسم الوجبة ومكونًا واحدًا على الأقل");
+    throw apiError("MEAL_COMPONENTS_REQUIRED", "Provide a custom meal name and at least one ingredient.", { status: 400 });
   if (snapshots.reduce((n, s) => n + (s.ingredients?.length || 0), 0) > 100)
-    throw Error("وصلت للحد: 100 مكوّن في الوجبة");
+    throw apiError("MAX_INGREDIENTS_EXCEEDED", "A custom meal cannot exceed 100 ingredients.", { status: 400 });
   const s = sumSnapshots(snapshots);
   return {
     name: name.trim().slice(0, 120),

@@ -10,7 +10,7 @@ The second audit added lifecycle regressions: pain logged after the latest check
 
 The store includes a per-attempt internal commit token in the exact-body transactional guard. This prevents a losing concurrent writer with an otherwise identical account body from inserting its own receipt. The token is stripped on account reads and is not an identity or authentication mechanism.
 
-See [MATURITY_AND_SIMULATION_AR.md](MATURITY_AND_SIMULATION_AR.md) for the current requirement-by-requirement assessment, remaining gaps and simulation test results. The 0.9 report below remains a historical evidence snapshot, not a claim that 0.10 has no remaining work.
+The historical v0.9/v0.10 milestone notes below are preserved as a snapshot; see [TEST_REPORT.md](TEST_REPORT.md) and [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) for the active CuraFit API v1 architecture and verification suite.
 
 ## Boundaries
 
@@ -74,6 +74,6 @@ The preview aggregate still has a 1.5 MB log-state limit, 40 KB command payload 
 
 ## Verification and deployment
 
-`npm ci`, `npm run check`, `npm run dev`; `npm run test:browser` runs portable browser QA after installing Chromium. `npm run audit:matrix` writes reproducible synthetic generation results to `outputs/audit-matrix.json`; the reviewed snapshot is in `docs/audit-matrix-results.json`. Tests cover eligibility, source completeness, equipment/time constraints, weekday conversion and legacy confirmation, diary/portion/completion rules, immutable history, regional recovery/baselines, compatible progression, calorie/goal/volume approvals, dated rescheduling, D1 isolation, concurrent updates, compact receipts and plan archives. Browser QA covers all three original onboarding journeys, mobile/desktop writes, catalog pagination, form draft retention, stale responses and lost responses after a real commit. Full results and explicit verification limits are in [REVIEW_REPORT_AR.md](REVIEW_REPORT_AR.md).
+`npm ci`, `npm run check`, `npm run dev`; `npm run test:browser` runs portable browser QA after installing Chromium. `npm run audit:matrix` writes reproducible synthetic generation results to `outputs/audit-matrix.json`; the reviewed snapshot is in `docs/audit-matrix-results.json`. Tests cover eligibility, source completeness, equipment/time constraints, weekday conversion and legacy confirmation, diary/portion/completion rules, immutable history, regional recovery/baselines, compatible progression, calorie/goal/volume approvals, dated rescheduling, D1 isolation, concurrent updates, compact receipts and plan archives. Browser QA covers all three original onboarding journeys, mobile/desktop writes, catalog pagination, form draft retention, stale responses and lost responses after a real commit. See [TEST_REPORT.md](TEST_REPORT.md) for active verification suites.
 
 Deploy build artifacts from the exact pushed source commit to the existing private Site; preserve Site ID and audience. The deployment archive includes `.openai/hosting.json`, `dist/server`, `dist/client` and `drizzle`. Confirm hosted migrations and terminal successful deployment before reporting publication. User requested publishing the completed Site before pushing that same source to the original GitHub repository.

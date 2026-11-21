@@ -71,9 +71,9 @@ export async function verifyPassword(password, storedHash) {
 function normalizeEmail(raw) {
   const email = String(raw ?? '').trim().toLowerCase();
   if (!email || email.length > 160 || !EMAIL_RE.test(email)) {
-    throw createApiError('البريد الإلكتروني غير صالح.', 400, {
+    throw createApiError('A valid email address is required.', 400, {
       code: 'INVALID_EMAIL',
-      fieldErrors: [{ field: 'email', code: 'INVALID_EMAIL', message: 'أدخل بريدًا إلكترونيًا صحيحًا.' }]
+      fieldErrors: [{ field: 'email', code: 'INVALID_EMAIL', message: 'A valid email address is required.' }]
     });
   }
   return email;
@@ -81,9 +81,10 @@ function normalizeEmail(raw) {
 
 function validatePassword(raw, field = 'password') {
   if (typeof raw !== 'string' || raw.length < 8 || raw.length > 128) {
-    throw createApiError('كلمة المرور يجب أن تكون بين 8 و128 حرفًا.', 400, {
+    throw createApiError('Password must be at least 8 characters long.', 400, {
       code: 'INVALID_PASSWORD',
-      fieldErrors: [{ field, code: 'INVALID_PASSWORD', message: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.' }]
+      params: { minLength: 8 },
+      fieldErrors: [{ field, code: 'INVALID_PASSWORD', message: 'Password must be between 8 and 128 characters long.' }]
     });
   }
   return raw;
@@ -98,7 +99,7 @@ function normalizeDeviceId(body, request) {
 function requireJwtSecret(env) {
   const secret = env?.AUTH_JWT_SECRET;
   if (!secret || typeof secret !== 'string' || secret.length < 16) {
-    throw createApiError('مفتاح توقيع الجلسات (AUTH_JWT_SECRET) غير مهيأ على الخادم.', 503, {
+    throw createApiError('Session signing key (AUTH_JWT_SECRET) is not configured on the server.', 503, {
       code: 'AUTH_SECRET_NOT_CONFIGURED',
       retryable: false
     });
@@ -114,7 +115,7 @@ function generateRefreshToken() {
 
 function mapSchemaError(error) {
   if (/no such table/i.test(error?.message || '')) {
-    return createApiError('جداول المصادقة غير مرحّلة في D1 بعد؛ شغّل deploy:d1.', 503, {
+    return createApiError('Authentication database tables have not been migrated yet; run D1 migrations.', 503, {
       code: 'AUTH_MIGRATION_REQUIRED',
       retryable: true
     });
@@ -198,9 +199,9 @@ export async function registerUser(db, env, body, request) {
   try {
     const existing = await db.prepare('SELECT user_id FROM coaching_users WHERE email=?').bind(email).first();
     if (existing) {
-      throw createApiError('هذا البريد الإلكتروني مسجل بالفعل.', 409, {
+      throw createApiError('An account with this email address already exists.', 409, {
         code: 'AUTH_EMAIL_ALREADY_EXISTS',
-        fieldErrors: [{ field: 'email', code: 'AUTH_EMAIL_ALREADY_EXISTS', message: 'البريد الإلكتروني مستخدم بالفعل.' }]
+        fieldErrors: [{ field: 'email', code: 'AUTH_EMAIL_ALREADY_EXISTS', message: 'An account with this email address already exists.' }]
       });
     }
 
@@ -228,7 +229,7 @@ export async function registerUser(db, env, body, request) {
       await db.batch(stmts);
     } catch (e) {
       if (/UNIQUE constraint failed/i.test(e?.message || '')) {
-        throw createApiError('هذا البريد الإلكتروني مسجل بالفعل.', 409, { code: 'AUTH_EMAIL_ALREADY_EXISTS' });
+        throw createApiError('An account with this email address already exists.', 409, { code: 'AUTH_EMAIL_ALREADY_EXISTS' });
       }
       throw e;
     }
@@ -246,7 +247,7 @@ export async function loginUser(db, env, body, request) {
     ? body.password
     : null;
   if (!password) {
-    throw createApiError('البريد الإلكتروني أو كلمة المرور غير صحيحة.', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
+    throw createApiError('Invalid email address or password.', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
   }
   const deviceId = normalizeDeviceId(body, request);
 
@@ -258,14 +259,14 @@ export async function loginUser(db, env, body, request) {
     // Always run PBKDF2 to avoid timing-based account enumeration.
     const passwordValid = await verifyPassword(password, user ? user.password_hash : DUMMY_PASSWORD_HASH);
     if (!user || !passwordValid) {
-      throw createApiError('البريد الإلكتروني أو كلمة المرور غير صحيحة.', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
+      throw createApiError('Invalid email address or password.', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
     }
 
     const deleted = await db.prepare(
       "SELECT revoked_at FROM coaching_auth_sessions WHERE user_id=? AND session_id='__deleted__'"
     ).bind(user.user_id).first();
     if (deleted?.revoked_at) {
-      throw createApiError('هذا الحساب تم حذفه نهائيًا.', 401, { code: 'ACCOUNT_DELETED' });
+      throw createApiError('This account has been permanently deleted.', 401, { code: 'ACCOUNT_DELETED' });
     }
 
     const sessionId = `sess_${crypto.randomUUID()}`;
@@ -281,7 +282,7 @@ export async function refreshUserSession(db, env, body, request) {
   requireJwtSecret(env);
   const rawToken = typeof body?.refreshToken === 'string' ? body.refreshToken.trim() : '';
   if (!rawToken || rawToken.length < 20 || rawToken.length > 256) {
-    throw createApiError('رمز التجديد (refreshToken) غير صالح.', 401, { code: 'AUTH_REFRESH_TOKEN_INVALID' });
+    throw createApiError('Invalid or malformed refresh token.', 401, { code: 'AUTH_REFRESH_TOKEN_INVALID' });
   }
   const deviceId = normalizeDeviceId(body, request);
   const tokenHash = await sha256Hex(rawToken);
@@ -294,7 +295,7 @@ export async function refreshUserSession(db, env, body, request) {
     ).bind(tokenHash).first();
 
     if (!row) {
-      throw createApiError('رمز التجديد غير صالح أو منتهي.', 401, { code: 'AUTH_REFRESH_TOKEN_INVALID' });
+      throw createApiError('Invalid or malformed refresh token.', 401, { code: 'AUTH_REFRESH_TOKEN_INVALID' });
     }
 
     // Reuse detection: if an already-rotated refresh token is replayed, revoke the entire session.
@@ -307,16 +308,16 @@ export async function refreshUserSession(db, env, body, request) {
           'UPDATE coaching_refresh_tokens SET revoked_at=? WHERE user_id=? AND session_id=? AND revoked_at IS NULL'
         ).bind(nowIso, row.user_id, row.session_id)
       ]);
-      throw createApiError('تم اكتشاف إعادة استخدام رمز تجديد قديم؛ تم إغلاق الجلسة لحماية حسابك.', 401, {
+      throw createApiError('Refresh token reuse detected; session revoked to protect your account.', 401, {
         code: 'AUTH_REFRESH_TOKEN_REUSED'
       });
     }
 
     if (row.revoked_at) {
-      throw createApiError('تم إلغاء صلاحية رمز التجديد.', 401, { code: 'AUTH_REFRESH_TOKEN_REVOKED' });
+      throw createApiError('Refresh token has been revoked.', 401, { code: 'AUTH_REFRESH_TOKEN_REVOKED' });
     }
     if (!Number.isFinite(Date.parse(row.expires_at)) || Date.parse(row.expires_at) <= nowMs) {
-      throw createApiError('انتهت صلاحية رمز التجديد؛ يرجى تسجيل الدخول مجددًا.', 401, { code: 'AUTH_REFRESH_TOKEN_EXPIRED' });
+      throw createApiError('Refresh token has expired; sign in again.', 401, { code: 'AUTH_REFRESH_TOKEN_EXPIRED' });
     }
 
     const [sessRevoked, deleted, globalRevoke, user] = await db.batch([
@@ -327,18 +328,18 @@ export async function refreshUserSession(db, env, body, request) {
     ]);
 
     if (deleted.results?.[0]?.revoked_at) {
-      throw createApiError('هذا الحساب تم حذفه نهائيًا.', 401, { code: 'ACCOUNT_DELETED' });
+      throw createApiError('This account has been permanently deleted.', 401, { code: 'ACCOUNT_DELETED' });
     }
     if (sessRevoked.results?.[0]?.revoked_at) {
-      throw createApiError('تم إنهاء هذه الجلسة؛ يرجى تسجيل الدخول مجددًا.', 401, { code: 'AUTH_SESSION_REVOKED' });
+      throw createApiError('Session has been revoked; sign in again.', 401, { code: 'AUTH_SESSION_REVOKED' });
     }
     const allRevokedAt = globalRevoke.results?.[0]?.revoked_at;
     if (allRevokedAt && Date.parse(row.created_at) < Date.parse(allRevokedAt)) {
-      throw createApiError('تم تسجيل الخروج من جميع الأجهزة؛ سجل الدخول مجددًا.', 401, { code: 'AUTH_ALL_SESSIONS_REVOKED' });
+      throw createApiError('All sessions were revoked; sign in again.', 401, { code: 'AUTH_ALL_SESSIONS_REVOKED' });
     }
     const userRow = user.results?.[0];
     if (!userRow) {
-      throw createApiError('الحساب غير موجود.', 401, { code: 'AUTH_USER_NOT_FOUND' });
+      throw createApiError('Account not found.', 401, { code: 'AUTH_USER_NOT_FOUND' });
     }
 
     const issued = await issueTokenPair({
@@ -378,7 +379,7 @@ export async function refreshUserSession(db, env, body, request) {
           'UPDATE coaching_refresh_tokens SET revoked_at=? WHERE user_id=? AND session_id=? AND revoked_at IS NULL'
         ).bind(nowIso, row.user_id, row.session_id)
       ]);
-      throw createApiError('تم استخدام رمز التجديد بالتزامن؛ تم إغلاق الجلسة لحماية حسابك.', 401, {
+      throw createApiError('Concurrent refresh token use detected; session revoked to protect your account.', 401, {
         code: 'AUTH_REFRESH_TOKEN_REUSED'
       });
     }
@@ -409,7 +410,7 @@ export async function logoutUserSession(db, auth, body = {}) {
   const allDevices = body?.allDevices === true;
   const targetSession = allDevices ? '__all__' : (body?.sessionId || auth.sessionId);
   if (!allDevices && (typeof targetSession !== 'string' || !targetSession || targetSession.length > 200 || targetSession.startsWith('__'))) {
-    throw createApiError('معرّف الجلسة غير صالح.', 400, { code: 'INVALID_SESSION_ID' });
+    throw createApiError('Invalid sessionId parameter.', 400, { code: 'INVALID_SESSION_ID' });
   }
   const nowIso = new Date().toISOString();
   await db.prepare(
@@ -426,28 +427,28 @@ export async function logoutUserSession(db, auth, body = {}) {
 
 export async function changeUserPassword(db, auth, body = {}) {
   if (auth.isAnonymous) {
-    throw createApiError('تغيير كلمة المرور متاح للحسابات المسجلة فقط.', 403, { code: 'AUTH_VERIFIED_ACCOUNT_REQUIRED' });
+    throw createApiError('Changing password requires a verified registered account.', 403, { code: 'AUTH_VERIFIED_ACCOUNT_REQUIRED' });
   }
   const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
   const newPassword = validatePassword(body?.newPassword, 'newPassword');
   if (!currentPassword) {
-    throw createApiError('كلمة المرور الحالية مطلوبة.', 400, {
+    throw createApiError('Current password is required to set a new password.', 400, {
       code: 'CURRENT_PASSWORD_REQUIRED',
-      fieldErrors: [{ field: 'currentPassword', code: 'CURRENT_PASSWORD_REQUIRED', message: 'أدخل كلمة المرور الحالية.' }]
+      fieldErrors: [{ field: 'currentPassword', code: 'CURRENT_PASSWORD_REQUIRED', message: 'Current password is required.' }]
     });
   }
   if (currentPassword === newPassword) {
-    throw createApiError('كلمة المرور الجديدة يجب أن تختلف عن الحالية.', 400, { code: 'PASSWORD_UNCHANGED' });
+    throw createApiError('New password must be different from your current password.', 400, { code: 'PASSWORD_UNCHANGED' });
   }
 
   try {
     const user = await db.prepare('SELECT user_id,password_hash FROM coaching_users WHERE user_id=?').bind(auth.userId).first();
     if (!user) {
-      throw createApiError('حساب المصادقة غير موجود.', 404, { code: 'AUTH_USER_NOT_FOUND' });
+      throw createApiError('Account not found.', 404, { code: 'AUTH_USER_NOT_FOUND' });
     }
     const valid = await verifyPassword(currentPassword, user.password_hash);
     if (!valid) {
-      throw createApiError('كلمة المرور الحالية غير صحيحة.', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
+      throw createApiError('Current password is incorrect.', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
     }
 
     const nowIso = new Date().toISOString();

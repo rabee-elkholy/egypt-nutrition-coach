@@ -14,7 +14,7 @@ const run=(s,a,p)=>{const result=command(structuredClone(s),a,p);result.revision
 test('AUD-01: accepting an unexpired volume proposal with stale recovery fails closed',t=>{
  const s=clone();s.checkins=[readyCheckin()];s.adaptations=[{id:'stale',kind:'weekly_volume',planId:s.workoutPlan.id,dayIndex:1,exerciseId:s.workoutPlan.days[0].exercises[0].id,region:'quadriceps',extraSets:1,status:'pending',baseRevision:s.revision,expiresAt:new Date(Date.now()+7*86400000).toISOString()}];
  const now=Date.now();t.mock.method(Date,'now',()=>now+2*86400000);
- assert.throws(()=>run(s,'adaptation',{id:'stale',accept:true}),/استشفاء|مراجعة/);
+ assert.throws(()=>run(s,'adaptation',{id:'stale',accept:true}),e=>e.code==='ADAPTATION_NEEDS_FRESH_RECOVERY'&&/recovery check-in/i.test(e.message));
 });
 test('AUD-02: one exercise cannot count as completion of a multi-exercise session',()=>{
  const s=clone(),day=s.workoutPlan.days[0],e=day.exercises[0];
@@ -31,7 +31,7 @@ test('AUD-03: replacing an exercise preserves accepted dated moves',()=>{
 });
 test('AUD-04: legacy daily intake cannot be silently replaced by a single detailed item',()=>{
  const s=run(clone(),'food',{date:today(),energy:2100,complete:true});
- assert.throws(()=>run(s,'food_entry',{date:today(),source:'manual',slot:'snack',name:'قهوة',energy:50}),/إجمالي|تفصيل/);
+ assert.throws(()=>run(s,'food_entry',{date:today(),source:'manual',slot:'snack',name:'قهوة',energy:50}),e=>e.code==='DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION'&&/daily total/i.test(e.message));
  assert.equal(s.foodLogs[0].energy,2100);
 });
 test('AUD-05: invalid workout day cannot fall back to any matching exercise',()=>{
@@ -86,7 +86,7 @@ test('AUD-16: detailed mode requires explicit conversion and retains the prior d
  s=run(s,'food_entry',{source:'manual',date:today(),slot:'snack',name:'قهوة',energy:50});assert.equal(s.foodLogs[0].energy,50);assert.equal(s.history.find(h=>h.kind==='food_diary_mode').previous.energy,2100);
 });
 test('AUD-17: workout-only route cannot bypass an unasked health confirmation',()=>{
- assert.throws(()=>generate(empty(),{...draft,serviceTrack:'workouts_only'}),/صحية/);
+ assert.throws(()=>generate(empty(),{...draft,serviceTrack:'workouts_only'}),e=>e.code==='HEALTH_CONFIRMATION_REQUIRED'&&/health readiness/i.test(e.message));
  assert.ok(generate(empty(),{...draft,serviceTrack:'workouts_only',healthConfirmed:true}).workoutPlan);
 });
 test('AUD-18: nutrition-only muscle gain uses confirmed external resistance days',()=>{
@@ -94,7 +94,7 @@ test('AUD-18: nutrition-only muscle gain uses confirmed external resistance days
  const s=generate(empty(),{...draft,goal:'muscle_gain',serviceTrack:'nutrition_only',externalTrainingDays:[1,3,5]});assert.equal(s.profile.trainingDays,3);assert.equal(s.workoutPlan,null);assert.ok(s.plans[0]);
 });
 test('AUD-19: a late acceptance cannot cut calories with unknown recovery',()=>{
- const s=clone();s.adaptations=[{id:'c',kind:'calories',delta:-100,status:'pending',baseRevision:s.revision}];assert.throws(()=>run(s,'adaptation',{id:'c',accept:true}),/استشفاء/);
+ const s=clone();s.adaptations=[{id:'c',kind:'calories',delta:-100,status:'pending',baseRevision:s.revision}];assert.throws(()=>run(s,'adaptation',{id:'c',accept:true}),e=>e.code==='ADAPTATION_NEEDS_FRESH_RECOVERY'&&/recovery/i.test(e.message));
 });
 test('AUD-20: unchanged exercise exposures survive replacement of another exercise',()=>{
  let s=clone();s.checkins=[readyCheckin()];const day=s.workoutPlan.days[0],first=day.exercises[0],other=day.exercises[2];
@@ -108,7 +108,7 @@ test('AUD-21: retry after a concurrent original commit returns a state at least 
  const raw=JSON.stringify({revision:0,action:'weight',payload:{kg:79}}),bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)),digest=Array.from(new Uint8Array(bytes)).map(v=>v.toString(16).padStart(2,'0')).join('');
  const old=empty(),next={...empty(),revision:1};
  const db={prepare(sql){return {bind(){return this;},async first(){if(sql.includes('sqlite_master'))return null;if(sql.includes('coaching_auth_sessions'))return null;if(sql.includes('coaching_accounts'))return {body:JSON.stringify(reads++?next:old)};if(sql.includes('coaching_requests'))return {digest,response:JSON.stringify({revision:1})};throw Error(sql);}};}};
- const response=await worker.fetch(new Request('https://example.test/v1/commands',{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':'u','Idempotency-Key':'same'},body:raw}),{DB:db});const result=await response.json();assert.equal(response.status,200);assert.equal(result.revision,1);assert.equal(result.commandReceipt.revision,1);
+ const response=await worker.fetch(new Request('https://example.test/v1/commands',{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':'u','Idempotency-Key':'same'},body:raw}),{DB:db});const body=await response.json();assert.equal(response.status,200);assert.equal(body.ok,true);const result=body.data;assert.equal(result.revision,1);assert.equal(result.commandReceipt.revision,1);
 });
 test('AUD-22: meal times never invent a pre/post-workout relationship',()=>{
  for(const day of fixture.plans[0].days)for(const meal of day.meals)assert.equal(meal.workout_tag,undefined);

@@ -28,8 +28,16 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
 
     const edge = async (path, opts = {}, envOverride = {}) => {
       const env = { ...TEST_ENV, ...envOverride, DB: db };
-      const req = new Request('https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/v1/' + path, opts);
+      const req = new Request('https://curafit-api.egypt-nutrition-coach.workers.dev/v1/' + path, opts);
       return await cloudflareEntry.fetch(req, env, { waitUntil() {} });
+    };
+
+    const unwrap = async (res) => {
+      const json = await res.json();
+      assert.equal(json.ok, res.ok);
+      assert.ok(json.meta?.requestId);
+      assert.ok(json.meta?.serverTime);
+      return res.ok ? json.data : json.error;
     };
 
     const jsonReq = (path, body, extraHeaders = {}, method = 'POST', envOverride = {}) =>
@@ -42,28 +50,29 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
     await t.test('capabilities advertises native Cloudflare D1 auth without external IdP', async () => {
       const res = await edge('capabilities');
       assert.equal(res.status, 200);
-      const data = await res.json();
+      const data = await unwrap(res);
       assert.equal(data.auth.provider, 'cloudflare_d1_native');
       assert.equal(data.auth.configured, true);
       assert.ok(data.features.includes('native_cloudflare_auth'));
+      assert.ok(!data.features.includes('simulation_90d'));
     });
 
     await t.test('missing AUTH_JWT_SECRET fails closed with 503 AUTH_SECRET_NOT_CONFIGURED', async () => {
       const res = await jsonReq('auth/register', { email: 'nosecret@curafit.app', password: 'Password123!' }, {}, 'POST', { AUTH_JWT_SECRET: '' });
       assert.equal(res.status, 503);
-      const body = await res.json();
-      assert.equal(body.code, 'AUTH_SECRET_NOT_CONFIGURED');
+      const err = await unwrap(res);
+      assert.equal(err.code, 'AUTH_SECRET_NOT_CONFIGURED');
     });
 
     await t.test('register, duplicate rejection, login, session inspection, and authenticated commands through public edge', async () => {
       // Invalid inputs rejected cleanly
       const badEmail = await jsonReq('auth/register', { email: 'not-an-email', password: 'Password123!' });
       assert.equal(badEmail.status, 400);
-      assert.equal((await badEmail.json()).code, 'INVALID_EMAIL');
+      assert.equal((await unwrap(badEmail)).code, 'INVALID_EMAIL');
 
       const shortPass = await jsonReq('auth/register', { email: 'short@curafit.app', password: '123' });
       assert.equal(shortPass.status, 400);
-      assert.equal((await shortPass.json()).code, 'INVALID_PASSWORD');
+      assert.equal((await unwrap(shortPass)).code, 'INVALID_PASSWORD');
 
       // Register new user (public edge must not mint anonymous coach_uid cookie)
       const regRes = await jsonReq('auth/register', {
@@ -74,7 +83,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       });
       assert.equal(regRes.status, 201);
       assert.equal(regRes.headers.get('Set-Cookie'), null);
-      const reg = await regRes.json();
+      const reg = await unwrap(regRes);
       assert.equal(reg.tokenType, 'Bearer');
       assert.ok(reg.accessToken);
       assert.ok(reg.refreshToken.startsWith('cfrt_'));
@@ -85,17 +94,17 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       // Duplicate email rejected with 409
       const dupRes = await jsonReq('auth/register', { email: 'ali.hassan@curafit.app', password: 'AnotherPassword#2026' });
       assert.equal(dupRes.status, 409);
-      assert.equal((await dupRes.json()).code, 'AUTH_EMAIL_ALREADY_EXISTS');
+      assert.equal((await unwrap(dupRes)).code, 'AUTH_EMAIL_ALREADY_EXISTS');
 
       // Wrong password rejected with 401
       const wrongPass = await jsonReq('auth/login', { email: 'ali.hassan@curafit.app', password: 'WrongPassword#999' });
       assert.equal(wrongPass.status, 401);
-      assert.equal((await wrongPass.json()).code, 'AUTH_INVALID_CREDENTIALS');
+      assert.equal((await unwrap(wrongPass)).code, 'AUTH_INVALID_CREDENTIALS');
 
       // Unknown email rejected with identical 401 code
       const unknownEmail = await jsonReq('auth/login', { email: 'nobody@curafit.app', password: 'StrongPassword#2026' });
       assert.equal(unknownEmail.status, 401);
-      assert.equal((await unknownEmail.json()).code, 'AUTH_INVALID_CREDENTIALS');
+      assert.equal((await unwrap(unknownEmail)).code, 'AUTH_INVALID_CREDENTIALS');
 
       // Valid login returns new session
       const loginRes = await jsonReq('auth/login', {
@@ -104,14 +113,14 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
         deviceId: 'ios-iphone-16'
       });
       assert.equal(loginRes.status, 200);
-      const login = await loginRes.json();
+      const login = await unwrap(loginRes);
       assert.equal(login.user.userId, reg.user.userId);
       assert.notEqual(login.sessionId, reg.sessionId);
 
       // Session inspection with Bearer token
       const sessRes = await edge('auth/session', { headers: { Authorization: `Bearer ${login.accessToken}` } });
       assert.equal(sessRes.status, 200);
-      const sess = await sessRes.json();
+      const sess = await unwrap(sessRes);
       assert.equal(sess.userId, reg.user.userId);
       assert.equal(sess.sessionId, login.sessionId);
       assert.equal(sess.authMethod, 'bearer_jwt');
@@ -128,19 +137,19 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
         }
       }, { Authorization: `Bearer ${login.accessToken}`, 'Idempotency-Key': 'native-gen-1' });
       assert.equal(genRes.status, 200);
-      const gen = await genRes.json();
+      const gen = await unwrap(genRes);
       assert.equal(gen.revision, 1);
     });
 
     await t.test('refresh token rotation works and replay reuse detection revokes compromised session', async () => {
       const regRes = await jsonReq('auth/register', { email: 'refresh.test@curafit.app', password: 'RefreshPass#2026', deviceId: 'dev-rot-1' });
       assert.equal(regRes.status, 201);
-      const initial = await regRes.json();
+      const initial = await unwrap(regRes);
 
       // Rotate refresh token once -> succeeds
       const ref1Res = await jsonReq('auth/refresh', { refreshToken: initial.refreshToken });
       assert.equal(ref1Res.status, 200);
-      const ref1 = await ref1Res.json();
+      const ref1 = await unwrap(ref1Res);
       assert.equal(ref1.sessionId, initial.sessionId);
       assert.notEqual(ref1.refreshToken, initial.refreshToken);
 
@@ -151,20 +160,20 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       // Replaying the OLD rotated refresh token triggers reuse detection and revokes the entire session
       const replayRes = await jsonReq('auth/refresh', { refreshToken: initial.refreshToken });
       assert.equal(replayRes.status, 401);
-      assert.equal((await replayRes.json()).code, 'AUTH_REFRESH_TOKEN_REUSED');
+      assert.equal((await unwrap(replayRes)).code, 'AUTH_REFRESH_TOKEN_REUSED');
 
       // Compromised session's newer access token AND newer refresh token are now rejected
       const blockedAccess = await edge('auth/session', { headers: { Authorization: `Bearer ${ref1.accessToken}` } });
       assert.equal(blockedAccess.status, 401);
-      assert.equal((await blockedAccess.json()).code, 'AUTH_SESSION_REVOKED');
+      assert.equal((await unwrap(blockedAccess)).code, 'AUTH_SESSION_REVOKED');
 
       const blockedRefresh = await jsonReq('auth/refresh', { refreshToken: ref1.refreshToken });
       assert.equal(blockedRefresh.status, 401);
     });
 
     await t.test('change-password updates hash, revokes other sessions, and logout revokes active session + refresh token', async () => {
-      const reg = await (await jsonReq('auth/register', { email: 'pw.test@curafit.app', password: 'OldPassword#2026', deviceId: 'dev-a' })).json();
-      const loginB = await (await jsonReq('auth/login', { email: 'pw.test@curafit.app', password: 'OldPassword#2026', deviceId: 'dev-b' })).json();
+      const reg = await unwrap(await jsonReq('auth/register', { email: 'pw.test@curafit.app', password: 'OldPassword#2026', deviceId: 'dev-a' }));
+      const loginB = await unwrap(await jsonReq('auth/login', { email: 'pw.test@curafit.app', password: 'OldPassword#2026', deviceId: 'dev-b' }));
 
       const chRes = await jsonReq('auth/change-password', {
         currentPassword: 'OldPassword#2026',
@@ -172,7 +181,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
         revokeOtherSessions: true
       }, { Authorization: `Bearer ${reg.accessToken}` });
       assert.equal(chRes.status, 200);
-      assert.equal((await chRes.json()).changed, true);
+      assert.equal((await unwrap(chRes)).changed, true);
 
       // Other session B is revoked; current session A still works
       assert.equal((await edge('auth/session', { headers: { Authorization: `Bearer ${loginB.accessToken}` } })).status, 401);
@@ -186,7 +195,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       // Logout revokes current session & refresh token
       const outRes = await jsonReq('auth/logout', { allDevices: false }, { Authorization: `Bearer ${reg.accessToken}` });
       assert.equal(outRes.status, 200);
-      assert.equal((await outRes.json()).loggedOut, true);
+      assert.equal((await unwrap(outRes)).loggedOut, true);
       assert.equal((await edge('auth/session', { headers: { Authorization: `Bearer ${reg.accessToken}` } })).status, 401);
       assert.equal((await jsonReq('auth/refresh', { refreshToken: reg.refreshToken })).status, 401);
     });
@@ -196,7 +205,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       const anonSessRes = await edge('auth/session');
       assert.equal(anonSessRes.status, 200);
       const anonCookie = anonSessRes.headers.get('Set-Cookie').split(';')[0];
-      const anonUserId = (await anonSessRes.json()).userId;
+      const anonUserId = (await unwrap(anonSessRes)).userId;
 
       const anonGen = await jsonReq('commands?view=receipt', {
         revision: 0,
@@ -206,22 +215,22 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       assert.equal(anonGen.status, 200);
 
       // 2. Register native Cloudflare account & claim anonymous trial data
-      const reg = await (await jsonReq('auth/register', { email: 'claimer@curafit.app', password: 'ClaimPassword#2026' })).json();
+      const reg = await unwrap(await jsonReq('auth/register', { email: 'claimer@curafit.app', password: 'ClaimPassword#2026' }));
       const claimRes = await jsonReq('auth/claim-anonymous', { anonymousUserId: anonUserId, consent: true }, {
         Authorization: `Bearer ${reg.accessToken}`,
         Cookie: anonCookie
       });
       assert.equal(claimRes.status, 200);
-      assert.equal((await claimRes.json()).claimed, true);
+      assert.equal((await unwrap(claimRes)).claimed, true);
 
       // Verify profile migrated
-      const boot = await (await edge('bootstrap', { headers: { Authorization: `Bearer ${reg.accessToken}` } })).json();
+      const boot = await unwrap(await edge('bootstrap', { headers: { Authorization: `Bearer ${reg.accessToken}` } }));
       assert.equal(boot.profile.name, 'Trial User');
 
       // 3. GDPR Delete permanently erases coaching_users, coaching_refresh_tokens, and account data
       const delRes = await jsonReq('account/delete', { confirm: true }, { Authorization: `Bearer ${reg.accessToken}` }, 'DELETE');
       assert.equal(delRes.status, 200);
-      assert.equal((await delRes.json()).deleted, true);
+      assert.equal((await unwrap(delRes)).deleted, true);
 
       const userRow = await db.prepare('SELECT user_id FROM coaching_users WHERE user_id=?').bind(reg.user.userId).first();
       assert.equal(userRow, null);
@@ -233,20 +242,24 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
     });
 
     await t.test('Postman collection & environments are valid v2.1, cover 100% of OpenAPI routes & 30 command actions, and execute live', async () => {
-      const col = JSON.parse(await readFile('postman/Egypt_Nutrition_Coach_API.postman_collection.json', 'utf8'));
-      const prodEnv = JSON.parse(await readFile('postman/Cloudflare_Production.postman_environment.json', 'utf8'));
-      const localEnv = JSON.parse(await readFile('postman/Local_Dev.postman_environment.json', 'utf8'));
+      const col = JSON.parse(await readFile('postman/CuraFit_API.postman_collection.json', 'utf8'));
+      const cloudDevEnv = JSON.parse(await readFile('postman/CuraFit_Cloud_Dev.postman_environment.json', 'utf8'));
+      const prodEnv = JSON.parse(await readFile('postman/CuraFit_Production.postman_environment.json', 'utf8'));
+      const localEnv = JSON.parse(await readFile('postman/CuraFit_Local_Dev.postman_environment.json', 'utf8'));
       const spec = parseYaml(await readFile('contracts/openapi.yaml', 'utf8'));
 
       assert.equal(col.info.schema, 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json');
-      assert.ok(col.info.description.includes('https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev'), 'Collection overview must document Production URL');
-      assert.ok(col.info.description.includes('http://127.0.0.1:8787'), 'Collection overview must document Dev URL');
-      assert.equal(prodEnv.values.find(v => v.key === 'baseUrl').value, 'https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev');
+      assert.ok(col.info.description.includes('https://curafit-api-dev.egypt-nutrition-coach.workers.dev'), 'Collection overview must document Cloud Dev URL');
+      assert.ok(col.info.description.includes('https://curafit-api.egypt-nutrition-coach.workers.dev'), 'Collection overview must document Production URL');
+      assert.ok(col.info.description.includes('http://127.0.0.1:8787'), 'Collection overview must document Local Dev URL');
+      assert.equal(cloudDevEnv.values.find(v => v.key === 'baseUrl').value, 'https://curafit-api-dev.egypt-nutrition-coach.workers.dev');
+      assert.equal(prodEnv.values.find(v => v.key === 'baseUrl').value, 'https://curafit-api.egypt-nutrition-coach.workers.dev');
       assert.equal(localEnv.values.find(v => v.key === 'baseUrl').value, 'http://127.0.0.1:8787');
 
       const apiRefMd = await readFile('docs/API_REFERENCE.md', 'utf8');
-      assert.ok(apiRefMd.includes('https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev'), 'docs/API_REFERENCE.md must include Production URL');
-      assert.ok(apiRefMd.includes('http://127.0.0.1:8787'), 'docs/API_REFERENCE.md must include Dev URL');
+      assert.ok(apiRefMd.includes('https://curafit-api-dev.egypt-nutrition-coach.workers.dev'), 'docs/API_REFERENCE.md must include Cloud Dev URL');
+      assert.ok(apiRefMd.includes('https://curafit-api.egypt-nutrition-coach.workers.dev'), 'docs/API_REFERENCE.md must include Production URL');
+      assert.ok(apiRefMd.includes('http://127.0.0.1:8787'), 'docs/API_REFERENCE.md must include Local Dev URL');
       for (const folder of col.item) {
         assert.ok(apiRefMd.includes(`## ${folder.name}`), `docs/API_REFERENCE.md missing folder heading: ${folder.name}`);
       }
@@ -260,13 +273,14 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
         }
       };
       walk(col.item);
-      assert.equal(requests.length, 81, `Expected 81 requests in Postman collection, got ${requests.length}`);
+      assert.equal(requests.length, 77, `Expected 77 requests in Postman collection, got ${requests.length}`);
 
       for (const r of requests) {
         const desc = r.request.description || '';
         assert.ok(desc.includes('### Endpoint Info'), `Missing Endpoint Info docs on "${r.name}"`);
+        assert.ok(desc.includes('Cloud Dev URL:'), `Missing Cloud Dev URL docs on "${r.name}"`);
         assert.ok(desc.includes('Production URL:'), `Missing Production URL docs on "${r.name}"`);
-        assert.ok(desc.includes('Dev URL:'), `Missing Dev URL docs on "${r.name}"`);
+        assert.ok(desc.includes('Local Dev URL:'), `Missing Local Dev URL docs on "${r.name}"`);
         if (['POST', 'DELETE'].includes(r.request.method) && r.request.body?.raw) {
           assert.ok(desc.includes('### Request Body Fields'), `Missing Request Body Fields docs on "${r.name}"`);
         }
@@ -292,7 +306,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
 
         if (rawUrl === '/v1/commands' && item.request.body?.raw) {
           const sampleBody = item.request.body.raw
-            .replace(/\{\{revision\}\}|\{\{simRevision\}\}|\{\{sampleDayIndex\}\}/g, '1')
+            .replace(/\{\{revision\}\}|\{\{sampleDayIndex\}\}/g, '1')
             .replace(/\{\{[^}]+\}\}/g, 'placeholder');
           const parsed = JSON.parse(sampleBody);
           postmanActions.add(parsed.action);
@@ -323,20 +337,20 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       const regItem = findReq('Register User');
       const regRes = await edge('auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: render(regItem.request.body.raw) });
       assert.equal(regRes.status, 201);
-      const regData = await regRes.json();
+      const regData = await unwrap(regRes);
       const authH = { Authorization: `Bearer ${regData.accessToken}`, 'Content-Type': 'application/json' };
 
       // 2. Eligibility
       const eligItem = findReq('Pre-Screening Eligibility Check');
       const eligRes = await edge('eligibility', { method: 'POST', headers: authH, body: render(eligItem.request.body.raw) });
       assert.equal(eligRes.status, 200);
-      assert.equal((await eligRes.json()).status, 'eligible');
+      assert.equal((await unwrap(eligRes)).status, 'eligible');
 
       // 3. Generate Initial Plan
       const genItem = findReq('Generate Initial Plan (Full Response)');
       const genRes = await edge('commands?view=full', { method: 'POST', headers: { ...authH, 'Idempotency-Key': 'pm-smoke-gen' }, body: render(genItem.request.body.raw) });
       assert.equal(genRes.status, 200);
-      const genData = await genRes.json();
+      const genData = await unwrap(genRes);
       vars.revision = String(genData.revision);
       vars.todayDate = genData.serverDate;
 
@@ -344,13 +358,13 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       const waterItem = findReq('Log Water Intake — Set Cups (water)');
       const waterRes = await edge('commands?view=receipt', { method: 'POST', headers: { ...authH, 'Idempotency-Key': 'pm-smoke-water' }, body: render(waterItem.request.body.raw) });
       assert.equal(waterRes.status, 200);
-      vars.revision = String((await waterRes.json()).revision);
+      vars.revision = String((await unwrap(waterRes)).revision);
 
       // 5. Calculate Recipe
       const calcItem = findReq('Calculate Custom Recipe / Beverage Nutrients');
       const calcRes = await edge('foods/calculate', { method: 'POST', headers: authH, body: render(calcItem.request.body.raw) });
       assert.equal(calcRes.status, 200);
-      assert.ok((await calcRes.json()).nutrients.energy.total);
+      assert.ok((await unwrap(calcRes)).nutrients.energy.total);
     });
   } finally {
     await mf.dispose();

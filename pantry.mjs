@@ -1,5 +1,6 @@
 import {alternatives} from './planner-core.mjs';
 import {componentAlternatives} from './meal-components.mjs';
+import {apiError} from './coaching-error.mjs';
 export function pantryCatalog(lib){
  const groups=[['eggs','بيض',['egg','friedegg']],['chicken','صدور فراخ بدون جلد',['chicken','chickenboiled']],['tomato','طماطم',['tomato','tomatocooked']],['carrot','جزر',['carrot','carrotcooked']]];
  const covered=new Set(groups.flatMap(g=>g[2]));
@@ -7,7 +8,7 @@ export function pantryCatalog(lib){
 }
 export function pantryKeys(selected,lib){
  const catalog=pantryCatalog(lib),known=new Map(catalog.map(r=>[r.id,r]));
- if(!Array.isArray(selected)||selected.length>100||selected.some(id=>!known.has(id)))throw Error('راجع مكونات البيت المختارة');
+ if(!Array.isArray(selected)||selected.length>100||selected.some(id=>!known.has(id)))throw apiError('INVALID_PANTRY_SELECTION','Invalid pantry ingredient selection.',{status:400});
  return new Set(selected.flatMap(id=>known.get(id).keys));
 }
 export function pantryAlternatives(meal,prefs,lib,selected,index=null,limit=12){

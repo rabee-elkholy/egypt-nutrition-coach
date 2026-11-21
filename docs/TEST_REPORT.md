@@ -1,55 +1,34 @@
-> نتيجة التحقق اللاحق والتصحيحات وحدود الجاهزية موثقة في [فحص استيراد 0.12](IMPORT_VERIFICATION_012_AR.md). تُقدّم نتائجه على ادعاءات الاكتمال والقياسات السابقة في هذا المستند.
+# Test & Verification Matrix Overview
 
-# تقرير الاختبارات والتحقق الشامل — Test Report (`v0.12.0`)
-
-يوثّق هذا التقرير جميع أوامر الاختبار والتحقق التي شُغّلت فعليًا على الكود النهائي، مع تفصيل النتائج ومصفوفة التغطية والقيود البيئية.
+This document describes the automated verification commands, test suites (`tests/*.test.mjs`), and quality gates enforced for **CuraFit API v1** in CI (`.github/workflows/check.yml`) and local release checks.
 
 ---
 
-## 1. بيئة التنفيذ ومعلومات المستودع
+## 1. Standard Verification Commands (Run from `e:\Egypt_Nutrition_Local\website\dist`)
 
-- **الفرع (Branch):** `main`
-- **النسخة المرجعية للبداية:** `2a415e436b2afc8ed1e0c78592c7a3d8d12d499d` (`v0.11.0` — محليًا `c8bc0cca7d1bf172a08000f61ac09e9d1235de59`)
-- **إصدار المحرك والعقد النهائي:** `0.12.0` (`apiVersion: "1"`, `schemaVersion: 3`)
-- **Node.js / SQLite:** Node `v24.19.0` وMiniflare `4.20260730.0`؛ لا يعتمد فحص OpenAPI على Python
-
----
-
-## 2. ملخص نتائج حزم الاختبار (Executed Test Suites Summary)
-
-| الأمر المشغّل (Command) | الغرض والنطاق | Passed | Failed | Skipped | الزمن |
-| --- | --- | --- | --- | --- | --- |
-| `node scripts/check-data-manifest.mjs` | التحقق من تطابق أعداد المكونات (86) والقوالب (227) والأصناف المعتمدة (3,070) والتقديرية (221) مع `data/meta.json`. | **1** | **0** | **0** | 0.2s |
-| `npm run build` | بناء حزم الخادم (`dist/server/index.js` و`dist/server/cloudflare.js`) والأصول الثابتة وملفات الترحيل. | **1** | **0** | **0** | 0.4s |
-| `npm test` (`node --test tests/*.test.mjs`) | تشغيل جميع ملفات الاختبار (اختبارات الوحدات، المجال، الأمان، المزامنة، الترحيل، OpenAPI، وسيناريوهات `E01`–`E16`). | **168** | **0** | **0** | راجع سجل CI للزمن حسب البيئة |
-| `npm run audit:matrix` | اختبار مصفوفة التوليد الحتمية: **2,250 تركيبة تمرين** + **333 محاولة خطة غذائية** (111 إعدادًا × 3 بذور). | **2,580** | **0** | **3 (Expected Blocked)** | ~98s |
-| `npm run benchmark` | قياس أحجام الـPayloads قبل/بعد وأزمنة استجابة البحث العربي وقاعدة البيانات (`p50`/`p95`/`p99`). | **1** | **0** | **0** | ~11s |
+| Command | Scope & Purpose |
+| :--- | :--- |
+| `npm.cmd run check` | Runs TypeScript check (`tsc -p tsconfig.quality.json`), food data manifest verification (`scripts/check-data-manifest.mjs`), bundle build (`scripts/build.mjs`), module boundary check (`scripts/quality/check-modules.mjs`), behavior reference check (`scripts/quality/check-reference.mjs`), and the complete Node test suite (`node --test tests/*.test.mjs`). |
+| `npm.cmd run audit:matrix` | Runs the deterministic full matrix across **2,250 workout combinations** and **333 nutrition planning scenarios** (`111` profiles x `3` seeds), asserting 0 runtime errors and full constraint validation. |
+| `npm.cmd run benchmark` | Executes live Miniflare/D1 request dispatch measurements and writes `outputs/benchmark-report.json`. |
+| `npm.cmd run postman:generate` | Regenerates `postman/CuraFit_API.postman_collection.json`, the 3 `postman/CuraFit_*.postman_environment.json` presets, and `docs/API_REFERENCE.md`. |
 
 ---
 
-## 3. تفصيل ملفات الاختبار (`tests/*.test.mjs`)
+## 2. Active Test Suites (`tests/*.test.mjs`)
 
-| ملف الاختبار | ما يغطيه ويتحقق منه | الحالة |
-| --- | --- | --- |
-| `tests/e2e-release-scenarios.test.mjs` | **جديد (`v0.12.0`):** يختبر السيناريوهات `E01` إلى `E16` والملاحظات `F01` إلى `F22`: انتحال الهوية، JWT، إبطال الجلسات، دمج الحساب المجهول، IDOR، تعارض جهازين أوفلاين (`409` + `deltas` + `tombstones`)، إعادة المحاولة مع اختلاف ترتيب مفاتيح JSON، البحث العربي في الكتالوج، حارس الكثافة، فحص الصوديوم لمرضى الضغط، استبعاد اللاكتوز والفول، أحجام `/v1/bootstrap` والإيصالات، صفحات السجلات، السفر وتغيير التوقيت قرب منتصف الليل، التصدير والحذف الشامل، ترحيل سجل سنة كاملة، تنقية السجلات، وصلاحية `contracts/openapi.yaml`. | **16/16 Pass** |
-| `tests/api.test.mjs` | المصادقة، عزل الحسابات، الحفظ في D1، أرشفة الخطط، وإيصالات منع التكرار. | **Pass** |
-| `tests/api-audit.test.mjs` | فحص المدخلات التالفة، حد الـ40 KB المتدفق، فحص `Origin`، سباق الكتابة المتزامنة الأولى، واسترجاع أهداف الأيام من الخطط السلف. | **17/17 Pass** |
-| `tests/api-simulation.test.mjs` | عزل مساحة المحاكاة (`?simulation=1`) عن الحساب الحقيقي في D1، وتقديم الأيام، ومنع ازدواج الإيصالات. | **5/5 Pass** |
-| `tests/audit.test.mjs` | 37 اختبار انحدار (`AUD-01` إلى `AUD-37`) لقواعد التغذية والتمرين والاستشفاء والتقويم والجانب الأحادي. | **37/37 Pass** |
-| `tests/release-011.test.mjs` | استبعاد حركات الإصابات الـ8، تأكيد اكتمال اليوم الصريح، وإلغاء التأكيد عند التعديل، وفحص صوديوم DASH. | **6/6 Pass** |
-| `tests/release-011-api.test.mjs` | إعادة فتح الأيام القديمة الغامضة عبر HTTP/D1 وحفظ التأكيد الصريح الجديد. | **Pass** |
-| `tests/maturity.test.mjs` | اختبارات `MAT-01` إلى `MAT-07` لتوقف التدرج مع الألم، تخفيف المجموعات، عزل سياق الهدف الجديد، وانحراف وزن التثبيت. | **7/7 Pass** |
-| `tests/simulation.test.mjs` | اختبارات `SIM-01` إلى `SIM-07` للساعة الافتراضية المعزولة ورحلة الـ15 يومًا والـ90 يومًا. | **7/7 Pass** |
-| `tests/followup.test.mjs` | تجميد الحصص الفعلية، البدائل، الاستشفاء الإقليمي، مراجعة السعرات، وزيادة الحجم الأسبوعي. | **17/17 Pass** |
-| `tests/spec-value.test.mjs` | الوزن المعدل `ABW` مع النقرس، توقعات الوزن، أمان الحمل، التقييم المشترك للتغذية والتمرين، والوحدات المنزلية للـ86 مكوّنًا. | **10/10 Pass** |
-| `tests/coaching.test.mjs` | قواعد الأهلية، المعدات المنزلية، التدرج المزدوج، والاستشفاء. | **9/9 Pass** |
-| `tests/personal-brief.test.mjs` | الملخص الشخصي وتدوير الرسائل وعدم تكرارها لـ35 يومًا. | **9/9 Pass** |
-| `tests/coach-messages.test.mjs` | قوالب رسائل الكوتش وتدوير النصائح اليومية. | **2/2 Pass** |
-| `tests/split-review.test.mjs` | شروط مراجعة تقسيمة التمرين بعد 8 أسابيع. | **2/2 Pass** |
+| Test File | Coverage Area |
+| :--- | :--- |
+| `tests/error-contract.test.mjs` | Asserts 100% pure-English `contracts/error-codes.json` and `docs/ERROR_CODES.md`, verifies 0 Arabic characters across documentation/contract files and server error throws, and tests live HTTP `{ ok, data, error, meta }` envelopes across `200`/`201`/`400`/`401`/`403`/`404`/`405`/`409`/`413`/`415`/`429`. |
+| `tests/native-auth.test.mjs` | Verifies Cloudflare-native PBKDF2 auth, fail-closed `503 AUTH_SECRET_NOT_CONFIGURED`, register/login/refresh token rotation + reuse revocation, change-password, logout, anonymous claim, GDPR delete, and validates Postman collection + 3 environments (`curafit-api-dev`, `curafit-api`, `127.0.0.1:8787`) & OpenAPI parity. |
+| `tests/e2e-release-scenarios.test.mjs` | End-to-end release scenarios (`E01`–`E16` / `F01`–`F22`): auth isolation, JWT validation, offline sync `409` + outbox deltas + tombstones, canonical JSON idempotency, catalog search, density guards, hypertension sodium gate, favism/lactose exclusions, bootstrap payload size, pagination, timezone midnight boundaries, export/delete, backfill, log redaction, and OpenAPI schema validity. |
+| `tests/api.test.mjs` & `tests/api-audit.test.mjs` | Core `/v1/*` API contract, D1 persistence, concurrent first-write races, streaming 40 KB payload limit, `Origin` check, and archived plan day target lookups. |
+| `tests/coaching-journey.test.mjs`, `tests/coaching-journey-api.test.mjs`, `tests/coaching-brief-api.test.mjs`, `tests/coaching-feedback-memory.test.mjs` | Follow-up agreements, subjective barrier feedback (hunger/satiety/energy/pain), outcome review, and caching contracts. |
+| `tests/audit.test.mjs`, `tests/followup.test.mjs`, `tests/followup-continuity.test.mjs`, `tests/medical-transitions.test.mjs`, `tests/release-011.test.mjs`, `tests/release-011-api.test.mjs`, `tests/maturity.test.mjs` | Deterministic nutrition/workout/recovery regressions, injury exclusions, clinical condition transitions, explicit food completion confirmation, and weekly goal/deload progression guards. |
+| `tests/spec-value.test.mjs`, `tests/coaching.test.mjs`, `tests/personal-brief.test.mjs`, `tests/coach-messages.test.mjs`, `tests/split-review.test.mjs`, `tests/plan-history-audit.test.mjs`, `tests/import-012-regressions.test.mjs` | ABW gout formulas, pregnancy/lactation screening, household portions across 86 ingredients, message timing/rotation, split reviews, and archived plan history integrity. |
 
 ---
 
-## 4. المخرجات والتقارير المولّدة آليًا (Test Artifacts)
+## 3. Verification Reporting Policy
 
-- `outputs/audit-matrix.json` — نتائج مصفوفة الـ2,250 حالة تمرين والـ333 حالة تغذية.
-- `outputs/benchmark-report.json` — نتائج قياس حجم البيانات وأزمنة الاستجابة (`p50`/`p95`/`p99`).
+All check/test/benchmark metrics reported for releases are obtained by executing `npm.cmd run check`, `npm.cmd run audit:matrix`, and `npm.cmd run benchmark` directly against the current commit and observing `0` failures and `0` skipped tests before promotion from `dev` to `main`.

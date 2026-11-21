@@ -5,11 +5,9 @@ import {MUSCLE_REGIONS,localDate} from './coaching-shared.mjs';
 import {say,SORENESS} from './coach-messages.mjs';
 import {buildSpecialistBrief} from './coaching-brief-view.mjs';
 
-export function followupView({state,simulationMode,notes}){
+export function followupView({state,notes}){
  function reviewHTML(todayStr,plan,todayPlanDay,pendingAdaptations){
   const todayDayIndex=new Date(todayStr+'T12:00:00Z').getUTCDay();
-  const sim=state.simulation;
-  const simDayEmpty=sim&&state.simulationToday&&!state.simulationToday.foodComplete&&!state.simulationToday.recoveryLogged&&state.simulationToday.weight==null&&!state.simulationToday.sessions.length;
   // 1. Identify muscles worked in latest session or today's workout
   const wPlan=state.workoutPlan;
   const recentLogs=(state.workoutLogs||[]).filter(l=>(l.date||l.at?.slice(0,10))<=todayStr&&(l.planId===wPlan?.id||wPlan?.days?.some(d=>d.exercises?.some(e=>e.id===l.exerciseId&&e.progressionKey&&e.progressionKey===l.progressionKey)))).slice().sort((a,b)=>(a.date||a.at.slice(0,10)).localeCompare(b.date||b.at.slice(0,10))||Date.parse(a.at)-Date.parse(b.at));
@@ -58,14 +56,10 @@ export function followupView({state,simulationMode,notes}){
    <div class="coach-card" style="background:linear-gradient(135deg,#eef7f2 0%,#e2f2e9 100%);border-color:#9fd0b5;margin-top:0">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
      <div>
-      <small style="color:#1f5c3f;font-weight:700">📅 متابعة اليوم الحالي: ${days[todayDayIndex]} ${todayStr}${sim?` · اليوم ${sim.day} من 90`:''}</small>
+      <small style="color:#1f5c3f;font-weight:700">📅 متابعة اليوم الحالي: ${days[todayDayIndex]} ${todayStr}</small>
       <h2 style="margin:2px 0 4px">💬 متابعة الفريق النهارده</h2>
      </div>
      <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${simulationMode&&sim?`
-       ${simDayEmpty&&sim.day<90?`<button type="button" id="review-fast-day" style="background:#0f766e;margin:0">⚡ قفّل اليوم ملتزم + اليوم التالي (${sim.day+1}) ←</button>`:''}
-       <button type="button" id="review-next-day" style="margin:0" ${sim.day>=90?'disabled':''}>⏭️ اليوم التالي (${Math.min(90,sim.day+1)}) ←</button>
-      `:`<button type="button" id="review-enter-sim" class="secondary" style="margin:0">⏭️ تجربة اليوم التالي (محاكاة)</button>`}
       <button type="button" id="review-coach" class="secondary" style="margin:0">🔍 تحديث قرار الفريق</button>
      </div>
     </div>

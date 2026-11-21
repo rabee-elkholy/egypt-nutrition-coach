@@ -1,15 +1,26 @@
 {
-  "error": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "code": "REVISION_CONFLICT",
-  "message": "تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.",
-  "fieldErrors": [],
-  "requestId": "9a1c4b22-6e81-4f09-b812-33d4e5f6a7b8",
-  "retryable": false,
-  "currentRevision": 12,
-  "mergeHints": {
-    "expectedRevision": 10,
-    "serverRevision": 12,
-    "syncChangesEndpoint": "/v1/sync/changes?after=10",
-    "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 10,
+      "serverRevision": 12
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 12,
+      "mergeHints": {
+        "expectedRevision": 10,
+        "serverRevision": 12,
+        "syncChangesEndpoint": "/v1/sync/changes?after=10",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "9a1c4b22-6e81-4f09-b812-33d4e5f6a7b8",
+    "serverTime": "2026-10-24T09:15:00.000Z"
   }
 }

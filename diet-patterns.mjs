@@ -1,3 +1,4 @@
+import {apiError} from './coaching-error.mjs';
 export const DIETS={
   balanced:'نظام متوازن مناسب لهدفي',
   low_carb:'قليل الكربوهيدرات (Low Carb)',
@@ -109,7 +110,7 @@ export function dietTemplates(base,lib,diet='balanced',region='egypt'){
       return {...t,id:'med-'+t.id,name:name(t.name),dish_family:t.dish_family,items,component_definitions:t.component_definitions?.map(c=>({...c,name:name(c.name)}))};
     }).filter(t=>t.items.every(p=>dietIngredientAllowed(lib.ingredients[p.key],diet)));
   }
-  if(diet!=='keto')throw Error('نظام غذائي غير معروف');
+  if(diet!=='keto')throw apiError('INVALID_DIET_TYPE','Selected dietType is not supported.',{status:400});
   const has=k=>Boolean(lib.ingredients[k]);
   const make=(id,name,slots,parts)=>{
     if(parts.some(([,,rows])=>rows.some(([k])=>!has(k))))return null;
@@ -206,29 +207,30 @@ function regionAllowsKey(ing, region){
 export function assertDietDay(snapshots,diet,targets=null,profile=null){
   const medicalProfile=profile||{diseases:targets?.medical_conditions||[]};
   const medicalBlocked=medicalContraindicatedKeys(medicalProfile);
-  if(medicalBlocked.size&&snapshots.some(s=>!s.ingredients?.length||s.ingredients.some(i=>typeof i.key!=='string'||medicalBlocked.has(i.key))))throw Error('الوجبة لا تطابق استبعادات الحالة الصحية المعلنة؛ لم نحفظ التعديل.');
-  if(['vegetarian','vegan','mediterranean','dash','keto'].includes(diet) && snapshots.some(s=>s.ingredients.some(i=>!i.key || !dietIngredientAllowed({...i,values:i.values_per_100g},diet))))throw Error('البديل لا يطابق قواعد النظام أو مكوناته غير موثقة؛ اختار بديلًا مناسبًا.');
-  if(diet==='high_protein'&&targets&&snapshots.reduce((s,x)=>s+Number(x.values.protein),0)<targets.protein*.8)throw Error('الوجبات لا تحقق الحد المطلوب لهدف البروتين؛ زوّد مصادر البروتين المتاحة.');
+  if(medicalBlocked.size&&snapshots.some(s=>!s.ingredients?.length||s.ingredients.some(i=>typeof i.key!=='string'||medicalBlocked.has(i.key))))throw apiError('MEAL_EXCLUDED_BY_HEALTH_CONDITION','Meal conflicts with declared medical/wellness exclusions; changes were not saved.',{status:400});
+  if(['vegetarian','vegan','mediterranean','dash','keto'].includes(diet) && snapshots.some(s=>s.ingredients.some(i=>!i.key || !dietIngredientAllowed({...i,values:i.values_per_100g},diet))))throw apiError('MEAL_VIOLATES_DIET_OR_UNVERIFIED','Meal does not comply with diet rules or contains unverified ingredients.',{status:400});
+  if(diet==='high_protein'&&targets&&snapshots.reduce((s,x)=>s+Number(x.values.protein),0)<targets.protein*.8)throw apiError('HIGH_PROTEIN_TARGET_UNMET','Meals fall below the minimum protein threshold for high_protein diet.',{status:400});
   const hasHypertension=Boolean(profile?.diseases?.includes('hypertension')||targets?.medical_conditions?.includes('hypertension'));
   if(diet==='dash'||hasHypertension){
     const getSodium=s=>s.values.sodium!=null&&Number.isFinite(Number(s.values.sodium))&&Number(s.values.sodium)>=0?Number(s.values.sodium):null;
-    if(snapshots.some(s=>getSodium(s)==null)||snapshots.reduce((s,x)=>s+getSodium(x),0)>2300)throw Error('الخطة لا تحقق حد الصوديوم في داش قبل الملح المضاف. غيّر الاختيارات.');
+    if(snapshots.some(s=>getSodium(s)==null)||snapshots.reduce((s,x)=>s+getSodium(x),0)>2300)throw apiError('DASH_SODIUM_LIMIT_EXCEEDED','Plan exceeds the 2300mg daily sodium limit required for DASH diet or lacks sodium measurements.',{status:400});
   }
   if(!['keto','low_carb'].includes(diet))return;
-  if(snapshots.some(s=>s.values.carbs==null||s.carb_ids.length!==1||s.carb_ids[0]!=='fdc:1005'))throw Error('الكيتو يحتاج بيانات كربوهيدرات كاملة بنفس التعريف');
+  if(snapshots.some(s=>s.values.carbs==null||s.carb_ids.length!==1||s.carb_ids[0]!=='fdc:1005'))throw apiError('KETO_CARB_DEFINITION_REQUIRED','Keto diet verification requires consistent total-carbohydrate (fdc:1005) definitions.',{status:400});
   const total=k=>snapshots.reduce((s,x)=>s+Number(x.values[k]),0),energy=total('energy');
-  if(total('carbs')>(diet==='keto'?50:130))throw Error('الاختيار يتجاوز حد الكربوهيدرات الكلية للنظام: '+(diet==='keto'?50:130)+' جرام يوميًا');
-  if(targets&&(energy<targets.energy*.85||energy>targets.energy*1.15||total('protein')<targets.protein*.8||(diet==='keto'&&total('fat')*9/energy<.52)))throw Error('المكتبة لا تكفي لهدفك مع قيود النظام الحالي. غيّر الاستبعادات أو مصادر البروتين أو اختار النظام المتوازن؛ لم نحفظ خطة غير مطابقة.');
+  const maxCarbsGrams=diet==='keto'?50:130;
+  if(total('carbs')>maxCarbsGrams)throw apiError('CARB_LIMIT_EXCEEDED',`Selection exceeds the daily carbohydrate ceiling of ${maxCarbsGrams}g.`,{status:400,params:{maxCarbsGrams}});
+  if(targets&&(energy<targets.energy*.85||energy>targets.energy*1.15||total('protein')<targets.protein*.8||(diet==='keto'&&total('fat')*9/energy<.52)))throw apiError('LIBRARY_INSUFFICIENT_FOR_DIET_GOALS','Food catalog cannot satisfy calorie, protein, or macro goals under current diet exclusions.',{status:400});
 }
 
 export const FASTING={none:'بدون صيام متقطع','12':'12 ساعة صيام / 12 ساعة أكل','14':'14 ساعة صيام / 10 ساعات أكل','16':'16 ساعة صيام / 8 ساعات أكل'};
 export function fastingTimes(prefs,count){
   const mode=prefs.diet==='intermittent_fasting'?(prefs.fasting&&prefs.fasting!=='none'?prefs.fasting:'16'):(prefs.fasting??'none');
-  if(!Object.hasOwn(FASTING,mode))throw Error('اختار موعد أكل متاحًا');
+  if(!Object.hasOwn(FASTING,mode))throw apiError('FASTING_WINDOW_INVALID','Invalid fasting mode or eating window start time (eating window must fit within the same day).',{status:400});
   if(mode==='none')return [];
   const startStr=prefs.eatingStart||(prefs.diet==='intermittent_fasting'?'12:00':'');
-  if(!/^\d{2}:\d{2}$/.test(startStr))throw Error('حدد بداية وقت الأكل');
+  if(!/^\d{2}:\d{2}$/.test(startStr))throw apiError('FASTING_WINDOW_INVALID','Invalid fasting mode or eating window start time (eating window must fit within the same day).',{status:400});
   const [h,m]=startStr.split(':').map(Number),start=h*60+m,window=(24-Number(mode))*60;
-  if(h>23||m>59||start+window>1440)throw Error('اختار وقت بداية يخلي نافذة الأكل داخل نفس اليوم');
+  if(h>23||m>59||start+window>1440)throw apiError('FASTING_WINDOW_INVALID','Invalid fasting mode or eating window start time (eating window must fit within the same day).',{status:400});
   return Array.from({length:count},(_,i)=>{const t=Math.round(start+i*(window-30)/Math.max(1,count-1));return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0')});
 }

@@ -1,10 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {empty,generate} from '../server/coaching.mjs';
-import {generateStressCohort} from '../simulation/persona-generator.mjs';
-import {measuredDashSodiumInvariant} from '../simulation/stress-tests.mjs';
 import {library} from '../server/food.mjs';
-const fixture=()=>generate(empty(),generateStressCohort().find(c=>c.id==='stress_20').draft,'stress-dash-gulf');
+
+const DASH_GULF_DRAFT={name:'DASH Gulf Stress',age:46,weight:86,height:173,sex:'male',goal:'lose',targetWeight:78,serviceTrack:'nutrition_only',dailyActivity:'light',dietType:'dash',region:'gulf',budget:'medium',mealsCount:4};
+const fixture=()=>generate(empty(),DASH_GULF_DRAFT,'stress-dash-gulf');
+
+function measuredDashSodiumInvariant(state){
+ const plans=state?.plans||[];
+ if(!plans.length)return false;
+ for(const plan of plans){
+  if(!Array.isArray(plan.days)||plan.days.length!==7)return false;
+  for(const day of plan.days){
+   let daySodium=0;
+   for(const meal of day.meals||[]){
+    const snap=meal.snapshot;
+    if(!snap||snap.values?.sodium==null||!Array.isArray(snap.ingredients))return false;
+    let mealSodium=0;
+    for(const part of snap.ingredients){
+     if(part.values_per_100g?.sodium==null||!library.ingredients[part.key])return false;
+     const ref=Number(library.ingredients[part.key].values.sodium);
+     const g=Number(part.grams);
+     if(!Number.isFinite(ref)||!Number.isFinite(g))return false;
+     mealSodium+=(g*ref)/100;
+    }
+    if(Math.abs(mealSodium-Number(snap.values.sodium))>5)return false;
+    daySodium+=mealSodium;
+   }
+   if(daySodium>2300)return false;
+  }
+ }
+ return true;
+}
 
 test('DASH stress requires a retained complete measured plan and rejects missing evidence',()=>{
  const state=fixture();assert.equal(measuredDashSodiumInvariant(state),true);

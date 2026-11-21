@@ -23,6 +23,6 @@ test('legacy violating food plans hold review and reject calorie retargeting for
   const s=generate(empty(),{...draft,diseases:[disease]},'review-011'),key=[...medicalContraindicatedKeys(s.profile)][0];
   s.plans[0].days[1].meals[0].snapshot.ingredients[0].key=key;
   const reviewed=command(structuredClone(s),'review',{});assert.equal(reviewed.lastReview.nutrition.action,'hold');assert.equal(reviewed.lastReview.reasonCode,'PLAN_CONSTRAINTS_VERIFICATION_FAILED');
-  assert.throws(()=>retargetPlan(structuredClone(s.plans[0]),s.plans[0].targets.energy+100,s.preferences,dateOffset(today(),1),s.profile),/الحالة الصحية/);
+  assert.throws(()=>retargetPlan(structuredClone(s.plans[0]),s.plans[0].targets.energy+100,s.preferences,dateOffset(today(),1),s.profile),e=>e.code==='MEAL_EXCLUDED_BY_HEALTH_CONDITION'&&/medical\/wellness exclusions/i.test(e.message));
  }
 });

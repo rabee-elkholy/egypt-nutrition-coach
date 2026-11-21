@@ -18,7 +18,7 @@ test('coaching agreement preserves the actual plan, remembers acknowledgement an
  command(s,'coaching_ack',{id:c.id});assert.equal(coachingInbox(s,now).items[0].readStatus,'ACKNOWLEDGED');
  command(s,'coaching_decision',{id:c.id,accept:true});
  assert.equal(c.reviewOn,'2026-10-29');assert.equal(coachingInbox(s,now).items[0].deliveryStatus,'NOT_SENT');
- assert.throws(()=>command(s,'coaching_outcome',{id:c.id,outcome:'helped'}),/موعد/);
+ assert.throws(()=>command(s,'coaching_outcome',{id:c.id,outcome:'helped'}),e=>e.code==='COACHING_REVIEW_DATE_NOT_REACHED'&&/scheduled coaching review date/i.test(e.message));
  withClock(now+3*86400000,()=>command(s,'coaching_outcome',{id:c.id,outcome:'helped'}));
  assert.deepEqual(c.outcome,{value:'helped',at:'2026-10-29T12:00:00.000Z',source:'user_report'});
  assert.equal(coachingInbox(s,now+3*86400000).items.length,0);
@@ -31,13 +31,13 @@ test('duplicate reports do not duplicate agreements and invalid feedback cannot 
   const before=JSON.stringify(s);assert.throws(()=>command(s,'coaching_feedback',payload));assert.equal(JSON.stringify(s),before);
  }
  const c=s.coachingCases[0];command(s,'coaching_decision',{id:c.id,accept:false});
- assert.throws(()=>command(s,'coaching_decision',{id:c.id,accept:true}),/بالفعل/);
+ assert.throws(()=>command(s,'coaching_decision',{id:c.id,accept:true}),e=>e.code==='COACHING_CASE_ALREADY_DECIDED'&&/already been decided/i.test(e.message));
  assert.throws(()=>command(s,'coaching_ack',{id:'other-user-case'}),e=>e.status===404);
 }));
 test('stale proposals renew only on fresh explicit feedback; context changes retire agreements',()=>withClock(now,()=>{
  const s=account();command(s,'coaching_feedback',{domain:'nutrition',barrier:'budget'});const old=s.coachingCases[0];
  withClock(now+7*86400000,()=>{
-  assert.throws(()=>command(s,'coaching_decision',{id:old.id,accept:true}),/قديم/);
+  assert.throws(()=>command(s,'coaching_decision',{id:old.id,accept:true}),e=>e.code==='COACHING_CASE_EXPIRED'&&/expired/i.test(e.message));
   command(s,'coaching_feedback',{domain:'nutrition',barrier:'budget'});
  });
  assert.equal(old.status,'superseded');assert.equal(s.coachingCases.length,2);

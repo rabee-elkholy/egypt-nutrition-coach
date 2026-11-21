@@ -6,5 +6,5 @@ await build({entryPoints:['server/cloudflare-entry.mjs'],outfile:'dist/server/cl
 for(const f of await readdir('.'))if(/\.(mjs|css|html)$/.test(f))await copyFile(f,'dist/client/'+f);
 for(const dir of ['data','fonts'])await cp(dir,'dist/client/'+dir,{recursive:true});
 await cp('drizzle','dist/drizzle',{recursive:true});await copyFile('.openai/hosting.json','dist/.openai/hosting.json');
-await writeFile('dist/server/wrangler.json',JSON.stringify({name:'egypt-nutrition-coach',main:'index.js',compatibility_date:'2025-10-11',compatibility_flags:['nodejs_als'],assets:{directory:'../client',binding:'ASSETS',run_worker_first:['/v1/*']},d1_databases:[{binding:'DB',database_name:'coaching',database_id:'local',migrations_dir:'../drizzle'}]}));
+await writeFile('dist/server/wrangler.json',JSON.stringify({name:'curafit-api',main:'index.js',compatibility_date:'2025-10-11',compatibility_flags:['nodejs_als'],assets:{directory:'../client',binding:'ASSETS',run_worker_first:['/v1/*']},d1_databases:[{binding:'DB',database_name:'coaching',database_id:'local',migrations_dir:'../drizzle'}]}));
 console.log('Built Worker, static assets, and schema migrations.');

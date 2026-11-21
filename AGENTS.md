@@ -1,59 +1,59 @@
-# AI Agent Instructions & Unified Hosting Contract (`egypt-nutrition-coach`)
+# AI Agent Instructions & Unified Hosting Contract (`CuraFit API`)
 
 > **MANDATORY RULES FOR OPENAI CODEX & GOOGLE ANTIGRAVITY:**
-> 1. **SINGLE CANONICAL HOSTING:** This project has **ONE canonical hosting environment** on **Cloudflare Workers + Cloudflare D1** (`egypt-nutrition-coach`). **NEVER** deploy to a different Worker name, a new D1 database, OpenAI preview hosting, GitHub Pages, or any other host.
-> 2. **SINGLE BRANCH (`main` ONLY):** All work, commits, and pushes MUST be done directly on the **`main`** branch (`origin/main`). **NEVER** create or push feature/sub-branches (such as `feat/*`, `fix/*`, `codex/*`).
+> 1. **TWO CANONICAL CLOUDFLARE ENVIRONMENTS (`dev` & `main`):**
+>    - **Cloud Dev (`dev` branch):** Worker `curafit-api-dev` -> Cloudflare D1 `curafit-db-dev` (**full clone** of Production D1 data/schema — **NEVER** start an empty DB).
+>    - **Production (`main` branch):** Worker `curafit-api` -> existing full Production D1 `egypt-nutrition-coaching` (`database_id`: `90fa62f1-7866-4156-ac29-f0aec4814bab` — **NEVER** replace with an empty DB).
+> 2. **TWO CANONICAL BRANCHES ONLY (`dev` -> `main`):** Develop and test new features on **`dev`** (`origin/dev`, Cloud Dev) first, then fast-forward merge **`dev` -> `main`** (`origin/main`, Production). **NEVER** create ad-hoc feature branches or deploy to OpenAI preview hosting or GitHub Pages.
+> 3. **KMM ERROR CONTRACT:** All API error responses (`4xx`/`5xx`) MUST follow `{ ok: false, error: { code, message, params, fieldErrors, retryable }, meta: { requestId, serverTime } }` with **100% English** messages (`contracts/error-codes.json`). Never emit Arabic text in API errors.
 
 ---
 
-## 1. Canonical Live URLs, Branch & Cloudflare Resources
+## 1. Canonical Live URLs, Branches & Cloudflare Resources
 
-* **Primary Live Application (Production):**
-  `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/#planner`
-* **90-Day Adaptive Simulation Mode:**
-  `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev/?simulation=1#planner`
-* **GitHub Repository & Branch:**
-  `https://github.com/rabee-elkholy/egypt-nutrition-coach.git` — **Branch: `main` ONLY**
-* **Cloudflare Worker Name:**
-  `egypt-nutrition-coach`
+* **Production App & API (`main` branch):**
+  `https://curafit-api.egypt-nutrition-coach.workers.dev` (Web UI: `#planner`)
+  * Worker: `curafit-api`
+  * D1 Database: `egypt-nutrition-coaching` (`database_id`: `90fa62f1-7866-4156-ac29-f0aec4814bab`, binding: `DB`)
+* **Cloud Dev App & API (`dev` branch):**
+  `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` (Web UI: `#planner`)
+  * Worker: `curafit-api-dev`
+  * D1 Database: `curafit-db-dev` (full production clone, binding: `DB`)
+* **Git Repository & Branches:**
+  `https://github.com/rabee-elkholy/egypt-nutrition-coach.git` — Branches: **`dev`** (Cloud Dev) & **`main`** (Production)
 * **Cloudflare Worker Entrypoint:**
   `server/cloudflare-entry.mjs` (bundled into `dist/server/cloudflare.js` by `npm run build`)
-* **Cloudflare D1 Database:**
-  * `database_name`: `egypt-nutrition-coaching`
-  * `database_id`: `90fa62f1-7866-4156-ac29-f0aec4814bab`
-  * `binding`: `DB`
-  * `migrations_dir`: `drizzle`
 * **Wrangler Config File:**
-  `wrangler.jsonc`
+  `wrangler.jsonc` (`drizzle/` migrations dir)
 
 ---
 
 ## 2. Standard Build, Test & Deployment Workflow
 
-Whenever you make changes to the frontend, planner engines, or backend Worker:
+Run from `e:\Egypt_Nutrition_Local\website\dist`:
 
-1. **Always Work on `main`:**
-   ```bash
-   git checkout main
-   git pull origin main
+1. **Develop & Verify on `dev` First:**
+   ```powershell
+   git checkout dev
+   git pull --ff-only origin dev
+   npm.cmd run check
    ```
-2. **Run Verification Suites Before Deploying:**
-   ```bash
-   npm run check
-   ```
-3. **Deploy to the Canonical Cloudflare Worker:**
-   ```bash
-   npm run deploy
-   ```
-   *(Runs `node scripts/build.mjs && npx wrangler deploy --config wrangler.jsonc` and updates `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev` in place).*
-4. **If D1 Schema Migrations Were Added (`drizzle/*.sql`):**
-   ```bash
-   npm run deploy:d1
-   ```
-5. **Commit and Push Directly to `origin/main`:**
-   ```bash
+2. **Deploy to Cloud Dev & Commit/Push `dev`:**
+   ```powershell
+   npm.cmd run deploy:d1:dev   # if new D1 migrations exist
+   npm.cmd run deploy:dev
    git add -A
    git commit -m "<concise commit message>"
+   git push origin dev
+   ```
+3. **Promote Verified `dev` to Production (`main`):**
+   ```powershell
+   git checkout main
+   git pull --ff-only origin main
+   git merge --ff-only dev
+   npm.cmd run check
+   npm.cmd run deploy:d1:prod  # if new D1 migrations exist
+   npm.cmd run deploy:prod
    git push origin main
    ```
 
@@ -61,7 +61,7 @@ Whenever you make changes to the frontend, planner engines, or backend Worker:
 
 ## 3. Strict Prohibitions for Codex & Antigravity
 
-1. **Do NOT create or push any branch other than `main`.**
-2. **Do NOT change `"name": "egypt-nutrition-coach"` or `"database_id": "90fa62f1-7866-4156-ac29-f0aec4814bab"` in `wrangler.jsonc`.**
+1. **Do NOT create branches other than `dev` and `main`.**
+2. **Do NOT replace Production D1 `90fa62f1-7866-4156-ac29-f0aec4814bab` with an empty DB, and do NOT reset `curafit-db-dev` to an empty schema without cloning Production data.**
 3. **Do NOT overwrite `scripts/build.mjs` to remove the `dist/server/cloudflare.js` build target.**
-4. **Do NOT use `.openai/hosting.json` or `rabee-elkholy.github.io` as a deployment target** — `rabee-elkholy.github.io` automatically redirects to `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev`.
+4. **Do NOT use `.openai/hosting.json` or GitHub Pages (`rabee-elkholy.github.io`) as a deployment target.**

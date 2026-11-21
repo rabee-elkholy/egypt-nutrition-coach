@@ -7,14 +7,13 @@ import {Miniflare,Log,LogLevel} from 'miniflare';
 
 const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
 const digest=value=>createHash('sha256').update(canonical(value)).digest('hex');
-const simulationId=value=>'__simulation__:'+createHash('sha256').update(value).digest('hex');
 
 export function inspectNutritionHistory(bundles,persisted){
  const failures=[],transitions=[],snapshots=new Map(),previous=new Map();
  const archives=new Map(persisted.map(p=>[p.namespace+':'+p.plan.id,p.plan]));
  for(const bundle of bundles)for(const event of bundle.records){
   if(!event.response?.profile)continue;
-  const state=event.response,namespace=event.request.simulation?'simulation':'real',action=event.request.body?.action||null;
+  const state=event.response,namespace='primary',action=event.request.body?.action||null;
   const plans=state.plans||[],ids=plans.map(p=>p.id);
   if(new Set(ids).size!==ids.length)failures.push({code:'DUPLICATE_PLAN_ID',eventId:event.eventId});
   for(const plan of plans){
@@ -27,8 +26,7 @@ export function inspectNutritionHistory(bundles,persisted){
   if(active&&active!==prior?.active){
    let reason=null;
    if(action==='generate')reason=prior?.active?'USER_REQUESTED_REGENERATION':'INITIAL_CREATION';
-   if(action==='simulation_reset')reason='SIMULATION_RESET';
-   if(action==='simulation_next'||action==='renew_plan')reason='WEEKLY_RENEWAL';
+   if(action==='renew_plan')reason='WEEKLY_RENEWAL';
    if(action==='replace_meal')reason='MEAL_SUBSTITUTION';
    if(action==='confirm_schedule')reason='SCHEDULE_CONFIRMATION';
    if(action==='adaptation'&&event.request.body.payload?.accept===true){
@@ -72,7 +70,7 @@ async function main(){
   for(const persona of cohort){
    function* bundles(){for(let i=1;i<=config.days;i++)yield JSON.parse(gunzipSync(readFileSync(path.join(root,'users',persona.userId,'days',String(i).padStart(3,'0')+'.json.gz'))));}
    const persisted=[];
-   for(const [namespace,identity] of [['real',persona.userId],['simulation',simulationId(persona.userId)]]){
+   for(const [namespace,identity] of [['primary',persona.userId]]){
     const rows=await db.prepare('SELECT body FROM coaching_plans WHERE user_id=?').bind(identity).all();
     persisted.push(...rows.results.map(r=>({namespace,plan:JSON.parse(r.body)})));
    }

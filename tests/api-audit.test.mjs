@@ -17,7 +17,7 @@ test('HTTP and D1 audit scenarios',async t=>{
   await t.test('invalid cursors and dates are 400, not database failures',async()=>{
    for(const path of ['exercises?offset=Infinity','exercises?offset=-1','exercises?offset=1.5','sync/changes?after=NaN','sync/changes?after=9007199254740992','food-diary?date=2026-02-30'])assert.equal((await req(path,{headers:media})).status,400,path);
   });
-  await t.test('invalid requests leave a new account empty',async()=>{const s=await (await req('state',{headers:media})).json();assert.equal(s.revision,0);assert.equal(s.profile,null);});
+  await t.test('invalid requests leave a new account empty',async()=>{const s=(await (await req('state',{headers:media})).json()).data;assert.equal(s.revision,0);assert.equal(s.profile,null);});
   await t.test('same-origin checks reject cross-origin JSON writes',async()=>assert.equal((await post({revision:0,action:'weight',payload:{kg:80}},{...media,Origin:'https://other.test'})).status,403));
   await t.test('first-write race commits exactly one account, plan, receipt and change',async()=>{
    const draft={name:'Race',age:30,weight:80,height:175,sex:'male',goal:'maintain',serviceTrack:'workouts_only',healthConfirmed:true};
@@ -30,7 +30,7 @@ test('HTTP and D1 audit scenarios',async t=>{
    const future={...structuredClone(original),id:'child',parent_id:'parent',effective_from:'2026-10-24',targets:{energy:1900,protein:120}};
    for(const p of [original,future])await db.prepare('INSERT INTO coaching_plans(user_id,plan_id,created_at,body) VALUES(?,?,?,?)').bind('legacy-adjusted',p.id,p.created_at,JSON.stringify(p)).run();
    await db.prepare('INSERT INTO coaching_accounts(user_id,revision,body) VALUES(?,?,?)').bind('legacy-adjusted',1,JSON.stringify({...empty(),revision:1,active_plan_id:'child'})).run();
-   const s=await (await req('state',{headers:{...media,'oai-authenticated-user-id':'legacy-adjusted'}})).json();assert.equal(s.plans[0].days[0].targets.energy,2000);assert.equal(s.plans[0].targets.energy,1900);
+   const s=(await (await req('state',{headers:{...media,'oai-authenticated-user-id':'legacy-adjusted'}})).json()).data;assert.equal(s.plans[0].days[0].targets.energy,2000);assert.equal(s.plans[0].targets.energy,1900);
    const stored=await db.prepare('SELECT body FROM coaching_plans WHERE user_id=? AND plan_id=?').bind('legacy-adjusted','child').first();assert.equal(JSON.parse(stored.body).days[0].targets,undefined);
   });
   await t.test('missing bindings fail explicitly',async()=>{const r=await worker.fetch(new Request('https://audit.test/v1/state',{headers:media}),{});assert.equal(r.status,503);});

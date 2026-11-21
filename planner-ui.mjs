@@ -1,4 +1,6 @@
 import {DIETS,DIET_INFO,FASTING,FIXED_DIET_MEALS,assertDietDay} from './diet-patterns.mjs';
+import { formatArabicError } from './error-messages-ar.mjs';
+const uiError = (e) => (e?.code ? formatArabicError(e.code, e.params, e.message) : (e?.message || 'تعذر تنفيذ العملية.'));
 import {SPORTS} from './sports.mjs';
 import {householdQuantity} from './planner-household.mjs';
 import {pantryCatalog,pantryAlternatives} from './pantry.mjs';
@@ -160,13 +162,14 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
     try {
       fn();
     } catch (e) {
-      toast(e.message);
+      const msg = uiError(e);
+      toast(msg);
       const target =
         context && $("plan-picker").open
           ? $("picker-error")
           : $("planner-error");
       if (target) {
-        target.textContent = e.message;
+        target.textContent = msg;
         target.hidden = false;
       }
     }
@@ -641,7 +644,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
       $("plan-generate").disabled = !a.sufficient;
       $("plan-availability-warning").textContent = a.sufficient ? '' : `التنوع قليل. نحتاج ${a.minimum} اقتراحات مختلفة لكل موعد وجبة؛ قلّل الاستبعادات أو أضف بروتينًا أو غيّر الميزانية.`;
     } catch (e) {
-      element.textContent = e.message;
+      element.textContent = uiError(e);
       $("plan-generate").disabled = true;
       $("plan-availability-warning").textContent = '';
     }
@@ -705,7 +708,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
         }
       } catch (e) {
         target.checked = false;
-        $("plan-exclusion-limit").textContent = e.message;
+        $("plan-exclusion-limit").textContent = uiError(e);
         $("plan-exclusion-limit").hidden = false;
       }
     }
@@ -747,7 +750,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
         "اتسترجعت النسخة. قيم الملف المستورد مسؤولية صاحبه وليست اعتمادًا جديدًا.",
       );
     } catch (err) {
-      toast(err.message);
+      toast(uiError(err));
     } finally {
       if (request === importSequence) input.disabled = false;
     }
@@ -1151,7 +1154,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
     } catch (err) {
       if (seq === sequence)
         $("plan-food-quantity").innerHTML =
-          `<p role="alert">${esc(err.message)}. اختار الطعام مرة أخرى للمحاولة.</p>`;
+          `<p role="alert">${esc(uiError(err))}. اختار الطعام مرة أخرى للمحاولة.</p>`;
     }
   };
   function renderQuantity(custom) {
@@ -1188,7 +1191,7 @@ export async function mountPlanner({ root, foods, detailLoader, toast }) {
       try {
         $("plan-quantity-preview").innerHTML = macros(snapshot().values);
       } catch (err) {
-        $("plan-quantity-preview").textContent = err.message;
+        $("plan-quantity-preview").textContent = uiError(err);
       }
     };
     $("plan-food-unit").onchange = () => {

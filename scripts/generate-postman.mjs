@@ -1,20 +1,22 @@
 // Authoritative Generator for:
-// 1. postman/Egypt_Nutrition_Coach_API.postman_collection.json (fully documented v2.1 + saved examples)
-// 2. postman/Cloudflare_Production.postman_environment.json (Production Server)
-// 3. postman/Local_Dev.postman_environment.json (Dev Server)
-// 4. docs/API_REFERENCE.md (complete Markdown API documentation synced with Postman)
+// 1. postman/CuraFit_API.postman_collection.json (fully documented v2.1 + saved examples)
+// 2. postman/CuraFit_Cloud_Dev.postman_environment.json (Cloud Dev Server)
+// 3. postman/CuraFit_Production.postman_environment.json (Production Server)
+// 4. postman/CuraFit_Local_Dev.postman_environment.json (Local Dev Server)
+// 5. docs/API_REFERENCE.md (complete Markdown API documentation synced with Postman)
 //
 // Canonical Backend: Cloudflare Workers + Cloudflare D1 (Zero Supabase dependency)
 import { mkdir, writeFile } from 'node:fs/promises';
 
 const SCHEMA_V21 = 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json';
-const PROD_URL = 'https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev';
-const DEV_URL = 'http://127.0.0.1:8787';
+const CLOUD_DEV_URL = 'https://curafit-api-dev.egypt-nutrition-coach.workers.dev';
+const PROD_URL = 'https://curafit-api.egypt-nutrition-coach.workers.dev';
+const LOCAL_DEV_URL = 'http://127.0.0.1:8787';
 
 const COLLECTION_OVERVIEW_MD = [
-  '# Egypt Nutrition Coach (CuraFit) — Cloudflare Workers API v1',
+  '# CuraFit API v1 — Cloudflare Workers & D1',
   '',
-  'Complete, production-ready REST API running natively on **Cloudflare Workers + Cloudflare D1** (`egypt-nutrition-coach`). Zero Supabase or external IdP dependency.',
+  'Production-grade REST API running natively on **Cloudflare Workers + Cloudflare D1** (`curafit-api` for Production, `curafit-api-dev` for Cloud Dev). Designed for **Kotlin Multiplatform Mobile (KMM)** and clean Web User Stories with uniform JSON envelopes and 100% English machine-coded errors.',
   '',
   '---',
   '',
@@ -22,10 +24,11 @@ const COLLECTION_OVERVIEW_MD = [
   '',
   'Switch between environments from the top-right **Environment selector** in Postman:',
   '',
-  '| Environment Name | `baseUrl` | Purpose |',
-  '| :--- | :--- | :--- |',
-  `| **Production Server (Cloudflare Workers)** | \`${PROD_URL}\` | Live Cloudflare Workers + Cloudflare D1 production server |`,
-  `| **Dev Server (Local Miniflare / Dev)** | \`${DEV_URL}\` | Local development server (\`npm run dev\`) or custom dev/staging URL |`,
+  '| Environment Name | `baseUrl` | Cloudflare Worker / D1 | Purpose |',
+  '| :--- | :--- | :--- | :--- |',
+  `| **CuraFit — Cloud Dev** | \`${CLOUD_DEV_URL}\` | \`curafit-api-dev\` / \`curafit-db-dev\` | Feature development & staging on Cloudflare edge (\`dev\` branch, full clone of Prod D1) |`,
+  `| **CuraFit — Production** | \`${PROD_URL}\` | \`curafit-api\` / \`egypt-nutrition-coaching\` | Live Cloudflare Workers + D1 production server (\`main\` branch) |`,
+  `| **CuraFit — Local Dev** | \`${LOCAL_DEV_URL}\` | Local Miniflare | Local development server (\`npm run dev\`) |`,
   '',
   '---',
   '',
@@ -35,7 +38,7 @@ const COLLECTION_OVERVIEW_MD = [
   '- **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).',
   '- **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).',
   '- **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).',
-  '- **Web MVP Fallback:** Browser clients without Bearer token continue to use the `HttpOnly` `coach_uid` anonymous cookie and can migrate via `POST /v1/auth/claim-anonymous`.',
+  '- **Web Fallback:** Browser clients without Bearer token continue to use the `HttpOnly` `coach_uid` anonymous cookie and can migrate via `POST /v1/auth/claim-anonymous`.',
   '',
   '---',
   '',
@@ -43,26 +46,29 @@ const COLLECTION_OVERVIEW_MD = [
   '',
   'All domain mutations pass through `POST /v1/commands`:',
   '- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and body on network timeout.',
-  '- **`revision` (`integer >= 0`, required):** Must equal the server\'s current account revision. Mismatches return `409 REVISION_CONFLICT` with `currentRevision` and `mergeHints`.',
-  '- **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt; `?view=full` returns the full account snapshot.',
-  '- **Simulation Mode (`?simulation=1`):** Isolates all reads/writes into the user\'s 90-day virtual simulation namespace without touching real account data.',
+  '- **`revision` (`integer >= 0`, required):** Must equal the server\'s current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.details.currentRevision` and `error.details.mergeHints`.',
+  '- **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt inside `data`; `?view=full` returns the full account snapshot inside `data`.',
   '',
   '---',
   '',
-  '## 4. Standard Error Envelope',
+  '## 4. Uniform KMM Envelopes & Pure-English Error Contract',
   '',
-  'All `4xx` / `5xx` errors return:',
+  'Every JSON endpoint returns the canonical envelope:',
+  '',
+  '- **Success (`2xx`):** `{ "ok": true, "data": <T>, "meta": { "requestId": "<uuid>", "serverTime": "<iso8601>", "revision"?: <int> } }`',
+  '- **Error (`4xx` / `5xx`):** `{ "ok": false, "error": { "code", "message", "params", "fieldErrors", "retryable", "details"?: {...} }, "meta": { "requestId": "<uuid>", "serverTime": "<iso8601>" } }`',
   '',
   '| Field | Type | Description |',
   '| :--- | :--- | :--- |',
-  '| `error` | `string` | Human-readable Arabic error message |',
-  '| `code` | `string` | Stable machine-readable code (e.g. `VALIDATION_ERROR`, `UNAUTHENTICATED`, `REVISION_CONFLICT`, `RATE_LIMITED`) |',
-  '| `message` | `string` | Same as `error` |',
-  '| `fieldErrors` | `Array<{field, code, message}>` | Optional per-field validation errors |',
-  '| `requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |',
-  '| `retryable` | `boolean` | Whether the client may safely retry (`true` for `429`/`503`/`500`) |',
-  '| `currentRevision` | `integer` (optional) | Returned on `409 REVISION_CONFLICT` |',
-  '| `mergeHints` | `object` (optional) | Sync recovery hints on `409` |',
+  '| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |',
+  '| `error.code` | `string` | Stable uppercase error code (235 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
+  '| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |',
+  '| `error.params` | `object` | Interpolation parameters for client-side localization |',
+  '| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |',
+  '| `error.retryable` | `boolean` | Whether the client may safely retry (`true` for `429`/`503`/`500`) |',
+  '| `error.details` | `object` (optional) | Structured recovery data such as `currentRevision` and `mergeHints` on `409` |',
+  '| `meta.requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |',
+  '| `meta.serverTime` | `string (ISO-8601)` | Server UTC timestamp |',
   '',
   '---',
   '',
@@ -70,7 +76,7 @@ const COLLECTION_OVERVIEW_MD = [
   '',
   '| Variable | Type | Scope | Description |',
   '| :--- | :--- | :--- | :--- |',
-  '| `baseUrl` | `string (URL)` | Environment | Server base URL (`Production` or `Dev`) |',
+  '| `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |',
   '| `testEmail` | `string (email)` | Environment | Email used in Register / Login |',
   '| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) |',
   '| `testNewPassword` | `string (secret)` | Environment | New password for Change Password |',
@@ -81,8 +87,7 @@ const COLLECTION_OVERVIEW_MD = [
   '| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by Register / Login / Refresh |',
   '| `sessionId` | `string` | Collection (auto) | Current D1 session ID |',
   '| `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |',
-  '| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision (real account) |',
-  '| `simRevision` | `integer` | Collection (auto) | Current revision for `?simulation=1` namespace |',
+  '| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |',
   '| `idempotencyKey` | `string (UUID)` | Pre-request (auto) | Fresh UUID generated before every request |',
   '| `todayDate` | `string (YYYY-MM-DD)` | Collection (auto) | Current server local date |',
   '| `lastEtag` | `string` | Collection (auto) | Last `ETag` response header for `If-None-Match` |',
@@ -111,8 +116,9 @@ function buildEndpointMarkdown({ method, path, summary, noAuth, headers, optiona
   lines.push('### Endpoint Info');
   lines.push(`- **Method:** \`${method}\``);
   lines.push(`- **URL:** \`{{baseUrl}}${path}\``);
+  lines.push(`- **Cloud Dev URL:** \`${CLOUD_DEV_URL}${path}\``);
   lines.push(`- **Production URL:** \`${PROD_URL}${path}\``);
-  lines.push(`- **Dev URL:** \`${DEV_URL}${path}\``);
+  lines.push(`- **Local Dev URL:** \`${LOCAL_DEV_URL}${path}\``);
   lines.push(`- **Auth:** ${noAuth ? 'Public (`No Auth`)' : 'Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)'}`);
   lines.push('');
 
@@ -202,6 +208,24 @@ function parseUrl(rawPath) {
   };
 }
 
+function wrapEnvelopeBody(ex) {
+  if (typeof ex.body === 'string') return ex.body;
+  const b = ex.body;
+  if (b && typeof b === 'object' && 'meta' in b && ('data' in b || 'error' in b)) {
+    return JSON.stringify(b, null, 2);
+  }
+  const envelope = {
+    ok: true,
+    data: b,
+    meta: {
+      requestId: 'req-uuid',
+      serverTime: '2026-11-21T12:30:00.000Z',
+      ...(b && typeof b === 'object' && typeof b.revision === 'number' ? { revision: b.revision } : {})
+    }
+  };
+  return JSON.stringify(envelope, null, 2);
+}
+
 function makeSavedResponses(requestObj, examples = []) {
   const { description: _omitDesc, ...compactOriginalRequest } = requestObj;
   return examples.map(ex => ({
@@ -214,7 +238,7 @@ function makeSavedResponses(requestObj, examples = []) {
       { key: 'Content-Type', value: 'application/json; charset=utf-8' },
       { key: 'Cache-Control', value: 'no-store' }
     ],
-    body: typeof ex.body === 'string' ? ex.body : JSON.stringify(ex.body, null, 2)
+    body: wrapEnvelopeBody(ex)
   }));
 }
 
@@ -302,7 +326,6 @@ const DEFAULT_RECEIPT_EXAMPLE = action => ({
   code: 200,
   status: 'OK',
   body: {
-    ok: true,
     revision: 2,
     serverNow: '2026-11-21T12:30:00.000Z',
     serverDate: '2026-11-21',
@@ -317,18 +340,29 @@ const CONFLICT_EXAMPLE = {
   code: 409,
   status: 'Conflict',
   body: {
-    error: 'تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.',
-    code: 'REVISION_CONFLICT',
-    message: 'تم تحديث الحساب؛ حدّث الصفحة وحاول تاني.',
-    fieldErrors: [],
-    requestId: 'req-uuid',
-    retryable: false,
-    currentRevision: 5,
-    mergeHints: {
-      expectedRevision: 4,
-      serverRevision: 5,
-      syncChangesEndpoint: '/v1/sync/changes?after=4',
-      resolutionPolicy: 'fetch_sync_deltas_then_rebase_or_retry'
+    ok: false,
+    error: {
+      code: 'REVISION_CONFLICT',
+      message: 'Account was updated; refresh and try again.',
+      params: {
+        expectedRevision: 4,
+        serverRevision: 5
+      },
+      fieldErrors: [],
+      retryable: false,
+      details: {
+        currentRevision: 5,
+        mergeHints: {
+          expectedRevision: 4,
+          serverRevision: 5,
+          syncChangesEndpoint: '/v1/sync/changes?after=4',
+          resolutionPolicy: 'fetch_sync_deltas_then_rebase_or_retry'
+        }
+      }
+    },
+    meta: {
+      requestId: 'req-uuid',
+      serverTime: '2026-11-21T12:30:00.000Z'
     }
   }
 };
@@ -338,7 +372,6 @@ function cmdReq({
   action,
   payload,
   view = 'receipt',
-  simulation = false,
   summary = '',
   payloadFields = [],
   responseFields = [],
@@ -352,14 +385,9 @@ function cmdReq({
     params.push(`view=${view}`);
     queryMeta.push({ key: 'view', type: 'string (enum)', required: false, constraints: 'receipt | minimal | delta | full', description: 'Response verbosity; receipt returns compact <2KB delta.' });
   }
-  if (simulation) {
-    params.push('simulation=1');
-    queryMeta.push({ key: 'simulation', type: 'string (const)', required: true, constraints: '"1"', description: 'Routes command to isolated 90-day simulation namespace.' });
-  }
   const qs = params.length ? `?${params.join('&')}` : '';
-  const revVar = simulation ? '{{simRevision}}' : '{{revision}}';
   const rawBody = JSON.stringify({ revision: '__REV__', action, payload }, null, 2)
-    .replace('"__REV__"', revVar)
+    .replace('"__REV__"', '{{revision}}')
     .replace(/"__DAY_IDX__"/g, '{{sampleDayIndex}}');
 
   const allFields = [
@@ -423,16 +451,19 @@ const COLLECTION_PREREQUEST = [
 
 const COLLECTION_TEST = [
   '// Auto-sync revision, serverDate, and ETag across requests',
-  'const isSim = pm.request.url.query.has("simulation") && pm.request.url.query.get("simulation") === "1";',
   'const etagHeader = pm.response.headers.get("ETag");',
   'if (etagHeader) pm.collectionVariables.set("lastEtag", etagHeader);',
   'if (pm.response.code >= 200 && pm.response.code < 300) {',
   '  try {',
-  '    const data = pm.response.json();',
+  '    const res = pm.response.json();',
+  '    const data = res && res.ok === true && res.data !== undefined ? res.data : res;',
+  '    const metaRev = res && res.meta && typeof res.meta.revision === "number" ? res.meta.revision : null;',
   '    if (typeof data.revision === "number") {',
-  '      pm.collectionVariables.set(isSim ? "simRevision" : "revision", String(data.revision));',
+  '      pm.collectionVariables.set("revision", String(data.revision));',
+  '    } else if (metaRev !== null) {',
+  '      pm.collectionVariables.set("revision", String(metaRev));',
   '    }',
-  '    if (typeof data.serverDate === "string" && !isSim) {',
+  '    if (typeof data.serverDate === "string") {',
   '      pm.collectionVariables.set("todayDate", data.serverDate);',
   '    }',
   '    if (Array.isArray(data.pendingAdaptations) && data.pendingAdaptations.length) {',
@@ -449,7 +480,9 @@ const COLLECTION_TEST = [
 const SAVE_AUTH_TOKENS_TEST = [
   'pm.test("Auth token pair returned", function () {',
   '  pm.expect([200, 201]).to.include(pm.response.code);',
-  '  const d = pm.response.json();',
+  '  const res = pm.response.json();',
+  '  pm.expect(res.ok).to.eql(true);',
+  '  const d = res.data || res;',
   '  pm.expect(d.accessToken).to.be.a("string");',
   '  pm.expect(d.refreshToken).to.be.a("string");',
   '  pm.collectionVariables.set("accessToken", d.accessToken);',
@@ -461,7 +494,8 @@ const SAVE_AUTH_TOKENS_TEST = [
 
 const CAPTURE_STATE_IDS_TEST = [
   'try {',
-  '  const d = pm.response.json();',
+  '  const res = pm.response.json();',
+  '  const d = res && res.ok === true && res.data !== undefined ? res.data : res;',
   '  const plan = d.activePlan || (Array.isArray(d.plans) ? d.plans[0] : null);',
   '  if (plan && plan.id) pm.collectionVariables.set("activePlanId", plan.id);',
   '  if (d.activeNutritionPlanRef && d.activeNutritionPlanRef.id) pm.collectionVariables.set("activePlanId", d.activeNutritionPlanRef.id);',
@@ -528,7 +562,7 @@ const AUTH_TOKEN_EXAMPLE = (code = 200) => ({
     user: {
       userId: 'user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d',
       email: 'demo.user@curafit.app',
-      name: 'أحمد محمد',
+      name: 'Ahmed Mohamed',
       entitlement: 'free',
       createdAt: '2026-11-21T12:30:00.000Z'
     }
@@ -553,7 +587,7 @@ const PAGINATION_RESPONSE_FIELDS = [
 const collection = {
   info: {
     _postman_id: '7c94f8e1-4c9a-4f3b-9b5a-2e8d6a1f0c31',
-    name: 'Egypt Nutrition Coach (CuraFit) — Cloudflare Workers API v1',
+    name: 'CuraFit API v1',
     description: COLLECTION_OVERVIEW_MD,
     schema: SCHEMA_V21
   },
@@ -566,7 +600,7 @@ const collection = {
     { listen: 'test', script: { type: 'text/javascript', exec: COLLECTION_TEST } }
   ],
   variable: [
-    { key: 'baseUrl', value: PROD_URL },
+    { key: 'baseUrl', value: CLOUD_DEV_URL },
     { key: 'testEmail', value: 'demo.user@curafit.app' },
     { key: 'testPassword', value: 'CuraFit#2026!' },
     { key: 'testNewPassword', value: 'CuraFit#2027!' },
@@ -578,7 +612,6 @@ const collection = {
     { key: 'clientPlatform', value: 'android' },
     { key: 'clientVersion', value: '1.0.0' },
     { key: 'revision', value: '0' },
-    { key: 'simRevision', value: '0' },
     { key: 'todayDate', value: '' },
     { key: 'lastEtag', value: '' },
     { key: 'activePlanId', value: '' },
@@ -610,16 +643,18 @@ const collection = {
           noAuth: true,
           summary: 'Public health probe returning API version, engine version, and trace `requestId`.',
           responseFields: [
-            { name: 'ok', type: 'boolean', description: '`true` when Worker is healthy.' },
+            { name: 'status', type: 'string', description: '`"ok"` when Worker is healthy.' },
             { name: 'apiVersion', type: 'string', description: 'API major version (`"1"`).' },
             { name: 'engineVersion', type: 'string', description: 'Backend engine semver (e.g. `"0.13.0"`).' },
             { name: 'requestId', type: 'string (UUID)', description: 'Request trace ID.' }
           ],
-          examples: [{ name: '200 OK — Healthy', code: 200, body: { ok: true, apiVersion: '1', engineVersion: '0.13.0', requestId: 'req-uuid' } }],
+          examples: [{ name: '200 OK — Healthy', code: 200, body: { status: 'ok', apiVersion: '1', engineVersion: '0.13.0', requestId: 'req-uuid' } }],
           testScript: [
             'pm.test("Service is healthy", function () {',
             '  pm.response.to.have.status(200);',
-            '  pm.expect(pm.response.json().ok).to.eql(true);',
+            '  const r = pm.response.json();',
+            '  pm.expect(r.ok).to.eql(true);',
+            '  pm.expect((r.data || r).status).to.eql("ok");',
             '});'
           ]
         }),
@@ -644,7 +679,7 @@ const collection = {
             code: 200,
             body: {
               apiVersion: '1', schemaVersion: 3, engineVersion: '0.13.0',
-              catalogVersion: 'open-exercise-db-2026', foodCatalogVersion: '0.6.0',
+              catalogVersion: '202610112340', foodCatalogVersion: '0.6.0-data.4',
               serverTime: '2026-11-21T12:30:00.000Z',
               auth: { provider: 'cloudflare_d1_native', configured: true },
               features: ['adaptive_nutrition', 'adaptive_workouts', 'native_cloudflare_auth', 'kmm_bootstrap', 'offline_sync_v2']
@@ -653,7 +688,8 @@ const collection = {
           testScript: [
             'pm.test("Capabilities returned", function () {',
             '  pm.response.to.have.status(200);',
-            '  const d = pm.response.json();',
+            '  const res = pm.response.json();',
+            '  const d = res.data || res;',
             '  pm.expect(d.apiVersion).to.eql("1");',
             '  pm.expect(d.features).to.include("native_cloudflare_auth");',
             '});'
@@ -685,12 +721,11 @@ const collection = {
             { status: 429, code: 'RATE_LIMITED', description: 'Auth endpoint rate limit exceeded (30 req/min/IP).' }
           ],
           examples: [AUTH_TOKEN_EXAMPLE(201)],
-          body: { email: '{{testEmail}}', password: '{{testPassword}}', name: 'أحمد محمد', deviceId: '{{deviceId}}' },
+          body: { email: '{{testEmail}}', password: '{{testPassword}}', name: 'Ahmed Mohamed', deviceId: '{{deviceId}}' },
           testScript: [
             ...SAVE_AUTH_TOKENS_TEST,
             'if (pm.response.code === 201) {',
             '  pm.collectionVariables.set("revision", "0");',
-            '  pm.collectionVariables.set("simRevision", "0");',
             '}'
           ]
         }),
@@ -755,7 +790,8 @@ const collection = {
           testScript: [
             'pm.test("Session active", function () {',
             '  pm.response.to.have.status(200);',
-            '  pm.expect(pm.response.json().userId).to.be.a("string");',
+            '  const d = pm.response.json().data || pm.response.json();',
+            '  pm.expect(d.userId).to.be.a("string");',
             '});'
           ]
         }),
@@ -874,7 +910,8 @@ const collection = {
           testScript: [
             'pm.test("Eligibility evaluated", function () {',
             '  pm.response.to.have.status(200);',
-            '  pm.expect(pm.response.json().status).to.be.oneOf(["eligible", "needs_input", "requires_review"]);',
+            '  const d = pm.response.json().data || pm.response.json();',
+            '  pm.expect(d.status).to.be.oneOf(["eligible", "needs_input", "requires_review"]);',
             '});'
           ]
         }),
@@ -906,7 +943,7 @@ const collection = {
             { name: 'weekdayConvention', type: 'string (enum)', required: false, constraints: '`js_sunday_0` (recommended) | `saturday_0`', description: 'Weekday indexing convention.' }
           ],
           payload: {
-            name: 'أحمد محمد', age: 29, weight: 82, height: 178, sex: 'male', goal: 'lose',
+            name: 'Ahmed Mohamed', age: 29, weight: 82, height: 178, sex: 'male', goal: 'lose',
             targetWeight: 75, goalPace: 'moderate', serviceTrack: 'nutrition_and_workouts',
             dailyActivity: 'light', dietType: 'balanced', region: 'egypt', budget: 'medium',
             mealsCount: 4, selectedWorkoutDays: [1, 3, 5], workoutLocation: 'gym_only',
@@ -966,7 +1003,7 @@ const collection = {
             { name: 'todaySummary', type: 'object', description: 'Today\'s food, water, recovery, and session status.' },
             { name: 'pendingAdaptations', type: 'Array<object>', description: 'Unexpired pending adaptation proposals.' }
           ],
-          examples: [{ name: '200 OK — Bootstrap', code: 200, body: { schemaVersion: 3, revision: 1, serverNow: '2026-11-21T12:30:00.000Z', serverDate: '2026-11-21', timezone: 'Africa/Cairo', profile: { name: 'أحمد محمد', goal: 'lose', weight: 82 }, activeNutritionPlanRef: { id: 'plan-uuid' }, activeWorkoutPlanRef: { id: 'wp-uuid' }, todaySummary: {}, pendingAdaptations: [] } }],
+          examples: [{ name: '200 OK — Bootstrap', code: 200, body: { schemaVersion: 3, revision: 1, serverNow: '2026-11-21T12:30:00.000Z', serverDate: '2026-11-21', timezone: 'Africa/Cairo', profile: { name: 'Ahmed Mohamed', goal: 'lose', weight: 82 }, activeNutritionPlanRef: { id: 'plan-uuid' }, activeWorkoutPlanRef: { id: 'wp-uuid' }, todaySummary: {}, pendingAdaptations: [] } }],
           testScript: [
             'pm.test("Bootstrap loaded", function () {',
             '  pm.expect([200, 304]).to.include(pm.response.code);',
@@ -1053,7 +1090,8 @@ const collection = {
           payload: { date: '{{todayDate}}', source: 'planned', mealId: '{{sampleMealId}}', slot: 'breakfast', quantity: 1 },
           extraTests: [
             'try {',
-            '  const d = pm.response.json();',
+            '  const res = pm.response.json();',
+            '  const d = res.data || res;',
             '  const hit = (d.affected || []).find(a => a.entityType === "food_entry" && a.op === "upsert");',
             '  if (hit && hit.entityId) pm.collectionVariables.set("sampleFoodEntryId", hit.entityId);',
             '} catch (e) {}'
@@ -1073,7 +1111,8 @@ const collection = {
           payload: { date: '{{todayDate}}', source: 'ingredient', key: 'chicken', grams: 150, slot: 'lunch' },
           extraTests: [
             'try {',
-            '  const d = pm.response.json();',
+            '  const res = pm.response.json();',
+            '  const d = res.data || res;',
             '  const hit = (d.affected || []).find(a => a.entityType === "food_entry" && a.op === "upsert");',
             '  if (hit && hit.entityId) pm.collectionVariables.set("sampleFoodEntryId", hit.entityId);',
             '} catch (e) {}'
@@ -1093,10 +1132,11 @@ const collection = {
             { name: 'carbs', type: 'number | null', required: false, constraints: '0..800 (g)', description: 'Optional carbs grams.' },
             { name: 'fat', type: 'number | null', required: false, constraints: '0..300 (g)', description: 'Optional fat grams.' }
           ],
-          payload: { date: '{{todayDate}}', source: 'manual', name: 'طبق كشري متوسط', slot: 'dinner', energy: 480, protein: 16, carbs: 82, fat: 9 },
+          payload: { date: '{{todayDate}}', source: 'manual', name: 'Medium Koshary Bowl', slot: 'dinner', energy: 480, protein: 16, carbs: 82, fat: 9 },
           extraTests: [
             'try {',
-            '  const d = pm.response.json();',
+            '  const res = pm.response.json();',
+            '  const d = res.data || res;',
             '  const hit = (d.affected || []).find(a => a.entityType === "food_entry" && a.op === "upsert");',
             '  if (hit && hit.entityId) pm.collectionVariables.set("sampleFoodEntryId", hit.entityId);',
             '} catch (e) {}'
@@ -1156,7 +1196,8 @@ const collection = {
           testScript: [
             'pm.test("Meal alternatives fetched", function () {',
             '  pm.response.to.have.status(200);',
-            '  const items = pm.response.json().items || [];',
+            '  const d = pm.response.json().data || pm.response.json();',
+            '  const items = d.items || [];',
             '  if (items.length && items[0].templateId) {',
             '    pm.collectionVariables.set("sampleAltTemplateId", items[0].templateId);',
             '  }',
@@ -1289,7 +1330,8 @@ const collection = {
           testScript: [
             'pm.test("Wearables batch ingested", function () {',
             '  pm.response.to.have.status(200);',
-            '  pm.expect(pm.response.json().ok).to.eql(true);',
+            '  const res = pm.response.json();',
+            '  pm.expect(res.ok).to.eql(true);',
             '});'
           ]
         })
@@ -1382,7 +1424,8 @@ const collection = {
           testScript: [
             'pm.test("Exercise alternatives fetched", function () {',
             '  pm.response.to.have.status(200);',
-            '  const items = pm.response.json().items || [];',
+            '  const d = pm.response.json().data || pm.response.json();',
+            '  const items = d.items || [];',
             '  if (items.length && items[0].id) {',
             '    pm.collectionVariables.set("sampleAltExerciseId", items[0].id);',
             '  }',
@@ -1494,7 +1537,8 @@ const collection = {
           ],
           testScript: [
             'try {',
-            '  const items = pm.response.json().items || [];',
+            '  const d = pm.response.json().data || pm.response.json();',
+            '  const items = d.items || [];',
             '  if (items.length) pm.collectionVariables.set("sampleCaseId", items[0].id);',
             '} catch (e) {}'
           ]
@@ -1521,7 +1565,8 @@ const collection = {
           payload: { domain: 'nutrition', barrier: 'time', hunger: 2, satiety: 4, energy: 4 },
           extraTests: [
             'try {',
-            '  const d = pm.response.json();',
+            '  const res = pm.response.json();',
+            '  const d = res.data || res;',
             '  const c = (d.affected || []).find(a => a.entityType === "coaching_case" && a.op === "upsert");',
             '  if (c && c.entityId) pm.collectionVariables.set("sampleCaseId", c.entityId);',
             '} catch (e) {}'
@@ -1607,7 +1652,7 @@ const collection = {
         req({
           name: 'Search Foods (Arabic & English)',
           method: 'GET',
-          path: '/v1/foods?q=فول&scope=all&includeEstimated=true&offset=0&limit=20',
+          path: '/v1/foods?q=chicken&scope=all&includeEstimated=true&offset=0&limit=20',
           summary: 'Searches the Egyptian/Gulf & reference food catalog with Arabic normalization, colloquial synonyms, and provenance status.',
           queryParams: [
             { key: 'q', type: 'string', required: false, constraints: 'max 100 chars', description: 'Arabic or English search term.' },
@@ -1625,7 +1670,8 @@ const collection = {
           testScript: [
             'pm.test("Foods returned", function () {',
             '  pm.response.to.have.status(200);',
-            '  const items = pm.response.json().items || [];',
+            '  const d = pm.response.json().data || pm.response.json();',
+            '  const items = d.items || [];',
             '  if (items.length) pm.collectionVariables.set("sampleFoodId", items[0].id);',
             '});'
           ]
@@ -1640,7 +1686,7 @@ const collection = {
         req({
           name: 'Search Egyptian & Ramadan Beverages',
           method: 'GET',
-          path: '/v1/beverages?q=شاي&includeEstimated=true&offset=0&limit=20',
+          path: '/v1/beverages?q=tea&includeEstimated=true&offset=0&limit=20',
           summary: 'Searches prepared Egyptian, cafe, Ramadan, and fresh juice beverages.',
           queryParams: [
             { key: 'q', type: 'string', required: false, constraints: 'max 100 chars', description: 'Search query.' },
@@ -1671,7 +1717,8 @@ const collection = {
           testScript: [
             'pm.test("Recipe calculated", function () {',
             '  pm.response.to.have.status(200);',
-            '  pm.expect(pm.response.json().nutrients).to.be.an("object");',
+            '  const d = pm.response.json().data || pm.response.json();',
+            '  pm.expect(d.nutrients).to.be.an("object");',
             '});'
           ]
         }),
@@ -1689,7 +1736,8 @@ const collection = {
           testScript: [
             'pm.test("Exercises returned", function () {',
             '  pm.response.to.have.status(200);',
-            '  const items = pm.response.json().items || [];',
+            '  const d = pm.response.json().data || pm.response.json();',
+            '  const items = d.items || [];',
             '  if (items.length) pm.collectionVariables.set("sampleCatalogExerciseId", encodeURIComponent(items[0].id));',
             '});'
           ]
@@ -1729,7 +1777,7 @@ const collection = {
           testScript: [
             'pm.test("Sync feed returned", function () {',
             '  pm.response.to.have.status(200);',
-            '  const d = pm.response.json();',
+            '  const d = pm.response.json().data || pm.response.json();',
             '  if (typeof d.nextSeqCursor === "number") {',
             '    pm.collectionVariables.set("nextSeqCursor", String(d.nextSeqCursor));',
             '  }',
@@ -1775,52 +1823,8 @@ const collection = {
       ]
     },
     {
-      id: 'f0000012-0000-4000-8000-000000000012',
-      name: '12. 90-Day Simulation Mode (?simulation=1)',
-      description: 'Isolated per-user 90-day virtual simulation sandbox (`?simulation=1`). Runs the real deterministic nutrition & workout engines on a virtual clock without touching real account data.',
-      item: [
-        cmdReq({
-          name: 'Reset / Start Simulation Round (simulation_reset)',
-          action: 'simulation_reset',
-          view: 'full',
-          simulation: true,
-          summary: 'Starts or resets a 90-day virtual simulation round using either `sample` persona or a copy of the user\'s `current` profile.',
-          payloadFields: [
-            { name: 'source', type: 'string (enum)', required: true, constraints: '`sample` | `current`', description: 'Initial profile source.' },
-            { name: 'confirm', type: 'boolean', required: false, constraints: 'Required `true` when resetting an active round', description: 'Explicit reset confirmation.' }
-          ],
-          payload: { source: 'sample', confirm: true }
-        }),
-        req({
-          name: 'Get Simulation State',
-          method: 'GET',
-          path: '/v1/state?simulation=1',
-          summary: 'Reads the isolated simulation namespace state, virtual clock, and `simulationToday` summary.',
-          queryParams: [{ key: 'simulation', type: 'string (const)', required: true, constraints: '"1"', description: 'Selects simulation namespace.' }]
-        }),
-        cmdReq({
-          name: 'Fill Simulation Day Scenario (simulation_fill)',
-          action: 'simulation_fill',
-          simulation: true,
-          summary: 'Fills an empty virtual day with synthetic logs via real domain commands and triggers adaptive review.',
-          payloadFields: [
-            { name: 'scenario', type: 'string (enum)', required: true, constraints: '`consistent` | `plateau` | `poor_recovery` | `missed_workout` | `low_adherence` | `pain`', description: 'Synthetic day behavior scenario.' }
-          ],
-          payload: { scenario: 'consistent' }
-        }),
-        cmdReq({
-          name: 'Advance Simulation by 1 Day (simulation_next)',
-          action: 'simulation_next',
-          simulation: true,
-          summary: 'Freezes current virtual day summary, advances virtual clock by 1 day (up to day 90), supersedes stale proposals, and renews expired nutrition week.',
-          payloadFields: [],
-          payload: {}
-        })
-      ]
-    },
-    {
       id: 'f0000013-0000-4000-8000-000000000013',
-      name: '13. Privacy, Export & GDPR Deletion',
+      name: '12. Privacy, Export & GDPR Deletion',
       description: 'Versioned health/privacy consent recording, normalized table backfill, full machine-readable GDPR JSON export, and irreversible GDPR account erasure.',
       item: [
         req({
@@ -1877,7 +1881,7 @@ const collection = {
           name: 'Delete Account Permanently (GDPR — Destructive)',
           method: 'DELETE',
           path: '/v1/account/delete',
-          summary: '**IRREVERSIBLE:** Permanently erases all account data, simulation copies, auth credentials (`coaching_users`), and refresh tokens (`coaching_refresh_tokens`) in one atomic D1 batch, and writes revocation tombstones. Must be called outside `?simulation=1`.',
+          summary: '**IRREVERSIBLE:** Permanently erases all account data, auth credentials (`coaching_users`), and refresh tokens (`coaching_refresh_tokens`) in one atomic D1 batch, and writes revocation tombstones.',
           fields: [
             { name: 'confirm', type: 'boolean', required: true, constraints: 'Must be `true`', description: 'Explicit irreversible deletion confirmation.' }
           ],
@@ -1886,13 +1890,12 @@ const collection = {
             { name: 'userId', type: 'string', description: 'Deleted account ID.' },
             { name: 'deletedAt', type: 'string (ISO-8601 UTC)', description: 'Erasure timestamp.' },
             { name: 'tablesCleared', type: 'integer', description: 'Number of D1 tables cleared.' },
-            { name: 'namespacesCleared', type: 'integer', description: 'Number of namespaces cleared (real + simulation + claimed).' }
+            { name: 'namespacesCleared', type: 'integer', description: 'Number of namespaces cleared (primary + claimed).' }
           ],
           errors: [
-            { status: 400, code: 'DELETE_CONFIRMATION_REQUIRED', description: 'Missing `confirm: true`.' },
-            { status: 400, code: 'ACCOUNT_DELETION_SIMULATION_FORBIDDEN', description: 'Called with `?simulation=1`.' }
+            { status: 400, code: 'DELETE_CONFIRMATION_REQUIRED', description: 'Missing `confirm: true`.' }
           ],
-          examples: [{ name: '200 OK — Permanently Deleted', code: 200, body: { deleted: true, userId: 'user:1a2b', deletedAt: '2026-11-21T12:40:00.000Z', tablesCleared: 18, namespacesCleared: 2 } }],
+          examples: [{ name: '200 OK — Permanently Deleted', code: 200, body: { deleted: true, userId: 'user:1a2b', deletedAt: '2026-11-21T12:40:00.000Z', tablesCleared: 18, namespacesCleared: 1 } }],
           body: { confirm: true }
         })
       ]
@@ -1900,15 +1903,31 @@ const collection = {
   ]
 };
 
+const cloudDevEnv = {
+  id: 'c80f5bd3-77c9-4d55-ae3e-3be5cb67b408',
+  name: 'CuraFit — Cloud Dev',
+  values: [
+    { key: 'baseUrl', value: CLOUD_DEV_URL, type: 'default', enabled: true, description: 'Canonical Cloudflare Workers Cloud Dev Base URL (curafit-api-dev)' },
+    { key: 'envName', value: 'cloud-dev', type: 'default', enabled: true, description: 'Environment label' },
+    { key: 'testEmail', value: 'dev.user@curafit.app', type: 'default', enabled: true, description: 'Cloud Dev test user email (string, email)' },
+    { key: 'testPassword', value: '', type: 'secret', enabled: true, description: 'Set your Cloud Dev test password locally in Postman' },
+    { key: 'testNewPassword', value: '', type: 'secret', enabled: true, description: 'Set new password locally for Change Password' },
+    { key: 'deviceId', value: 'postman-cloud-dev-01', type: 'default', enabled: true, description: 'Client device ID (string, max 120)' },
+    { key: 'clientPlatform', value: 'android', type: 'default', enabled: true, description: 'android | ios | web' },
+    { key: 'clientVersion', value: '1.0.0', type: 'default', enabled: true, description: 'Client semver' }
+  ],
+  _postman_variable_scope: 'environment'
+};
+
 const prodEnv = {
   id: '2e9b8a10-6c7d-4e5f-a1b2-3c4d5e6f7a8b',
-  name: 'Production Server (Cloudflare Workers)',
+  name: 'CuraFit — Production',
   values: [
-    { key: 'baseUrl', value: PROD_URL, type: 'default', enabled: true, description: 'Canonical Cloudflare Workers Production Base URL' },
+    { key: 'baseUrl', value: PROD_URL, type: 'default', enabled: true, description: 'Canonical Cloudflare Workers Production Base URL (curafit-api)' },
     { key: 'envName', value: 'production', type: 'default', enabled: true, description: 'Environment label' },
     { key: 'testEmail', value: 'demo.user@curafit.app', type: 'default', enabled: true, description: 'Test user email (string, email)' },
-    { key: 'testPassword', value: 'CuraFit#2026!', type: 'secret', enabled: true, description: 'Test user password (string, 8..128 chars)' },
-    { key: 'testNewPassword', value: 'CuraFit#2027!', type: 'secret', enabled: true, description: 'New password for Change Password' },
+    { key: 'testPassword', value: '', type: 'secret', enabled: true, description: 'Set your Production test password locally in Postman' },
+    { key: 'testNewPassword', value: '', type: 'secret', enabled: true, description: 'Set new password locally for Change Password' },
     { key: 'deviceId', value: 'postman-prod-01', type: 'default', enabled: true, description: 'Client device ID (string, max 120)' },
     { key: 'clientPlatform', value: 'android', type: 'default', enabled: true, description: 'android | ios | web' },
     { key: 'clientVersion', value: '1.0.0', type: 'default', enabled: true, description: 'Client semver' }
@@ -1918,14 +1937,14 @@ const prodEnv = {
 
 const localEnv = {
   id: '9a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d',
-  name: 'Dev Server (Local Miniflare / Dev)',
+  name: 'CuraFit — Local Dev',
   values: [
-    { key: 'baseUrl', value: DEV_URL, type: 'default', enabled: true, description: 'Dev Server Base URL (npm run dev on 127.0.0.1:8787)' },
+    { key: 'baseUrl', value: LOCAL_DEV_URL, type: 'default', enabled: true, description: 'Local Miniflare Dev Base URL (npm run dev on 127.0.0.1:8787)' },
     { key: 'envName', value: 'development', type: 'default', enabled: true, description: 'Environment label' },
-    { key: 'testEmail', value: 'dev.user@curafit.app', type: 'default', enabled: true, description: 'Dev test user email (string, email)' },
-    { key: 'testPassword', value: 'CuraFit#2026!', type: 'secret', enabled: true, description: 'Dev test user password (string, 8..128 chars)' },
-    { key: 'testNewPassword', value: 'CuraFit#2027!', type: 'secret', enabled: true, description: 'New password for Change Password' },
-    { key: 'deviceId', value: 'postman-dev-01', type: 'default', enabled: true, description: 'Client device ID (string, max 120)' },
+    { key: 'testEmail', value: 'dev.user@curafit.app', type: 'default', enabled: true, description: 'Local Dev test user email (string, email)' },
+    { key: 'testPassword', value: '', type: 'secret', enabled: true, description: 'Set your Local Dev test password locally in Postman' },
+    { key: 'testNewPassword', value: '', type: 'secret', enabled: true, description: 'Set new password locally for Change Password' },
+    { key: 'deviceId', value: 'postman-local-dev-01', type: 'default', enabled: true, description: 'Client device ID (string, max 120)' },
     { key: 'clientPlatform', value: 'android', type: 'default', enabled: true, description: 'android | ios | web' },
     { key: 'clientVersion', value: '1.0.0', type: 'default', enabled: true, description: 'Client semver' }
   ],
@@ -1933,7 +1952,7 @@ const localEnv = {
 };
 
 // Generate standalone Markdown API Reference from the exact same collection definition
-const mdParts = [COLLECTION_OVERVIEW_MD, '', '---', '', '## 6. Complete Endpoint Reference (13 Groups / 81 Endpoints)', ''];
+const mdParts = [COLLECTION_OVERVIEW_MD, '', '---', '', '## 6. Complete Endpoint Reference (12 Groups / 77 Endpoints)', ''];
 for (const folder of collection.item) {
   mdParts.push(`## ${folder.name}`, '', folder.description || '', '');
   for (const ep of folder.item) {
@@ -1949,8 +1968,9 @@ for (const folder of collection.item) {
 
 await mkdir('postman', { recursive: true });
 await mkdir('docs', { recursive: true });
-await writeFile('postman/Egypt_Nutrition_Coach_API.postman_collection.json', JSON.stringify(collection, null, 2) + '\n', 'utf8');
-await writeFile('postman/Cloudflare_Production.postman_environment.json', JSON.stringify(prodEnv, null, 2) + '\n', 'utf8');
-await writeFile('postman/Local_Dev.postman_environment.json', JSON.stringify(localEnv, null, 2) + '\n', 'utf8');
+await writeFile('postman/CuraFit_API.postman_collection.json', JSON.stringify(collection, null, 2) + '\n', 'utf8');
+await writeFile('postman/CuraFit_Cloud_Dev.postman_environment.json', JSON.stringify(cloudDevEnv, null, 2) + '\n', 'utf8');
+await writeFile('postman/CuraFit_Production.postman_environment.json', JSON.stringify(prodEnv, null, 2) + '\n', 'utf8');
+await writeFile('postman/CuraFit_Local_Dev.postman_environment.json', JSON.stringify(localEnv, null, 2) + '\n', 'utf8');
 await writeFile('docs/API_REFERENCE.md', mdParts.join('\n') + '\n', 'utf8');
-console.log('Generated fully documented Postman collection, environments, and docs/API_REFERENCE.md');
+console.log('Generated fully documented CuraFit Postman collection, Cloud Dev/Prod/Local environments, and docs/API_REFERENCE.md');

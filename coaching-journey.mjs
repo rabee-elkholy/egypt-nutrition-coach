@@ -1,5 +1,6 @@
 // Evidence-backed coaching agreements. No inference of delivery, reading or efficacy.
 import {localDate,dateOffset} from './coaching-shared.mjs';
+import {apiError} from './coaching-error.mjs';
 
 export const BARRIERS={
  nutrition:['time','budget','taste','hunger','eating_out','logging','none'],
@@ -18,7 +19,7 @@ const advice={
  equipment:['نختار حركة تناسب المعدات المتاحة.','استخدم بدائل التمرين المسموحة أو حدّث المعدات؛ راجع الخطة الناتجة قبل التنفيذ.'],
  motivation:['نختار خطوة صغيرة تقدر تستمر عليها.','حدد موعدًا واقعيًا للجلسة القادمة، من غير مضاعفة المجهود لتعويض الغياب.']
 };
-const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
+const fail=(code,message,status=400,extra={})=>{throw apiError(code,message,{status,...extra});};
 const active=c=>!terminal.has(c.status);
 const expired=(c,now)=>['proposed','question'].includes(c.status)&&Date.parse(c.createdAt)+7*86400000<=now;
 export function coachingContext(s,domain){return domain==='nutrition'?JSON.stringify([s.active_plan_id,s.profile?.goal]):JSON.stringify([s.workoutPlan?.id,s.profile?.goal]);}
@@ -44,10 +45,10 @@ export function handleCoachingCommand(s,action,p,now){
  s.coachingFeedback||=[];s.coachingCases||=[];
  const at=new Date(now).toISOString(),today=localDate(now,s.profile?.timezone||'Africa/Cairo');
  if(action==='coaching_feedback'){
-  if(!['nutrition','training'].includes(p.domain)||typeof p.barrier!=='string'||!BARRIERS[p.domain].includes(p.barrier))fail('اختار مجال المتابعة وسببًا صالحًا.');
-  for(const key of ['hunger','energy','satiety'])if(p[key]!=null&&(!Number.isInteger(p[key])||p[key]<1||p[key]>5))fail('تقييم الجوع والشبع والطاقة من ١ إلى ٥.');
-  if(p.domain!=='nutrition'&&['hunger','satiety'].some(k=>p[k]!=null))fail('الجوع والشبع يُسجلان مع متابعة التغذية.');
-  if(p.domain==='nutrition'&&!s.active_plan_id||p.domain==='training'&&!s.workoutPlan)fail('مسار المتابعة غير مفعّل في حسابك.');
+  if(!['nutrition','training'].includes(p.domain)||typeof p.barrier!=='string'||!BARRIERS[p.domain].includes(p.barrier))fail('COACHING_FEEDBACK_INVALID','Valid domain (nutrition | training) and matching barrier are required.');
+  for(const key of ['hunger','energy','satiety'])if(p[key]!=null&&(!Number.isInteger(p[key])||p[key]<1||p[key]>5))fail('COACHING_RATING_OUT_OF_RANGE','Subjective ratings (hunger, energy, satiety) must be integers from 1 to 5.',400,{params:{field:key}});
+  if(p.domain!=='nutrition'&&['hunger','satiety'].some(k=>p[k]!=null))fail('COACHING_HUNGER_NUTRITION_ONLY','Hunger and satiety ratings are only valid for nutrition coaching feedback.');
+  if(p.domain==='nutrition'&&!s.active_plan_id||p.domain==='training'&&!s.workoutPlan)fail('COACHING_TRACK_NOT_ENABLED','Requested coaching domain is not enabled on this account.');
   const feedback={id:crypto.randomUUID(),date:today,at,domain:p.domain,barrier:p.barrier,hunger:p.hunger??null,satiety:p.satiety??null,energy:p.energy??null,context:coachingContext(s,p.domain)};
   s.coachingFeedback.push(feedback);
   const existing=s.coachingCases.find(c=>c.domain===p.domain&&active(c)&&c.context===feedback.context&&c.barrier===p.barrier&&c.status!=='question'&&(c.status!=='proposed'||Date.parse(c.createdAt)+7*86400000>now));
@@ -59,15 +60,15 @@ export function handleCoachingCommand(s,action,p,now){
   return s;
  }
  const c=s.coachingCases.find(c=>c.id===p.id);
- if(!c)fail('المتابعة غير موجودة في حسابك.',404);
+ if(!c)fail('COACHING_CASE_NOT_FOUND','Coaching case ID not found.',404);
  if(action==='coaching_ack'){
   c.acknowledgedAt||=at;return s;
  }
- if(c.context!==coachingContext(s,c.domain))fail('الخطة تغيرت؛ راجع المتابعة الحالية.',409);
+ if(c.context!==coachingContext(s,c.domain))fail('COACHING_CONTEXT_CHANGED','Coaching context changed since this agreement was created; review current coaching status.',409);
  if(action==='coaching_decision'){
-  if(typeof p.accept!=='boolean')fail('حدد قبول الاقتراح أو رفضه.');
-  if(c.status!=='proposed')fail('الاقتراح اتاخد فيه قرار بالفعل أو لم يعد متاحًا.',409);
-  if(Date.parse(c.createdAt)+7*86400000<=now)fail('الاقتراح قديم؛ سجّل حالتك الحالية قبل اتخاذ قرار.',409);
+  if(typeof p.accept!=='boolean')fail('COACHING_DECISION_INVALID','Boolean accept flag is required for coaching_decision.');
+  if(c.status!=='proposed')fail('COACHING_CASE_ALREADY_DECIDED','Coaching agreement has already been decided or is no longer open.',409);
+  if(Date.parse(c.createdAt)+7*86400000<=now)fail('COACHING_CASE_EXPIRED','Coaching agreement proposal has expired (older than 7 days); log updated feedback first.',409);
   c.status=p.accept?'accepted':'declined';
   c.decidedAt=at;
   if(p.accept){c.acceptedAt=at;c.reviewOn=dateOffset(today,c.barrier==='pain'?1:3);}
@@ -75,14 +76,14 @@ export function handleCoachingCommand(s,action,p,now){
   return s;
  }
  if(action==='coaching_outcome'){
-  if(c.status!=='accepted')fail('تسجيل النتيجة يحتاج خطوة وافقت عليها.',409);
-  if(!['helped','not_helped','not_tried'].includes(p.outcome))fail('اختار نتيجة صالحة للمتابعة.');
-  if(c.reviewOn>today&&p.outcome==='helped')fail('نستنى موعد المراجعة قبل الحكم على نتيجة الخطوة.',409);
+  if(c.status!=='accepted')fail('COACHING_OUTCOME_REQUIRES_ACCEPTED_CASE','Reporting an outcome requires an accepted coaching agreement.',409);
+  if(!['helped','not_helped','not_tried'].includes(p.outcome))fail('COACHING_OUTCOME_INVALID','outcome must be one of helped, not_helped, or not_tried.');
+  if(c.reviewOn>today&&p.outcome==='helped')fail('COACHING_REVIEW_DATE_NOT_REACHED','Cannot confirm helped outcome before the scheduled coaching review date.',409,{params:{reviewOn:c.reviewOn}});
   c.status='completed';c.closedAt=at;c.outcome={value:p.outcome,at,source:'user_report'};
   if(p.outcome!=='helped')s.coachingCases.push({id:crypto.randomUUID(),domain:c.domain,date:today,createdAt:at,context:c.context,priorCaseId:c.id,barrier:null,status:'question',title:p.outcome==='not_tried'?'الخطوة لم تتجرب؛ نختار حاجة أسهل؟':'قلت إن الخطوة لم تساعدك؛ نراجع السبب قبل تكرارها.',step:'سجّل العائق الحالي علشان نختار خطوة مناسبة؛ مش هنعتبر عدم التجربة فشلًا.',evidence:{source:'user_report',outcome:p.outcome,caseId:c.id,basedOnRevision:s.revision+1},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
   return s;
  }
- fail('عملية متابعة غير معروفة.');
+ fail('COACHING_COMMAND_UNKNOWN','Unknown coaching command action.');
 }
 
 export function reconcileCoaching(s,now){

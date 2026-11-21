@@ -18,7 +18,7 @@ test('Imported 0.12 public edge security and durable state transitions',async t=
   const post=(path,data,headers={})=>req(path,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(data)});
   let cookie,anonId;
   await t.test('claims require the owning cookie; spoofed internal headers and cross-origin mutations fail',async()=>{
-   const session=await req('auth/session');cookie=session.headers.get('Set-Cookie').split(';')[0];anonId=(await session.json()).userId;
+   const session=await req('auth/session');cookie=session.headers.get('Set-Cookie').split(';')[0];anonId=(await session.json()).data.userId;
    assert.equal((await post('commands',{revision:0,action:'generate',payload:draft},{Cookie:cookie,'Idempotency-Key':'init'})).status,200);
    const authorization='Bearer '+await token('claim-owner');
    for(const headers of [{Authorization:authorization},{Authorization:authorization,'x-anonymous-cookie-uid':anonId},{Authorization:authorization,Cookie:'coach_uid='+anonId.slice(5)}]){
@@ -26,14 +26,10 @@ test('Imported 0.12 public edge security and durable state transitions',async t=
    }
    const csrf=await post('account/delete',{confirm:true},{Cookie:cookie,Origin:'https://evil.test'});assert.equal(csrf.status,403);
   });
-  await t.test('legacy cookie accounts and simulation-only histories keep their identity',async()=>{
-   for(const simulationOnly of [false,true]){
-    const uid=crypto.randomUUID(),legacy='anon:'+uid;
-    const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(legacy));
-    const key=simulationOnly?'__simulation__:'+Array.from(new Uint8Array(bytes)).map(x=>x.toString(16).padStart(2,'0')).join(''):legacy;
-    await db.prepare('INSERT INTO coaching_accounts(user_id,revision,body) VALUES(?,?,?)').bind(key,0,JSON.stringify(empty())).run();
-    const response=await req('auth/session',{headers:{Cookie:'coach_uid='+uid}});assert.equal(response.status,200);assert.equal((await response.json()).userId,legacy);
-   }
+  await t.test('legacy cookie accounts keep their identity',async()=>{
+   const uid=crypto.randomUUID(),legacy='anon:'+uid;
+   await db.prepare('INSERT INTO coaching_accounts(user_id,revision,body) VALUES(?,?,?)').bind(legacy,0,JSON.stringify(empty())).run();
+   const response=await req('auth/session',{headers:{Cookie:'coach_uid='+uid}});assert.equal(response.status,200);assert.equal((await response.json()).data.userId,legacy);
   });
   await t.test('two claims are atomic: one owner wins, historical plans survive, anonymous access closes',async()=>{
    const before=await loadAccount(db,anonId);const oldPlan=structuredClone(before.plans[0]);oldPlan.id='archived-owned-plan';
@@ -108,7 +104,7 @@ test('legacy onboarding injury IDs and canonical API IDs enforce the same exclus
   assert.deepEqual(a.onboarding.workoutPrefs.injuries,[legacy]);
  }
  assert.equal(evaluateEligibility({...draft,injuries:['elbow_pain']}).status,'requires_review');
- assert.throws(()=>generate(empty(),{...draft,injuries:['elbow_pain']}),/الكوع/);
+ assert.throws(()=>generate(empty(),{...draft,injuries:['elbow_pain']}),e=>e.code==='UNSUPPORTED_ELBOW_PAIN'&&/Elbow pain/i.test(e.message));
 });
 
 test('account deletion fails closed before the revocation schema is installed',async()=>{

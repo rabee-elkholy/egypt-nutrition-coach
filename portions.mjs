@@ -1,4 +1,5 @@
 import {aggregate} from './calculator.mjs';
+import {apiError} from './coaching-error.mjs';
 // Display translation only. IDs, counts, preparation qualifiers and source grams stay intact.
 const TYPES = [
   [/\b(?:tablespoons?|tbsp)\b/i, 'ملعقة كبيرة'],
@@ -82,7 +83,7 @@ export function sourceVolume(portions=[]) {
  return null;
 }
 export function volumeGrams(quantity,evidence){
- if(!evidence)throw Error('لا يوجد تحويل حجم موثق لهذا الطعام');
+ if(!evidence)throw apiError('VOLUME_CONVERSION_UNAVAILABLE','No verified volume-to-gram conversion exists for this food.',{status:400});
  // Use the same rational, half-even arithmetic as the meal calculator.
  return aggregate([{grams:String(quantity),values:{weight:evidence.source_grams},factors:{weight:'1'}}],['weight'],evidence.source_ml).nutrients.weight.per_100g;
 }

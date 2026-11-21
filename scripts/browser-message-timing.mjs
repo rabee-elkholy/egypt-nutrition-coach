@@ -14,11 +14,11 @@ try{
   const context=await browser.newContext({viewport:{width,height:950},extraHTTPHeaders:{'oai-authenticated-user-id':'timing-'+crypto.randomUUID()}});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   const response=await context.request.post(origin+'/v1/commands',{headers:{'Idempotency-Key':crypto.randomUUID()},data:{revision:0,action:'generate',payload:{name:'Timing',age:30,weight:80,height:175,sex:'male',goal:'lose',targetWeight:75,serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5],healthConfirmed:true}}});
-  assert.equal(response.status(),200,await response.text());const initial=await response.json();
+  assert.equal(response.status(),200,await response.text());const initial=(await response.json()).data;
   // UI boundary injection only: real generated state, controlled later server snapshots.
   let snapshot=structuredClone(initial),reads=0;
-  await page.route('**/v1/state',async route=>{reads++;await route.fulfill({json:snapshot});});
-  await page.route('**/v1/bootstrap',async route=>route.fulfill({json:{revision:snapshot.revision,serverDate:snapshot.serverDate,serverNow:snapshot.serverNow}}));
+  await page.route('**/v1/state',async route=>{reads++;await route.fulfill({json:{ok:true,data:snapshot,meta:{requestId:'timing',serverTime:snapshot.serverNow}}});});
+  await page.route('**/v1/bootstrap',async route=>route.fulfill({json:{ok:true,data:{revision:snapshot.revision,serverDate:snapshot.serverDate,serverNow:snapshot.serverNow},meta:{requestId:'timing',serverTime:snapshot.serverNow}}}));
   await page.clock.install();await page.goto(origin+'/#planner');await page.locator('[data-personal-role]:visible').first().waitFor();
   const oldDate=initial.serverDate,newDate=dateOffset(oldDate,10);
   snapshot.serverDate=newDate;snapshot.serverNow=newDate+'T12:00:00Z';

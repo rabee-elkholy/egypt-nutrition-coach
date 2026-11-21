@@ -22,16 +22,16 @@ try{
   }
   const generated=await context.request.post(origin+'/v1/commands',{headers:{'Idempotency-Key':crypto.randomUUID()},data:{revision:0,action:'generate',payload:{name:'Midnight',age:30,weight:80,height:175,sex:'male',goal:'lose',serviceTrack:'workouts_only',selectedWorkoutDays:[1,3,5],healthConfirmed:true}}});
   assert.equal(generated.status(),200);
-  let snapshot=await generated.json();
+  let snapshot=(await generated.json()).data;
   const oldDate=snapshot.serverDate,newDate=dateOffset(oldDate,1),writes=[],formId=kind+'-log';
   // The UI clock boundary is controlled. Generation and writes still use real Worker/D1.
-  await page.route('**/v1/state',route=>route.fulfill({json:snapshot}));
-  await page.route('**/v1/bootstrap',route=>route.fulfill({json:{revision:snapshot.revision,serverDate:snapshot.serverDate,serverNow:snapshot.serverNow}}));
+  await page.route('**/v1/state',route=>route.fulfill({json:{ok:true,data:snapshot,meta:{requestId:'midnight',serverTime:snapshot.serverNow}}}));
+  await page.route('**/v1/bootstrap',route=>route.fulfill({json:{ok:true,data:{revision:snapshot.revision,serverDate:snapshot.serverDate,serverNow:snapshot.serverNow},meta:{requestId:'midnight',serverTime:snapshot.serverNow}}}));
   await page.route('**/v1/commands',async route=>{
    writes.push(route.request().postDataJSON());
    const response=await route.fetch();assert.equal(response.status(),200);
-   snapshot={...await response.json(),serverDate:newDate,serverNow:newDate+'T12:00:00Z'};
-   await route.fulfill({json:snapshot});
+   snapshot={...(await response.json()).data,serverDate:newDate,serverNow:newDate+'T12:00:00Z'};
+   await route.fulfill({json:{ok:true,data:snapshot,meta:{requestId:'midnight',serverTime:snapshot.serverNow}}});
   });
   await page.goto(origin+'/#planner');
   await page.locator('[data-tab="recovery"]').click();
@@ -61,7 +61,7 @@ try{
    await form.locator(kind==='recovery'?'button[type="submit"]':'button:not([type])').click();
    await page.waitForFunction(({id,date})=>document.querySelector('#'+id+' [name="date"]')?.value===date,{id:formId,date:newDate});
    assert.equal(writes.length,1);assert.equal(writes[0].payload.date,oldDate);assert.equal(writes[0].payload[value],expected);
-   const persisted=await(await context.request.get(origin+'/v1/state')).json(),records=kind==='recovery'?persisted.checkins:persisted.weights;
+   const persisted=(await(await context.request.get(origin+'/v1/state')).json()).data,records=kind==='recovery'?persisted.checkins:persisted.weights;
    assert.equal(records.length,1);assert.equal(records[0].date,oldDate);assert.equal(records[0][value],Number(expected));
   }else{
    await form.locator('[data-start-draft]').click();

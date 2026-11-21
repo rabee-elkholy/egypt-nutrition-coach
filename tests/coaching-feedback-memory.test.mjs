@@ -53,7 +53,7 @@ test('accepting a retained calorie cut rechecks all recent metrics after a parti
  s.revision=a.baseRevision;
  report(s,{barrier:'hunger',hunger:5,energy:1});report(s,{barrier:'budget'},now+1000);
  const plans=JSON.stringify(s.plans);
- assert.throws(()=>command(s,'adaptation',{id:a.id,accept:true}),/الجوع أو الطاقة/);
+ assert.throws(()=>command(s,'adaptation',{id:a.id,accept:true}),e=>e.code==='ADAPTATION_CALORIE_CUT_BLOCKED'&&/hunger or low energy/i.test(e.message));
  assert.equal(JSON.stringify(s.plans),plans);assert.equal(a.status,'pending');
 }));
 test('hunger message attributes the rating to its original date rather than a newer unrelated report',()=>{

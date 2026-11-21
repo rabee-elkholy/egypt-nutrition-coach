@@ -1,0 +1,1474 @@
+{
+  "version": "1.0.0",
+  "project": "CuraFit API v1",
+  "codes": {
+    "VALIDATION_ERROR": {
+      "httpStatus": 400,
+      "message": "The request payload failed validation.",
+      "params": [],
+      "retryable": false
+    },
+    "NUMBER_OUT_OF_RANGE": {
+      "httpStatus": 400,
+      "message": "{field} must be between {min} and {max}.",
+      "params": [
+        "field",
+        "min",
+        "max"
+      ],
+      "retryable": false
+    },
+    "INVALID_INTEGER": {
+      "httpStatus": 400,
+      "message": "{field} must be a whole integer.",
+      "params": [
+        "field",
+        "min",
+        "max"
+      ],
+      "retryable": false
+    },
+    "INVALID_BOOLEAN": {
+      "httpStatus": 400,
+      "message": "{field} must be a boolean true or false.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "INVALID_STRING_LIST": {
+      "httpStatus": 400,
+      "message": "{field} must be a valid list of non-empty strings.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "INVALID_RECORD": {
+      "httpStatus": 400,
+      "message": "{field} must be a valid key-value object.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "INVALID_DECIMAL": {
+      "httpStatus": 400,
+      "message": "{field} must be a valid non-negative decimal number.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "VALUE_MUST_BE_POSITIVE": {
+      "httpStatus": 400,
+      "message": "{field} must be greater than zero.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "INVALID_DATE": {
+      "httpStatus": 400,
+      "message": "Invalid calendar date format; expected YYYY-MM-DD.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "DATE_IN_FUTURE": {
+      "httpStatus": 400,
+      "message": "Logging date cannot be in the future.",
+      "params": [
+        "date"
+      ],
+      "retryable": false
+    },
+    "DATE_TOO_OLD": {
+      "httpStatus": 400,
+      "message": "Backdating logs is limited to the last {maxDays} days.",
+      "params": [
+        "maxDays"
+      ],
+      "retryable": false
+    },
+    "INVALID_DATE_RANGE": {
+      "httpStatus": 400,
+      "message": "Invalid from/to date query parameter; expected YYYY-MM-DD.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "INVALID_WEEKDAY_CONVENTION": {
+      "httpStatus": 400,
+      "message": "weekdayConvention must be either js_sunday_0 or saturday_0.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_WORKOUT_DAYS": {
+      "httpStatus": 400,
+      "message": "Selected training days list is invalid (max 6 days).",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_DAY_LOCATIONS": {
+      "httpStatus": 400,
+      "message": "dayLocations keys must be weekday indices 0..6 with valid location values.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_TIMEZONE": {
+      "httpStatus": 400,
+      "message": "Invalid IANA timezone identifier.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_QUIET_HOURS": {
+      "httpStatus": 400,
+      "message": "{field} must be formatted as 24-hour HH:mm.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "INVALID_WEARABLES_BATCH": {
+      "httpStatus": 400,
+      "message": "Wearables payload must contain a records array with at most 100 items.",
+      "params": [],
+      "retryable": false
+    },
+    "EMPTY_BODY": {
+      "httpStatus": 400,
+      "message": "A JSON request body is required.",
+      "params": [],
+      "retryable": false
+    },
+    "PAYLOAD_TOO_LARGE": {
+      "httpStatus": 413,
+      "message": "Request body exceeds the 40 KB limit.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_UTF8": {
+      "httpStatus": 400,
+      "message": "Request body must be valid UTF-8 encoded text.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_JSON": {
+      "httpStatus": 400,
+      "message": "Malformed JSON request body.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_REQUEST_BODY": {
+      "httpStatus": 400,
+      "message": "Request body must be a JSON object.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_COMMAND_ENVELOPE": {
+      "httpStatus": 400,
+      "message": "Command body must include integer revision >= 0, string action, and object payload.",
+      "params": [],
+      "retryable": false
+    },
+    "UNKNOWN_COMMAND_ACTION": {
+      "httpStatus": 400,
+      "message": "Unsupported command action.",
+      "params": [
+        "action"
+      ],
+      "retryable": false
+    },
+    "IDEMPOTENCY_KEY_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Idempotency-Key header (1..100 characters) is required.",
+      "params": [],
+      "retryable": false
+    },
+    "IDEMPOTENCY_KEY_REUSED_MISMATCH": {
+      "httpStatus": 409,
+      "message": "Idempotency-Key was already used with a different request payload.",
+      "params": [],
+      "retryable": false
+    },
+    "REVISION_CONFLICT": {
+      "httpStatus": 409,
+      "message": "Account state has changed; sync and retry with the latest revision.",
+      "params": [
+        "expectedRevision",
+        "currentRevision"
+      ],
+      "retryable": false
+    },
+    "CONFLICT": {
+      "httpStatus": 409,
+      "message": "Request conflicted with current resource state.",
+      "params": [],
+      "retryable": false
+    },
+    "ROUTE_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "API endpoint not found.",
+      "params": [],
+      "retryable": false
+    },
+    "METHOD_NOT_ALLOWED": {
+      "httpStatus": 405,
+      "message": "HTTP method is not allowed for this endpoint.",
+      "params": [
+        "allowedMethod"
+      ],
+      "retryable": false
+    },
+    "ORIGIN_FORBIDDEN": {
+      "httpStatus": 403,
+      "message": "Cross-origin write requests are forbidden.",
+      "params": [],
+      "retryable": false
+    },
+    "UNSUPPORTED_MEDIA_TYPE": {
+      "httpStatus": 415,
+      "message": "Content-Type must be application/json.",
+      "params": [],
+      "retryable": false
+    },
+    "STORAGE_LIMIT_REACHED": {
+      "httpStatus": 413,
+      "message": "Account history reached storage capacity; export your data before adding new logs.",
+      "params": [],
+      "retryable": false
+    },
+    "RATE_LIMITED": {
+      "httpStatus": 429,
+      "message": "Too many requests per minute; wait a moment and retry.",
+      "params": [
+        "retryAfterSeconds"
+      ],
+      "retryable": true
+    },
+    "DATABASE_UNAVAILABLE": {
+      "httpStatus": 503,
+      "message": "Database binding is temporarily unavailable.",
+      "params": [],
+      "retryable": true
+    },
+    "DATABASE_ERROR": {
+      "httpStatus": 503,
+      "message": "Unable to persist data right now; retry shortly.",
+      "params": [],
+      "retryable": true
+    },
+    "INTERNAL_ERROR": {
+      "httpStatus": 500,
+      "message": "Unexpected internal server error; retry shortly.",
+      "params": [],
+      "retryable": true
+    },
+    "SERVICE_UNAVAILABLE": {
+      "httpStatus": 503,
+      "message": "Service temporarily unavailable; retry shortly.",
+      "params": [],
+      "retryable": true
+    },
+    "UNAUTHENTICATED": {
+      "httpStatus": 401,
+      "message": "Authentication required; provide a valid Bearer access token.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_HEADER_INVALID": {
+      "httpStatus": 401,
+      "message": "Authorization header must use Bearer token format.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_TOKEN_MALFORMED": {
+      "httpStatus": 401,
+      "message": "Malformed JWT access token.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_PROVIDER_NOT_CONFIGURED": {
+      "httpStatus": 503,
+      "message": "Authentication provider key material is not configured on the server.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_JWKS_UNAVAILABLE": {
+      "httpStatus": 503,
+      "message": "Unable to fetch JWKS verification keys.",
+      "params": [],
+      "retryable": true
+    },
+    "AUTH_KEY_ROTATED_OR_UNKNOWN": {
+      "httpStatus": 401,
+      "message": "JWT signing key ID (kid) is unknown or rotated.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_UNSUPPORTED_ALG": {
+      "httpStatus": 401,
+      "message": "Unsupported JWT signing algorithm.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_INVALID_SIGNATURE": {
+      "httpStatus": 401,
+      "message": "Invalid JWT signature.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_TOKEN_MISSING_EXP": {
+      "httpStatus": 401,
+      "message": "JWT access token is missing required exp claim.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_TOKEN_EXPIRED": {
+      "httpStatus": 401,
+      "message": "Access token has expired; refresh your session.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_TOKEN_NOT_YET_VALID": {
+      "httpStatus": 401,
+      "message": "JWT access token is not valid yet (nbf claim in future).",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_TOKEN_INVALID_IAT": {
+      "httpStatus": 401,
+      "message": "JWT issued-at timestamp (iat) is in the future.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_INVALID_ISSUER": {
+      "httpStatus": 401,
+      "message": "Untrusted JWT issuer.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_INVALID_AUDIENCE": {
+      "httpStatus": 401,
+      "message": "JWT audience claim does not match.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_INVALID_SUBJECT": {
+      "httpStatus": 401,
+      "message": "Invalid or missing JWT subject (sub).",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_INVALID_SESSION": {
+      "httpStatus": 401,
+      "message": "Invalid session identifier claim in access token.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_SESSION_REVOKED": {
+      "httpStatus": 401,
+      "message": "Session has been revoked; sign in again.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_ALL_SESSIONS_REVOKED": {
+      "httpStatus": 401,
+      "message": "All sessions were revoked; sign in again.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_SESSION_CHECK_UNAVAILABLE": {
+      "httpStatus": 503,
+      "message": "Unable to verify session status; retry shortly.",
+      "params": [],
+      "retryable": true
+    },
+    "AUTH_SCOPE_REQUIRED": {
+      "httpStatus": 403,
+      "message": "Token lacks required authorization scope.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_INVALID_EMAIL": {
+      "httpStatus": 400,
+      "message": "Please enter a valid email address.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_WEAK_PASSWORD": {
+      "httpStatus": 400,
+      "message": "Password must be between {minLength} and {maxLength} characters.",
+      "params": [
+        "minLength",
+        "maxLength"
+      ],
+      "retryable": false
+    },
+    "AUTH_JWT_SECRET_MISSING": {
+      "httpStatus": 503,
+      "message": "AUTH_JWT_SECRET is not configured on the server.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_SCHEMA_NOT_MIGRATED": {
+      "httpStatus": 503,
+      "message": "Authentication tables are not migrated in D1 yet.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_EMAIL_ALREADY_EXISTS": {
+      "httpStatus": 409,
+      "message": "An account with this email already exists.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_INVALID_CREDENTIALS": {
+      "httpStatus": 401,
+      "message": "Invalid email or password.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_REFRESH_TOKEN_INVALID": {
+      "httpStatus": 401,
+      "message": "Invalid or unrecognized refresh token.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_REFRESH_TOKEN_REUSED": {
+      "httpStatus": 401,
+      "message": "Refresh token reuse detected; session revoked for security.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_REFRESH_TOKEN_REVOKED": {
+      "httpStatus": 401,
+      "message": "Refresh token has been revoked.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_REFRESH_TOKEN_EXPIRED": {
+      "httpStatus": 401,
+      "message": "Refresh token has expired; sign in again.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_REFRESH_TOKEN_CONCURRENT_REUSE": {
+      "httpStatus": 401,
+      "message": "Concurrent refresh token reuse detected; session revoked for security.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_USER_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Authentication user account not found.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_VERIFIED_ACCOUNT_REQUIRED": {
+      "httpStatus": 403,
+      "message": "Password changes are only available for registered email accounts.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_CURRENT_PASSWORD_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Current password is required.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_PASSWORD_UNCHANGED": {
+      "httpStatus": 400,
+      "message": "New password must differ from current password.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_SESSION_ID": {
+      "httpStatus": 400,
+      "message": "Invalid sessionId parameter.",
+      "params": [],
+      "retryable": false
+    },
+    "ACCOUNT_DELETED": {
+      "httpStatus": 401,
+      "message": "This account has been permanently deleted.",
+      "params": [],
+      "retryable": false
+    },
+    "CLAIM_REQUIRES_VERIFIED_ACCOUNT": {
+      "httpStatus": 403,
+      "message": "Sign in with a verified account to claim an anonymous session.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_CLAIM_REQUEST": {
+      "httpStatus": 400,
+      "message": "Explicit consent and a valid anon: user ID are required to claim data.",
+      "params": [],
+      "retryable": false
+    },
+    "ANONYMOUS_OWNERSHIP_REQUIRED": {
+      "httpStatus": 403,
+      "message": "Proof of ownership for the anonymous session cookie is required.",
+      "params": [],
+      "retryable": false
+    },
+    "ANONYMOUS_ALREADY_CLAIMED": {
+      "httpStatus": 409,
+      "message": "Anonymous session has already been claimed.",
+      "params": [],
+      "retryable": false
+    },
+    "ANONYMOUS_ACCOUNT_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "No stored account data found for the specified anonymous session.",
+      "params": [],
+      "retryable": false
+    },
+    "TARGET_ACCOUNT_NOT_EMPTY": {
+      "httpStatus": 409,
+      "message": "Authenticated account already has a profile; specify a merge policy.",
+      "params": [],
+      "retryable": false
+    },
+    "DELETE_CONFIRMATION_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Permanent account deletion requires confirm: true.",
+      "params": [],
+      "retryable": false
+    },
+    "ACCOUNT_DELETION_MIGRATION_REQUIRED": {
+      "httpStatus": 503,
+      "message": "Account deletion requires normalized session revocation tables to be migrated.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_CONSENT_PAYLOAD": {
+      "httpStatus": 400,
+      "message": "Consent payload requires string consentType, string version, and boolean accepted.",
+      "params": [],
+      "retryable": false
+    },
+    "ACCOUNT_SNAPSHOT_READ_FAILED": {
+      "httpStatus": 503,
+      "message": "Unable to load account records; no changes were made.",
+      "params": [],
+      "retryable": true
+    },
+    "ACCOUNT_BACKFILL_CONFLICT": {
+      "httpStatus": 409,
+      "message": "Account changed during migration backfill; reload and retry.",
+      "params": [],
+      "retryable": false
+    },
+    "PROFILE_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Complete onboarding profile generation before running this command.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_SEX": {
+      "httpStatus": 400,
+      "message": "sex must be male or female.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_HEALTH_FLAGS": {
+      "httpStatus": 400,
+      "message": "diseases and injuries must be arrays of condition IDs.",
+      "params": [],
+      "retryable": false
+    },
+    "UNSUPPORTED_ELBOW_PAIN": {
+      "httpStatus": 400,
+      "message": "Elbow pain requires specialist assessment; automated workout adaptation is not supported for this injury.",
+      "params": [],
+      "retryable": false
+    },
+    "CLINICAL_REVIEW_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Declared clinical conditions or age require specialist review before automated plan generation.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_GOAL": {
+      "httpStatus": 400,
+      "message": "goal must be one of lose, maintain, gain, or muscle_gain.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_SERVICE_TRACK": {
+      "httpStatus": 400,
+      "message": "serviceTrack must be one of nutrition_only, workouts_only, or nutrition_and_workouts.",
+      "params": [],
+      "retryable": false
+    },
+    "BMI_OUT_OF_RANGE": {
+      "httpStatus": 400,
+      "message": "Calculated BMI is outside the automated planning range (12.5..65).",
+      "params": [],
+      "retryable": false
+    },
+    "WEIGHT_LOSS_UNDERWEIGHT_UNSAFE": {
+      "httpStatus": 400,
+      "message": "Weight loss plans are not suitable when current BMI is below 18.5.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_EXTERNAL_TRAINING_DAYS": {
+      "httpStatus": 400,
+      "message": "externalTrainingDays must be an array of up to 6 weekday integers (0..6).",
+      "params": [],
+      "retryable": false
+    },
+    "MUSCLE_GAIN_REQUIRES_RESISTANCE_DAYS": {
+      "httpStatus": 400,
+      "message": "Muscle gain goal in nutrition_only track requires confirmed external resistance training days.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_TARGET_WEIGHT": {
+      "httpStatus": 400,
+      "message": "targetWeight is inconsistent with your goal and safe BMI floor (18.5).",
+      "params": [],
+      "retryable": false
+    },
+    "HEALTH_CONFIRMATION_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Confirm health readiness clearance before creating or modifying a workout plan.",
+      "params": [],
+      "retryable": false
+    },
+    "HEALTH_ALREADY_CONFIRMED": {
+      "httpStatus": 400,
+      "message": "Health readiness has already been confirmed.",
+      "params": [],
+      "retryable": false
+    },
+    "SCHEDULE_ALREADY_CONFIRMED": {
+      "httpStatus": 400,
+      "message": "Workout schedule weekday convention has already been confirmed.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_SCHEDULE_MAPPING": {
+      "httpStatus": 400,
+      "message": "Provide a unique weekday index (0..6) for each workout day in dayMap.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_AGE": {
+      "httpStatus": 400,
+      "message": "age must be a whole number of years between 18 and 70.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_PROFILE_METRICS": {
+      "httpStatus": 400,
+      "message": "Invalid sex, activity level, or goal selection.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_TRAINING_DAYS": {
+      "httpStatus": 400,
+      "message": "trainingDays must be an integer between 0 and 6.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_GOAL_PACE": {
+      "httpStatus": 400,
+      "message": "goalPace must be one of slow, moderate, or fast.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_DIET_TYPE": {
+      "httpStatus": 400,
+      "message": "Selected dietType is not supported.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_BUDGET_OR_MEALS": {
+      "httpStatus": 400,
+      "message": "Invalid budget tier or daily meal count (2..5).",
+      "params": [],
+      "retryable": false
+    },
+    "PROTEIN_SOURCE_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Select at least one primary protein source.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_EXCLUDED_INGREDIENTS": {
+      "httpStatus": 400,
+      "message": "excludedKeys must be a valid array of known ingredient keys.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_REGION": {
+      "httpStatus": 400,
+      "message": "region must be a supported regional catalog selection.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_SPORT_MODE": {
+      "httpStatus": 400,
+      "message": "exerciseMode must be included or separate with up to 8 sports rows.",
+      "params": [],
+      "retryable": false
+    },
+    "UNKNOWN_OR_DUPLICATE_SPORT": {
+      "httpStatus": 400,
+      "message": "Sport ID is unknown or duplicated.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_SPORT_SCHEDULE": {
+      "httpStatus": 400,
+      "message": "Check sport minutes (5..180) and sessions per week (1..7).",
+      "params": [],
+      "retryable": false
+    },
+    "SPORT_DURATION_EXCEEDED": {
+      "httpStatus": 400,
+      "message": "Weekly sport duration exceeds the planning cap of 180 minutes average per training day.",
+      "params": [],
+      "retryable": false
+    },
+    "SPORT_REQUIRED_FOR_SEPARATE_MODE": {
+      "httpStatus": 400,
+      "message": "Add at least one sport with duration when exerciseMode is separate.",
+      "params": [],
+      "retryable": false
+    },
+    "WORKOUT_DAYS_EXCEED_SPORTS": {
+      "httpStatus": 400,
+      "message": "Training days count exceeds total weekly sport sessions declared.",
+      "params": [],
+      "retryable": false
+    },
+    "KETO_REQUIRES_CONFIRMATION": {
+      "httpStatus": 400,
+      "message": "Keto diet requires explicit acknowledgment and is blocked with contraindicated medical conditions.",
+      "params": [],
+      "retryable": false
+    },
+    "FASTING_REQUIRES_CONFIRMATION": {
+      "httpStatus": 400,
+      "message": "Intermittent fasting requires explicit acknowledgment and is blocked with contraindicated conditions.",
+      "params": [],
+      "retryable": false
+    },
+    "FASTING_WINDOW_INVALID": {
+      "httpStatus": 400,
+      "message": "Invalid fasting mode or eating window start time (eating window must fit within the same day).",
+      "params": [],
+      "retryable": false
+    },
+    "PLAN_CONSTRAINTS_UNMET": {
+      "httpStatus": 400,
+      "message": "Unable to generate a complete nutrition plan satisfying all dietary and calorie/protein constraints.",
+      "params": [
+        "stage"
+      ],
+      "retryable": false
+    },
+    "NO_ELIGIBLE_MEAL_FOR_SLOT": {
+      "httpStatus": 400,
+      "message": "No eligible meals match your dietary exclusions for a required meal slot.",
+      "params": [],
+      "retryable": false
+    },
+    "NO_CANDIDATE_WITHIN_DIET_LIMITS": {
+      "httpStatus": 400,
+      "message": "No candidate satisfies diet rules for this meal slot with your current preferences.",
+      "params": [],
+      "retryable": false
+    },
+    "NUTRIENT_TARGETS_UNMET": {
+      "httpStatus": 400,
+      "message": "Meal search could not meet daily calorie and protein tolerances under your constraints.",
+      "params": [],
+      "retryable": false
+    },
+    "PLAN_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Nutrition plan not found.",
+      "params": [],
+      "retryable": false
+    },
+    "PLAN_DAY_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Specified calendar day not found in nutrition plan.",
+      "params": [],
+      "retryable": false
+    },
+    "PLAN_LOAD_FAILED": {
+      "httpStatus": 503,
+      "message": "Unable to load saved nutrition plan.",
+      "params": [],
+      "retryable": true
+    },
+    "PLAN_NOT_ACTIVE_FOR_TRACK": {
+      "httpStatus": 400,
+      "message": "No active nutrition plan exists for a workouts-only track.",
+      "params": [],
+      "retryable": false
+    },
+    "PLAN_STILL_ACTIVE": {
+      "httpStatus": 400,
+      "message": "Current weekly nutrition plan is still active; renewal is allowed after it ends.",
+      "params": [],
+      "retryable": false
+    },
+    "PLANNED_MEAL_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Planned meal not found in the active nutrition plan.",
+      "params": [],
+      "retryable": false
+    },
+    "FUTURE_FOOD_ENTRIES_CONFLICT": {
+      "httpStatus": 400,
+      "message": "Food logs already exist on or after the effective adjustment date.",
+      "params": [],
+      "retryable": false
+    },
+    "DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION": {
+      "httpStatus": 400,
+      "message": "This day already has a daily total log; switch to detailed entries before adding individual meals.",
+      "params": [],
+      "retryable": false
+    },
+    "FOOD_DAY_REQUIRES_CLOSURE": {
+      "httpStatus": 400,
+      "message": "This day already uses detailed meal entries; confirm day completion with food_complete instead.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_FOOD_ACTION": {
+      "httpStatus": 400,
+      "message": "Unknown food command action.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_FOOD_SOURCE": {
+      "httpStatus": 400,
+      "message": "Food entry source must be planned, ingredient, or manual.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_MEAL_SLOT": {
+      "httpStatus": 400,
+      "message": "slot must be one of breakfast, lunch, dinner, or snack.",
+      "params": [],
+      "retryable": false
+    },
+    "MEAL_DATE_MISMATCH": {
+      "httpStatus": 400,
+      "message": "Logged date does not match the planned meal's scheduled date.",
+      "params": [],
+      "retryable": false
+    },
+    "MEAL_SLOT_MISMATCH": {
+      "httpStatus": 400,
+      "message": "Logged slot does not match the planned meal's slot.",
+      "params": [],
+      "retryable": false
+    },
+    "PLANNED_MEAL_ALREADY_LOGGED": {
+      "httpStatus": 400,
+      "message": "Planned meal has already been logged; delete the entry first to adjust quantity.",
+      "params": [],
+      "retryable": false
+    },
+    "FOOD_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Food item not found or lacks gram-based portion reference.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_MEAL_NAME": {
+      "httpStatus": 400,
+      "message": "Manual meal name must be non-empty and at most 120 characters.",
+      "params": [],
+      "retryable": false
+    },
+    "MANUAL_MEAL_ENERGY_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Positive actual energy (kcal > 0) is required for manual food entries.",
+      "params": [],
+      "retryable": false
+    },
+    "CONVERT_DETAILED_CONFIRMATION_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Switching a daily-total log to detailed entries requires confirm: true on a daily-total day.",
+      "params": [],
+      "retryable": false
+    },
+    "FOOD_ENTRY_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Food entry ID not found.",
+      "params": [],
+      "retryable": false
+    },
+    "FOOD_COMPLETE_FLAG_REQUIRED": {
+      "httpStatus": 400,
+      "message": "complete boolean flag is required.",
+      "params": [],
+      "retryable": false
+    },
+    "FOOD_LOG_REQUIRED_BEFORE_COMPLETE": {
+      "httpStatus": 400,
+      "message": "Log at least one meal entry before marking the food day complete.",
+      "params": [],
+      "retryable": false
+    },
+    "PAST_DAY_PLAN_IMMUTABLE": {
+      "httpStatus": 400,
+      "message": "Past plan days cannot be modified.",
+      "params": [],
+      "retryable": false
+    },
+    "MEAL_ALREADY_CONSUMED": {
+      "httpStatus": 400,
+      "message": "Cannot replace a meal that has already been logged as consumed.",
+      "params": [],
+      "retryable": false
+    },
+    "MEAL_ALTERNATIVE_UNAVAILABLE": {
+      "httpStatus": 400,
+      "message": "Selected meal alternative is no longer valid under your current constraints.",
+      "params": [],
+      "retryable": false
+    },
+    "ENERGY_CHANGE_OUT_OF_RANGE": {
+      "httpStatus": 400,
+      "message": "Adjusted daily calories exceed safe automated bounds (1200/1400..4200 kcal).",
+      "params": [],
+      "retryable": false
+    },
+    "ENERGY_CHANGE_TARGETS_UNMET": {
+      "httpStatus": 400,
+      "message": "Proposed calorie change cannot satisfy minimum protein or nutrition targets.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_DIET_PLAN_CONFIG": {
+      "httpStatus": 400,
+      "message": "Unsupported diet rule verification mode.",
+      "params": [],
+      "retryable": false
+    },
+    "MEAL_EXCLUDED_BY_HEALTH_CONDITION": {
+      "httpStatus": 400,
+      "message": "Meal conflicts with declared medical/wellness exclusions; changes were not saved.",
+      "params": [],
+      "retryable": false
+    },
+    "MEAL_VIOLATES_DIET_OR_UNVERIFIED": {
+      "httpStatus": 400,
+      "message": "Meal does not comply with diet rules or contains unverified ingredients.",
+      "params": [],
+      "retryable": false
+    },
+    "HIGH_PROTEIN_TARGET_UNMET": {
+      "httpStatus": 400,
+      "message": "Meals fall below the minimum protein threshold for high_protein diet.",
+      "params": [],
+      "retryable": false
+    },
+    "DASH_SODIUM_LIMIT_EXCEEDED": {
+      "httpStatus": 400,
+      "message": "Plan exceeds the 2300mg daily sodium limit required for DASH diet or lacks sodium measurements.",
+      "params": [],
+      "retryable": false
+    },
+    "KETO_CARB_DEFINITION_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Keto diet verification requires consistent total-carbohydrate (fdc:1005) definitions.",
+      "params": [],
+      "retryable": false
+    },
+    "CARB_LIMIT_EXCEEDED": {
+      "httpStatus": 400,
+      "message": "Selection exceeds the daily carbohydrate ceiling of {maxCarbsGrams}g.",
+      "params": [
+        "maxCarbsGrams"
+      ],
+      "retryable": false
+    },
+    "LIBRARY_INSUFFICIENT_FOR_DIET_GOALS": {
+      "httpStatus": 400,
+      "message": "Food catalog cannot satisfy calorie, protein, or macro goals under current diet exclusions.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_ALTERNATIVE_LIMIT": {
+      "httpStatus": 400,
+      "message": "Alternative limit must be an integer between 0 and 100.",
+      "params": [],
+      "retryable": false
+    },
+    "FOOD_DETAIL_MISMATCH": {
+      "httpStatus": 400,
+      "message": "Food detail metadata does not match the requested food ID.",
+      "params": [],
+      "retryable": false
+    },
+    "FOOD_APPROXIMATE_CONFIRMATION_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Approximate recipe/proxy food requires explicit acknowledgment.",
+      "params": [],
+      "retryable": false
+    },
+    "RECIPE_WEIGHT_MISSING": {
+      "httpStatus": 400,
+      "message": "Approximate recipe lacks verified cooked final weight; use reference servings.",
+      "params": [],
+      "retryable": false
+    },
+    "PORTION_WEIGHT_UNKNOWN": {
+      "httpStatus": 400,
+      "message": "Serving gram weight is unknown; use source reference serving count.",
+      "params": [],
+      "retryable": false
+    },
+    "PORTION_GRAMS_MISSING": {
+      "httpStatus": 400,
+      "message": "Selected portion has no verified gram weight.",
+      "params": [],
+      "retryable": false
+    },
+    "VOLUME_CONVERSION_UNAVAILABLE": {
+      "httpStatus": 400,
+      "message": "No verified volume-to-gram conversion exists for this food.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_QUANTITY_UNIT": {
+      "httpStatus": 400,
+      "message": "Quantity unit must be grams, portion, ml, or reference.",
+      "params": [],
+      "retryable": false
+    },
+    "QUANTITY_OUT_OF_RANGE": {
+      "httpStatus": 400,
+      "message": "Calculated food weight must be between 0 and 100000 grams.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_CUSTOM_FOOD_NAME": {
+      "httpStatus": 400,
+      "message": "Custom food name must be non-empty and at most 120 characters.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_NUTRITION_BASIS": {
+      "httpStatus": 400,
+      "message": "Invalid nutrition declaration basis.",
+      "params": [],
+      "retryable": false
+    },
+    "MACROS_INCONSISTENT_WITH_100G": {
+      "httpStatus": 400,
+      "message": "Sum of macronutrients per 100g exceeds 100g.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_CARB_DEFINITION": {
+      "httpStatus": 400,
+      "message": "Specify a valid carbohydrate definition.",
+      "params": [],
+      "retryable": false
+    },
+    "MEAL_COMPONENTS_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Provide a custom meal name and at least one ingredient.",
+      "params": [],
+      "retryable": false
+    },
+    "MAX_INGREDIENTS_EXCEEDED": {
+      "httpStatus": 400,
+      "message": "A custom meal cannot exceed 100 ingredients.",
+      "params": [],
+      "retryable": false
+    },
+    "EXTERNAL_CATALOG_SNAPSHOT_INVALID": {
+      "httpStatus": 500,
+      "message": "External food catalog snapshot has an invalid format.",
+      "params": [],
+      "retryable": false
+    },
+    "DENSITY_REQUIRED_FOR_ML": {
+      "httpStatus": 400,
+      "message": "Milliliter conversion requires verified density or reference volume basis.",
+      "params": [],
+      "retryable": false
+    },
+    "INGREDIENT_NOT_IN_CATALOG": {
+      "httpStatus": 400,
+      "message": "Ingredient not found in approved catalog: {ingredient}.",
+      "params": [
+        "ingredient"
+      ],
+      "retryable": false
+    },
+    "INGREDIENT_NOT_VERIFIED": {
+      "httpStatus": 400,
+      "message": "Ingredient is not reference-verified and cannot be used in verified calculations: {ingredient}.",
+      "params": [
+        "ingredient"
+      ],
+      "retryable": false
+    },
+    "LIQUID_DENSITY_MISSING": {
+      "httpStatus": 400,
+      "message": "Liquid ingredient lacks verified density factor to convert milliliters to grams: {ingredient}.",
+      "params": [
+        "ingredient"
+      ],
+      "retryable": false
+    },
+    "MEAL_COMPONENT_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Requested meal component index not found.",
+      "params": [],
+      "retryable": false
+    },
+    "MEAL_COMPONENT_REPLACEMENT_INVALID": {
+      "httpStatus": 400,
+      "message": "Replacement component must have valid ingredients.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_PANTRY_SELECTION": {
+      "httpStatus": 400,
+      "message": "Invalid pantry ingredient selection.",
+      "params": [],
+      "retryable": false
+    },
+    "WORKOUT_PLAN_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Workout plan not found.",
+      "params": [],
+      "retryable": false
+    },
+    "EXERCISE_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Exercise not found in catalog.",
+      "params": [],
+      "retryable": false
+    },
+    "EXERCISE_NOT_IN_DAY": {
+      "httpStatus": 400,
+      "message": "Exercise is not scheduled in the specified workout day.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_WORKOUT_SETTINGS": {
+      "httpStatus": 400,
+      "message": "fitnessLevel must be beginner/intermediate/advanced and sessionDuration must be 20, 30, 45, 60, or 90.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_WORKOUT_LOCATION": {
+      "httpStatus": 400,
+      "message": "workoutLocation must be gym_only, home_only, or home_and_gym.",
+      "params": [],
+      "retryable": false
+    },
+    "UNKNOWN_EQUIPMENT": {
+      "httpStatus": 400,
+      "message": "homeEquipment contains one or more unknown equipment IDs.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_WORKOUT_SPLIT": {
+      "httpStatus": 400,
+      "message": "workoutSplitPreference must be auto, full_body, upper_lower, ppl, or bro_split.",
+      "params": [],
+      "retryable": false
+    },
+    "WORKOUT_INFEASIBLE": {
+      "httpStatus": 400,
+      "message": "Current equipment, injury exclusions, and duration cannot build a valid workout session.",
+      "params": [],
+      "retryable": false
+    },
+    "NO_ELIGIBLE_EXERCISES": {
+      "httpStatus": 400,
+      "message": "No exercises satisfy both the selected equipment and declared injury exclusions.",
+      "params": [],
+      "retryable": false
+    },
+    "WORKOUT_SETS_REQUIRED": {
+      "httpStatus": 400,
+      "message": "sets array must contain between 1 and 10 performed sets.",
+      "params": [],
+      "retryable": false
+    },
+    "WORKOUT_REPS_MUST_BE_INTEGER": {
+      "httpStatus": 400,
+      "message": "Performed set reps must be whole integers.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_WORKOUT_SESSION": {
+      "httpStatus": 400,
+      "message": "Workout session day or status (completed, partial, missed) is invalid.",
+      "params": [],
+      "retryable": false
+    },
+    "SESSION_REQUIRES_ACTUAL_SETS": {
+      "httpStatus": 400,
+      "message": "Log at least one exercise set before marking a session completed or partial.",
+      "params": [],
+      "retryable": false
+    },
+    "EXERCISE_ALTERNATIVE_INVALID": {
+      "httpStatus": 400,
+      "message": "Alternative exercise is incompatible with movement pattern, injuries, or equipment.",
+      "params": [],
+      "retryable": false
+    },
+    "RESCHEDULE_DATE_OUT_OF_RANGE": {
+      "httpStatus": 400,
+      "message": "Target reschedule date must be between today and today + 13 days.",
+      "params": [],
+      "retryable": false
+    },
+    "WORKOUT_DAY_NOT_IN_PLAN": {
+      "httpStatus": 400,
+      "message": "Requested dayIndex is not present in your active workout plan.",
+      "params": [],
+      "retryable": false
+    },
+    "RESCHEDULE_DAY_OCCUPIED": {
+      "httpStatus": 409,
+      "message": "Another workout session already exists on the target reschedule date.",
+      "params": [],
+      "retryable": false
+    },
+    "RESCHEDULE_DATE_UNCHANGED": {
+      "httpStatus": 400,
+      "message": "Target reschedule date must differ from the session's current date.",
+      "params": [],
+      "retryable": false
+    },
+    "RECOVERY_FLAGS_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Boolean flags pain, illness, and redFlags are required for recovery check-ins.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_MUSCLE_REGION": {
+      "httpStatus": 400,
+      "message": "Unknown muscle region key: {region}.",
+      "params": [
+        "region"
+      ],
+      "retryable": false
+    },
+    "INVALID_PAIN_REGIONS": {
+      "httpStatus": 400,
+      "message": "painRegions must be an array of supported muscle region keys.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Pending adaptation proposal not found.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_ACCEPT_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Boolean accept field (true or false) is required.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_STALE_REVISION": {
+      "httpStatus": 409,
+      "message": "Account data changed since this proposal was generated; run review again.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_EXPIRED": {
+      "httpStatus": 400,
+      "message": "Adaptation proposal has expired; run review again.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_CONFIRMATION_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Confirm health clearance and schedule before accepting adaptations.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_UNSAFE_WORKOUT": {
+      "httpStatus": 400,
+      "message": "Resolve excluded exercises in your workout plan before accepting adaptations.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_RECOVERY_STALE": {
+      "httpStatus": 400,
+      "message": "Recovery check-in has expired or no longer supports this deload proposal; run review again.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_NEEDS_FRESH_RECOVERY": {
+      "httpStatus": 400,
+      "message": "Accepting this adaptation requires a fresh ready recovery check-in.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_VOLUME_NO_LONGER_SUPPORTED": {
+      "httpStatus": 400,
+      "message": "Current recovery or performance evidence no longer supports volume progression.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_CALORIE_CUT_BLOCKED": {
+      "httpStatus": 400,
+      "message": "Recent high hunger or low energy requires review before applying a calorie cut.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_WORKOUT_PLAN_CHANGED": {
+      "httpStatus": 409,
+      "message": "Active workout plan changed since this proposal was generated; run review again.",
+      "params": [],
+      "retryable": false
+    },
+    "ADAPTATION_SCHEDULE_DATE_PASSED": {
+      "httpStatus": 400,
+      "message": "Proposed reschedule date has already passed.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_FEEDBACK_INVALID": {
+      "httpStatus": 400,
+      "message": "Valid domain (nutrition | training) and matching barrier are required.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_RATING_OUT_OF_RANGE": {
+      "httpStatus": 400,
+      "message": "Subjective ratings (hunger, energy, satiety) must be integers from 1 to 5.",
+      "params": [
+        "field"
+      ],
+      "retryable": false
+    },
+    "COACHING_HUNGER_NUTRITION_ONLY": {
+      "httpStatus": 400,
+      "message": "Hunger and satiety ratings are only valid for nutrition coaching feedback.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_TRACK_NOT_ENABLED": {
+      "httpStatus": 400,
+      "message": "Requested coaching domain is not enabled on this account.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_CASE_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Coaching case ID not found.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_CONTEXT_CHANGED": {
+      "httpStatus": 409,
+      "message": "Coaching context changed since this agreement was created; review current coaching status.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_DECISION_INVALID": {
+      "httpStatus": 400,
+      "message": "Boolean accept flag is required for coaching_decision.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_CASE_ALREADY_DECIDED": {
+      "httpStatus": 409,
+      "message": "Coaching agreement has already been decided or is no longer open.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_CASE_EXPIRED": {
+      "httpStatus": 409,
+      "message": "Coaching agreement proposal has expired (older than 7 days); log updated feedback first.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_OUTCOME_REQUIRES_ACCEPTED_CASE": {
+      "httpStatus": 409,
+      "message": "Reporting an outcome requires an accepted coaching agreement.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_OUTCOME_INVALID": {
+      "httpStatus": 400,
+      "message": "outcome must be one of helped, not_helped, or not_tried.",
+      "params": [],
+      "retryable": false
+    },
+    "COACHING_REVIEW_DATE_NOT_REACHED": {
+      "httpStatus": 409,
+      "message": "Cannot confirm helped outcome before the scheduled coaching review date.",
+      "params": [
+        "reviewOn"
+      ],
+      "retryable": false
+    },
+    "COACHING_COMMAND_UNKNOWN": {
+      "httpStatus": 400,
+      "message": "Unknown coaching command action.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_EMAIL": {
+      "httpStatus": 400,
+      "message": "A valid email address is required.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_PASSWORD": {
+      "httpStatus": 400,
+      "message": "Password must be at least 8 characters long.",
+      "params": [
+        "minLength"
+      ],
+      "retryable": false
+    },
+    "AUTH_SECRET_NOT_CONFIGURED": {
+      "httpStatus": 503,
+      "message": "Session signing key (AUTH_JWT_SECRET) is not configured on the server.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_MIGRATION_REQUIRED": {
+      "httpStatus": 503,
+      "message": "Authentication database tables have not been migrated yet; run D1 migrations.",
+      "params": [],
+      "retryable": true
+    },
+    "CURRENT_PASSWORD_REQUIRED": {
+      "httpStatus": 400,
+      "message": "Current password is required to set a new password.",
+      "params": [],
+      "retryable": false
+    },
+    "PASSWORD_UNCHANGED": {
+      "httpStatus": 400,
+      "message": "New password must be different from your current password.",
+      "params": [],
+      "retryable": false
+    }
+  }
+}

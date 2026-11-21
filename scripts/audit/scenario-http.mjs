@@ -3,8 +3,29 @@ import path from 'node:path';
 import {createGzip} from 'node:zlib';
 import {pipeline} from 'node:stream/promises';
 import {once} from 'node:events';
-import {localRuntime} from '../cohort/runtime.mjs';
+import {Miniflare,Log,LogLevel} from 'miniflare';
+import {build} from 'esbuild';
+import {migrateLocal} from '../local-migrations.mjs';
 import {sourceProvenance,snapshotSource,sha256} from './evidence.mjs';
+
+async function localRuntime(root){
+ fs.mkdirSync(path.join(root,'.runtime'),{recursive:true});
+ const scriptPath=path.resolve(root,'.runtime/worker.js');
+ const entrySource=`import worker from './server/worker.mjs';
+const NativeDate=Date;
+let now=NativeDate.parse('2026-10-24T12:00:00Z'),key='',sequence=0;
+globalThis.Date=class extends NativeDate {constructor(...a){super(...(a.length?a:[now]));}static now(){return now;}};
+function word(s){let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return (h>>>0).toString(16).padStart(8,'0');}
+Object.defineProperty(crypto,'randomUUID',{value:()=>{const s=key+':'+sequence++;const h=[0,1,2,3].map(i=>word(s+':'+i)).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-4'+h.slice(13,16)+'-a'+h.slice(17,20)+'-'+h.slice(20);}});
+export default {async fetch(request,env){
+ now=Number(request.headers.get('x-cohort-now'))||NativeDate.parse('2026-10-24T12:00:00Z');key=request.headers.get('x-cohort-key')||'local';sequence=0;
+ return worker.fetch(request,env);
+}};`;
+ await build({stdin:{contents:entrySource,resolveDir:process.cwd(),loader:'js'},outfile:scriptPath,bundle:true,format:'esm',platform:'browser',external:['node:async_hooks'],target:'es2022',minify:true});
+ const mf=new Miniflare({modules:true,modulesRoot:path.dirname(scriptPath),scriptPath,compatibilityDate:'2025-10-11',compatibilityFlags:['nodejs_als'],d1Databases:['DB'],d1Persist:path.resolve(root,'.local-d1'),log:new Log(LogLevel.ERROR),bindings:{RATE_LIMIT_PER_MINUTE:'100000'}});
+ const db=await mf.getD1Database('DB');await migrateLocal(db);
+ return {mf,db};
+}
 
 // Test identity/clock adapter only. Uses ordinary account routes, never production.
 export async function scenarioRuntime(output,scope,options={}){
@@ -33,7 +54,8 @@ export async function scenarioRuntime(output,scope,options={}){
    async request(method,endpoint,body=null,options={}){
     seq++;const key=options.key||`${userId}:${seq}`,now=options.now??(Date.parse('2026-10-24T12:00:00Z')+(day-1)*86400000+seq*1000);
     const headers={'oai-authenticated-user-id':userId,'Content-Type':'application/json','Idempotency-Key':key,'x-cohort-key':options.seedKey||key,'x-cohort-now':String(now)};
-    const start=performance.now(),response=await mf.dispatchFetch('http://scenario.local/v1/'+endpoint,{method,headers,...(body?{body:JSON.stringify(body)}:{})}),value=await response.json();
+    const start=performance.now(),response=await mf.dispatchFetch('http://scenario.local/v1/'+endpoint,{method,headers,...(body?{body:JSON.stringify(body)}:{})}),rawJson=await response.json();
+    const value=rawJson&&typeof rawJson==='object'&&'ok'in rawJson?(rawJson.ok?rawJson.data:rawJson.error):rawJson;
     const event={userId,day,seq,method,endpoint,headers,body,status:response.status,requestId:response.headers.get('X-Request-Id'),response:value,latencyMs:performance.now()-start};
     if(streamError)throw streamError;
     if(!gzip.write(JSON.stringify(event)+'\n'))await once(gzip,'drain');

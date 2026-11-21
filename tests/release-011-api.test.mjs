@@ -17,7 +17,7 @@ test('0.11 HTTP/D1: ambiguous old completion reopens, explicit confirmation pers
   s.adaptations=[{id:'old',kind:'calories',status:'pending',baseRevision:0,delta:-100}];
   await db.prepare('INSERT INTO coaching_accounts(user_id,revision,body) VALUES(?,?,?)').bind('legacy-011',0,JSON.stringify(s)).run();
   const headers={'oai-authenticated-user-id':'legacy-011'};
-  const read=async()=>await(await mf.dispatchFetch('https://test.local/v1/state',{headers})).json();
+  const read=async()=>(await(await mf.dispatchFetch('https://test.local/v1/state',{headers})).json()).data;
   let state=await read();assert.equal(state.recovery.status,'stop');assert.ok(state.workoutSafetyIssues.length);assert.equal(state.foodLogs[0].complete,false);assert.equal(state.foodEntries.length,1);assert.equal(state.adaptations[0].status,'superseded');
   const response=await mf.dispatchFetch('https://test.local/v1/commands',{method:'POST',headers:{...headers,'Content-Type':'application/json','Idempotency-Key':'confirm-011'},body:JSON.stringify({revision:0,action:'food_complete',payload:{date:today(),complete:true}})});
   assert.equal(response.status,200,await response.text());

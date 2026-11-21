@@ -1,13 +1,13 @@
 name: Verify coaching engines
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 permissions:
   contents: read
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +19,7 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npx playwright install --with-deps chromium
-      - name: Verify onboarding, coaching, network recovery and simulation in the browser
+      - name: Verify onboarding, coaching, and network recovery in the browser
         run: |
           npm run dev > /tmp/coach-preview.log 2>&1 &
           for attempt in $(seq 1 30); do

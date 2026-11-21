@@ -1,64 +1,61 @@
-# سلامة البيانات الغذائية والمصادر والسياسة الطبية — Data Safety & Sources (`v0.12.0`)
+# Data Safety, Nutrition Sources & Clinical Guardrails
 
-يوثّق هذا المستند مصادر البيانات الغذائية والرياضية في **Egypt Nutrition Coach**، وسياسة الفصل الصارم بين البيانات المرجعية المعتمدة والنماذج التقديرية، وقواعد التعامل مع المغذيات المجهولة (`NULL`)، والضوابط الاحترازية للحالات الصحية.
-
----
-
-## 1. جرد البيانات الغذائية الفعلي في المستودع (`data/meta.json` v0.6.0-data.4)
-
-جرى التحقق الآلي من تطابق جميع الأعداد عبر `npm run check` (`scripts/check-data-manifest.mjs`):
-
-| المؤشر | العدد الفعلي | التفسير وحالة الاعتماد |
-| --- | --- | --- |
-| **إجمالي السجلات المفهرسة (`total_usable_count`)** | 3,291 | مجموع الأصناف في `data/index.json` التي يفهرسها `server/food-catalog.mjs`. |
-| **الأصناف المرجعية المعتمدة (`food_count`)** | 3,070 | بيانات مصدرية (`usda-fdc`, `cofid-2021`, `lebanon-lab-2021`, `egypt-baladi-2018`, `dcps-recipes-2025`) موسومة بـ`status: "approved"`. |
-| **النماذج الحسابية التقديرية للوصفات (`estimated_recipe_count`)** | 221 | نماذج مقادير تقريبية في `data/recipe_estimates.json` موسومة بـ`status: "estimated"` و`reviewStatus: "Pending Review"` و`approvedForPlanning: false`. |
-| **الوصفات المصرية المعتمدة مخبريًا (`recipe_count`)** | 0 | لا توجد وصفات مركبة معتمدة مخبريًا كمسمى مصري مستقل؛ التخطيط الآلي يستخدم 86 مكوّنًا مرجعيًا معتمدًا في `data/planning-library.json`. |
-| **المصادر المصرية المباشرة (`egypt_source_count`)** | 1 | دراسة الخبز البلدي المصري (Al-Dalain & Morsy 2018, Toukh, Egypt — `egypt-baladi-2018`). |
-| **المشروبات المفهرسة (`beverage_count` / `estimated_beverage_count`)** | 52 / 39 | 52 مشروبًا مرجعيًا + 39 نموذجًا تقديريًا للمشروبات المصرية والرمضانية والكافيهات. |
-| **الأسماء الجاهزة مقابل المعلقة (`name_ready_count` / `name_pending_count`)** | 1,802 / 1,489 | 1,489 سجلًا من USDA تحتفظ باسمها المصدري بانتظار مراجعة تعريب الاسم الاستهلاكي. |
+This document specifies the food/exercise catalog provenance in **CuraFit API v1**, strict separation between verified references and calculated recipe estimates, missing-nutrient (`NULL`) handling, and conservative health exclusions.
 
 ---
 
-## 2. تصنيف الجودة والاعتماد (Quality Tiers & Approval Visibility)
+## 1. Repository Catalog Inventory (`data/meta.json` v0.6.0-data.4)
 
-تلتزم واجهة `/v1/foods` و`/v1/beverages` و`/v1/foods/{id}` بتصنيف كل صنف إلى أربع درجات صريحة:
+All counts are automatically verified in CI and local checks via `node scripts/check-data-manifest.mjs`:
+
+| Metric | Count | Verification & Approval Status |
+| :--- | :---: | :--- |
+| **Total Indexed Catalog Entries (`total_usable_count`)** | 3,291 | Total items in `data/index.json` indexed by `server/food-catalog.mjs`. |
+| **Approved Reference Items (`food_count`)** | 3,070 | Source datasets (`usda-fdc`, `cofid-2021`, `lebanon-lab-2021`, `egypt-baladi-2018`, `dcps-recipes-2025`) tagged `status: "approved"`. |
+| **Estimated Recipe & Beverage Models (`estimated_recipe_count`)** | 221 | Approximate recipe/beverage models in `data/recipe_estimates.json` tagged `status: "estimated"`, `reviewStatus: "Pending Review"`, and `approvedForPlanning: false`. |
+| **Lab-Verified Compound Egyptian Recipes (`recipe_count`)** | 0 | Automated meal planning uses the 86 approved planning ingredients in `data/planning-library.json`. |
+| **Direct Egyptian Lab Sources (`egypt_source_count`)** | 1 | Egyptian Baladi Bread study (Al-Dalain & Morsy 2018, Toukh, Egypt — `egypt-baladi-2018`). |
+| **Indexed Beverages (`beverage_count` / `estimated_beverage_count`)** | 52 / 39 | 52 verified reference beverages plus 39 estimated cafe/Ramadan/local beverage models. |
+| **Localized vs Pending Display Names (`name_ready_count` / `name_pending_count`)** | 1,802 / 1,489 | 1,489 USDA records retain source labels pending consumer localization review. |
+
+---
+
+## 2. Quality Tiers & Provenance Rules
+
+`/v1/foods`, `/v1/beverages`, and `/v1/foods/{id}` classify entries transparently:
 
 1. **`Verified Source` (`reviewStatus: "Approved"`):**
-   - بيانات قياس مرجعي مباشر لكل 100 جرام من الجزء الصالح للأكل.
-   - الأصناف الـ86 المختارة في `planning-library.json` تحمل `approvedForPlanning: true`.
+   - Direct reference measurement per 100g edible portion.
+   - The 86 curated ingredients in `data/planning-library.json` carry `approvedForPlanning: true`.
 2. **`Calculated from Verified Ingredients (Requires Specialist Review)` (`reviewStatus: "Pending Review"`):**
-   - نماذج الوصفات والمشروبات الـ221 في `data/recipe_estimates.json` (مثل الكشري، الطعمية، الشاي بالسكر، القهوة باللبن، السوبيا، الخروب، التمر هندي، قمر الدين).
-   - **قاعدة صارمة:** تحمل دائمًا `approvedForPlanning: false` و`isApproximate: true`، ولا تدخل تلقائيًا في توليد الجداول العلاجية، ولا يُشتق لها قيمة لكل 100 جرام (`per_100g: null`) ما لم يتوفر وزن نهائي مقاس بعد الطهي.
-3. **قاعدة المغذيات المجهولة (`Unknown Nutrients = NULL, Never 0`):**
-   - إذا كان معدن أو فيتامين أو ألياف أو صوديوم غير مقاس في المرجع الأصلي، يظل `null` في قاعدة البيانات وفي استجابات الـAPI وفي مجاميع اليوم (`dayTotals`).
-   - في `calculator.mjs` و`server/food.mjs`، إذا كان أي مكوّن في وجبة أو يوم يفتقد قيمة مغذٍّ فرعي (مثل الصوديوم أو الألياف)، فإن مجموع ذلك المغذي لليوم يصبح `null` بدل افتراض أن المفقود يساوي `0`.
-4. **حارس الكثافة وعوامل الطهي (`Density & Cooking Yield Guardrail`):**
-   - يمنع `calculatePreparedBeverageOrRecipe` و`snapshotFood` جمع أو تحويل `per-100mL` إلى `per-100g` ما لم يتوفر `volume_evidence` مصدري أو كثافة موثقة (`densityGPerMl`).
+   - The 221 estimated local dish/beverage models in `data/recipe_estimates.json` (e.g., koshary, falafel, sweetened tea, Turkish coffee with milk, sobia, carob, tamarind, qamar el-din).
+   - **Invariant:** Always flagged `approvedForPlanning: false` and `isApproximate: true`, never included automatically in therapeutic meal plan generation, and `per_100g` stays `null` unless a cooked/final weight is supplied.
+3. **Unknown Nutrients Policy (`NULL`, Never `0`):**
+   - Unmeasured micronutrients, fiber, or sodium in source references stay `null` in catalogs, API responses, and daily nutrition rollups (`dayTotals`).
+   - In `calculator.mjs` and `server/food.mjs`, if any logged item on a day lacks a measured sub-nutrient (such as sodium or fiber), the daily rollup reports `null` rather than undercounting by substituting `0`.
+4. **Density & Cooking Yield Guardrail:**
+   - `calculatePreparedBeverageOrRecipe` and `snapshotFood` block `per-100mL` to `per-100g` conversions unless source `volume_evidence` or a verified density (`densityGPerMl`) is present.
 
 ---
 
-## 3. السياسة الطبية والضوابط الاحترازية للحالات الصحية (`F12`, `F13`, `F18`)
+## 3. Clinical Exclusions & Conservative Guardrails
 
-هذا النظام هو **محرك لياقة وتغذية عامة للبالغين الأصحاء (18–70 سنة)** وليس جهازًا طبيًا أو بديلًا عن الطبيب أو أخصائي التغذية العلاجية:
+CuraFit is a **general adult nutrition and fitness planner (`18–70` years)** and is not a medical device or clinical substitute:
 
-1. **الحالات المحجوبة تمامًا عن التخطيط الآلي (`requires_review`):**
-   - السكري (`diabetes`)، أمراض الكلى أو الكبد أو القلب الحرجة، الحمل والرضاعة (`maternalStatus !== 'none'`)، الإصابات الحادة، والأعمار خارج 18–70 سنة، ومؤشر كتلة الجسم خارج `12.5–65` (أو طلب إنقاص الوزن مع `BMI < 18.5`).
-2. **ارتفاع ضغط الدم (`hypertension`) وفحص الصوديوم المرجعي (`F12`):**
-   - في الإصدار السابق (`v0.11.0`)، كان اختيار `hypertension` مع نظام `balanced` ينتج `sodium = null` في 131 من 140 يومًا لأن العيش البلدي (`egypt-baladi-2018`) وبعض أطباق دراسة لبنان (`lebanon-lab-2021`) لا تتضمن قياس صوديوم في المصدر.
-   - **الإصلاح المنفذ في `v0.12.0`:**
-     - تفعيل شرط الصوديوم المرجعي الصارم (`sodium != null && sodium <= 2300 mg`) في `assertDietDay` و`makeWeek` و`review` لكل مستخدم لديه `hypertension` أيًا كان نوع الدايت المختار (`balanced`, `dash`, `mediterranean`, إلخ).
-     - استبعاد المكونات التي تفتقد قياس صوديوم مرجعي (`bread`, `shawarma_chicken`, `shawarma_beef`, `tabbouleh`, `fattoush`, `babaghanouj`) والأجبان عالية الملوحة (`feta`) عند وجود `hypertension`، مع استبدال العيش البلدي بخبز القمح الكامل الموثق الصوديوم (`wholebread`) في القوائم المصرية.
-     - **النتيجة المثبتة بالاختبار:** `0 / 140` يوم صوديوم مجهول، وجميع الأيام `<= 2300 mg` قبل الملح المضاف.
-3. **أنيميا الفول (`favism`) وعدم تحمل اللاكتوز (`lactose_intolerance`) والنقرس (`gout`) والقولون (`ibs`) (`F13`):**
-   - **`favism`:** استبعاد إجباري صارم لـ`fava` (الفول) و`falafel` (الطعمية المصرية المصنوعة من الفول المدشوش) في كل من `medicalContraindicatedKeys` و`excludedGroups`.
-   - **`lactose_intolerance`:** استبعاد إجباري لجميع منتجات الألبان والجبن في المكتبة (`milk`, `wholemilk`, `yogurt`, `greekyogurt`, `cottage`, `feta`, `mozzarella`) وإزالة مجموعة `dairy` من مصادر البروتين التلقائية.
-   - **`gout`:** سقف للبروتين عند `1.4 g/kg` (مع استخدام الوزن المعدل `ABW` لمن لديهم `BMI > 30`) واستبعاد اللحوم الحمراء والكبدة والجمبري والفول.
-4. **شفافية الرسائل وعدم ادعاء المراجعة البشرية (`F18`):**
-   - جرى تطهير جميع رسائل المراجعة والتكيّف من أي إشارة توحي بوجود "أخصائي تغذية بشري" أو "فريق متابعة بشري" يراجع بيانات المستخدم في الخلفية، واستبدالها بوصف دقيق (`"توصية النظام الآلي للتغذية"`, `"توجيه النظام الآلي للتدريب"`) مع الحقل المهيكل `reviewScope: "system_generated_guidance"`.
+1. **Blocked Profiles Routed to `requires_review`:**
+   - Diabetes (`diabetes`), chronic kidney/liver/cardiac contraindications, pregnancy or lactation (`maternalStatus !== 'none'`), acute unmanaged injuries, age outside `18–70`, BMI outside `12.5–65`, or weight-loss requests when `BMI < 18.5`.
+2. **Hypertension (`hypertension`) & Verified Sodium Gate:**
+   - All dietary patterns selected with `hypertension` enforce verified reference sodium (`sodium != null && sodium <= 2300 mg/day` before added table salt) inside `assertDietDay`, `makeWeek`, and `review`.
+   - Foods missing verified sodium measurements (`bread`, `shawarma_chicken`, `shawarma_beef`, `tabbouleh`, `fattoush`, `babaghanouj`) and high-salt cheeses (`feta`) are excluded automatically under `hypertension`, substituting verified whole-wheat bread (`wholebread`).
+3. **Favism, Lactose Intolerance & Gout Rules:**
+   - **`favism` (G6PD):** Strict exclusion of `fava` and `falafel` in both `medicalContraindicatedKeys` and `excludedGroups`.
+   - **`lactose_intolerance`:** Excludes all dairy items (`milk`, `wholemilk`, `yogurt`, `greekyogurt`, `cottage`, `feta`, `mozzarella`) and removes `dairy` from auto-selected protein groups.
+   - **`gout`:** Caps protein at `1.4 g/kg` (using Adjusted Body Weight when `BMI > 30`) and excludes red meat, liver, shrimp, and fava beans.
+4. **Automated Scope Disclosure:**
+   - Structured guidance metadata explicitly sets `reviewScope: "system_generated_guidance"` or `"system_generated_screening_not_medical_diagnosis"` so client UIs clearly present automated coaching recommendations rather than human medical review.
 
 ---
 
-## 4. الربط بقاعدة البيانات المصرية الخارجية (`Egypt Nutrition Database`)
+## 4. External Catalog Hook
 
-يوفر `server/food-catalog.mjs` الدالة المعيارية `registerExternalFoodCatalogSnapshot(snapshot)` لربط مخرجات مشروع المالك المستقل (**Egypt Nutrition Database** المبني على PostgreSQL/Supabase) فور تزويد ملف التصدير المعتمد دون الحاجة لتغيير عقد الـAPI الخاص بتطبيق KMM.
+`server/food-catalog.mjs` exports `registerExternalFoodCatalogSnapshot(snapshot)` so future verified regional food exports can be mounted into the catalog index without breaking any `/v1/*` contract.

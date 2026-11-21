@@ -12,8 +12,8 @@ test('coaching lifecycle is durable, isolated, replay-safe, synced and erased wi
   const send=async(action,payload={},extra={})=>{
    const request={revision:state?.revision||0,action,payload},key='journey-'+ ++seq;
    const response=await mf.dispatchFetch('https://journey.local/v1/commands',{method:'POST',headers:{...headers,'Idempotency-Key':key,...extra},body:JSON.stringify(request)});
-   const body=await response.json();assert.equal(response.status,200,JSON.stringify(body));
-   if(!extra.Prefer)state=body;return {body,request,key};
+   const raw=await response.json();assert.equal(response.status,200,JSON.stringify(raw));assert.equal(raw.ok,true);
+   const body=raw.data;if(!extra.Prefer)state=body;return {body,request,key};
   };
   await send('generate',{name:'Journey',age:30,weight:80,height:175,sex:'male',goal:'lose',targetWeight:75,serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5],healthConfirmed:true});
   await t.test('recovery evidence automatically triggers review without a separate review command',async()=>{
@@ -26,9 +26,9 @@ test('coaching lifecycle is durable, isolated, replay-safe, synced and erased wi
    const stored=JSON.parse((await db.prepare('SELECT body FROM coaching_accounts WHERE user_id=?').bind('journey-owner').first()).body);
    assert.deepEqual(stored.coachingCases,[]);assert.deepEqual(stored.coachingFeedback,[]);
    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM coaching_cases').first()).n,1);
-   const inbox=await (await get('/v1/coaching/inbox')).json();assert.equal(inbox.items[0].id,id);assert.equal(inbox.items[0].readStatus,'UNKNOWN');
-   assert.deepEqual((await (await get('/v1/coaching/inbox','other-owner')).json()).items,[]);
-   assert.equal((await (await get('/v1/state')).json()).revision,state.revision);
+   const inbox=(await (await get('/v1/coaching/inbox')).json()).data;assert.equal(inbox.items[0].id,id);assert.equal(inbox.items[0].readStatus,'UNKNOWN');
+   assert.deepEqual((await (await get('/v1/coaching/inbox','other-owner')).json()).data.items,[]);
+   assert.equal((await (await get('/v1/state')).json()).data.revision,state.revision);
   });
   await t.test('acknowledging a case preserves an unrelated pending plan proposal',async()=>{
    const proposal=state.adaptations.find(a=>a.status==='pending');assert.ok(proposal);
@@ -39,11 +39,11 @@ test('coaching lifecycle is durable, isolated, replay-safe, synced and erased wi
   await t.test('decision is replay-safe and outcome is explicitly user-reported',async()=>{
    const {request,key}=await send('coaching_decision',{id,accept:true}),revision=state.revision;
    const repeated=await mf.dispatchFetch('https://journey.local/v1/commands',{method:'POST',headers:{...headers,'Idempotency-Key':key},body:JSON.stringify(request)});
-   assert.equal(repeated.status,200);assert.equal((await repeated.json()).revision,revision);
+   assert.equal(repeated.status,200);assert.equal((await repeated.json()).data.revision,revision);
    await send('coaching_outcome',{id,outcome:'not_tried'});
    assert.equal(state.coachingCases[0].outcome.source,'user_report');
-   const exported=await (await get('/v1/account/export')).json();assert.ok(JSON.stringify(exported).includes(id));
-   const deltas=await (await get('/v1/sync/changes?afterSeq=0')).json();assert.ok(JSON.stringify(deltas).includes('coaching_case'));
+   const exported=(await (await get('/v1/account/export')).json()).data;assert.ok(JSON.stringify(exported).includes(id));
+   const deltas=(await (await get('/v1/sync/changes?afterSeq=0')).json()).data;assert.ok(JSON.stringify(deltas).includes('coaching_case'));
   });
   await t.test('receipt contains the actual case delta and a second owner cannot acknowledge it',async()=>{
    const {body}=await send('coaching_feedback',{domain:'training',barrier:'time'},{Prefer:'return=minimal'});

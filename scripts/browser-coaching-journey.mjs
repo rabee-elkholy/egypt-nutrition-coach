@@ -6,8 +6,8 @@ try{
  for(const width of [390,1280]){
   const context=await browser.newContext({viewport:{width,height:950},extraHTTPHeaders:{'oai-authenticated-user-id':'journey-browser-'+crypto.randomUUID()}});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);
-  const read=async()=>await(await context.request.get(origin+'/v1/state')).json();
-  const send=async(action,payload)=>{const s=await read();const r=await context.request.post(origin+'/v1/commands',{headers:{'Idempotency-Key':crypto.randomUUID()},data:{revision:s.revision,action,payload}});assert.equal(r.status(),200,await r.text());return r.json();};
+  const read=async()=>(await(await context.request.get(origin+'/v1/state')).json()).data;
+  const send=async(action,payload)=>{const s=await read();const r=await context.request.post(origin+'/v1/commands',{headers:{'Idempotency-Key':crypto.randomUUID()},data:{revision:s.revision,action,payload}});assert.equal(r.status(),200,await r.text());return (await r.json()).data;};
   await send('generate',{name:'Journey Browser',age:30,weight:80,height:175,sex:'male',goal:'lose',targetWeight:75,serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5],healthConfirmed:true});
   await page.goto(origin+'/#planner');await page.locator('[data-tab="review"]').click();
   const form=page.locator('[data-coaching-feedback="nutrition"]');

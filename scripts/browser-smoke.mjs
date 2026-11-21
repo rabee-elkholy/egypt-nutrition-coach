@@ -4,7 +4,7 @@ const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CH
 try{
  const context=await browser.newContext({viewport:{width:390,height:844},extraHTTPHeaders:{'oai-authenticated-user-id':'browser-smoke-'+Date.now()}}),page=await context.newPage(),errors=[];
  page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);
- const read=async()=>await(await context.request.get(origin+'/v1/state')).json();
+ const read=async()=>(await(await context.request.get(origin+'/v1/state')).json()).data;
  const settled=()=>page.waitForFunction(()=>!document.querySelector('#planner-view[aria-busy=true]'));
  await page.goto(origin+'/#planner');await page.locator('#coach-onboarding-section').waitFor();
  const initial=await read(),weekday=new Date(initial.serverDate+'T12:00:00Z').getUTCDay();

@@ -21,7 +21,7 @@ try {
  await page.locator('[data-tab=nutrition]').click();
  await page.locator('#tips-card').screenshot({path:`outputs/tips-${width}.png`});
  }
- const account=await (await context.request.get('http://127.0.0.1:8787/v1/state')).json();
+ const account=(await (await context.request.get('http://127.0.0.1:8787/v1/state')).json()).data;
  const recovery=await context.request.post('http://127.0.0.1:8787/v1/commands',{headers:{'Idempotency-Key':crypto.randomUUID()},data:{revision:account.revision,action:'recovery',payload:{sleepHours:5,sleepQuality:2,fatigue:4,stress:2,pain:false,illness:false,redFlags:false}}});assert.equal(recovery.status(),200,await recovery.text());
  await page.reload();await page.locator('[data-personal-role=followup]:visible').waitFor();
  assert.match(await page.locator('[data-personal-role=followup]:visible').innerText(),/5 ساعات/);

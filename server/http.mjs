@@ -1,28 +1,30 @@
 import {createApiError} from './logger.mjs';
 import {integer,validDate} from '../coaching-shared.mjs';
+
 export async function requestJson(request){
- const reader=request.body?.getReader();if(!reader)throw createApiError('محتوى JSON مطلوب.',400,{code:'EMPTY_BODY'});
+ const reader=request.body?.getReader();
+ if(!reader)throw createApiError('A JSON request body is required.',400,{code:'EMPTY_BODY'});
  const chunks=[];let size=0;
  while(true){
   const {done,value}=await reader.read();
   if(done)break;
   size+=value.byteLength;
-  if(size>40000){await reader.cancel();throw createApiError('الطلب أكبر من المسموح.',413,{code:'PAYLOAD_TOO_LARGE'});}
+  if(size>40000){await reader.cancel();throw createApiError('Request body exceeds the 40 KB limit.',413,{code:'PAYLOAD_TOO_LARGE'});}
   chunks.push(value);
  }
  const raw=new Uint8Array(size);let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.byteLength;}
- try{return new TextDecoder('utf-8',{fatal:true}).decode(raw);}catch{throw createApiError('ترميز JSON غير صالح.',400,{code:'INVALID_UTF8'});}
+ try{return new TextDecoder('utf-8',{fatal:true}).decode(raw);}catch{throw createApiError('Request body must be valid UTF-8 encoded text.',400,{code:'INVALID_UTF8'});}
 }
 
-export function cursor(value,label){return value==null?0:integer(value,0,Number.MAX_SAFE_INTEGER,label);}
+export function cursor(value,label='offset'){return value==null?0:integer(value,0,Number.MAX_SAFE_INTEGER,label);}
 
 export function paginateDateCollection(items,url,{defaultLimit=30,maxLimit=100}={}){
  const from=url.searchParams.get('from');
  const to=url.searchParams.get('to');
- if(from&&!validDate(from))throw createApiError('تاريخ البداية غير صالح.',400,{code:'INVALID_DATE_RANGE'});
- if(to&&!validDate(to))throw createApiError('تاريخ النهاية غير صالح.',400,{code:'INVALID_DATE_RANGE'});
- const offset=cursor(url.searchParams.get('offset'),'بداية الصفحة');
- const limit=url.searchParams.get('limit')==null?defaultLimit:integer(url.searchParams.get('limit'),1,maxLimit,'حجم الصفحة');
+ if(from&&!validDate(from))throw createApiError('Invalid from date query parameter; expected YYYY-MM-DD.',400,{code:'INVALID_DATE_RANGE',params:{field:'from'}});
+ if(to&&!validDate(to))throw createApiError('Invalid to date query parameter; expected YYYY-MM-DD.',400,{code:'INVALID_DATE_RANGE',params:{field:'to'}});
+ const offset=cursor(url.searchParams.get('offset'),'offset');
+ const limit=url.searchParams.get('limit')==null?defaultLimit:integer(url.searchParams.get('limit'),1,maxLimit,'limit');
  const filtered=(items||[]).filter(x=>(!from||x.date>=from)&&(!to||x.date<=to)).slice().sort((a,b)=>b.date.localeCompare(a.date)||(b.at||'').localeCompare(a.at||''));
  return {
   total:filtered.length,

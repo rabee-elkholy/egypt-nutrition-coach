@@ -35,7 +35,7 @@ try{
    const multi=page.locator('[data-chat-action="confirm-multi"]');if(await multi.isVisible()){await multi.click();continue;}
    throw Error('Unrecognized onboarding step: '+(await page.locator('#planner-view').innerText()).slice(-1500));
   }
-  assert.equal(finished,true,serviceTrack);assert.equal(regionSelected,true);const state=await (await context.request.get(origin+'/v1/state')).json();assert.equal(state.profile.weekdayConvention,'js_sunday_0');assert.equal(state.onboarding.serviceTrack,serviceTrack);assert.equal(state.preferences.region,region);
+  assert.equal(finished,true,serviceTrack);assert.equal(regionSelected,true);const state=(await (await context.request.get(origin+'/v1/state')).json()).data;assert.equal(state.profile.weekdayConvention,'js_sunday_0');assert.equal(state.onboarding.serviceTrack,serviceTrack);assert.equal(state.preferences.region,region);
   if(serviceTrack==='workouts_only'){assert.equal(state.onboarding.workoutPrefs.healthConfirmed,true);assert.ok(state.workoutPlan);assert.deepEqual(state.profile.workoutDays,selectedDays.map(d=>(d+6)%7).sort());}
   if(serviceTrack==='nutrition_only'){assert.equal(state.profile.recomposition,true);assert.deepEqual(state.profile.workoutDays,[1,3,5]);assert.equal(state.workoutPlan,null);}
   if(serviceTrack==='nutrition_and_workouts')assert.deepEqual(state.profile.workoutDays,selectedDays.map(d=>(d+6)%7).sort());

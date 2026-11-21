@@ -4,6 +4,7 @@ import {alternatives,scaleSnapshot,sumSnapshots,assessDay,nutritionQualityIssues
 import {assertDietDay} from '../diet-patterns.mjs';
 import {number,dateForLog as validateLogDate,localDate} from '../coaching-shared.mjs';
 import {getFoodCatalogItem} from './food-catalog.mjs';
+import {apiError} from '../coaching-error.mjs';
 export {library};
 const dateForLog=(date,tz=clockTimeZone())=>validateLogDate(date,clockNow(),tz);
 const metrics=['energy','protein','fat','carbs','fiber','saturated','sodium','sugars'];
@@ -13,7 +14,7 @@ export function plannedEnergyForDate(s,date){
  const refs=[...(s.planRefs||[]),...s.plans.filter(p=>!(s.planRefs||[]).some(r=>r.id===p.id)).map(p=>({start_date:p.start_date,end_date:p.days.at(-1)?.date,effective_from:p.effective_from,energy:p.targets.energy}))];
  return refs.slice().reverse().find(p=>(p.effective_from||p.start_date)<=date&&p.end_date>=date)?.energy??null;
 }
-export function plannedMeal(s,id){const plan=activePlan(s);const day=plan?.days.find(d=>d.meals.some(m=>m.id===id));const meal=day?.meals.find(m=>m.id===id);if(!meal)throw Error('الوجبة غير موجودة في الخطة الحالية.');return {plan,day,meal};}
+export function plannedMeal(s,id){const plan=activePlan(s);const day=plan?.days.find(d=>d.meals.some(m=>m.id===id));const meal=day?.meals.find(m=>m.id===id);if(!meal)throw apiError('PLANNED_MEAL_NOT_FOUND','Planned meal not found in the active nutrition plan.',{status:404});return {plan,day,meal};}
 function freezeSnapshot(snapshot){return {name:snapshot.name,values:structuredClone(snapshot.values),estimated_values:snapshot.estimated_values,template_id:snapshot.template_id,ingredients:(snapshot.ingredients||[]).map(i=>({key:i.key,name:i.name,grams:i.grams,state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values_per_100g})),is_approximate:!!snapshot.is_approximate};}
 export function dayTotals(s,date){
  const dayEntries=(s.foodEntries||[]).filter(e=>e.date===date);
@@ -32,45 +33,45 @@ export function foodCommand(s,action,p){
  s.foodEntries||=[];
  const tz=s?.profile?.timezone||clockTimeZone();
  if(action==='food_entry'){
-  const date=dateForLog(p.date||localDate(clockNow(),tz),tz);if(!['planned','ingredient','manual'].includes(p.source))throw Error('مصدر الوجبة غير صالح.');
-  if(!['breakfast','lunch','dinner','snack'].includes(p.slot))throw Error('حدد الوجبة.');
-  const previous=s.foodLogs.find(d=>d.date===date);if(previous&&previous.source!=='entries')throw Error('اليوم مسجل كإجمالي؛ حوّله صراحةً إلى السجل التفصيلي قبل إضافة وجبات.');
+  const date=dateForLog(p.date||localDate(clockNow(),tz),tz);if(!['planned','ingredient','manual'].includes(p.source))throw apiError('INVALID_FOOD_SOURCE','Food entry source must be planned, ingredient, or manual.',{status:400});
+  if(!['breakfast','lunch','dinner','snack'].includes(p.slot))throw apiError('INVALID_MEAL_SLOT','slot must be one of breakfast, lunch, dinner, or snack.',{status:400});
+  const previous=s.foodLogs.find(d=>d.date===date);if(previous&&previous.source!=='entries')throw apiError('DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION','This day already has a daily total log; switch to detailed entries before adding individual meals.',{status:400});
   let snapshot,mealId=null,planId=null,quantity;
   if(p.source==='planned'){
-   const {plan,day,meal}=plannedMeal(s,p.mealId);if(day.date!==date)throw Error('التاريخ لا يطابق الوجبة المخططة.');if(p.slot!==meal.slot)throw Error('نوع الوجبة لا يطابق الخطة.');
-   if(s.foodEntries.some(e=>e.date===date&&e.mealId===meal.id))throw Error('الوجبة دي متسجلة بالفعل؛ احذف التسجيل قبل تصحيح الكمية.');
-   quantity=number(p.quantity,.1,4,'نسبة الحصة');snapshot=scaleSnapshot(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;
+   const {plan,day,meal}=plannedMeal(s,p.mealId);if(day.date!==date)throw apiError('MEAL_DATE_MISMATCH','Logged date does not match the planned meal\'s scheduled date.',{status:400});if(p.slot!==meal.slot)throw apiError('MEAL_SLOT_MISMATCH','Logged slot does not match the planned meal\'s slot.',{status:400});
+   if(s.foodEntries.some(e=>e.date===date&&e.mealId===meal.id))throw apiError('PLANNED_MEAL_ALREADY_LOGGED','Planned meal has already been logged; delete the entry first to adjust quantity.',{status:400});
+   quantity=number(p.quantity,.1,4,'quantity');snapshot=scaleSnapshot(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;
   }else if(p.source==='ingredient'){
    const i=typeof p.key==='string'&&Object.hasOwn(library.ingredients,p.key)?library.ingredients[p.key]:null;
    const catItem=!i&&typeof p.key==='string'?getFoodCatalogItem(p.key):null;
-   if(!i&&(!catItem||(catItem.status!=='approved'&&catItem.source!=='regional-serving-models-v1')||!catItem.quantity_basis?.grams_available))throw Error('الصنف غير موجود.');
-   quantity=number(p.grams,1,2000,'الكمية بالجرام');
+   if(!i&&(!catItem||(catItem.status!=='approved'&&catItem.source!=='regional-serving-models-v1')||!catItem.quantity_basis?.grams_available))throw apiError('FOOD_NOT_FOUND','Food item not found.',{status:404});
+   quantity=number(p.grams,1,2000,'grams');
    if(i){
     snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
    }else{
     snapshot={name:catItem.name,is_approximate:catItem.isApproximate,values:Object.fromEntries(metrics.map(k=>[k,catItem.values[k]==null?null:String(Number(catItem.values[k])*quantity/100)])),ingredients:[{key:catItem.id,name:catItem.name,grams:String(quantity),state:catItem.state,food_id:catItem.id,source:catItem.source,values_per_100g:catItem.values}]};
    }
   }else{
-   const name=typeof p.name==='string'?p.name.trim():'';if(!name||name.length>120)throw Error('اكتب اسم الوجبة في حدود 120 حرف.');
+   const name=typeof p.name==='string'?p.name.trim():'';if(!name||name.length>120)throw apiError('INVALID_MEAL_NAME','Manual meal name must be non-empty and at most 120 characters.',{status:400});
    snapshot={name,values:Object.fromEntries(metrics.map(k=>[k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))])),ingredients:[],is_approximate:true};
-   if(snapshot.values.energy==null||Number(snapshot.values.energy)<=0)throw Error('السعرات الفعلية مطلوبة للوجبة اليدوية.');
+   if(snapshot.values.energy==null||Number(snapshot.values.energy)<=0)throw apiError('MANUAL_MEAL_ENERGY_REQUIRED','Positive actual energy (kcal > 0) is required for manual food entries.',{status:400});
   }
   s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,source:p.source,mealId,planId,quantity,at:isoNow(),snapshot:freezeSnapshot(snapshot)});
   refreshDay(s,date);
   Object.assign(s.foodLogs.find(d=>d.date===date),{complete:false,completionPolicy:1,confirmedAt:null});
  }else if(action==='food_switch_to_entries'){
   const date=dateForLog(p.date,tz),previous=s.foodLogs.find(d=>d.date===date);
-  if(p.confirm!==true||!previous||previous.source==='entries')throw Error('تأكيد تحويل إجمالي اليوم إلى تسجيل تفصيلي مطلوب.');
+  if(p.confirm!==true||!previous||previous.source==='entries')throw apiError('CONVERT_DETAILED_CONFIRMATION_REQUIRED','Switching a daily-total log to detailed entries requires confirm: true on a daily-total day.',{status:400});
   s.history.push({kind:'food_diary_mode',at:isoNow(),previous:structuredClone(previous)});
   s.foodLogs=s.foodLogs.filter(d=>d.date!==date);refreshDay(s,date);
  }else if(action==='food_delete'){
-  const entry=s.foodEntries.find(e=>e.id===p.id);if(!entry)throw Error('التسجيل غير موجود.');s.foodEntries=s.foodEntries.filter(e=>e.id!==p.id);refreshDay(s,entry.date);
+  const entry=s.foodEntries.find(e=>e.id===p.id);if(!entry)throw apiError('FOOD_ENTRY_NOT_FOUND','Food log entry not found.',{status:404});s.foodEntries=s.foodEntries.filter(e=>e.id!==p.id);refreshDay(s,entry.date);
   Object.assign(s.foodLogs.find(d=>d.date===entry.date),{complete:false,confirmedAt:null,completionPolicy:1});
  }else if(action==='food_complete'){
-  const date=dateForLog(p.date,tz);if(typeof p.complete!=='boolean')throw Error('حدد اكتمال اليوم.');
-  if(!s.foodEntries.some(e=>e.date===date))throw Error('سجّل أكلك الأول قبل إغلاق اليوم.');
+  const date=dateForLog(p.date,tz);if(typeof p.complete!=='boolean')throw apiError('FOOD_COMPLETE_FLAG_REQUIRED','Boolean complete field is required.',{status:400});
+  if(!s.foodEntries.some(e=>e.date===date))throw apiError('FOOD_LOG_REQUIRED_BEFORE_COMPLETE','Log at least one meal before closing the day.',{status:400});
   refreshDay(s,date);Object.assign(s.foodLogs.find(d=>d.date===date),{complete:p.complete,completionPolicy:1,confirmedAt:p.complete?isoNow():null});
- }else throw Error('عملية أكل غير معروفة');
+ }else throw apiError('INVALID_FOOD_ACTION','Unknown food command action.',{status:400});
  return s;
 }
 export function mealAlternatives(s,mealId){
@@ -82,10 +83,10 @@ export function mealAlternatives(s,mealId){
 export function replaceMeal(s,p){
  const tz=s?.profile?.timezone||clockTimeZone();
  const {plan,day,meal}=plannedMeal(s,p.mealId);
- if(day.date<localDate(clockNow(),tz))throw Error('لا نغيّر خطط أيام فاتت.');
- if((s.foodEntries||[]).some(e=>e.mealId===meal.id))throw Error('الوجبة اتسجلت كأكل فعلي؛ اختار وجبة لسه متاكلتش.');
+ if(day.date<localDate(clockNow(),tz))throw apiError('PAST_DAY_PLAN_IMMUTABLE','Past plan days cannot be modified.',{status:400});
+ if((s.foodEntries||[]).some(e=>e.mealId===meal.id))throw apiError('MEAL_ALREADY_CONSUMED','Cannot replace a meal that has already been logged as consumed.',{status:400});
  const targetTemplate=p.templateId||p.alternativeId;
- const alternative=mealAlternatives(s,p.mealId).find(a=>a.snapshot.template_id===targetTemplate);if(!alternative)throw Error('البديل لم يعد متاحًا تحت نفس اختياراتك.');
+ const alternative=mealAlternatives(s,p.mealId).find(a=>a.snapshot.template_id===targetTemplate);if(!alternative)throw apiError('MEAL_ALTERNATIVE_UNAVAILABLE','Selected meal alternative is no longer valid under your current constraints.',{status:400});
  const next=structuredClone(plan);next.id='plan-'+crypto.randomUUID();next.parent_id=plan.id;next.created_at=isoNow();next.changeReason='استبدال وجبة باختيارك';
  const updated=next.days.find(d=>d.date===day.date);updated.meals.find(m=>m.id===meal.id).snapshot=alternative.snapshot;
  updated.summary=sumSnapshots(updated.meals.map(m=>m.snapshot));next.warnings=next.days.flatMap(d=>{const messages=assessDay(d.summary,d.targets||next.targets);return messages.length?[{date:d.date,messages}]:[];});

@@ -1,31 +1,14 @@
 node_modules/
 dist/
 outputs/
+reports/
 .wrangler/
 .sites-runtime/
 .env*
 .dev.vars*
-# Large simulation raw logs, sqlite databases and user bundle files
-reports/simulation-100-users-90-days/**/*.jsonl
-reports/simulation-100-users-90-days/**/users/
-reports/simulation-100-users-90-days/**/index.html
-reports/simulation-100-users-90-days/**/*.gz
-reports/simulation-100-users-90-days/**/days/
-reports/simulation-100-users-90-days/**/*.sqlite*
-reports/simulation-100-users-90-days/**/.local-d1/
-reports/simulation-100-users-90-days/**/.runtime/
-reports/simulation-100-users-90-days/baseline-v1/
-reports/simulation-100-users-90-days/test-speed/
-reports/simulation-100-users-90-days/pilot-*/
-reports/simulation-100-users-90-days/replay-*/
-reports/*.zip
 *.zip
-*-run.log
-baseline-check.log
-final-check.log
+*.log
 
 # Detailed local audit artifacts are retained outside the published source tree.
 /docs/production-readiness/evidence/
-/reports/audit/
-/reports/simulation-100-users-90-days/audit-*/
 /scripts/audit/__pycache__/

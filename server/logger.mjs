@@ -1,4 +1,6 @@
-// Structured, PII/Health-redacting logger and error envelope utilities for Egypt Nutrition Coach
+// Structured, PII/Health-redacting logger and KMM API envelope utilities for CuraFit API v1
+import errorCatalog from '../contracts/error-codes.json' with { type: 'json' };
+import { apiError, hasArabicText } from '../coaching-error.mjs';
 
 const SENSITIVE_KEYS = new Set([
   'password', 'token', 'access_token', 'refresh_token', 'id_token', 'authorization', 'cookie', 'set-cookie',
@@ -33,7 +35,6 @@ export function redactObject(value, depth = 0) {
 
 export function maskSubject(userId) {
   if (!userId || typeof userId !== 'string') return 'anonymous';
-  if (userId.startsWith('__simulation__:')) return 'sim:' + userId.slice(15, 23);
   if (userId.startsWith('anon:')) return 'anon:' + userId.slice(5, 13);
   return 'usr:' + userId.slice(0, 8);
 }
@@ -67,39 +68,90 @@ const DEFAULT_ERROR_CODES = {
   400: 'VALIDATION_ERROR',
   401: 'UNAUTHENTICATED',
   403: 'FORBIDDEN',
-  404: 'NOT_FOUND',
+  404: 'ROUTE_NOT_FOUND',
   405: 'METHOD_NOT_ALLOWED',
   409: 'CONFLICT',
   413: 'PAYLOAD_TOO_LARGE',
   415: 'UNSUPPORTED_MEDIA_TYPE',
-  422: 'UNPROCESSABLE_ENTITY',
+  422: 'VALIDATION_ERROR',
   429: 'RATE_LIMITED',
   500: 'INTERNAL_ERROR',
   503: 'SERVICE_UNAVAILABLE'
 };
 
+function interpolateEnglish(template, params = {}) {
+  return String(template).replace(/\{([a-zA-Z0-9_]+)\}/g, (_, k) =>
+    params[k] !== undefined && params[k] !== null ? String(params[k]) : k
+  );
+}
+
+export function sanitizeEnglishErrorMessage(message, code, params = {}, status = 400) {
+  if (typeof message === 'string' && message.trim() && !hasArabicText(message)) {
+    return message;
+  }
+  const entry = (code && errorCatalog.codes[code]) || errorCatalog.codes[DEFAULT_ERROR_CODES[status]] || errorCatalog.codes.VALIDATION_ERROR;
+  if (entry?.message) return interpolateEnglish(entry.message, params);
+  return 'Request failed.';
+}
+
 export function createApiError(message, status = 400, options = {}) {
-  const err = new Error(message);
-  err.status = status;
-  err.code = options.code || DEFAULT_ERROR_CODES[status] || 'BAD_REQUEST';
-  err.fieldErrors = options.fieldErrors || [];
-  err.retryable = options.retryable ?? (status === 429 || status === 503 || status === 500);
-  if (options.details) err.details = options.details;
-  return err;
+  const code = options.code || DEFAULT_ERROR_CODES[status] || 'VALIDATION_ERROR';
+  const params = options.params && typeof options.params === 'object' ? options.params : {};
+  const safeMsg = sanitizeEnglishErrorMessage(message, code, params, status);
+  return apiError(code, safeMsg, { ...options, status, params });
+}
+
+export function formatSuccessBody(data, requestId = null, metaExtra = {}) {
+  const meta = {
+    requestId: requestId || crypto.randomUUID(),
+    serverTime: new Date().toISOString(),
+    ...(data && typeof data === 'object' && !Array.isArray(data) && typeof data.revision === 'number'
+      ? { revision: data.revision }
+      : {}),
+    ...metaExtra
+  };
+  return {
+    ok: true,
+    data,
+    meta
+  };
 }
 
 export function formatErrorBody(message, status = 400, requestId = null, options = {}) {
-  const code = options.code || DEFAULT_ERROR_CODES[status] || 'BAD_REQUEST';
-  const retryable = options.retryable ?? (status === 429 || status === 503 || status === 500);
-  const fieldErrors = Array.isArray(options.fieldErrors) ? options.fieldErrors : [];
-  return {
-    error: message,
+  const code = options.code || DEFAULT_ERROR_CODES[status] || 'VALIDATION_ERROR';
+  const params = options.params && typeof options.params === 'object' ? options.params : {};
+  const catalogEntry = errorCatalog.codes[code];
+  const retryable = options.retryable ?? catalogEntry?.retryable ?? (status === 429 || status === 503 || status === 500);
+  const rawFieldErrors = Array.isArray(options.fieldErrors) ? options.fieldErrors : [];
+  const fieldErrors = rawFieldErrors.map(fe => ({
+    field: typeof fe?.field === 'string' && !hasArabicText(fe.field) ? fe.field : 'field',
+    code: fe?.code || code,
+    message: sanitizeEnglishErrorMessage(fe?.message, fe?.code || code, { field: fe?.field }, status)
+  }));
+  const details = options.details !== undefined
+    ? options.details
+    : (options.currentRevision !== undefined || options.mergeHints
+      ? {
+          ...(options.currentRevision !== undefined ? { currentRevision: options.currentRevision } : {}),
+          ...(options.mergeHints ? { mergeHints: options.mergeHints } : {})
+        }
+      : undefined);
+
+  const errorObj = {
     code,
-    message,
+    message: sanitizeEnglishErrorMessage(message, code, params, status),
+    params,
     fieldErrors,
-    requestId: requestId || crypto.randomUUID(),
-    retryable,
-    ...(options.currentRevision !== undefined ? { currentRevision: options.currentRevision } : {}),
-    ...(options.mergeHints ? { mergeHints: options.mergeHints } : {})
+    retryable
+  };
+  if (details !== undefined) errorObj.details = details;
+
+  return {
+    ok: false,
+    error: errorObj,
+    meta: {
+      requestId: requestId || crypto.randomUUID(),
+      serverTime: new Date().toISOString()
+    }
   };
 }

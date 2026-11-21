@@ -13,6 +13,7 @@ import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reco
 import {volumeReview} from './training-review.mjs';
 import {nutritionEvidenceKey,matchingNutritionDecline} from '../nutrition-decisions.mjs';
 import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,needsHealthConfirmation,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES} from '../coaching-shared.mjs';
+import {apiError} from '../coaching-error.mjs';
 
 const userTz=s=>s?.profile?.timezone||clockTimeZone()||'Africa/Cairo';
 const userToday=s=>localDate(clockNow(),userTz(s));
@@ -21,7 +22,7 @@ export {number};export const today=clockDate;
 export const SUPPORTED_WELLNESS_CONDITIONS=new Set(['hypertension','insulin_resistance','pcos','ibs','cholesterol','gout','anemia','vitamin_d_deficiency','lactose_intolerance','favism','fatty_liver']);
 export const SUPPORTED_MILD_INJURIES=new Set(SUPPORTED_WORKOUT_INJURIES);
 export const empty=()=>({schemaVersion:3,revision:0,profile:null,preferences:null,onboarding:null,plans:[],planRefs:[],workoutPlan:null,foodLogs:[],foodEntries:[],waterLogs:[],weights:[],activityLogs:[],workoutLogs:[],sessions:[],checkins:[],adaptations:[],history:[],notificationPreferences:{dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app']},entitlements:{tier:'free',features:['core_nutrition','core_workouts','offline_sync','arabic_food_search'],updatedAt:null}});
-const clean=a=>a==null?[]:stringList(a,'قائمة الاختيارات').filter(x=>x!=='none');
+const clean=a=>a==null?[]:stringList(a,'selections').filter(x=>x!=='none');
 export function normalize(s){
  for(const key of ['workoutPlanRefs','planRefs','foodEntries','waterLogs','weights','activityLogs','workoutLogs','sessions','foodLogs','checkins','adaptations','history','coachingCases','coachingFeedback'])s[key]||=[];
  s.notificationPreferences||={dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app']};
@@ -48,24 +49,24 @@ export function dailyWaterTarget(s,date=userToday(s)){
 function discardPending(s){for(const a of s.adaptations)if(a.status==='pending')a.status='superseded';}
 export function generate(s,d,seed=crypto.randomUUID()){
  d=normalizeWeekdayDraft(d);
- const age=integer(d.age,18,70,'العمر'),weight=number(d.weight,35,250,'الوزن'),height=number(d.height,120,230,'الطول');
- if(!['male','female'].includes(d.sex))throw Error('حدد الجنس لحساب الاحتياجات.');
- if(d.diseases!=null&&!Array.isArray(d.diseases)||d.injuries!=null&&!Array.isArray(d.injuries))throw Error('بيانات الحالة الصحية غير صالحة.');
+ const age=integer(d.age,18,70,'age'),weight=number(d.weight,35,250,'weight'),height=number(d.height,120,230,'height');
+ if(!['male','female'].includes(d.sex))throw apiError('INVALID_SEX','sex must be male or female.',{status:400});
+ if(d.diseases!=null&&!Array.isArray(d.diseases)||d.injuries!=null&&!Array.isArray(d.injuries))throw apiError('INVALID_HEALTH_FLAGS','diseases and injuries must be arrays of condition IDs.',{status:400});
  const declaredDiseases=clean(d.diseases),rawInjuries=clean(d.injuries),declaredInjuries=canonicalInjuries(rawInjuries);
- if(rawInjuries.includes('elbow_pain'))throw Error('ألم الكوع يحتاج مراجعة متخصص؛ التخطيط الآلي للإصابة دي غير مدعوم حاليًا.');
+ if(rawInjuries.includes('elbow_pain'))throw apiError('UNSUPPORTED_ELBOW_PAIN','Elbow pain requires specialist assessment; automated workout adaptation is not supported for this injury.',{status:400});
  const unsupportedClinical=declaredDiseases.some(x=>!SUPPORTED_WELLNESS_CONDITIONS.has(x))||declaredInjuries.some(x=>!SUPPORTED_MILD_INJURIES.has(x))||(d.maternalStatus&&d.maternalStatus!=='none');
- if(age>70||unsupportedClinical)throw Error('الحالة تحتاج مراجعة متخصص قبل إنشاء خطة آلية. النسخة الحالية تدعم الحالات الشائعة المستقرة وتستبعد الحالات الحرجة كالسكري غير المنتظم أو الحمل.');
- if(!['lose','maintain','gain','muscle_gain'].includes(d.goal))throw Error('هدف غير صالح');
- if(!['nutrition_only','workouts_only','nutrition_and_workouts'].includes(d.serviceTrack))throw Error('مسار غير صالح');
- const bmi=weight/((height/100)**2);if(bmi<12.5||bmi>65)throw Error('الوزن والطول خارج نطاق التخطيط الآلي؛ راجع القياسات أو متخصصًا.');if(bmi<18.5&&d.goal==='lose')throw Error('تقليل الوزن غير مناسب مع مؤشر كتلة الجسم الحالي.');
+ if(age>70||unsupportedClinical)throw apiError('CLINICAL_REVIEW_REQUIRED','Declared clinical conditions or age require specialist review before automated plan generation.',{status:400});
+ if(!['lose','maintain','gain','muscle_gain'].includes(d.goal))throw apiError('INVALID_GOAL','goal must be one of lose, maintain, gain, or muscle_gain.',{status:400});
+ if(!['nutrition_only','workouts_only','nutrition_and_workouts'].includes(d.serviceTrack))throw apiError('INVALID_SERVICE_TRACK','serviceTrack must be one of nutrition_only, workouts_only, or nutrition_and_workouts.',{status:400});
+ const bmi=weight/((height/100)**2);if(bmi<12.5||bmi>65)throw apiError('BMI_OUT_OF_RANGE','Calculated BMI is outside the automated planning range (12.5..65).',{status:400});if(bmi<18.5&&d.goal==='lose')throw apiError('WEIGHT_LOSS_UNDERWEIGHT_UNSAFE','Weight loss plans are not suitable when current BMI is below 18.5.',{status:400});
  const timezone=d.timezone?String(d.timezone).trim():(d.region==='gulf'?'Asia/Riyadh':'Africa/Cairo');
- if(!validTimeZone(timezone))throw Error('المنطقة الزمنية غير صالحة.');
+ if(!validTimeZone(timezone))throw apiError('INVALID_TIMEZONE','Invalid IANA timezone identifier.',{status:400});
  const locale=['ar-EG','ar-SA','en'].includes(d.locale)?d.locale:(d.region==='gulf'?'ar-SA':'ar-EG');
  const wp=d.serviceTrack==='nutrition_only'?null:workoutPlan({...d,injuries:declaredInjuries});
- const externalTrainingDays=d.externalTrainingDays==null?[]:(Array.isArray(d.externalTrainingDays)&&d.externalTrainingDays.length<=6?[...new Set(d.externalTrainingDays.map(v=>integer(v,0,6,'يوم تمرينك خارج التطبيق')))]:(()=>{throw Error('أيام التمرين خارج التطبيق غير صالحة.');})());
- if(d.serviceTrack==='nutrition_only'&&d.goal==='muscle_gain'&&!externalTrainingDays.length)throw Error('هدف زيادة العضلات يحتاج أيام مقاومة مؤكدة، حتى لو خطتك هنا للأكل فقط.');
- const profile={weekdayConvention:'js_sunday_0',name:String(d.name||'').slice(0,100),age,weight,height,sex:d.sex,goal:d.goal,targetWeight:d.targetWeight!=null&&d.targetWeight!==''?number(d.targetWeight,35,250,'الوزن المستهدف'):null,goalPace:d.goalPace,activity:d.dailyActivity||'light',timezone,locale,trainingDays:wp?.days.length||externalTrainingDays.length,workoutDays:wp?.days.map(x=>x.dayIndex)||externalTrainingDays,externalTrainingDays,diseases:declaredDiseases,maternalStatus:'none',ketoAcknowledged:d.dietType==='keto',fastingAcknowledged:d.dietType==='intermittent_fasting'};
- if(profile.targetWeight&&profile.goal==='lose'&&(profile.targetWeight>=weight||profile.targetWeight/(height/100)**2<18.5))throw Error('الوزن المستهدف لازم يكون أقل من الحالي وفوق حد النحافة.');
+ const externalTrainingDays=d.externalTrainingDays==null?[]:(Array.isArray(d.externalTrainingDays)&&d.externalTrainingDays.length<=6?[...new Set(d.externalTrainingDays.map(v=>integer(v,0,6,'externalTrainingDays')))]:(()=>{throw apiError('INVALID_EXTERNAL_TRAINING_DAYS','externalTrainingDays must be an array of up to 6 weekday integers (0..6).',{status:400});})());
+ if(d.serviceTrack==='nutrition_only'&&d.goal==='muscle_gain'&&!externalTrainingDays.length)throw apiError('MUSCLE_GAIN_REQUIRES_RESISTANCE_DAYS','Muscle gain goal in nutrition_only track requires confirmed external resistance training days.',{status:400});
+ const profile={weekdayConvention:'js_sunday_0',name:String(d.name||'').slice(0,100),age,weight,height,sex:d.sex,goal:d.goal,targetWeight:d.targetWeight!=null&&d.targetWeight!==''?number(d.targetWeight,35,250,'targetWeight'):null,goalPace:d.goalPace,activity:d.dailyActivity||'light',timezone,locale,trainingDays:wp?.days.length||externalTrainingDays.length,workoutDays:wp?.days.map(x=>x.dayIndex)||externalTrainingDays,externalTrainingDays,diseases:declaredDiseases,maternalStatus:'none',ketoAcknowledged:d.dietType==='keto',fastingAcknowledged:d.dietType==='intermittent_fasting'};
+ if(profile.targetWeight&&profile.goal==='lose'&&(profile.targetWeight>=weight||profile.targetWeight/(height/100)**2<18.5))throw apiError('INVALID_TARGET_WEIGHT','targetWeight is inconsistent with your goal and safe BMI floor (18.5).',{status:400});
  const fixed=FIXED_DIET_MEALS[d.dietType];
  const excludedGroups=[...new Set([
   ...clean(d.excludedGroups),
@@ -74,18 +75,18 @@ export function generate(s,d,seed=crypto.randomUUID()){
  ])];
  const baseProteins=d.dietType==='vegan'?['legumes','nuts']:d.dietType==='vegetarian'?['legumes','eggs','dairy','nuts']:['legumes','eggs','dairy','chicken','fish','meat','nuts'];
  const proteins=declaredDiseases.includes('lactose_intolerance')?baseProteins.filter(p=>p!=='dairy'):baseProteins;
- const prefs={diet:d.dietType||'balanced',fasting:fixed?.fasting||'none',eatingStart:d.eatingStart||'12:00',region:d.region||'egypt',budget:d.budget||'medium',meals:fixed?.meals||integer(d.mealsCount??4,2,5,'الوجبات'),proteins,excludedKeys:[],excludedFoodIds:[],excludedGroups};
+ const prefs={diet:d.dietType||'balanced',fasting:fixed?.fasting||'none',eatingStart:d.eatingStart||'12:00',region:d.region||'egypt',budget:d.budget||'medium',meals:fixed?.meals||integer(d.mealsCount??4,2,5,'mealsCount'),proteins,excludedKeys:[],excludedFoodIds:[],excludedGroups};
  profile.recomposition=profile.goal==='muscle_gain'&&profile.targetWeight===weight;
  validatePreferences(prefs,library);
  const startLocalDate=localDate(clockNow(),timezone);
  const plan=d.serviceTrack==='workouts_only'?null:makeWeek(profile,prefs,library,startLocalDate,seed);
- if(d.serviceTrack==='workouts_only'&&d.healthConfirmed!==true)throw Error('أكد مراجعة حالتك الصحية قبل إنشاء خطة تمرين مستقلة.');
- if(profile.targetWeight&&(profile.goal==='gain'&&profile.targetWeight<=weight||profile.goal==='muscle_gain'&&profile.targetWeight<weight))throw Error('الوزن المستهدف للزيادة لازم يكون أكبر من الحالي.');
+ if(d.serviceTrack==='workouts_only'&&d.healthConfirmed!==true)throw apiError('HEALTH_CONFIRMATION_REQUIRED','Confirm health readiness clearance before creating or modifying a workout plan.',{status:400});
+ if(profile.targetWeight&&(profile.goal==='gain'&&profile.targetWeight<=weight||profile.goal==='muscle_gain'&&profile.targetWeight<weight))throw apiError('INVALID_TARGET_WEIGHT','targetWeight for weight gain must be greater than current weight.',{status:400});
  const journeyStartedOn=s.onboarding?.journeyStartedOn??(!s.profile?startLocalDate:null);
  if(s.profile)s.history.push({at:isoNow(),kind:'profile',profile:s.profile,planId:s.active_plan_id,workoutPlanId:s.workoutPlan?.id});
  if(s.workoutPlan){s.workoutArchives||=[];s.workoutArchives.push(s.workoutPlan);}
  s.profile=profile;s.preferences=prefs;s.workoutPlan=wp;s.nutritionAdjustment=null;
- const workoutPrefs={weekdayConvention:'js_sunday_0',fitnessLevel:wp?d.fitnessLevel??'beginner':'beginner',selectedWorkoutDays:wp?.days.map(x=>x.dayIndex)||externalTrainingDays,workoutDaysCount:wp?.days.length||externalTrainingDays.length,workoutSplitPreference:wp?d.workoutSplitPreference??'auto':'auto',workoutLocation:wp?d.workoutLocation??'gym_only':'gym_only',dayLocations:wp?Object.fromEntries(wp.days.map(day=>[day.dayIndex,day.location])):{},homeEquipment:wp?stringList(d.homeEquipment??['none'],'المعدات',20):['none'],sessionDuration:wp?d.sessionDuration??45:45,injuries:rawInjuries.length?rawInjuries:['none'],healthConfirmed:d.healthConfirmed===true,externalTrainingDays};
+ const workoutPrefs={weekdayConvention:'js_sunday_0',fitnessLevel:wp?d.fitnessLevel??'beginner':'beginner',selectedWorkoutDays:wp?.days.map(x=>x.dayIndex)||externalTrainingDays,workoutDaysCount:wp?.days.length||externalTrainingDays.length,workoutSplitPreference:wp?d.workoutSplitPreference??'auto':'auto',workoutLocation:wp?d.workoutLocation??'gym_only':'gym_only',dayLocations:wp?Object.fromEntries(wp.days.map(day=>[day.dayIndex,day.location])):{},homeEquipment:wp?stringList(d.homeEquipment??['none'],'homeEquipment',20):['none'],sessionDuration:wp?d.sessionDuration??45:45,injuries:rawInjuries.length?rawInjuries:['none'],healthConfirmed:d.healthConfirmed===true,externalTrainingDays};
  s.onboarding={serviceTrack:d.serviceTrack,workoutPrefs,isAuthenticated:true,...(journeyStartedOn?{journeyStartedOn}:{})};ensureTrainingState(s);
  if(plan){plan.created_at=isoNow();plan.effective_from=startLocalDate;s.plans.push(plan);s.active_plan_id=plan.id;}else s.active_plan_id=null;
  s.nutritionContextStartedOn=startLocalDate;s.lastReview=null;s.sessionAdjustment=null;discardPending(s);return s;
@@ -163,76 +164,76 @@ export function retargetPlan(plan,energy,prefs,effective,profile=null){
   day.targets=structuredClone(plan.targets);
   for(const meal of day.meals){meal.id=crypto.randomUUID();meal.target_energy*=factor;meal.snapshot=scaleSnapshot(meal.snapshot,factor);}
   assertDietDay(day.meals.map(m=>m.snapshot),prefs.diet,plan.targets,profile||plan.profile);
-  day.summary=sumSnapshots(day.meals.map(m=>m.snapshot));if(nutritionQualityIssues(day.summary,day.targets).length)throw Error('التعديل لا يحقق حدود السعرات والبروتين؛ احتفظ بخطتك الحالية.');
+  day.summary=sumSnapshots(day.meals.map(m=>m.snapshot));if(nutritionQualityIssues(day.summary,day.targets).length)throw apiError('ENERGY_CHANGE_TARGETS_UNMET','Proposed calorie change cannot satisfy minimum protein or nutrition targets.',{status:400});
  }
  plan.warnings=plan.days.flatMap(d=>{const messages=assessDay(d.summary,d.targets||plan.targets);return messages.length?[{date:d.date,messages}]:[];});
  return plan;
 }
-function validateEnergyChange(s,energy){if(energy<(s.profile.sex==='female'?1200:1400)||energy>4200)throw Error('التعديل يتجاوز حدود الخطة الآلية؛ راجع متخصصًا.');}
+function validateEnergyChange(s,energy){if(energy<(s.profile.sex==='female'?1200:1400)||energy>4200)throw apiError('ENERGY_CHANGE_OUT_OF_RANGE','Adjusted daily calories exceed safe automated bounds (1200/1400..4200 kcal).',{status:400});}
 function adjustCalories(s,a){
  const currDate=userToday(s);
  const previous=activePlan(s),energy=Number(previous.targets.energy)+a.delta;
  validateEnergyChange(s,energy);
  const effective=dateOffset(currDate,1),plan=structuredClone(previous);
  plan.id='plan-'+crypto.randomUUID();plan.parent_id=previous.id;plan.created_at=isoNow();plan.effective_from=effective;plan.changeReason=a.reason;
- if(s.foodEntries.some(e=>e.date>=effective))throw Error('في تسجيل فعلي ليوم قادم؛ راجع التاريخ الأول.');
+ if(s.foodEntries.some(e=>e.date>=effective))throw apiError('FUTURE_FOOD_ENTRIES_CONFLICT','Food logs already exist on or after the effective adjustment date.',{status:400});
  retargetPlan(plan,energy,s.preferences,effective,s.profile);
  s.plans.push(plan);s.active_plan_id=plan.id;s.lastCalorieChange=clockNow();s.nutritionAdjustment={energy,protein:plan.targets.protein,effectiveFrom:effective,reason:a.reason};
 }
 export function command(input,action,p){
  const s=normalize(input);
  if(action==='generate')return generate(s,p);
- if(!s.profile)throw Error('أكمل بياناتك أولًا.');
+ if(!s.profile)throw apiError('PROFILE_REQUIRED','Complete onboarding profile generation before running this command.',{status:400});
  if(['coaching_feedback','coaching_decision','coaching_outcome','coaching_ack'].includes(action))return handleCoachingCommand(s,action,p,clockNow());
  const tz=userTz(s),currDate=userToday(s);
  if(settingsActions.has(action)){const result=applySettingsCommand(s,action,p);s.lastReview=null;if(['steps','activity'].includes(action))discardPending(s);return result;}
  if(action!=='review')s.lastReview=null;
  if(!['review','adaptation','timezone','notification_preferences'].includes(action))discardPending(s);
  if(action==='confirm_schedule'){
-  if(!needsScheduleConfirmation(s))throw Error('التقويم مؤكد بالفعل.');
-  const map=plainRecord(p.dayMap,'توزيع أيام الجلسات'),before=s.workoutPlan;
-  if(Object.keys(map).length!==before.days.length||before.days.some(d=>!Object.hasOwn(map,String(d.dayIndex)))||new Set(Object.values(map).map(v=>integer(v,0,6,'يوم الأسبوع'))).size!==before.days.length)throw Error('اختار يومًا مختلفًا لكل جلسة.');
+  if(!needsScheduleConfirmation(s))throw apiError('SCHEDULE_ALREADY_CONFIRMED','Workout schedule weekday convention has already been confirmed.',{status:400});
+  const map=plainRecord(p.dayMap,'dayMap'),before=s.workoutPlan;
+  if(Object.keys(map).length!==before.days.length||before.days.some(d=>!Object.hasOwn(map,String(d.dayIndex)))||new Set(Object.values(map).map(v=>integer(v,0,6,'weekday'))).size!==before.days.length)throw apiError('INVALID_SCHEDULE_MAPPING','Provide a unique weekday index (0..6) for each workout day in dayMap.',{status:400});
   const next=structuredClone(before),reverse={};next.id=crypto.randomUUID();next.parent_id=before.id;next.version++;
-  for(const day of next.days){const old=day.dayIndex;day.dayIndex=integer(map[old],0,6,'يوم الأسبوع');reverse[day.dayIndex]=old;}
+  for(const day of next.days){const old=day.dayIndex;day.dayIndex=integer(map[old],0,6,'weekday');reverse[day.dayIndex]=old;}
   next.days.sort((a,b)=>a.dayIndex-b.dayIndex);forkWorkout(s,next,{oldDayIndexByNew:reverse,carryCalendar:false});
   s.history.push({kind:'schedule_basis_confirmation',at:isoNow(),previousId:before.id,nextId:next.id,dayMap:structuredClone(map),previousOverrides:(s.scheduleOverrides||[]).filter(o=>o.planId===before.id)});
   s.onboarding||={serviceTrack:s.active_plan_id?'nutrition_and_workouts':'workouts_only',workoutPrefs:{}};s.onboarding.workoutPrefs||={};s.profile.weekdayConvention='js_sunday_0';s.profile.workoutDays=next.days.map(d=>d.dayIndex);s.onboarding.workoutPrefs.weekdayConvention='js_sunday_0';s.onboarding.workoutPrefs.selectedWorkoutDays=s.profile.workoutDays;s.onboarding.workoutPrefs.dayLocations=Object.fromEntries(next.days.map(d=>[d.dayIndex,d.location]));
   const current=activePlan(s);if(current){const plan=structuredClone(current);plan.id='plan-'+crypto.randomUUID();plan.parent_id=current.id;plan.created_at=isoNow();plan.changeReason='تأكيد أيام التدريب بعد توحيد التقويم';plan.profile=structuredClone(s.profile);for(const day of plan.days)if(day.date>=currDate)day.is_workout_day=s.profile.workoutDays.includes(new Date(day.date+'T12:00:00Z').getUTCDay());s.plans.push(plan);s.active_plan_id=plan.id;}
   discardPending(s);return s;
  }
- if(action==='confirm_health'){if(!needsHealthConfirmation(s))throw Error('الجاهزية الصحية مؤكدة بالفعل.');if(p.healthy!==true||p.injuryFree!==true)throw Error('الخطة الآلية تحتاج تأكيد عدم وجود مرض أو إصابة تستدعي متخصصًا.');s.onboarding.workoutPrefs.healthConfirmed=true;s.onboarding.workoutPrefs.healthConfirmedAt=isoNow();discardPending(s);return s;}
+ if(action==='confirm_health'){if(!needsHealthConfirmation(s))throw apiError('HEALTH_ALREADY_CONFIRMED','Health readiness has already been confirmed.',{status:400});if(p.healthy!==true||p.injuryFree!==true)throw apiError('HEALTH_CONFIRMATION_REQUIRED','Confirm health readiness clearance before creating or modifying a workout plan.',{status:400});s.onboarding.workoutPrefs.healthConfirmed=true;s.onboarding.workoutPrefs.healthConfirmedAt=isoNow();discardPending(s);return s;}
  if(['food_entry','food_delete','food_complete','food_switch_to_entries'].includes(action))return foodCommand(s,action,p);
  if(action==='replace_meal')return replaceMeal(s,p);
  if(action==='renew_plan'){
-  const current=activePlan(s);if(!current)throw Error('مسارك للتمرين فقط.');
-  if(current.days.at(-1).date>=currDate)throw Error('الخطة الحالية لسه شغالة؛ الأسبوع الجديد يظهر بعد انتهائها.');
+  const current=activePlan(s);if(!current)throw apiError('PLAN_NOT_ACTIVE_FOR_TRACK','No active nutrition plan exists for a workouts-only track.',{status:400});
+  if(current.days.at(-1).date>=currDate)throw apiError('PLAN_STILL_ACTIVE','Current weekly nutrition plan is still active; renewal is allowed after it ends.',{status:400});
   const next=makeWeek(s.profile,s.preferences,library,currDate,crypto.randomUUID(),s.nutritionAdjustment?.energy??null);next.created_at=isoNow();next.parent_id=current.id;next.effective_from=currDate;
   s.plans.push(next);s.active_plan_id=next.id;
  }else if(action==='weight'){
-  const date=dateForLog(p.date||currDate,s),kg=number(p.kg,35,250,'الوزن');s.weights=s.weights.filter(x=>x.date!==date);s.weights.push({date,kg,source:p.source||'manual',at:isoNow()});
+  const date=dateForLog(p.date||currDate,s),kg=number(p.kg,35,250,'kg');s.weights=s.weights.filter(x=>x.date!==date);s.weights.push({date,kg,source:p.source||'manual',at:isoNow()});
  }else if(action==='water'){
   const date=dateForLog(p.date||currDate,s),target=dailyWaterTarget(s,date);
   const existing=(s.waterLogs||[]).find(x=>x.date===date);
-  const cups=p.addCups!=null?Math.max(0,Math.min(30,(existing?.cups||0)+integer(p.addCups,-10,20,'تعديل الأكواب'))):integer(p.cups,0,30,'أكواب المية');
+  const cups=p.addCups!=null?Math.max(0,Math.min(30,(existing?.cups||0)+integer(p.addCups,-10,20,'addCups'))):integer(p.cups,0,30,'cups');
   s.waterLogs=(s.waterLogs||[]).filter(x=>x.date!==date);
   s.waterLogs.push({date,cups,liters:Math.round(cups*0.25*100)/100,targetCups:target.targetCups,targetLiters:target.liters,at:isoNow()});
  }else if(action==='food'){
-  const date=dateForLog(p.date,s),plan=activePlan(s);if(s.foodEntries.some(e=>e.date===date))throw Error('اليوم فيه وجبات تفصيلية؛ استخدم إغلاق اليوم.');
-  const energy=number(p.energy,0,10000,'السعرات الفعلية'),complete=boolean(p.complete,'اكتمال اليوم'),plannedEnergy=plannedEnergyForDate(s,date);
+  const date=dateForLog(p.date,s),plan=activePlan(s);if(s.foodEntries.some(e=>e.date===date))throw apiError('DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION','This day has detailed food entries; use food_complete instead.',{status:400});
+  const energy=number(p.energy,0,10000,'energy'),complete=boolean(p.complete,'complete'),plannedEnergy=plannedEnergyForDate(s,date);
   s.foodLogs=s.foodLogs.filter(x=>x.date!==date);s.foodLogs.push({date,complete,adherence:plannedEnergy?Math.max(0,Math.round(100-Math.abs(energy-plannedEnergy)/plannedEnergy*100)):null,energy,plannedEnergy,planId:plan?.id,source:'daily_total',completionPolicy:1,confirmedAt:complete?isoNow():null});
  }else if(action==='recovery'){
-  for(const key of ['pain','illness','redFlags'])if(typeof p[key]!=='boolean')throw Error('أجب على أسئلة الألم والمرض.');
-  const sorenessByRegion={};for(const [key,v]of Object.entries(p.sorenessByRegion==null?{}:plainRecord(p.sorenessByRegion,'تقييم العضلات'))){if(!Object.hasOwn(MUSCLE_REGIONS,key))throw Error('منطقة عضلية غير صالحة.');sorenessByRegion[key]=number(v,0,10,'ألم العضلات');}
-  const painRegions=p.painRegions||[];if(!Array.isArray(painRegions)||painRegions.some(r=>typeof r!=='string'||!Object.hasOwn(MUSCLE_REGIONS,r)))throw Error('مناطق الألم غير صالحة.');
-  const c={at:isoNow(),date:p.date?dateForLog(p.date,s):currDate,sleepHours:number(p.sleepHours,0,24,'ساعات النوم'),sleepQuality:integer(p.sleepQuality,1,5,'جودة النوم'),fatigue:integer(p.fatigue,1,5,'الإجهاد'),stress:p.stress==null||p.stress===''?null:integer(p.stress,1,5,'الضغط'),soreness:number(p.soreness??0,0,10,'ألم العضلات'),sorenessByRegion,painRegions,pain:p.pain||painRegions.length>0,illness:p.illness,redFlags:p.redFlags};
+  for(const key of ['pain','illness','redFlags'])if(typeof p[key]!=='boolean')throw apiError('RECOVERY_FLAGS_REQUIRED','Boolean flags pain, illness, and redFlags are required for recovery check-ins.',{status:400});
+  const sorenessByRegion={};for(const [key,v]of Object.entries(p.sorenessByRegion==null?{}:plainRecord(p.sorenessByRegion,'sorenessByRegion'))){if(!Object.hasOwn(MUSCLE_REGIONS,key))throw apiError('INVALID_MUSCLE_REGION',`Unknown muscle region key: ${key}.`,{status:400,params:{region:key}});sorenessByRegion[key]=number(v,0,10,'soreness');}
+  const painRegions=p.painRegions||[];if(!Array.isArray(painRegions)||painRegions.some(r=>typeof r!=='string'||!Object.hasOwn(MUSCLE_REGIONS,r)))throw apiError('INVALID_PAIN_REGIONS','painRegions must be an array of supported muscle region keys.',{status:400});
+  const c={at:isoNow(),date:p.date?dateForLog(p.date,s):currDate,sleepHours:number(p.sleepHours,0,24,'sleepHours'),sleepQuality:integer(p.sleepQuality,1,5,'sleepQuality'),fatigue:integer(p.fatigue,1,5,'fatigue'),stress:p.stress==null||p.stress===''?null:integer(p.stress,1,5,'stress'),soreness:number(p.soreness??0,0,10,'soreness'),sorenessByRegion,painRegions,pain:p.pain||painRegions.length>0,illness:p.illness,redFlags:p.redFlags};
   s.checkins=s.checkins.filter(x=>x.date!==c.date);s.checkins.push(c);s.sessionAdjustment=null;for(const day of s.workoutPlan?.days||[])for(const exercise of day.exercises){delete exercise.suggestedKg;delete exercise.progressionReason;}
  }else if(action==='workout'){
-  const dayIndex=integer(p.dayIndex,0,6,'يوم التمرين'),day=s.workoutPlan?.days.find(d=>d.dayIndex===dayIndex),exercise=day?.exercises.find(x=>x.id===p.exerciseId);if(!exercise)throw Error('التمرين غير موجود في يومك المحدد.');
-  if(!Array.isArray(p.sets)||p.sets.length<1||p.sets.length>10)throw Error('سجل المجموعات الفعلية.');
-  const date=dateForLog(p.date||currDate,s);const sets=p.sets.map(x=>({kg:usesKg(exercise)?number(x.kg,0,500,'الوزن'):0,reps:number(x.reps,1,100,'التكرارات'),rir:x.rir==null?null:number(x.rir,0,10,'التكرارات المتبقية'),pain:boolean(x.pain,'الألم أثناء المجموعة',false)}));
-  if(sets.some(x=>!Number.isInteger(x.reps)))throw Error('التكرارات لازم تكون أعداد صحيحة.');
+  const dayIndex=integer(p.dayIndex,0,6,'dayIndex'),day=s.workoutPlan?.days.find(d=>d.dayIndex===dayIndex),exercise=day?.exercises.find(x=>x.id===p.exerciseId);if(!exercise)throw apiError('EXERCISE_NOT_IN_DAY','Exercise is not scheduled in the specified workout day.',{status:400});
+  if(!Array.isArray(p.sets)||p.sets.length<1||p.sets.length>10)throw apiError('WORKOUT_SETS_REQUIRED','sets array must contain between 1 and 10 performed sets.',{status:400});
+  const date=dateForLog(p.date||currDate,s);const sets=p.sets.map(x=>({kg:usesKg(exercise)?number(x.kg,0,500,'kg'):0,reps:number(x.reps,1,100,'reps'),rir:x.rir==null?null:number(x.rir,0,10,'rir'),pain:boolean(x.pain,'pain',false)}));
+  if(sets.some(x=>!Number.isInteger(x.reps)))throw apiError('WORKOUT_REPS_MUST_BE_INTEGER','Performed set reps must be whole integers.',{status:400});
   const existing=s.workoutLogs.find(l=>l.date===date&&l.exerciseId===exercise.id&&l.dayIndex===(day?.dayIndex??null)&&l.planId===s.workoutPlan.id);
-  const entry={id:existing?.id||crypto.randomUUID(),at:isoNow(),date,exerciseId:exercise.id,dayIndex:day?.dayIndex??null,planId:s.workoutPlan.id,loadMode:exercise.loadMode,progressionKey:exercise.progressionKey,laterality:exercise.laterality,bothSides:boolean(p.bothSides,'إكمال الجانبين',false),sets,increment:!usesKg(exercise)||p.increment==null||p.increment===''?null:number(p.increment,.1,20,'زيادة الوزن')};
+  const entry={id:existing?.id||crypto.randomUUID(),at:isoNow(),date,exerciseId:exercise.id,dayIndex:day?.dayIndex??null,planId:s.workoutPlan.id,loadMode:exercise.loadMode,progressionKey:exercise.progressionKey,laterality:exercise.laterality,bothSides:boolean(p.bothSides,'bothSides',false),sets,increment:!usesKg(exercise)||p.increment==null||p.increment===''?null:number(p.increment,.1,20,'increment')};
   if(existing)s.workoutLogs=s.workoutLogs.filter(l=>l.id!==existing.id);s.workoutLogs.push(entry);
   if(p.autoSession===true){
    const autoSess={id:crypto.randomUUID(),date,dayIndex,planId:s.workoutPlan.id,programId:s.workoutPlan.programId,status:'completed',expectedExercises:expectedExercises(s,day,date)};
@@ -251,46 +252,46 @@ export function command(input,action,p){
   delete exercise.suggestedKg;delete exercise.progressionReason;
   if(next.action==='increase'){exercise.suggestedKg=next.kg;exercise.progressionReason=next.reason;exercise.suggestionAt=isoNow();}
  }else if(action==='session'){
-  const dayIndex=integer(p.dayIndex,0,6,'يوم التمرين'),date=dateForLog(p.date||currDate,s),day=s.workoutPlan?.days.find(d=>d.dayIndex===dayIndex);
-  if(!day||!['completed','partial','missed'].includes(p.status))throw Error('جلسة غير صالحة.');
+  const dayIndex=integer(p.dayIndex,0,6,'dayIndex'),date=dateForLog(p.date||currDate,s),day=s.workoutPlan?.days.find(d=>d.dayIndex===dayIndex);
+  if(!day||!['completed','partial','missed'].includes(p.status))throw apiError('INVALID_WORKOUT_SESSION','Workout session day or status (completed, partial, missed) is invalid.',{status:400});
   const session={id:crypto.randomUUID(),date,dayIndex,planId:s.workoutPlan.id,programId:s.workoutPlan.programId,status:p.status,expectedExercises:expectedExercises(s,day,date)};
   Object.assign(session,sessionCompletion(s,session));
-  if(p.status!=='missed'&&!session.actualSets)throw Error('سجّل مجموعات تمرين واحد على الأقل قبل إنهاء الجلسة.');
+  if(p.status!=='missed'&&!session.actualSets)throw apiError('SESSION_REQUIRES_ACTUAL_SETS','Log at least one exercise set before marking a session completed or partial.',{status:400});
   if(session.actualSets&&session.completionRatio<.8)session.status='partial';
-  if(session.actualSets){session.duration=p.duration==null||p.duration===''?null:number(p.duration,1,240,'مدة الجلسة');session.rpe=p.rpe==null||p.rpe===''?null:number(p.rpe,0,10,'مجهود الجلسة');session.metricsSource='user_report';}
+  if(session.actualSets){session.duration=p.duration==null||p.duration===''?null:number(p.duration,1,240,'duration');session.rpe=p.rpe==null||p.rpe===''?null:number(p.rpe,0,10,'rpe');session.metricsSource='user_report';}
   else{session.duration=null;session.rpe=null;}
   s.sessions=s.sessions.filter(x=>!(x.date===date&&x.dayIndex===dayIndex&&x.planId===s.workoutPlan.id));s.sessions.push(session);
  }else if(action==='replace_exercise'){
-  const alternatives=exerciseAlternatives(s,p.dayIndex,p.exerciseId),choice=alternatives.find(e=>e.id===p.alternativeId);if(!choice)throw Error('البديل مش مناسب لنفس الحركة أو المعدات.');
+  const alternatives=exerciseAlternatives(s,p.dayIndex,p.exerciseId),choice=alternatives.find(e=>e.id===p.alternativeId);if(!choice)throw apiError('EXERCISE_ALTERNATIVE_INVALID','Alternative exercise is incompatible with movement pattern, injuries, or equipment.',{status:400});
   const previous=s.workoutPlan,next=structuredClone(previous);next.id=crypto.randomUUID();next.parent_id=previous.id;next.version++;
   const day=next.days.find(d=>d.dayIndex===Number(p.dayIndex));const i=day.exercises.findIndex(e=>e.id===p.exerciseId),old=day.exercises[i];
   day.exercises[i]={...choice,regions:muscleRegions(choice),sets:old.sets,repMin:old.repMin,repMax:old.repMax,rir:old.rir,restSeconds:old.restSeconds};
   day.estimatedMinutes=estimatedSessionMinutes(day);
   s.history.push({at:isoNow(),kind:'workout_replacement',previousId:previous.id,nextId:next.id,exerciseId:old.id,alternativeId:choice.id});next.weeklySets=weeklySetTotals(next.days);forkWorkout(s,next);discardPending(s);
  }else if(action==='reschedule'){
-  const date=p.toDate;if(!validDate(date)||date<currDate||date>dateOffset(currDate,13))throw Error('اختار يوم خلال الأسبوعين الجايين.');
-  const dayIndex=integer(p.dayIndex,0,6,'يوم التمرين');if(!s.workoutPlan?.days.some(d=>d.dayIndex===dayIndex))throw Error('اليوم غير موجود في خطتك.');
-  const existing=scheduledSessions(s,currDate).find(x=>x.date===date);if(existing||s.sessions.some(x=>x.date===date&&x.status==='completed'))throw Error('في جلسة تانية في نفس اليوم؛ اختار يوم راحة.');
-  const currentOccurrence=scheduledSessions(s,currDate).find(x=>x.dayIndex===dayIndex);const priorOverride=(s.scheduleOverrides||[]).find(o=>o.planId===s.workoutPlan.id&&o.dayIndex===dayIndex&&o.toDate===currentOccurrence?.date);const fromDate=priorOverride?.fromDate||currentOccurrence?.date;if(!fromDate||fromDate===date)throw Error('اختار موعد مختلف عن موعد الجلسة الحالي.');
+  const date=p.toDate;if(!validDate(date)||date<currDate||date>dateOffset(currDate,13))throw apiError('RESCHEDULE_DATE_OUT_OF_RANGE','Target reschedule date must be between today and today + 13 days.',{status:400});
+  const dayIndex=integer(p.dayIndex,0,6,'dayIndex');if(!s.workoutPlan?.days.some(d=>d.dayIndex===dayIndex))throw apiError('WORKOUT_DAY_NOT_IN_PLAN','Requested dayIndex is not present in your active workout plan.',{status:400});
+  const existing=scheduledSessions(s,currDate).find(x=>x.date===date);if(existing||s.sessions.some(x=>x.date===date&&x.status==='completed'))throw apiError('RESCHEDULE_DAY_OCCUPIED','Another workout session already exists on the target reschedule date.',{status:409});
+  const currentOccurrence=scheduledSessions(s,currDate).find(x=>x.dayIndex===dayIndex);const priorOverride=(s.scheduleOverrides||[]).find(o=>o.planId===s.workoutPlan.id&&o.dayIndex===dayIndex&&o.toDate===currentOccurrence?.date);const fromDate=priorOverride?.fromDate||currentOccurrence?.date;if(!fromDate||fromDate===date)throw apiError('RESCHEDULE_DATE_UNCHANGED','Target reschedule date must differ from the session\'s current date.',{status:400});
   discardPending(s);s.adaptations.push({id:crypto.randomUUID(),kind:'schedule',reasonCode:'WORKOUT_RESCHEDULE_PROPOSAL',reviewScope:'system_generated_guidance',dayIndex,fromDate,toDate:date,status:'pending',baseRevision:s.revision+1,at:isoNow(),expiresAt:new Date(clockNow()+86400000).toISOString(),reason:'تأكيد نقل موعد تمرينك إلى يوم '+date+' مع الحفاظ على سعراتك اليومية.'});
  }else if(action==='review')return review(s);
  else if(action==='adaptation'){
-  const a=s.adaptations.find(x=>x.id===p.id&&x.status==='pending');if(!a)throw Error('الاقتراح غير موجود.');
-  if(p.accept===false){a.status='rejected';a.rejectedAt=isoNow();return s;}if(p.accept!==true)throw Error('حدد موافقتك على الاقتراح.');
-  if(a.baseRevision!==s.revision)throw Object.assign(Error('بياناتك اتغيرت؛ اطلب مراجعة جديدة.'),{status:409});
-  if(a.expiresAt&&(!Number.isFinite(Date.parse(a.expiresAt))||Date.parse(a.expiresAt)<=clockNow()))throw Error('الاقتراح انتهت صلاحيته؛ اطلب مراجعة جديدة.');
-  if((needsHealthConfirmation(s)||needsScheduleConfirmation(s))&&a.kind!=='schedule')throw Error('أكد الجاهزية الصحية واطلب مراجعة جديدة.');
-  if(workoutSafetyIssues(s).length)throw Error('راجع التمارين المستبعدة في الخطة قبل قبول تعديلات.');
+  const a=s.adaptations.find(x=>x.id===p.id&&x.status==='pending');if(!a)throw apiError('ADAPTATION_NOT_FOUND','Pending adaptation proposal not found.',{status:404});
+  if(p.accept===false){a.status='rejected';a.rejectedAt=isoNow();return s;}if(p.accept!==true)throw apiError('ADAPTATION_ACCEPT_REQUIRED','Boolean accept field (true or false) is required.',{status:400});
+  if(a.baseRevision!==s.revision)throw apiError('ADAPTATION_STALE_REVISION','Account data changed since this proposal was generated; run review again.',{status:409});
+  if(a.expiresAt&&(!Number.isFinite(Date.parse(a.expiresAt))||Date.parse(a.expiresAt)<=clockNow()))throw apiError('ADAPTATION_EXPIRED','Adaptation proposal has expired; run review again.',{status:400});
+  if((needsHealthConfirmation(s)||needsScheduleConfirmation(s))&&a.kind!=='schedule')throw apiError('ADAPTATION_CONFIRMATION_REQUIRED','Confirm health clearance and schedule before accepting adaptations.',{status:400});
+  if(workoutSafetyIssues(s).length)throw apiError('ADAPTATION_UNSAFE_WORKOUT','Resolve excluded exercises in your workout plan before accepting adaptations.',{status:400});
   const currentRecovery=accountRecovery(s,clockNow(),tz);
-  if(a.kind==='recovery'&&!['caution','high'].includes(currentRecovery.status))throw Error('بيانات الاستشفاء اتغيرت أو انتهت؛ اطلب مراجعة جديدة.');
-  if(['weekly_volume','calories','maintenance'].includes(a.kind)&&currentRecovery.status!=='ready')throw Error('نحتاج متابعة استشفاء حديثة ومناسبة؛ اطلب مراجعة جديدة.');
+  if(a.kind==='recovery'&&!['caution','high'].includes(currentRecovery.status))throw apiError('ADAPTATION_RECOVERY_STALE','Recovery check-in has expired or no longer supports this deload proposal; run review again.',{status:400});
+  if(['weekly_volume','calories','maintenance'].includes(a.kind)&&currentRecovery.status!=='ready')throw apiError('ADAPTATION_NEEDS_FRESH_RECOVERY','Accepting this adaptation requires a fresh ready recovery check-in.',{status:400});
   if(a.kind==='weekly_volume'){
-   const valid=volumeReview(s,currentRecovery,clockNow());if(valid.action!=='propose'||valid.exerciseId!==a.exerciseId||valid.dayIndex!==a.dayIndex)throw Error('بيانات الاستشفاء أو الأداء لم تعد تؤيد الزيادة؛ اطلب مراجعة جديدة.');
+   const valid=volumeReview(s,currentRecovery,clockNow());if(valid.action!=='propose'||valid.exerciseId!==a.exerciseId||valid.dayIndex!==a.dayIndex)throw apiError('ADAPTATION_VOLUME_NO_LONGER_SUPPORTED','Current recovery or performance evidence no longer supports volume progression.',{status:400});
   }
   if(a.kind==='recovery')s.sessionAdjustment={planId:s.workoutPlan?.id,setFactor:a.setFactor,regions:a.regions,expiresAt:a.expiresAt,reason:a.reason};
   else if(a.kind==='calories'){
    const f=currentFeedback(s,'nutrition',currDate);
-   if(a.delta<0&&(f?.hunger>=4||f?.energy!=null&&f.energy<=2))throw Error('سجل الجوع أو الطاقة يحتاج مراجعة قبل خفض السعرات.');
+   if(a.delta<0&&(f?.hunger>=4||f?.energy!=null&&f.energy<=2))throw apiError('ADAPTATION_CALORIE_CUT_BLOCKED','Recent high hunger or low energy requires review before applying a calorie cut.',{status:400});
    adjustCalories(s,a);
   }
   else if(a.kind==='maintenance'){
@@ -302,18 +303,18 @@ export function command(input,action,p){
    s.profile=profile;s.plans.push(plan);s.active_plan_id=plan.id;s.nutritionContextStartedOn=start;s.lastCalorieChange=clockNow();s.nutritionAdjustment={energy:plan.targets.energy,protein:plan.targets.protein,effectiveFrom:start,reason:a.reason};
   }
   else if(a.kind==='weekly_volume'){
-   if(s.workoutPlan.id!==a.planId)throw Object.assign(Error('خطة التمرين اتغيرت؛ اطلب مراجعة جديدة.'),{status:409});
+   if(s.workoutPlan.id!==a.planId)throw apiError('ADAPTATION_WORKOUT_PLAN_CHANGED','Active workout plan changed since this proposal was generated; run review again.',{status:409});
    const before=s.workoutPlan,next=structuredClone(before);next.id=crypto.randomUUID();next.parent_id=previousId(before);next.version++;
    function previousId(w){return w.id;}
    const exercise=next.days.find(d=>d.dayIndex===a.dayIndex)?.exercises.find(e=>e.id===a.exerciseId);
-   if(!exercise)throw Error('التمرين غير موجود.');exercise.sets+=a.extraSets;
+   if(!exercise)throw apiError('EXERCISE_NOT_IN_DAY','Exercise is not scheduled in the specified workout day.',{status:404});exercise.sets+=a.extraSets;
    next.weeklySets=weeklySetTotals(next.days);
    s.history.push({kind:'weekly_volume',at:isoNow(),previousId:before.id,nextId:next.id,reason:a.reason});
    next.days.find(d=>d.dayIndex===a.dayIndex).estimatedMinutes=estimatedSessionMinutes(next.days.find(d=>d.dayIndex===a.dayIndex));forkWorkout(s,next);s.lastVolumeChange=clockNow();
   }
-  else if(a.kind==='schedule'){if(a.fromDate<currDate||a.toDate<currDate)throw Error('موعد الجلسة فات؛ اطلب نقلًا جديدًا.');s.scheduleOverrides||=[];s.scheduleOverrides=s.scheduleOverrides.filter(x=>x.dayIndex!==a.dayIndex);s.scheduleOverrides.push({dayIndex:a.dayIndex,fromDate:a.fromDate,toDate:a.toDate,planId:s.workoutPlan.id});}
+  else if(a.kind==='schedule'){if(a.fromDate<currDate||a.toDate<currDate)throw apiError('ADAPTATION_SCHEDULE_DATE_PASSED','Proposed reschedule date has already passed.',{status:400});s.scheduleOverrides||=[];s.scheduleOverrides=s.scheduleOverrides.filter(x=>x.dayIndex!==a.dayIndex);s.scheduleOverrides.push({dayIndex:a.dayIndex,fromDate:a.fromDate,toDate:a.toDate,planId:s.workoutPlan.id});}
   a.status='accepted';a.acceptedAt=isoNow();
- }else throw Error('عملية غير معروفة');
+ }else throw apiError('UNKNOWN_COMMAND_ACTION','Unsupported command action.',{status:400,params:{action}});
  return s;
 }
 export function evaluateEligibility(d={}){

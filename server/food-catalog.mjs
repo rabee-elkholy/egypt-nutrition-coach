@@ -13,6 +13,7 @@ import meta from '../data/meta.json' with {type:'json'};
 import { normalize as normalizeAr, nameScore } from '../core.mjs';
 import { aggregate } from '../calculator.mjs';
 import { volumeGrams } from '../portions.mjs';
+import { apiError } from '../coaching-error.mjs';
 
 // Extended Egyptian Arabic / Gulf / Transliteration synonym & colloquial dictionary
 const EGYPTIAN_SYNONYMS = {
@@ -205,7 +206,7 @@ let externalCatalogSnapshot = null;
 
 export function registerExternalFoodCatalogSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.items)) {
-    throw new Error('صيغة لقطة قاعدة البيانات الغذائية الخارجية غير صالحة.');
+    throw apiError('EXTERNAL_CATALOG_SNAPSHOT_INVALID', 'External food catalog snapshot has an invalid format.', { status: 500 });
   }
   externalCatalogSnapshot = {
     version: String(snapshot.version || 'external-1.0'),
@@ -416,16 +417,17 @@ export function getFoodCatalogItem(idOrKey) {
 export function calculatePreparedBeverageOrRecipe(input = {}) {
   const { ingredients = [], unit = 'grams', finalWeightGrams = null, additions = [] } = input;
   if (unit === 'ml' && !input.densityGPerMl && !input.volumeEvidence) {
-    throw new Error('لا يمكن تحويل المليلتر (100mL) إلى جرامات (100g) بدون كثافة موثقة (density) أو دليل حجم مصدري.');
+    throw apiError('DENSITY_REQUIRED_FOR_ML', 'Milliliter conversion requires verified density or reference volume basis.', { status: 400 });
   }
   const metrics = ['energy', 'protein', 'fat', 'carbs', 'fiber', 'saturated', 'sodium', 'sugars'];
   const resolvedItems = [];
 
   for (const part of [...ingredients, ...additions]) {
-    const catItem = CATALOG_BY_ID.get(part.key || part.id);
-    if (!catItem) throw new Error(`المكوّن غير موجود في الفهرس المعتمد: ${part.key || part.id}`);
+    const ingredientId = part.key || part.id;
+    const catItem = CATALOG_BY_ID.get(ingredientId);
+    if (!catItem) throw apiError('INGREDIENT_NOT_IN_CATALOG', `Ingredient not found in approved catalog: ${ingredientId}.`, { status: 400, params: { ingredient: ingredientId } });
     if (catItem.status !== 'approved' && input.requireApproved !== false) {
-      throw new Error(`المكوّن (${catItem.name}) غير معتمد مرجعيًا ولا يمكن استخدامه في حساب معتمد تلقائيًا.`);
+      throw apiError('INGREDIENT_NOT_VERIFIED', `Ingredient is not reference-verified and cannot be used in verified calculations: ${ingredientId}.`, { status: 400, params: { ingredient: ingredientId } });
     }
     let grams = part.grams;
     if (part.ml != null) {
@@ -434,7 +436,7 @@ export function calculatePreparedBeverageOrRecipe(input = {}) {
       } else if (part.densityGPerMl != null && Number(part.densityGPerMl) > 0) {
         grams = String(Number(part.ml) * Number(part.densityGPerMl));
       } else {
-        throw new Error(`المكوّن السائل (${catItem.name}) يفتقد معامل كثافة موثق لتحويل المليلتر إلى جرام.`);
+        throw apiError('LIQUID_DENSITY_MISSING', `Liquid ingredient lacks verified density factor to convert milliliters to grams: ${ingredientId}.`, { status: 400, params: { ingredient: ingredientId } });
       }
     }
     resolvedItems.push({

@@ -1,61 +1,33 @@
-> نتيجة التحقق اللاحق والتصحيحات وحدود الجاهزية موثقة في [فحص استيراد 0.12](IMPORT_VERIFICATION_012_AR.md). تُقدّم نتائجه على ادعاءات الاكتمال والقياسات السابقة في هذا المستند.
+# Performance & Payload Benchmark Report
 
-# تقرير الأداء وحجم البيانات واختبار الحمل — Performance Report (`v0.12.0`)
+This document summarizes payload reductions, search/planner optimizations, and local HTTP + SQLite/D1 benchmark methodology for **CuraFit API v1**.
 
-يوثّق هذا التقرير القياسات الفعلية قبل وبعد التعديلات (`Baseline v0.11.0` مقابل `After v0.12.0`) لحجم حزم البيانات (Payloads)، وسرعة توليد الخطط، وزمن استجابة البحث العربي، واختبار الحمل المحلي على SQLite/D1.
-
-- **أمر إعادة التشغيل:** `npm run benchmark` (`node scripts/benchmark-load.mjs`)
-- **ملف المخرجات الخام:** `outputs/benchmark-report.json`
-- **بيئة القياس:** Linux x64, Node.js `v18.20.4`, SQLite `3.40.1`
+- **Benchmark Command:** `npm run benchmark` (`node scripts/benchmark-load.mjs`)
+- **Generated Output:** `outputs/benchmark-report.json`
 
 ---
 
-## 1. مقارنة أحجام استجابات الـAPI (Payload Size Reduction — `F04`)
+## 1. KMM Payload Reduction (vs Full Web State Snapshot)
 
-في النسخة المرجعية (`v0.11.0`)، كانت أي عملية قراءة أو كتابة بسيطة (مثل إضافة كوب ماء أو تسجيل وزن) تعيد حالة الحساب الكاملة متضمنة خطة الوجبات الأسبوعية بجميع تفاصيل المكونات والمراجع (~500 KB).
+The legacy Web UI `GET /v1/state` payload returns the complete weekly meal plan and full account snapshot (~500 KB) for browser rendering. For mobile clients (KMM), CuraFit provides `/v1/bootstrap` and `?view=receipt` (now wrapped in the uniform `{ ok, data, meta }` envelope):
 
-| السيناريو / المسار | الحجم الخام قبل (`v0.11.0`) | الحجم الخام بعد (`v0.12.0`) | حجم Gzip بعد (`v0.12.0`) | نسبة الخفض (Raw Reduction) |
-| --- | --- | --- | --- | --- |
-| **بدء تشغيل التطبيق (`GET /v1/state` ← `GET /v1/bootstrap`)** | 502,195 B (~490.4 KB) | **3,118 B (~3.04 KB)** | **1,686 B (~1.65 KB)** | **-99.38%** |
-| **بدء تشغيل بدون تغيير (`If-None-Match` ETag `304`)** | 502,195 B | **0 B (`304 Not Modified`)** | **0 B** | **-100.00%** |
-| **تسجيل كوب ماء (`POST /v1/commands` ← `?view=receipt`)** | 502,195 B | **413 B (~0.40 KB)** | **251 B (~0.25 KB)** | **-99.92%** |
-| **الحالة الكاملة للتوافق مع الويب (`GET /v1/state`)** | 502,195 B | 499,470 B | 52,518 B | محفوظة لتوافق Web MVP |
-
-- **تحقيق هدف القبول (Milestone A Acceptance):** الهدف المبدئي لعملية تسجيل بسيطة كان `< 20 KB`؛ الحجم الفعلي المحقق هو **413 بايت فقط** (أقل بـ48 مرة من سقف الـ20 KB).
+| Endpoint / Flow | Response Shape | Approximate Raw Size | Primary Mechanism |
+| :--- | :--- | :---: | :--- |
+| **`GET /v1/bootstrap`** | Profile refs + plan refs + `todaySummary` | ~3.25 KB (`> 99.3%` reduction vs `/v1/state`) | Strips nested plan ingredients; fetches plans lazily |
+| **`GET /v1/bootstrap` (`If-None-Match` hit)** | `304 Not Modified` | `0 B` (`100%` transfer reduction) | Server revision + date ETag validation |
+| **`POST /v1/commands?view=receipt`** | Delta receipt (`commandReceipt` + `affected`) | ~535 B (`~99.9%` reduction vs `/v1/state`) | Avoids resending full weekly plans after logs |
+| **`GET /v1/state`** | Full account + weekly nutrition/workout plans | ~500 KB | Preserved for clean Web UI User Stories |
 
 ---
 
-## 2. تحسين سرعة محرك التغذية والبحث العربي (Engine & Search Latency)
+## 2. Deterministic Engine & Food Search Optimizations
 
-| العملية | قبل التحسين (`v0.11.0`) | بعد التحسين (`v0.12.0`) | التحسين والتفسير الهندسي |
-| --- | --- | --- | --- |
-| **توليد خطة أكل أسبوعية كاملة (`makeWeek`)** | ~1,805 ms | **~360–490 ms** | تسريع بنحو **3.8x** عبر حساب الطاقة والبروتين السريع داخل حلقات التقريب الـ6 في `fitMeal` والاكتفاء بحساب الكسور العشرية الكاملة `BigInt` (`totalsForParts`) مرة واحدة عند إنتاج `snapshotTemplate` النهائي دون أي تغيير في دقة المخرجات. |
-| **البحث في كتالوج الأغذية (3,291 صنفًا — 50 استعلامًا عربيًا)** | كان يبحث في 86 صنفًا فقط (~706 ms عند فهرسة الكل بدون تهيئة) | **`p50 = 10.90 ms`** / `p95 = 28.74 ms` / `p99 = 39.39 ms` | تسريع بنحو **65x** عبر التطبيع المسبق وتفكيك البوادئ العربية (`ال`، `بال`، `وال`، `لل`) عند بدء تشغيل الـWorker في `server/food-catalog.mjs`. |
-| **زمن تشغيل مجموعة الاختبارات الكاملة (`npm test`)** | 93.38 ثانية (131 اختبارًا) | **~50–70 ثانية (146 اختبارًا)** | أسرع بنحو **35%** رغم زيادة عدد الاختبارات وإضافة سيناريوهات `E01`–`E16`. |
+- **Weekly Nutrition Planner (`makeWeek`):** Uses fast scalar macro accumulation inside meal-fitting rounding loops before computing final exact decimal `BigInt` (`totalsForParts`) summaries once on the winning candidate.
+- **In-Memory Arabic/English Food Search (`server/food-catalog.mjs`):** Pre-normalizes 3,291 catalog entries at Worker startup (`al-` / prefix tokenization and colloquial synonyms), keeping catalog search latency in single-digit/low-double-digit milliseconds in memory.
 
 ---
 
-## 3. قياسات زمن الاستجابة على مسارات HTTP + D1 (`p50` / `p95` / `p99`)
+## 3. Local HTTP + D1 Latency & Capacity Considerations
 
-جرى قياس أزمنة الاستجابة شاملة التحقق التشفيري من `Bearer JWT` (`SubtleCrypto HMAC-SHA256`) وفحص الجلسة في قاعدة البيانات وتنفيذ المعاملات الذرية على SQLite:
-
-| المسار (Endpoint) | عدد العينات | `p50` (ms) | `p95` (ms) | `p99` (ms) | معدل الأخطاء |
-| --- | --- | --- | --- | --- | --- |
-| **`GET /v1/bootstrap` (D1 Read + JWT Verify + Presentation)** | 50 | **40.46 ms** | **52.64 ms** | **64.87 ms** | 0% |
-| **`POST /v1/commands?view=receipt` (Atomic Batch Write + Outbox)** | 30 | **93.07 ms** | **121.30 ms** | **132.56 ms** | 0% |
-| **البحث العربي في الكتالوج (`searchFoodCatalog` In-Memory)** | 50 | **10.90 ms** | **28.74 ms** | **39.39 ms** | 0% |
-
-*ملاحظة حول بيئة القياس:* في هذا الـSandbox المحلي، يتواصل Node.js مع SQLite عبر عملية Python IPC؛ على بيئة Cloudflare Workers الحية حيث يعمل D1 داخل نفس الشبكة دون IPC نصي، تكون أزمنة استعلامات النقطة الواحدة (`SELECT ... WHERE user_id=?`) عادة في حدود **2–10 ms**.
-
----
-
-## 4. تقدير السعة والتوسع لـ 10,000 حساب و 3,000 مستخدم نشط يوميًا (Capacity Profile)
-
-بناءً على المستهدف التخطيطي (**10,000 حساب مسجل، 3,000 DAU، و5 عمليات تسجيل وجبات/ماء يوميًا لكل مستخدم نشط = 15,000 عملية كتابة يوميًا**):
-
-- **استهلاك الشبكة اليومي للعميل (Mobile Data Transfer):**
-  - في النمط القديم (`500 KB` × 6 طلبات يوميًا × 3,000 مستخدم): **~9.0 GB يوميًا**.
-  - في النمط الجديد (`3.1 KB` bootstrap + 5 × `0.41 KB` receipts × 3,000 مستخدم): **~15.5 MB يوميًا** (وفر يتجاوز **99.8%** في استهلاك الباندويث ومعالجة JSON داخل الـWorker).
-- **نمو قاعدة البيانات (D1 Storage Growth):**
-  - كل سجل وجبة/ماء/وزن/مزامنة يستهلك في المتوسط ~0.8 KB عبر الجداول المفهرسة.
-  - لـ 3,000 مستخدم نشط × 5 عمليات يوميًا × 365 يومًا = ~5.47 مليون سجل سنويًا ≈ **~4.3 GB سنويًا** (ضمن حدود Cloudflare D1 البالغة 10 GB لكل قاعدة بيانات، مع إمكانية تدوير `coaching_sync_outbox` و`coaching_requests` بعد 90 يومًا لإبقاء حجم القاعدة أقل من **1.2 GB**).
+- **Local Benchmark (`npm run benchmark`):** Exercises real HTTP dispatch (`server/worker.mjs`) against Miniflare/SQLite with JWT verification, atomic D1 `db.batch` writes, outbox inserts, and idempotency storage. Exact current numbers are recorded in `outputs/benchmark-report.json` on each run.
+- **D1 Growth Management:** Dual-writes append to indexed entity tables and `coaching_sync_outbox` while trimming active `coaching_accounts` JSON logs older than 95 days once account documents exceed 900 KB, keeping hot reads fast as history grows.

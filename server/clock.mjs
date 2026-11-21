@@ -25,10 +25,3 @@ export function withClock(timestampOrContext,operation){
   timeZone:validTimeZone(timestampOrContext.timeZone)?timestampOrContext.timeZone:(typeof prev==='object'&&prev?.timeZone?prev.timeZone:'Africa/Cairo')
  },operation);
 }
-export function simulationTime(state){
- const simulation=state?.simulation;
- const timeZone=state?.profile?.timezone||'Africa/Cairo';
- if(!simulation)return {timestamp:undefined,timeZone};
- const ts=Date.parse(simulation.startedDate+'T12:00:00Z')+(simulation.day-1)*86400000+(state.revision||0)*1000;
- return {timestamp:ts,timeZone};
-}

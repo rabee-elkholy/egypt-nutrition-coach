@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "egypt-nutrition-coach",
+  "name": "curafit-api",
   "main": "dist/server/cloudflare.js",
   "compatibility_date": "2025-10-11",
   "compatibility_flags": ["nodejs_als"],
@@ -17,5 +17,19 @@
       "database_id": "90fa62f1-7866-4156-ac29-f0aec4814bab",
       "migrations_dir": "drizzle"
     }
-  ]
+  ],
+  "env": {
+    "dev": {
+      "name": "curafit-api-dev",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "curafit-db-dev",
+          "database_id": "0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0",
+          "migrations_dir": "drizzle"
+        }
+      ]
+    }
+  }
 }

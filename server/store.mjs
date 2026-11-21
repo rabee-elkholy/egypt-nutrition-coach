@@ -1,5 +1,6 @@
 import {empty,normalize} from './coaching.mjs';
 import {localDate,dateOffset} from '../coaching-shared.mjs';
+import {apiError} from '../coaching-error.mjs';
 
 const reference=p=>({id:p.id,start_date:p.start_date,end_date:p.days.at(-1)?.date,created_at:p.created_at,effective_from:p.effective_from,energy:p.targets.energy,reason:p.changeReason||'إنشاء خطة',parent_id:p.parent_id});
 
@@ -25,7 +26,7 @@ async function hasNormalizedTables(db){
  try{
   const row=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='coaching_sync_outbox'").first();
   return !!row?.name;
- }catch(error){throw Object.assign(Error('تعذر التحقق من مخزن السجلات.'),{status:503,cause:error});}
+ }catch(error){throw apiError('DATABASE_ERROR','Unable to verify storage schema.',{status:503,retryable:true,cause:error});}
 }
 
 async function hasCoachingTables(db){
@@ -100,7 +101,7 @@ export async function loadAccount(db,user){
      parsed.checkins=[...map.values()];
     }
    }
-  }catch(error){throw Object.assign(Error('تعذر تحميل السجلات؛ لم نغيّر بياناتك.'),{status:503,cause:error});}
+  }catch(error){throw apiError('ACCOUNT_SNAPSHOT_READ_FAILED','Unable to load account records; no changes were made.',{status:503,retryable:true,cause:error});}
  }
  const s=normalize(parsed);
  delete s._commitToken;
@@ -114,7 +115,7 @@ export async function loadAccount(db,user){
   const plan=r?JSON.parse(r.body):null;cache.set(id,plan);return plan;
  };
  if(s.active_plan_id&&!s.plans.some(p=>p.id===s.active_plan_id)){
-  const plan=await findPlan(s.active_plan_id);if(!plan)throw Error('تعذر تحميل الخطة المحفوظة.');s.plans=[plan];
+  const plan=await findPlan(s.active_plan_id);if(!plan)throw apiError('PLAN_LOAD_FAILED','Unable to load saved nutrition plan.',{status:503,retryable:true});s.plans=[plan];
  }
  // Derive missing day targets from owned immutable ancestors; no request-time DDL or blind overwrites.
  for(const plan of s.plans)for(const day of plan.days){
@@ -183,7 +184,7 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
 
  if(coachingReady){stateForAggregate._coachingStorage=true;stateForAggregate.coachingCases=[];stateForAggregate.coachingFeedback=[];}
  const body=JSON.stringify(stateForAggregate);
- if(new TextEncoder().encode(body).length>1500000)throw Object.assign(Error('سجل المتابعة وصل لسعة النسخة التجريبية؛ صدّر بياناتك قبل إضافة سجلات جديدة.'),{status:413});
+ if(new TextEncoder().encode(body).length>1500000)throw apiError('STORAGE_LIMIT_REACHED','Account history reached storage capacity; export your data before adding new logs.',{status:413});
 
  const deltas=deriveSyncDeltas(state,action,payload,nowIso,previousState);
  const receipt=JSON.stringify({revision:state.revision,at:nowIso,action,affected:deltas});
@@ -252,14 +253,11 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
  if(claimSource){
   const from=claimSource.userId;
   for(const [table,columns]of [['coaching_plans','plan_id,created_at,body'],['coaching_workout_plans','plan_id,body'],['coaching_account_consents','consent_type,version,accepted,at']])statements.push(db.prepare(`INSERT OR IGNORE INTO ${table}(user_id,${columns}) SELECT ?,${columns} FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(user,from,user,state.revision,body));
-  const fromSimulation='__simulation__:'+await sha256Hex(from);
-  for(const sourceUser of [from,fromSimulation])for(const table of ['coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_requests','coaching_plans','coaching_workout_plans','coaching_changes','coaching_accounts',...(coachingReady?['coaching_cases','coaching_feedback']:[])])statements.push(db.prepare(`DELETE FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(sourceUser,user,state.revision,body));
-  statements.push(db.prepare('DELETE FROM coaching_auth_sessions WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)').bind(fromSimulation,user,state.revision,body));
-  statements.push(db.prepare("INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) SELECT ?,'__deleted__','system',?,NULL,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)").bind(fromSimulation,nowIso,nowIso,user,state.revision,body));
+  for(const table of ['coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_requests','coaching_plans','coaching_workout_plans','coaching_changes','coaching_accounts',...(coachingReady?['coaching_cases','coaching_feedback']:[])])statements.push(db.prepare(`DELETE FROM ${table} WHERE user_id=? AND EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)`).bind(from,user,state.revision,body));
   statements.push(db.prepare("INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) SELECT ?,'__claimed__',?,?,NULL,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=? AND body=?)").bind(from,user,nowIso,nowIso,user,state.revision,body));
  }
  const result=await db.batch(statements);
- if(!result[0].meta.changes)throw Object.assign(Error('تعارض تحديث؛ حدّث بياناتك وحاول تاني.'),{status:409});
+ if(!result[0].meta.changes)throw apiError('CONFLICT','Request conflicted with current resource state.',{status:409});
  state.workoutArchives=[];
  state._lastReceipt={revision:state.revision,at:nowIso,action,affected:deltas};
  return state;
@@ -288,7 +286,7 @@ export async function backfillAccountToNormalizedTables(db,user){
  for(const c of s.checkins||[]){
   stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_checkins(user_id,date,at,body) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?)').bind(user,c.date,c.at||nowIso,JSON.stringify(c),user,s.revision));
  }
- if(stmts.length){const result=await db.batch(stmts);if(!result.some(r=>r.meta.changes))throw Object.assign(Error('تغير الحساب أثناء الترحيل؛ حدّث البيانات وأعد المحاولة.'),{status:409});}
+ if(stmts.length){const result=await db.batch(stmts);if(!result.some(r=>r.meta.changes))throw apiError('ACCOUNT_BACKFILL_CONFLICT','Account changed during migration backfill; reload and retry.',{status:409});}
  return {
   migrated:true,
   counts:{
@@ -343,20 +341,16 @@ export async function exportFullAccountData(db,user){
 export async function deleteFullAccountData(db,user){
  const nowIso=new Date().toISOString();
  const normalized=await hasNormalizedTables(db);
- if(!normalized)throw Object.assign(Error('حذف الحساب يتطلب ترحيل مخزن إبطال الجلسات أولًا.'),{status:503});
+ if(!normalized)throw apiError('ACCOUNT_DELETION_MIGRATION_REQUIRED','Account deletion requires normalized session revocation tables to be migrated.',{status:503});
  const coachingReady=await hasCoachingTables(db);
  const nativeAuthReady=await hasNativeAuthTables(db);
  const tables=['coaching_accounts','coaching_requests','coaching_plans','coaching_changes','coaching_workout_plans'];
  if(normalized){
   tables.push('coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_auth_sessions');
  }
- // Simulation profiles can contain copied health data. Erase both owned namespaces
- // in the same transaction and close both to already authenticated in-flight writes.
  // Legacy claim tombstones record the verified destination identity in device_id.
- // They let erasure cover anonymous simulation copies left by older releases.
- const claims=user.startsWith('__simulation__:')?[]:(await db.prepare("SELECT user_id FROM coaching_auth_sessions WHERE session_id='__claimed__' AND device_id=? AND revoked_at IS NOT NULL").bind(user).all()).results||[];
- const owners=[...new Set([user,...claims.map(row=>row.user_id)])];
- const identities=[...new Set((await Promise.all(owners.map(async identity=>identity.startsWith('__simulation__:')?[identity]:[identity,'__simulation__:'+await sha256Hex(identity)]))).flat())];
+ const claims=(await db.prepare("SELECT user_id FROM coaching_auth_sessions WHERE session_id='__claimed__' AND device_id=? AND revoked_at IS NOT NULL").bind(user).all()).results||[];
+ const identities=[...new Set([user,...claims.map(row=>row.user_id)])];
  if(coachingReady)tables.push('coaching_cases','coaching_feedback');
  if(nativeAuthReady)tables.push('coaching_refresh_tokens','coaching_users');
  const stmts=identities.flatMap(identity=>tables.map(t=>db.prepare(`DELETE FROM ${t} WHERE user_id=?`).bind(identity)));

@@ -42,7 +42,7 @@ test('recovery proposal text describes variable set reduction truthfully',()=>wi
 }));
 test('an adaptation cannot be accepted exactly at its expiry boundary',()=>withClock(now,()=>{
  const {s,proposal}=reviewed();proposal.expiresAt=new Date(now).toISOString();
- assert.throws(()=>command(s,'adaptation',{id:proposal.id,accept:true}),/انتهت/);
+ assert.throws(()=>command(s,'adaptation',{id:proposal.id,accept:true}),e=>e.code==='ADAPTATION_EXPIRED'&&/expired/i.test(e.message));
  assert.equal(s.sessionAdjustment,null);
 }));
 test('first check-in follow-up cites measured sleep without inventing a personal baseline',()=>{

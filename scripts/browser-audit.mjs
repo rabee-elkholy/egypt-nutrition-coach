@@ -20,7 +20,7 @@ try{
   const today=await page.locator('#diary-date').inputValue(),previous=new Date(today+'T12:00:00Z');previous.setUTCDate(previous.getUTCDate()-1);
   await page.locator('#diary-date').fill(previous.toISOString().slice(0,10));assert.equal(await page.locator('#manual-food [name=name]').inputValue(),'');
   await page.locator('#food-diary details > summary').click();await page.locator('#diary-date').fill(today);assert.equal(await page.locator('#manual-food [name=name]').inputValue(),'مسودة محفوظة');
-  const catalog=await (await context.request.get(origin+'/v1/exercises?q=squat')).json(),base=catalog.items[0];
+  const catalog=(await (await context.request.get(origin+'/v1/exercises?q=squat')).json()).data,base=catalog.items[0];
   let releaseSlow,seenSlow;const slowSeen=new Promise(resolve=>seenSlow=resolve),slowGate=new Promise(resolve=>releaseSlow=resolve);
   await page.route('**/v1/exercises?*',async route=>{const q=new URL(route.request().url()).searchParams.get('q');if(q==='slow'){seenSlow();await slowGate;}await route.fulfill({contentType:'application/json',body:JSON.stringify({total:1,items:[{...base,name:q==='slow'?'Slow result':'Fast result'}],nextOffset:null})});});
   await page.locator('[data-tab=catalog]').click();await page.locator('#catalog-search input').fill('slow');await page.locator('#catalog-search button').click();await slowSeen;
@@ -36,10 +36,10 @@ try{
   await page.locator('#food-diary details > summary').click();await page.locator('#manual-food [name=name]').fill('قهوة واحدة');await page.locator('#manual-food [name=energy]').fill('50');
   let lost=0;await page.route('**/v1/commands',async route=>{await route.fetch();lost++;await route.abort('connectionreset');});
   await page.locator('#manual-food button').click();await page.locator('#retry-uncertain-write').waitFor();await settled();assert.equal(lost,2);
-  let s=await (await context.request.get(origin+'/v1/state')).json();assert.equal(s.foodEntries.length,1);
-  await page.locator('[data-tab=recovery]').click();await page.locator('#weight-log [name=kg]').fill('79');await page.locator('#weight-log button').click();await page.locator('#retry-uncertain-write').waitFor();s=await (await context.request.get(origin+'/v1/state')).json();assert.equal(s.weights.length,0);
+  let s=(await (await context.request.get(origin+'/v1/state')).json()).data;assert.equal(s.foodEntries.length,1);
+  await page.locator('[data-tab=recovery]').click();await page.locator('#weight-log [name=kg]').fill('79');await page.locator('#weight-log button').click();await page.locator('#retry-uncertain-write').waitFor();s=(await (await context.request.get(origin+'/v1/state')).json()).data;assert.equal(s.weights.length,0);
   await page.unroute('**/v1/commands');await page.locator('#retry-uncertain-write').click();await page.locator('.diary-row').filter({hasText:'قهوة واحدة'}).waitFor({state:'attached'});await settled();
-  s=await (await context.request.get(origin+'/v1/state')).json();assert.equal(s.foodEntries.length,1);assert.equal(await page.locator('#manual-food [name=name]').inputValue(),'');assert.equal(await page.locator('#weight-log [name=kg]').inputValue(),'79');assert.deepEqual(errors,[]);
+  s=(await (await context.request.get(origin+'/v1/state')).json()).data;assert.equal(s.foodEntries.length,1);assert.equal(await page.locator('#manual-food [name=name]').inputValue(),'');assert.equal(await page.locator('#weight-log [name=kg]').inputValue(),'79');assert.deepEqual(errors,[]);
   await context.close();
  }
  console.log('Browser audit passed: unsubmitted drafts, date isolation, out-of-order searches, stale response after navigation, two lost post-commit responses, safe same-key retry, and blocked unrelated writes while uncertain.');

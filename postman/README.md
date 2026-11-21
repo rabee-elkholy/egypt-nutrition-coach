@@ -1,49 +1,49 @@
-# Egypt Nutrition Coach (CuraFit) — Postman Collection & Cloudflare API Guide
+# CuraFit API v1 — Postman Collection & Cloudflare Workers Guide
 
-هذا المجلد يحتوي على **Postman Collection جاهزة للاستخدام المباشر** مع بيئتين (Production على Cloudflare Workers و Local Dev على Miniflare)، تعمل بالكامل على **Cloudflare Workers + Cloudflare D1** بدون أي اعتماد على Supabase.
+This directory contains the ready-to-use **Postman Collection v2.1** (`12` folders / `77` endpoints) and **three environment presets** (**Cloud Dev**, **Production**, and **Local Dev**) running natively on **Cloudflare Workers + Cloudflare D1** with zero external IdP or Supabase dependency.
 
-## الملفات المتوفرة
+## Files
 
-| الملف | الوصف |
-| --- | --- |
-| `Egypt_Nutrition_Coach_API.postman_collection.json` | الكولليكشن الكاملة (Postman v2.1) — 13 مجلد تغطي **كل** endpoints الـ API و**كل** الـ 30 command action مع أتمتة كاملة للتوكنات والـ `revision` والـ `Idempotency-Key` |
-| `Cloudflare_Production.postman_environment.json` | بيئة الإنتاج على `https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev` |
-| `Local_Dev.postman_environment.json` | بيئة التشغيل المحلي على `http://127.0.0.1:8787` (`npm run dev`) |
+| File | Description |
+| :--- | :--- |
+| `CuraFit_API.postman_collection.json` | Complete Postman v2.1 collection covering all routes and `/v1/commands` actions with automated JWT, `revision`, and `Idempotency-Key` handling |
+| `CuraFit_Cloud_Dev.postman_environment.json` | Cloud Dev environment (`dev` branch) -> `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` bound to D1 `curafit-db-dev` (full clone of Production D1) |
+| `CuraFit_Production.postman_environment.json` | Production environment (`main` branch) -> `https://curafit-api.egypt-nutrition-coach.workers.dev` bound to D1 `egypt-nutrition-coaching` |
+| `CuraFit_Local_Dev.postman_environment.json` | Local Miniflare environment (`npm run dev`) -> `http://127.0.0.1:8787` |
 
-## خطوات التشغيل السريع في Postman
+## Quick Start in Postman
 
-1. افتح Postman واضغط **Import**.
-2. استورد ملف الكولليكشن `Egypt_Nutrition_Coach_API.postman_collection.json` + ملف البيئة المطلوب (`Cloudflare_Production` أو `Local_Dev`).
-3. اختر البيئة من أعلى اليمين في Postman.
-4. ابدأ بالترتيب التالي (كل المتغيرات بتتحفظ أوتوماتيك):
-   1. `01. System & Health` -> **Health Check** و **Capabilities Manifest**
-   2. `02. Authentication (Cloudflare Native D1)` -> **Register User** (أو **Login User** لو مسجل بالفعل)
-      - بيحفظ `accessToken`, `refreshToken`, `sessionId`, `userId` تلقائيًا في متغيرات الكولليكشن.
-   3. `03. Onboarding & Pre-Screening` -> **Pre-Screening Eligibility Check** ثم **Generate Initial Plan**
-      - بيحفظ `revision`, `activePlanId`, `activeWorkoutPlanId`, `todayDate`, `sampleMealId`, `sampleDayIndex`, `sampleExerciseId`, `sampleRescheduleDate` تلقائيًا.
-   4. جرّب أي Endpoint تاني في باقي المجلدات (التغذية، المية، الوزن، التمارين، الاستشفاء، البدائل، الكتالوج، المزامنة، المحاكاة 90 يوم، وتصدير/حذف الحساب).
+1. Open Postman and click **Import** (or open the workspace directly).
+2. Import `CuraFit_API.postman_collection.json` along with `CuraFit_Cloud_Dev.postman_environment.json`, `CuraFit_Production.postman_environment.json`, and `CuraFit_Local_Dev.postman_environment.json`.
+3. Select **CuraFit — Cloud Dev** from the environment selector in the top-right corner for development and QA testing.
+4. Enter your local test password in the `testPassword` / `testNewPassword` environment variables (left blank in Git/public docs by design).
+5. Run requests in sequence (collection variables auto-populate from `res.data` and `res.meta`):
+   1. `01. System & Health` -> **Health Check** and **Capabilities Manifest**
+   2. `02. Authentication (Cloudflare Native D1)` -> **Register User** (or **Login User**), which automatically saves `accessToken`, `refreshToken`, `sessionId`, and `userId`
+   3. `03. Onboarding & Pre-Screening` -> **Pre-Screening Eligibility Check** then **Generate Initial Plan**, which saves `revision`, `activePlanId`, `activeWorkoutPlanId`, `todayDate`, `sampleMealId`, `sampleDayIndex`, `sampleExerciseId`, and `sampleRescheduleDate`
+   4. Exercise any domain endpoints across Nutrition, Hydration, Weight, Workouts, Recovery, Coaching, Catalog, Sync, and Privacy/GDPR.
 
-## أتمتة جاهزة داخل الكولليكشن
+## Uniform KMM Envelopes & Automation
 
-- **`Idempotency-Key` أوتوماتيك**: الـ Pre-request script يولّد UUID جديد قبل كل طلب كتابة.
-- **مزامنة `revision` أوتوماتيك**: الـ Test script يحدّث `revision` (و `simRevision` في وضع `?simulation=1`) بعد كل استجابة ناجحة لمنع أخطاء `409 REVISION_CONFLICT`.
-- **حفظ الـ Tokens أوتوماتيك**: `Register`, `Login`, و `Refresh` يحدّثوا `accessToken` و `refreshToken` تلقائيًا.
+- **Success (`2xx`):** `{ "ok": true, "data": T, "meta": { "requestId", "serverTime", "revision"? } }`
+- **Error (`4xx` / `5xx`):** `{ "ok": false, "error": { "code", "message", "params", "fieldErrors", "retryable", "details"? }, "meta": { "requestId", "serverTime" } }`
+- **Pure-English Error Contract:** All error messages returned by the API are English-only; client apps localize user-facing copy by `error.code` and `error.params` using [`../docs/ERROR_CODES.md`](../docs/ERROR_CODES.md) and [`../contracts/error-codes.json`](../contracts/error-codes.json).
+- **Automatic `Idempotency-Key`:** The collection pre-request script generates a fresh UUID before each request.
+- **Automatic `revision` & JWT Capture:** Post-response scripts unwrap `res.data` and `res.meta.revision` to keep optimistic concurrency and Bearer tokens updated automatically.
 
-## إعداد Cloudflare Production قبل الاستخدام الأول للـ Auth
-
-على Cloudflare Worker (`egypt-nutrition-coach`)، تأكد من تطبيق المايجريشن الجديد `0005_native_auth.sql` وإضافة سر توقيع JWT مرة واحدة:
+## Development & Promotion Flow (`dev` -> `main`)
 
 ```powershell
 cd e:\Egypt_Nutrition_Local\website\dist
-npx.cmd wrangler secret put AUTH_JWT_SECRET --config wrangler.jsonc
-npm.cmd run deploy:d1
-npm.cmd run deploy
+npm.cmd run check
+npm.cmd run deploy:dev     # Deploy and verify on Cloud Dev (curafit-api-dev)
+npm.cmd run deploy:prod    # Promote to Production (curafit-api) after fast-forward merge to main
 ```
 
-> للتشغيل المحلي المباشر بدون إعدادات:
-> ```powershell
-> cd e:\Egypt_Nutrition_Local\website\dist
-> npm.cmd run build
-> npm.cmd run dev
-> ```
-> ثم اختر بيئة `Local_Dev` في Postman وجرّب فورًا على `http://127.0.0.1:8787`.
+For local Miniflare development:
+
+```powershell
+cd e:\Egypt_Nutrition_Local\website\dist
+npm.cmd run build
+npm.cmd run dev
+```

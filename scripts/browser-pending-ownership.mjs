@@ -22,7 +22,7 @@ try{
    data:{revision:0,action:'generate',payload:{name:'Ownership',age:30,weight:80,height:175,sex:'male',goal:'lose',serviceTrack:'nutrition_only',dietType:'balanced'}}
   });
   assert.equal(generation.status(),200);
-  const initial=await generation.json();
+  const initial=(await generation.json()).data;
   let firstKey,secondKey,releaseFirst,releaseSecond;
   const seen=[];
   await page.route('**/v1/commands',async route=>{
@@ -70,7 +70,7 @@ try{
   assert.equal(await page.locator('#planner-view').getAttribute('aria-busy'),'true');
   releaseSecond();
   await page.waitForFunction(()=>document.querySelector('#planner-view')._coachSession.uncertainWrite===null);
-  const final=await(await context.request.get(origin+'/v1/state')).json();
+  const final=(await(await context.request.get(origin+'/v1/state')).json()).data;
   assert.equal(final.revision,initial.revision+2);
   assert.equal(final.waterLogs[0].cups,3);
   assert.equal(seen.filter(item=>item.key===firstKey).length,2);

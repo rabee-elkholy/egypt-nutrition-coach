@@ -11,8 +11,8 @@ const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SH
 async function anonymousIdentity(uid,env,checkLegacy){
  const opaque='anon:'+await hash(uid);
  if(!checkLegacy||!env.DB)return opaque;
- const legacy='anon:'+uid,simulation='__simulation__:'+await hash(legacy);
- const row=await env.DB.prepare('SELECT user_id FROM coaching_accounts WHERE user_id IN (?,?) LIMIT 1').bind(legacy,simulation).first();
+ const legacy='anon:'+uid;
+ const row=await env.DB.prepare('SELECT user_id FROM coaching_accounts WHERE user_id=? LIMIT 1').bind(legacy).first();
  if(row)return legacy;
  try{
   const closed=await env.DB.prepare("SELECT session_id FROM coaching_auth_sessions WHERE user_id=? AND session_id IN ('__deleted__','__claimed__') LIMIT 1").bind(legacy).first();
@@ -54,7 +54,7 @@ export default {
     let existingIdentity=null;
     if(existing){
       try{existingIdentity=await anonymousIdentity(existing,env,true);}
-      catch{return Response.json(formatErrorBody('تعذر التحقق من الجلسة.',503),{status:503,headers:{'Cache-Control':'no-store'}});}
+      catch{return Response.json(formatErrorBody('Unable to verify session state; retry shortly.',503,null,{code:'AUTH_SESSION_CHECK_UNAVAILABLE',retryable:true}),{status:503,headers:{'Cache-Control':'no-store'}});}
       headers.set('x-anonymous-cookie-uid',existingIdentity);
     }
 
