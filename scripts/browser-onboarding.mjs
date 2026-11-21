@@ -1,4 +1,4 @@
-import {chromium} from '@playwright/test';import assert from 'node:assert/strict';
+import {chromium} from '@playwright/test';import assert from 'node:assert/strict';import os from 'node:os';import path from 'node:path';
 const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{})}),origin='http://127.0.0.1:8787';
 try{
  for(const [serviceTrack,region] of [['workouts_only','egypt'],['nutrition_only','egypt'],['nutrition_and_workouts','egypt'],['nutrition_only','gulf'],['nutrition_only','levant'],['nutrition_only','maghreb']]){
@@ -20,7 +20,7 @@ try{
     assert.equal(await page.locator(`[data-region-choice="${region}"]`).getAttribute('aria-pressed'),'true');
     assert.equal(await page.locator('#summary-region-select').inputValue(),region);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Region picker must fit viewport');
-    if(region==='maghreb')await page.screenshot({path:'/tmp/regional-onboarding-mobile.png',fullPage:true});
+    if(region==='maghreb')await page.screenshot({path:path.join(os.tmpdir(),'regional-onboarding-mobile.png'),fullPage:true});
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('egypt-nutrition-onboarding-draft-v2')).draft.region),region);
     regionSelected=true;
    }

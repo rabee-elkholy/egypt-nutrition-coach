@@ -69,9 +69,10 @@ export default {
     if (existing) return response;
 
     const out = new Response(response.body, response);
+    const secureAttr = url.protocol === 'https:' ? '; Secure' : '';
     out.headers.append(
       'Set-Cookie',
-      `${COOKIE}=${uid}; Path=/; Max-Age=${ONE_YEAR}; HttpOnly; Secure; SameSite=Lax`
+      `${COOKIE}=${uid}; Path=/; Max-Age=${ONE_YEAR}; HttpOnly${secureAttr}; SameSite=Lax`
     );
     return out;
   }

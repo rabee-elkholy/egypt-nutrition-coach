@@ -189,7 +189,8 @@ export default {async fetch(request,env){
    const anonState=await loadAccount(env.DB,anonId);
    anonState.revision=(targetRow?.revision||0)+1;
    await saveAccount(env.DB,identity,anonState,targetRow?.revision||0,{key:'claim-'+anonId,digest:'claim',action:'claim_anonymous',claimSource:{userId:anonId,revision:anonRow.revision}});
-   return json({claimed:true,fromAnonymousId:anonId,toUserId:identity,revision:anonState.revision},200,{'Set-Cookie':'coach_uid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax'},reqId);
+   const clearSecure = url.protocol === 'https:' ? '; Secure' : '';
+   return json({claimed:true,fromAnonymousId:anonId,toUserId:identity,revision:anonState.revision},200,{'Set-Cookie':`coach_uid=; Path=/; Max-Age=0; HttpOnly${clearSecure}; SameSite=Lax`},reqId);
   }
 
   // Account Privacy, Export & Deletion Endpoints
