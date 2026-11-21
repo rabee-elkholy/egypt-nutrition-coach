@@ -12,6 +12,7 @@ import {loadAccount,saveAccount,canonicalCommandDigest,exportFullAccountData,del
 import {mealAlternatives,dayTotals} from './food.mjs';
 import {searchFoodCatalog,getFoodCatalogItem,getFoodCatalogManifest,calculatePreparedBeverageOrRecipe} from './food-catalog.mjs';
 import {authenticateRequest,checkRateLimit} from './auth.mjs';
+import {registerUser,loginUser,refreshUserSession,logoutUserSession,changeUserPassword,revokeRefreshTokensForSession} from './native-auth.mjs';
 import {formatErrorBody,createApiError,logEvent} from './logger.mjs';
 import {personalBrief} from '../personal-brief.mjs';
 import {localDate,integer,validDate} from '../coaching-shared.mjs';
@@ -51,9 +52,24 @@ export default {async fetch(request,env){
 
  if(url.pathname==='/v1/health'&&request.method!=='GET')return errorJson('GET فقط.',405,reqId,{code:'METHOD_NOT_ALLOWED'},{Allow:'GET'});
  if(url.pathname==='/v1/health')return json({ok:true,apiVersion:'1',engineVersion:'0.13.0',requestId:reqId},200,{},reqId);
- if(url.pathname==='/v1/capabilities'&&request.method==='GET')return json({apiVersion:'1',schemaVersion:3,engineVersion:'0.13.0',catalogVersion:catalog.manifest.version,foodCatalogVersion:getFoodCatalogManifest().version,serverTime:isoNow(),requestId:reqId,features:['adaptive_nutrition','adaptive_workouts','recovery_readiness','simulation_90d','eligibility_screening','progress_summary','kmm_bootstrap','delta_receipts','offline_sync_v2','arabic_food_catalog','multi_timezone','account_export_delete','coaching_agreements','coaching_feedback','automatic_evidence_review']},200,{},reqId);
+ if(url.pathname==='/v1/capabilities'&&request.method==='GET')return json({apiVersion:'1',schemaVersion:3,engineVersion:'0.13.0',catalogVersion:catalog.manifest.version,foodCatalogVersion:getFoodCatalogManifest().version,serverTime:isoNow(),requestId:reqId,auth:{provider:'cloudflare_d1_native',configured:Boolean(env?.AUTH_JWT_SECRET)},features:['adaptive_nutrition','adaptive_workouts','recovery_readiness','simulation_90d','eligibility_screening','progress_summary','kmm_bootstrap','delta_receipts','offline_sync_v2','arabic_food_catalog','multi_timezone','account_export_delete','coaching_agreements','coaching_feedback','automatic_evidence_review','native_cloudflare_auth']},200,{},reqId);
 
  try{
+  // First-Party Cloudflare Workers + D1 Public Auth Endpoints (no external IdP / no Supabase)
+  if(url.pathname==='/v1/auth/register'||url.pathname==='/v1/auth/login'||url.pathname==='/v1/auth/refresh'){
+   if(request.method!=='POST')return errorJson('POST فقط.',405,reqId,{code:'METHOD_NOT_ALLOWED'},{Allow:'POST'});
+   if(request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)throw createApiError('Origin غير مسموح.',403,{code:'ORIGIN_FORBIDDEN'});
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('JSON مطلوب.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   if(!env.DB)return errorJson('قاعدة البيانات غير متاحة.',503,reqId,{code:'DATABASE_UNAVAILABLE',retryable:true});
+   const clientKey='auth:'+(request.headers.get('CF-Connecting-IP')||request.headers.get('X-Forwarded-For')||'local');
+   checkRateLimit(clientKey,'auth',env);
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('صيغة الطلب غير صالحة.',400,reqId);
+   if(url.pathname==='/v1/auth/register')return json(await registerUser(env.DB,env,body,request),201,{},reqId);
+   if(url.pathname==='/v1/auth/login')return json(await loginUser(env.DB,env,body,request),200,{},reqId);
+   return json(await refreshUserSession(env.DB,env,body,request),200,{},reqId);
+  }
+
   const auth=await authenticateRequest(request,env);
   const identity=auth.userId;
   checkRateLimit(identity,request.method==='GET'?'read':'write',env);
@@ -134,7 +150,23 @@ export default {async fetch(request,env){
    if(body?.allDevices!==true&&(typeof targetSession!=='string'||!targetSession||targetSession.length>200||targetSession.startsWith('__')))throw createApiError('معرّف الجلسة غير صالح.',400,{code:'INVALID_SESSION_ID'});
    const nowIso=new Date().toISOString();
    await env.DB.prepare('INSERT OR REPLACE INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?)').bind(identity,String(targetSession),auth.deviceId||'manual',nowIso,null,nowIso).run();
+   await revokeRefreshTokensForSession(env.DB,identity,targetSession,nowIso);
    return json({revoked:true,sessionId:targetSession,revokedAt:nowIso},200,{},reqId);
+  }
+
+  if(request.method==='POST'&&url.pathname==='/v1/auth/logout'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('JSON مطلوب.',415,reqId);
+   const rawBody=await requestJson(request);
+   const body=rawBody.trim()?JSON.parse(rawBody):{};
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('صيغة الطلب غير صالحة.',400,reqId);
+   return json(await logoutUserSession(env.DB,auth,body),200,{},reqId);
+  }
+
+  if(request.method==='POST'&&url.pathname==='/v1/auth/change-password'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('JSON مطلوب.',415,reqId);
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('صيغة الطلب غير صالحة.',400,reqId);
+   return json(await changeUserPassword(env.DB,auth,body),200,{},reqId);
   }
 
   if(request.method==='POST'&&url.pathname==='/v1/auth/claim-anonymous'){

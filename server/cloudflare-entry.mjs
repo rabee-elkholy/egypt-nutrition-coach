@@ -47,7 +47,8 @@ export default {
     headers.delete('oai-authenticated-user-id');
     headers.delete('x-anonymous-cookie-uid');
 
-    if(url.pathname==='/v1/health'||url.pathname==='/v1/capabilities'||request.method==='OPTIONS')return app.fetch(new Request(request,{headers}),env,ctx);
+    const PUBLIC_PATHS=new Set(['/v1/health','/v1/capabilities','/v1/auth/register','/v1/auth/login','/v1/auth/refresh']);
+    if(PUBLIC_PATHS.has(url.pathname)||request.method==='OPTIONS')return app.fetch(new Request(request,{headers}),env,ctx);
     const hasBearer = /^Bearer\s+\S+/i.test(headers.get('Authorization') || '');
     const existing = readAnonCookie(request);
     let existingIdentity=null;

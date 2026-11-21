@@ -1,9 +1,10 @@
-// Pluggable Authentication, JWT Verifier, Session Revocation, Rate Limiting & Privacy Guardrails
+// Cloudflare Workers + D1 Authentication, JWT Verifier, Session Revocation, Rate Limiting & Privacy Guardrails
 // Supports:
-// 1. Bearer JWT verification (HMAC-SHA256 / RSASSA-PKCS1-v1_5 / ECDSA P-256 via WebCrypto SubtleCrypto)
-// 2. Pluggable Identity Provider config (Firebase Auth / Supabase Auth / Custom OIDC) via env vars
-// 3. Trusted platform header (`oai-authenticated-user-id`) when injected by trusted gateway or local test harness
-// 4. Explicit anonymous session cookie (`coach_uid`) via `server/cloudflare-entry.mjs` for Web MVP trial
+// 1. First-party Cloudflare Workers + D1 JWT Auth (`server/native-auth.mjs`: register/login/refresh/logout)
+// 2. Bearer JWT verification (HMAC-SHA256 / RSASSA-PKCS1-v1_5 / ECDSA P-256 via WebCrypto SubtleCrypto)
+// 3. Optional external OIDC/JWKS verification via env vars (`AUTH_JWKS_URI` / `AUTH_JWKS_JSON`)
+// 4. Trusted platform header (`oai-authenticated-user-id`) when injected by trusted gateway or local test harness
+// 5. Explicit anonymous session cookie (`coach_uid`) via `server/cloudflare-entry.mjs` for Web MVP trial
 
 import { createApiError } from './logger.mjs';
 
@@ -244,7 +245,8 @@ const RATE_WINDOW_MS = 60_000;
 const MEM_RATE_LIMITS = new Map();
 
 export function checkRateLimit(userId, actionCategory = 'read', env = {}) {
-  const maxPerMinute = Number(env?.RATE_LIMIT_PER_MINUTE) || (actionCategory === 'write' ? 120 : 300);
+  const defaultLimit = actionCategory === 'auth' ? 30 : (actionCategory === 'write' ? 120 : 300);
+  const maxPerMinute = Number(env?.RATE_LIMIT_PER_MINUTE) || defaultLimit;
   const now = Date.now();
   const windowKey = `${userId}:${actionCategory}:${Math.floor(now / RATE_WINDOW_MS)}`;
   const current = (MEM_RATE_LIMITS.get(windowKey) || 0) + 1;

@@ -33,6 +33,11 @@ async function hasCoachingTables(db){
  return result?.total===2;
 }
 
+async function hasNativeAuthTables(db){
+ const result=await db.prepare("SELECT COUNT(*) AS total FROM sqlite_master WHERE type='table' AND name IN ('coaching_users','coaching_refresh_tokens')").first();
+ return result?.total===2;
+}
+
 export async function loadAccount(db,user){
  const coachingReady=await hasCoachingTables(db);
  const row=await db.prepare('SELECT revision,body FROM coaching_accounts WHERE user_id=?').bind(user).first();
@@ -340,6 +345,7 @@ export async function deleteFullAccountData(db,user){
  const normalized=await hasNormalizedTables(db);
  if(!normalized)throw Object.assign(Error('حذف الحساب يتطلب ترحيل مخزن إبطال الجلسات أولًا.'),{status:503});
  const coachingReady=await hasCoachingTables(db);
+ const nativeAuthReady=await hasNativeAuthTables(db);
  const tables=['coaching_accounts','coaching_requests','coaching_plans','coaching_changes','coaching_workout_plans'];
  if(normalized){
   tables.push('coaching_food_entries','coaching_water_logs','coaching_weight_logs','coaching_workout_logs','coaching_sessions','coaching_checkins','coaching_sync_outbox','coaching_account_consents','coaching_auth_sessions');
@@ -352,6 +358,7 @@ export async function deleteFullAccountData(db,user){
  const owners=[...new Set([user,...claims.map(row=>row.user_id)])];
  const identities=[...new Set((await Promise.all(owners.map(async identity=>identity.startsWith('__simulation__:')?[identity]:[identity,'__simulation__:'+await sha256Hex(identity)]))).flat())];
  if(coachingReady)tables.push('coaching_cases','coaching_feedback');
+ if(nativeAuthReady)tables.push('coaching_refresh_tokens','coaching_users');
  const stmts=identities.flatMap(identity=>tables.map(t=>db.prepare(`DELETE FROM ${t} WHERE user_id=?`).bind(identity)));
  if(normalized){
   for(const identity of identities)stmts.push(db.prepare('INSERT INTO coaching_auth_sessions(user_id,session_id,device_id,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?)').bind(identity,'__deleted__','system',nowIso,null,nowIso));

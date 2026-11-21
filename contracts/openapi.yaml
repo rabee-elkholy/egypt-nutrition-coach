@@ -4,8 +4,8 @@ info:
   version: 1.0.0
   summary: REST API integration contract v1 for Kotlin Multiplatform (KMM) Android & iOS clients and Web MVP.
   description: |
-    Canonical API contract for Egypt Nutrition Coach (`v0.12.0`).
-    - **Authentication**: Mobile KMM clients authenticate via `Authorization: Bearer <JWT>` (RS256/ES256/HS256 verified against configured OIDC/JWKS). Web MVP uses an `HttpOnly` `coach_uid` cookie adapter.
+    Canonical API contract for Egypt Nutrition Coach (`v0.13.0`) on Cloudflare Workers + Cloudflare D1.
+    - **Authentication (Cloudflare Native)**: First-party email/password authentication via `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, and `POST /v1/auth/logout` backed by Cloudflare D1. Mobile KMM and API clients send `Authorization: Bearer <JWT>` (HS256 signed by the Worker; RS256/ES256 JWKS also supported). Web MVP continues to support the `HttpOnly` `coach_uid` anonymous session cookie adapter.
     - **Idempotency**: All `POST /v1/commands` writes require a unique `Idempotency-Key` header (UUID) and `revision` integer. Canonical JSON hashing guarantees key-order-independent retry safety.
     - **Slim Responses**: Append `?view=receipt` or send `Prefer: return=minimal` on `POST /v1/commands` to receive a compact delta receipt (size depends on affected entities) instead of the full state aggregate.
     - **Timezones & Dates**: Timestamps are `ISO-8601 UTC` (`YYYY-MM-DDTHH:mm:ss.sssZ`). Local calendar dates are `YYYY-MM-DD` evaluated in the user's configured IANA timezone (`Africa/Cairo`, `Asia/Riyadh`, `Asia/Dubai`, etc.).
@@ -672,6 +672,114 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncChangesResponse"
+  /v1/auth/register:
+    post:
+      operationId: registerAuthUser
+      summary: Register a new user account on Cloudflare D1 and issue Access JWT + rotating Refresh Token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRegisterRequest"
+      responses:
+        "201":
+          description: User registered and session issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+  /v1/auth/login:
+    post:
+      operationId: loginAuthUser
+      summary: Authenticate with email and password on Cloudflare D1 and issue Access JWT + Refresh Token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLoginRequest"
+      responses:
+        "200":
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+  /v1/auth/refresh:
+    post:
+      operationId: refreshAuthToken
+      summary: Rotate an active Refresh Token and issue a fresh Access JWT + Refresh Token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRefreshRequest"
+      responses:
+        "200":
+          description: Session refreshed and token rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+  /v1/auth/logout:
+    post:
+      operationId: logoutAuthSession
+      summary: Revoke current device session (or all devices) and invalidate associated refresh tokens
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLogoutRequest"
+      responses:
+        "200":
+          description: Logged out cleanly
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+  /v1/auth/change-password:
+    post:
+      operationId: changeAuthPassword
+      summary: Verify current password, update PBKDF2-SHA256 hash in D1, and optionally revoke other sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthChangePasswordRequest"
+      responses:
+        "200":
+          description: Password updated
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
   /v1/auth/session:
     get:
       operationId: getAuthSession
@@ -1634,3 +1742,128 @@ components:
           type: boolean
         resyncRequired:
           type: boolean
+    AuthRegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 160
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        name:
+          type: string
+          maxLength: 100
+        deviceId:
+          type: string
+          maxLength: 120
+    AuthLoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        deviceId:
+          type: string
+          maxLength: 120
+    AuthRefreshRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+        deviceId:
+          type: string
+          maxLength: 120
+    AuthLogoutRequest:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        allDevices:
+          type: boolean
+    AuthChangePasswordRequest:
+      type: object
+      required:
+        - currentPassword
+        - newPassword
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 128
+        revokeOtherSessions:
+          type: boolean
+          default: true
+    AuthUser:
+      type: object
+      required:
+        - userId
+        - email
+        - entitlement
+        - createdAt
+      properties:
+        userId:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type:
+            - string
+            - "null"
+        entitlement:
+          type: string
+          enum:
+            - free
+            - premium
+        createdAt:
+          type: string
+          format: date-time
+    AuthTokenResponse:
+      type: object
+      required:
+        - tokenType
+        - accessToken
+        - expiresIn
+        - expiresAt
+        - refreshToken
+        - refreshExpiresIn
+        - refreshExpiresAt
+        - sessionId
+        - user
+      properties:
+        tokenType:
+          type: string
+          const: Bearer
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+        expiresAt:
+          type: string
+          format: date-time
+        refreshToken:
+          type: string
+        refreshExpiresIn:
+          type: integer
+        refreshExpiresAt:
+          type: string
+          format: date-time
+        sessionId:
+          type: string
+        user:
+          $ref: "#/components/schemas/AuthUser"

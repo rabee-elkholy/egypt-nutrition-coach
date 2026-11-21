@@ -1,0 +1,4451 @@
+{
+  "info": {
+    "_postman_id": "7c94f8e1-4c9a-4f3b-9b5a-2e8d6a1f0c31",
+    "name": "Egypt Nutrition Coach (CuraFit) — Cloudflare Workers API v1",
+    "description": "Complete, ready-to-use Postman collection for **Egypt Nutrition Coach (CuraFit)** running natively on **Cloudflare Workers + Cloudflare D1** (zero Supabase dependency).\n\n### Quick Start\n1. Import this collection AND one of the environments (`Cloudflare_Production` or `Local_Dev`).\n2. Run **01. System & Health -> Health Check** to verify connectivity.\n3. Run **02. Authentication -> Register** (or **Login**). `accessToken` and `refreshToken` are captured automatically.\n4. Run **03. Onboarding -> Generate Initial Plan**. `revision`, `activePlanId`, `activeWorkoutPlanId`, `sampleMealId`, `sampleExerciseId`, and `todayDate` are captured automatically.\n5. Run any other request in any folder — `Idempotency-Key` and `revision` are updated automatically on every call!",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-generate a unique Idempotency-Key for every write request",
+          "pm.variables.set(\"idempotencyKey\", pm.variables.replaceIn(\"{{$guid}}\"));",
+          "if (!pm.environment.get(\"todayDate\") && !pm.collectionVariables.get(\"todayDate\")) {",
+          "  const now = new Date();",
+          "  const yyyy = now.getUTCFullYear();",
+          "  const mm = String(now.getUTCMonth() + 1).padStart(2, \"0\");",
+          "  const dd = String(now.getUTCDate()).padStart(2, \"0\");",
+          "  pm.collectionVariables.set(\"todayDate\", `${yyyy}-${mm}-${dd}`);",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-sync revision, serverDate, and ETag across requests",
+          "const isSim = pm.request.url.query.has(\"simulation\") && pm.request.url.query.get(\"simulation\") === \"1\";",
+          "const etagHeader = pm.response.headers.get(\"ETag\");",
+          "if (etagHeader) pm.collectionVariables.set(\"lastEtag\", etagHeader);",
+          "if (pm.response.code >= 200 && pm.response.code < 300) {",
+          "  try {",
+          "    const data = pm.response.json();",
+          "    if (typeof data.revision === \"number\") {",
+          "      pm.collectionVariables.set(isSim ? \"simRevision\" : \"revision\", String(data.revision));",
+          "    }",
+          "    if (typeof data.serverDate === \"string\" && !isSim) {",
+          "      pm.collectionVariables.set(\"todayDate\", data.serverDate);",
+          "    }",
+          "    if (Array.isArray(data.pendingAdaptations) && data.pendingAdaptations.length) {",
+          "      pm.collectionVariables.set(\"sampleProposalId\", data.pendingAdaptations[0].id);",
+          "    }",
+          "    if (Array.isArray(data.adaptations)) {",
+          "      const pending = data.adaptations.find(a => a.status === \"pending\");",
+          "      if (pending) pm.collectionVariables.set(\"sampleProposalId\", pending.id);",
+          "    }",
+          "  } catch (e) {}",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev"
+    },
+    {
+      "key": "testEmail",
+      "value": "demo.user@curafit.app"
+    },
+    {
+      "key": "testPassword",
+      "value": "CuraFit#2026!"
+    },
+    {
+      "key": "testNewPassword",
+      "value": "CuraFit#2027!"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "deviceId",
+      "value": "postman-client-01"
+    },
+    {
+      "key": "clientPlatform",
+      "value": "android"
+    },
+    {
+      "key": "clientVersion",
+      "value": "1.0.0"
+    },
+    {
+      "key": "revision",
+      "value": "0"
+    },
+    {
+      "key": "simRevision",
+      "value": "0"
+    },
+    {
+      "key": "todayDate",
+      "value": ""
+    },
+    {
+      "key": "lastEtag",
+      "value": ""
+    },
+    {
+      "key": "activePlanId",
+      "value": ""
+    },
+    {
+      "key": "activeWorkoutPlanId",
+      "value": ""
+    },
+    {
+      "key": "sampleMealId",
+      "value": ""
+    },
+    {
+      "key": "sampleAltTemplateId",
+      "value": ""
+    },
+    {
+      "key": "sampleFoodEntryId",
+      "value": ""
+    },
+    {
+      "key": "sampleDayIndex",
+      "value": "1"
+    },
+    {
+      "key": "sampleExerciseId",
+      "value": ""
+    },
+    {
+      "key": "sampleAltExerciseId",
+      "value": ""
+    },
+    {
+      "key": "sampleRescheduleDate",
+      "value": ""
+    },
+    {
+      "key": "sampleProposalId",
+      "value": ""
+    },
+    {
+      "key": "sampleCaseId",
+      "value": ""
+    },
+    {
+      "key": "sampleFoodId",
+      "value": ""
+    },
+    {
+      "key": "sampleCatalogExerciseId",
+      "value": ""
+    },
+    {
+      "key": "nextSeqCursor",
+      "value": "0"
+    },
+    {
+      "key": "anonymousUserId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "01. System & Health",
+      "description": "Public health and runtime capabilities endpoints (no authentication required).",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Service is healthy\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().ok).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Public health probe returning API version, engine version, and requestId."
+          },
+          "response": []
+        },
+        {
+          "name": "Capabilities Manifest",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Capabilities returned\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const d = pm.response.json();",
+                  "  pm.expect(d.apiVersion).to.eql(\"1\");",
+                  "  pm.expect(d.features).to.include(\"native_cloudflare_auth\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "capabilities"
+              ]
+            },
+            "description": "Returns schemaVersion, catalog versions, enabled features, and Cloudflare native auth readiness."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02. Authentication (Cloudflare Native D1)",
+      "description": "First-party authentication on Cloudflare Workers + Cloudflare D1 using PBKDF2-SHA256 passwords, HS256 Access JWTs (15 min), and rotating D1 Refresh Tokens (30 days).",
+      "item": [
+        {
+          "name": "Register User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Auth token pair returned\", function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "  const d = pm.response.json();",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\");",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\");",
+                  "  pm.collectionVariables.set(\"accessToken\", d.accessToken);",
+                  "  pm.collectionVariables.set(\"refreshToken\", d.refreshToken);",
+                  "  pm.collectionVariables.set(\"sessionId\", d.sessionId);",
+                  "  if (d.user && d.user.userId) pm.collectionVariables.set(\"userId\", d.user.userId);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set(\"revision\", \"0\");",
+                  "  pm.collectionVariables.set(\"simRevision\", \"0\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"name\": \"أحمد محمد\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Creates a new user in Cloudflare D1 and returns Access JWT + Refresh Token. Automatically saves tokens and resets revision=0."
+          },
+          "response": []
+        },
+        {
+          "name": "Login User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Auth token pair returned\", function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "  const d = pm.response.json();",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\");",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\");",
+                  "  pm.collectionVariables.set(\"accessToken\", d.accessToken);",
+                  "  pm.collectionVariables.set(\"refreshToken\", d.refreshToken);",
+                  "  pm.collectionVariables.set(\"sessionId\", d.sessionId);",
+                  "  if (d.user && d.user.userId) pm.collectionVariables.set(\"userId\", d.user.userId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticates an existing user and issues a fresh Access JWT + Refresh Token pair."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Access Token (Rotates Refresh Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Auth token pair returned\", function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "  const d = pm.response.json();",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\");",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\");",
+                  "  pm.collectionVariables.set(\"accessToken\", d.accessToken);",
+                  "  pm.collectionVariables.set(\"refreshToken\", d.refreshToken);",
+                  "  pm.collectionVariables.set(\"sessionId\", d.sessionId);",
+                  "  if (d.user && d.user.userId) pm.collectionVariables.set(\"userId\", d.user.userId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Exchanges the current refreshToken for a new Access JWT and rotated refreshToken. Replaying an already-rotated refresh token automatically revokes the session."
+          },
+          "response": []
+        },
+        {
+          "name": "Inspect Current Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Session active\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const d = pm.response.json();",
+                  "  pm.expect(d.userId).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "session"
+              ]
+            },
+            "description": "Returns authenticated userId, sessionId, authMethod, scopes, entitlement tier, and token timestamps."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{testPassword}}\",\n  \"newPassword\": \"{{testNewPassword}}\",\n  \"revokeOtherSessions\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "change-password"
+              ]
+            },
+            "description": "Verifies currentPassword, updates PBKDF2-SHA256 password hash in D1, and optionally revokes other devices."
+          },
+          "response": []
+        },
+        {
+          "name": "Claim Anonymous Web Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"anonymousUserId\": \"{{anonymousUserId}}\",\n  \"consent\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/claim-anonymous",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "claim-anonymous"
+              ]
+            },
+            "description": "Transfers an anonymous Web MVP trial account into the logged-in verified account (requires the owning coach_uid cookie + explicit consent: true)."
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke Session (Current or All Devices)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{sessionId}}\",\n  \"allDevices\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/revoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "revoke"
+              ]
+            },
+            "description": "Revokes a specific sessionId (or allDevices: true) in D1 immediately."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allDevices\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Cleanly logs out the current session (or allDevices: true) and invalidates refresh tokens."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03. Onboarding & Pre-Screening",
+      "description": "Clinical eligibility screening, initial nutrition & workout plan generation, and plan lifecycle commands.",
+      "item": [
+        {
+          "name": "Pre-Screening Eligibility Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Eligibility evaluated\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.be.oneOf([\"eligible\", \"needs_input\", \"requires_review\"]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"age\": 29,\n  \"sex\": \"male\",\n  \"height\": 178,\n  \"weight\": 82,\n  \"goal\": \"lose\",\n  \"targetWeight\": 75,\n  \"serviceTrack\": \"nutrition_and_workouts\",\n  \"diseases\": [],\n  \"maternalStatus\": \"none\",\n  \"injuries\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/eligibility",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "eligibility"
+              ]
+            },
+            "description": "Deterministic pre-onboarding screening for age, BMI, medical conditions, injuries, and maternal status."
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Initial Plan (Full Response)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "try {\n  const d = pm.response.json();\n  const plan = d.activePlan || (Array.isArray(d.plans) ? d.plans[0] : null);\n  if (plan && plan.id) pm.collectionVariables.set(\"activePlanId\", plan.id);\n  if (d.activeNutritionPlanRef && d.activeNutritionPlanRef.id) pm.collectionVariables.set(\"activePlanId\", d.activeNutritionPlanRef.id);\n  if (plan && Array.isArray(plan.days) && plan.days.length) {\n    const today = d.serverDate || plan.days[0].date;\n    const dayObj = plan.days.find(x => x.date === today) || plan.days[0];\n    if (dayObj && Array.isArray(dayObj.meals) && dayObj.meals.length) {\n      pm.collectionVariables.set(\"sampleMealId\", dayObj.meals[0].id);\n    }\n  }\n  const wp = d.workoutPlan;\n  if (wp && wp.id) pm.collectionVariables.set(\"activeWorkoutPlanId\", wp.id);\n  if (d.activeWorkoutPlanRef && d.activeWorkoutPlanRef.id) pm.collectionVariables.set(\"activeWorkoutPlanId\", d.activeWorkoutPlanRef.id);\n  if (wp && Array.isArray(wp.days) && wp.days.length) {\n    const firstDay = wp.days[0];\n    pm.collectionVariables.set(\"sampleDayIndex\", String(firstDay.dayIndex));\n    if (Array.isArray(firstDay.exercises) && firstDay.exercises.length) {\n      pm.collectionVariables.set(\"sampleExerciseId\", firstDay.exercises[0].id);\n    }\n    // Compute a valid rest-day reschedule target within the next 13 days\n    const workoutDays = new Set(wp.days.map(x => x.dayIndex));\n    const base = new Date((d.serverDate || pm.collectionVariables.get(\"todayDate\")) + \"T12:00:00Z\");\n    for (let i = 1; i <= 13; i++) {\n      const dt = new Date(base.getTime() + i * 86400000);\n      if (!workoutDays.has(dt.getUTCDay())) {\n        pm.collectionVariables.set(\"sampleRescheduleDate\", dt.toISOString().slice(0, 10));\n        break;\n      }\n    }\n  }\n  if (Array.isArray(d.foodEntries) && d.foodEntries.length) {\n    pm.collectionVariables.set(\"sampleFoodEntryId\", d.foodEntries[d.foodEntries.length - 1].id);\n  }\n  if (Array.isArray(d.coachingCases) && d.coachingCases.length) {\n    pm.collectionVariables.set(\"sampleCaseId\", d.coachingCases[d.coachingCases.length - 1].id);\n  }\n} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"generate\",\n  \"payload\": {\n    \"name\": \"أحمد محمد\",\n    \"age\": 29,\n    \"weight\": 82,\n    \"height\": 178,\n    \"sex\": \"male\",\n    \"goal\": \"lose\",\n    \"targetWeight\": 75,\n    \"goalPace\": \"moderate\",\n    \"serviceTrack\": \"nutrition_and_workouts\",\n    \"dailyActivity\": \"light\",\n    \"dietType\": \"balanced\",\n    \"region\": \"egypt\",\n    \"budget\": \"medium\",\n    \"mealsCount\": 4,\n    \"selectedWorkoutDays\": [\n      1,\n      3,\n      5\n    ],\n    \"workoutLocation\": \"gym_only\",\n    \"fitnessLevel\": \"beginner\",\n    \"sessionDuration\": 45,\n    \"healthConfirmed\": true,\n    \"weekdayConvention\": \"js_sunday_0\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=full",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "full"
+                }
+              ]
+            },
+            "description": "Generates the initial 7-day Egyptian/Gulf nutrition plan + adaptive workout plan. Captures activePlanId, activeWorkoutPlanId, sampleMealId, and sampleExerciseId automatically."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Health (Legacy Workouts-Only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"confirm_health\",\n  \"payload\": {\n    \"healthy\": true,\n    \"injuryFree\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Explicit health confirmation for legacy workouts_only accounts that require confirmation before adaptive reviews."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Schedule (Legacy Calendar Migration)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"confirm_schedule\",\n  \"payload\": {\n    \"dayMap\": {\n      \"1\": 1,\n      \"3\": 3,\n      \"5\": 5\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Maps legacy workout day indexes to canonical Sunday=0..Saturday=6 convention."
+          },
+          "response": []
+        },
+        {
+          "name": "Renew Weekly Nutrition Plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"renew_plan\",\n  \"payload\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Generates the next 7-day nutrition week after the current plan expires."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04. Account State & Bootstrap (KMM)",
+      "description": "Account bootstrap (<10 KB), full state snapshot, and 14-day progress analytics with ETag caching.",
+      "item": [
+        {
+          "name": "Get Bootstrap (Lightweight KMM Startup)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Bootstrap loaded\", function () {",
+                  "  pm.expect([200, 304]).to.include(pm.response.code);",
+                  "});",
+                  "try {",
+                  "  const d = pm.response.json();",
+                  "  const plan = d.activePlan || (Array.isArray(d.plans) ? d.plans[0] : null);",
+                  "  if (plan && plan.id) pm.collectionVariables.set(\"activePlanId\", plan.id);",
+                  "  if (d.activeNutritionPlanRef && d.activeNutritionPlanRef.id) pm.collectionVariables.set(\"activePlanId\", d.activeNutritionPlanRef.id);",
+                  "  if (plan && Array.isArray(plan.days) && plan.days.length) {",
+                  "    const today = d.serverDate || plan.days[0].date;",
+                  "    const dayObj = plan.days.find(x => x.date === today) || plan.days[0];",
+                  "    if (dayObj && Array.isArray(dayObj.meals) && dayObj.meals.length) {",
+                  "      pm.collectionVariables.set(\"sampleMealId\", dayObj.meals[0].id);",
+                  "    }",
+                  "  }",
+                  "  const wp = d.workoutPlan;",
+                  "  if (wp && wp.id) pm.collectionVariables.set(\"activeWorkoutPlanId\", wp.id);",
+                  "  if (d.activeWorkoutPlanRef && d.activeWorkoutPlanRef.id) pm.collectionVariables.set(\"activeWorkoutPlanId\", d.activeWorkoutPlanRef.id);",
+                  "  if (wp && Array.isArray(wp.days) && wp.days.length) {",
+                  "    const firstDay = wp.days[0];",
+                  "    pm.collectionVariables.set(\"sampleDayIndex\", String(firstDay.dayIndex));",
+                  "    if (Array.isArray(firstDay.exercises) && firstDay.exercises.length) {",
+                  "      pm.collectionVariables.set(\"sampleExerciseId\", firstDay.exercises[0].id);",
+                  "    }",
+                  "    // Compute a valid rest-day reschedule target within the next 13 days",
+                  "    const workoutDays = new Set(wp.days.map(x => x.dayIndex));",
+                  "    const base = new Date((d.serverDate || pm.collectionVariables.get(\"todayDate\")) + \"T12:00:00Z\");",
+                  "    for (let i = 1; i <= 13; i++) {",
+                  "      const dt = new Date(base.getTime() + i * 86400000);",
+                  "      if (!workoutDays.has(dt.getUTCDay())) {",
+                  "        pm.collectionVariables.set(\"sampleRescheduleDate\", dt.toISOString().slice(0, 10));",
+                  "        break;",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "  if (Array.isArray(d.foodEntries) && d.foodEntries.length) {",
+                  "    pm.collectionVariables.set(\"sampleFoodEntryId\", d.foodEntries[d.foodEntries.length - 1].id);",
+                  "  }",
+                  "  if (Array.isArray(d.coachingCases) && d.coachingCases.length) {",
+                  "    pm.collectionVariables.set(\"sampleCaseId\", d.coachingCases[d.coachingCases.length - 1].id);",
+                  "  }",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "If-None-Match",
+                "value": "",
+                "disabled": true
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/bootstrap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "bootstrap"
+              ]
+            },
+            "description": "Lightweight startup payload (<10 KB) containing profile, active plan refs, todaySummary, pendingAdaptations, and ETag."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Full Account State",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"State loaded\", function () {",
+                  "  pm.expect([200, 304]).to.include(pm.response.code);",
+                  "});",
+                  "try {",
+                  "  const d = pm.response.json();",
+                  "  const plan = d.activePlan || (Array.isArray(d.plans) ? d.plans[0] : null);",
+                  "  if (plan && plan.id) pm.collectionVariables.set(\"activePlanId\", plan.id);",
+                  "  if (d.activeNutritionPlanRef && d.activeNutritionPlanRef.id) pm.collectionVariables.set(\"activePlanId\", d.activeNutritionPlanRef.id);",
+                  "  if (plan && Array.isArray(plan.days) && plan.days.length) {",
+                  "    const today = d.serverDate || plan.days[0].date;",
+                  "    const dayObj = plan.days.find(x => x.date === today) || plan.days[0];",
+                  "    if (dayObj && Array.isArray(dayObj.meals) && dayObj.meals.length) {",
+                  "      pm.collectionVariables.set(\"sampleMealId\", dayObj.meals[0].id);",
+                  "    }",
+                  "  }",
+                  "  const wp = d.workoutPlan;",
+                  "  if (wp && wp.id) pm.collectionVariables.set(\"activeWorkoutPlanId\", wp.id);",
+                  "  if (d.activeWorkoutPlanRef && d.activeWorkoutPlanRef.id) pm.collectionVariables.set(\"activeWorkoutPlanId\", d.activeWorkoutPlanRef.id);",
+                  "  if (wp && Array.isArray(wp.days) && wp.days.length) {",
+                  "    const firstDay = wp.days[0];",
+                  "    pm.collectionVariables.set(\"sampleDayIndex\", String(firstDay.dayIndex));",
+                  "    if (Array.isArray(firstDay.exercises) && firstDay.exercises.length) {",
+                  "      pm.collectionVariables.set(\"sampleExerciseId\", firstDay.exercises[0].id);",
+                  "    }",
+                  "    // Compute a valid rest-day reschedule target within the next 13 days",
+                  "    const workoutDays = new Set(wp.days.map(x => x.dayIndex));",
+                  "    const base = new Date((d.serverDate || pm.collectionVariables.get(\"todayDate\")) + \"T12:00:00Z\");",
+                  "    for (let i = 1; i <= 13; i++) {",
+                  "      const dt = new Date(base.getTime() + i * 86400000);",
+                  "      if (!workoutDays.has(dt.getUTCDay())) {",
+                  "        pm.collectionVariables.set(\"sampleRescheduleDate\", dt.toISOString().slice(0, 10));",
+                  "        break;",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "  if (Array.isArray(d.foodEntries) && d.foodEntries.length) {",
+                  "    pm.collectionVariables.set(\"sampleFoodEntryId\", d.foodEntries[d.foodEntries.length - 1].id);",
+                  "  }",
+                  "  if (Array.isArray(d.coachingCases) && d.coachingCases.length) {",
+                  "    pm.collectionVariables.set(\"sampleCaseId\", d.coachingCases[d.coachingCases.length - 1].id);",
+                  "  }",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "If-None-Match",
+                "value": "",
+                "disabled": true
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/state",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "state"
+              ]
+            },
+            "description": "Full account state including active nutrition plan, workout plan, logs, recovery, and coaching state."
+          },
+          "response": []
+        },
+        {
+          "name": "Get 14-Day Progress Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Progress summary returned\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress",
+                "summary"
+              ]
+            },
+            "description": "Returns 14-day weight trend, food diary completeness, hydration adherence, and workout progression insights."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05. Nutrition & Food Diary",
+      "description": "Food diary reads, meal/ingredient/manual logging, completion confirmation, and validated meal substitutions.",
+      "item": [
+        {
+          "name": "Get Food Diary for Date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/food-diary?date={{todayDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "food-diary"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{todayDate}}"
+                }
+              ]
+            },
+            "description": "Returns actual food entries, nullable nutrient totals, completion status, and planned energy target."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Planned Meal (food_entry — planned)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "try {",
+                  "  const d = pm.response.json();",
+                  "  const hit = (d.affected || []).find(a => a.entityType === \"food_entry\" && a.op === \"upsert\");",
+                  "  if (hit && hit.entityId) pm.collectionVariables.set(\"sampleFoodEntryId\", hit.entityId);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"food_entry\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"source\": \"planned\",\n    \"mealId\": \"{{sampleMealId}}\",\n    \"slot\": \"breakfast\",\n    \"quantity\": 1\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs consumption of a planned meal from the active nutrition plan."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Reference Ingredient (food_entry — ingredient)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "try {",
+                  "  const d = pm.response.json();",
+                  "  const hit = (d.affected || []).find(a => a.entityType === \"food_entry\" && a.op === \"upsert\");",
+                  "  if (hit && hit.entityId) pm.collectionVariables.set(\"sampleFoodEntryId\", hit.entityId);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"food_entry\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"source\": \"ingredient\",\n    \"key\": \"chicken\",\n    \"grams\": 150,\n    \"slot\": \"lunch\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs a reference ingredient by planning key (e.g. chicken, rice, fava, egg, oats) and grams."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Manual Food Entry (food_entry — manual)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "try {",
+                  "  const d = pm.response.json();",
+                  "  const hit = (d.affected || []).find(a => a.entityType === \"food_entry\" && a.op === \"upsert\");",
+                  "  if (hit && hit.entityId) pm.collectionVariables.set(\"sampleFoodEntryId\", hit.entityId);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"food_entry\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"source\": \"manual\",\n    \"name\": \"طبق كشري متوسط\",\n    \"slot\": \"dinner\",\n    \"energy\": 480,\n    \"protein\": 16,\n    \"carbs\": 82,\n    \"fat\": 9\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs a custom manual food item with calories and optional macros."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Food Day Complete (food_complete)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"food_complete\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"complete\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Explicitly confirms that all food intake for the specified date has been logged."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Food Entry (food_delete)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"food_delete\",\n  \"payload\": {\n    \"id\": \"{{sampleFoodEntryId}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Deletes a logged food entry by ID (reopens day completion)."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Legacy Daily Total (food)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"food\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"energy\": 1850,\n    \"complete\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs a single daily calorie total for a date that has no detailed food entries."
+          },
+          "response": []
+        },
+        {
+          "name": "Switch Legacy Day to Detailed Entries (food_switch_to_entries)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"food_switch_to_entries\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"confirm\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Archives a legacy daily calorie total so detailed entries can be logged for that date."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Meal Alternatives",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Meal alternatives fetched\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const items = pm.response.json().items || [];",
+                  "  if (items.length && items[0].templateId) {",
+                  "    pm.collectionVariables.set(\"sampleAltTemplateId\", items[0].templateId);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/meal-alternatives?mealId={{sampleMealId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "meal-alternatives"
+              ],
+              "query": [
+                {
+                  "key": "mealId",
+                  "value": "{{sampleMealId}}"
+                }
+              ]
+            },
+            "description": "Returns up to 6 validated culinary substitutes matching diet, budget, and medical constraints."
+          },
+          "response": []
+        },
+        {
+          "name": "Replace Planned Meal (replace_meal)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"replace_meal\",\n  \"payload\": {\n    \"mealId\": \"{{sampleMealId}}\",\n    \"templateId\": \"{{sampleAltTemplateId}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Replaces a planned meal with a validated templateId returned by GET /v1/meal-alternatives."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "06. Hydration, Weight & Activity",
+      "description": "Daily water, body weight, steps, activity logs, and Health Connect / Apple Health batch ingestion.",
+      "item": [
+        {
+          "name": "Log Water Intake — Set Cups (water)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"water\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"cups\": 8\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Sets total water cups (0..30) for the given date."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Water Intake — Increment Cups (water)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"water\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"addCups\": 2\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Increments (or decrements) water cups relative to the current date total."
+          },
+          "response": []
+        },
+        {
+          "name": "List Water Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/water-logs?offset=0&limit=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "water-logs"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Paginated water intake logs ordered by date descending (supports optional from/to YYYY-MM-DD)."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Body Weight (weight)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"weight\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"kg\": 81.4,\n    \"source\": \"manual\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Records or updates scale weight (kg) for a date."
+          },
+          "response": []
+        },
+        {
+          "name": "List Weight Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/weight-logs?offset=0&limit=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "weight-logs"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Paginated weight measurements ordered by date descending."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Daily Steps (steps)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"steps\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"steps\": 8500,\n    \"source\": \"manual\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs daily step count."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Activity & Active Energy (activity)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"activity\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"steps\": 9200,\n    \"activeEnergyKcal\": 410,\n    \"source\": \"health_connect\",\n    \"externalRecordId\": \"hc-sample-001\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs steps + active energy with optional deduplication externalRecordId."
+          },
+          "response": []
+        },
+        {
+          "name": "List Activity Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/activity-logs?offset=0&limit=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "activity-logs"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Paginated activity and steps logs."
+          },
+          "response": []
+        },
+        {
+          "name": "Ingest Wearables Batch (Health Connect / Apple Health)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Wearables batch ingested\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().ok).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"records\": [\n    {\n      \"type\": \"weight\",\n      \"date\": \"{{todayDate}}\",\n      \"kg\": 81.3,\n      \"source\": \"health_connect\"\n    },\n    {\n      \"type\": \"activity\",\n      \"date\": \"{{todayDate}}\",\n      \"steps\": 9600,\n      \"activeEnergyKcal\": 430,\n      \"source\": \"health_connect\",\n      \"externalRecordId\": \"hc-batch-001\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/wearables/ingest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "wearables",
+                "ingest"
+              ]
+            },
+            "description": "Idempotent batch ingestion of up to 100 weight/steps/activity records from wearable SDKs."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "07. Workouts & Training",
+      "description": "Workout plans, set/rep/load logging, session completion, injury-safe alternatives, and session rescheduling.",
+      "item": [
+        {
+          "name": "List Workout Plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/workout-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "workout-plans"
+              ]
+            },
+            "description": "Lists owned workout plan version references."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Workout Plan by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/workout-plans/{{activeWorkoutPlanId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "workout-plans",
+                "{{activeWorkoutPlanId}}"
+              ]
+            },
+            "description": "Returns the full owned workout plan with days, exercises, sets, and weekly set totals."
+          },
+          "response": []
+        },
+        {
+          "name": "Log Exercise Sets (workout)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"workout\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"dayIndex\": {{sampleDayIndex}},\n    \"exerciseId\": \"{{sampleExerciseId}}\",\n    \"sets\": [\n      {\n        \"kg\": 20,\n        \"reps\": 10,\n        \"rir\": 2,\n        \"pain\": false\n      },\n      {\n        \"kg\": 20,\n        \"reps\": 10,\n        \"rir\": 2,\n        \"pain\": false\n      },\n      {\n        \"kg\": 20,\n        \"reps\": 10,\n        \"rir\": 2,\n        \"pain\": false\n      }\n    ],\n    \"bothSides\": true,\n    \"increment\": 2.5\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs performed sets (kg, reps, rir, pain) for a scheduled exercise and computes progression."
+          },
+          "response": []
+        },
+        {
+          "name": "List Workout Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/workout-logs?offset=0&limit=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "workout-logs"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Paginated exercise set/rep/load logs."
+          },
+          "response": []
+        },
+        {
+          "name": "Complete / Update Workout Session (session)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"session\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"dayIndex\": {{sampleDayIndex}},\n    \"status\": \"completed\",\n    \"duration\": 45,\n    \"rpe\": 7\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Marks a workout day as completed, partial, or missed with duration (min) and RPE (0..10)."
+          },
+          "response": []
+        },
+        {
+          "name": "List Workout Sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/sessions?offset=0&limit=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "sessions"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Paginated workout session completion records."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Exercise Alternatives",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Exercise alternatives fetched\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const items = pm.response.json().items || [];",
+                  "  if (items.length && items[0].id) {",
+                  "    pm.collectionVariables.set(\"sampleAltExerciseId\", items[0].id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/exercise-alternatives?dayIndex={{sampleDayIndex}}&exerciseId={{sampleExerciseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "exercise-alternatives"
+              ],
+              "query": [
+                {
+                  "key": "dayIndex",
+                  "value": "{{sampleDayIndex}}"
+                },
+                {
+                  "key": "exerciseId",
+                  "value": "{{sampleExerciseId}}"
+                }
+              ]
+            },
+            "description": "Returns up to 6 biomechanically equivalent, injury-safe, time-budget-validated exercise substitutes."
+          },
+          "response": []
+        },
+        {
+          "name": "Replace Exercise (replace_exercise)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"replace_exercise\",\n  \"payload\": {\n    \"dayIndex\": {{sampleDayIndex}},\n    \"exerciseId\": \"{{sampleExerciseId}}\",\n    \"alternativeId\": \"{{sampleAltExerciseId}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Substitutes an exercise in the workout plan with a validated alternativeId."
+          },
+          "response": []
+        },
+        {
+          "name": "Propose Workout Reschedule (reschedule)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"reschedule\",\n  \"payload\": {\n    \"dayIndex\": {{sampleDayIndex}},\n    \"toDate\": \"{{sampleRescheduleDate}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Creates a pending schedule adaptation proposal moving a workout day to a rest date within the next 13 days."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "08. Recovery & Adaptive Coaching",
+      "description": "Daily recovery check-ins, deterministic coaching reviews, adaptation approvals, coaching brief, and agreement journeys.",
+      "item": [
+        {
+          "name": "Submit Daily Recovery Check-in (recovery)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"recovery\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"sleepHours\": 7.5,\n    \"sleepQuality\": 4,\n    \"fatigue\": 2,\n    \"stress\": 2,\n    \"soreness\": 2,\n    \"sorenessByRegion\": {\n      \"chest\": 2,\n      \"quads\": 1\n    },\n    \"pain\": false,\n    \"painRegions\": [],\n    \"illness\": false,\n    \"redFlags\": false\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs sleep, fatigue, stress, muscle soreness, pain regions, illness, and redFlags."
+          },
+          "response": []
+        },
+        {
+          "name": "List Recovery Check-ins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/checkins?offset=0&limit=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "checkins"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Paginated daily recovery check-ins."
+          },
+          "response": []
+        },
+        {
+          "name": "Trigger Adaptive Review (review)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"review\",\n  \"payload\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=full",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "full"
+                }
+              ]
+            },
+            "description": "Evaluates recovery, nutrition trend, and workout progression and creates pending adaptation proposals when warranted."
+          },
+          "response": []
+        },
+        {
+          "name": "Accept or Reject Adaptation Proposal (adaptation)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"adaptation\",\n  \"payload\": {\n    \"id\": \"{{sampleProposalId}}\",\n    \"accept\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Accepts (accept: true) or rejects (accept: false) a current unexpired pending proposal."
+          },
+          "response": []
+        },
+        {
+          "name": "Get On-Demand Coaching Brief",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "If-None-Match",
+                "value": "",
+                "disabled": true
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/coaching/brief",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "coaching",
+                "brief"
+              ]
+            },
+            "description": "Returns deterministic personalized nutrition, training, and follow-up notes for today (supports ETag)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Coaching Inbox (Active Agreements)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const items = pm.response.json().items || [];",
+                  "  if (items.length) pm.collectionVariables.set(\"sampleCaseId\", items[0].id);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/coaching/inbox",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "coaching",
+                "inbox"
+              ]
+            },
+            "description": "Lists active coaching cases/agreements and review dates (read-only, never auto-acknowledges)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Coaching Agreement History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/coaching/history?offset=0&limit=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "coaching",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Paginated historical coaching cases."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Coaching Feedback (coaching_feedback)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "try {",
+                  "  const d = pm.response.json();",
+                  "  const c = (d.affected || []).find(a => a.entityType === \"coaching_case\" && a.op === \"upsert\");",
+                  "  if (c && c.entityId) pm.collectionVariables.set(\"sampleCaseId\", c.entityId);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"coaching_feedback\",\n  \"payload\": {\n    \"domain\": \"nutrition\",\n    \"barrier\": \"time\",\n    \"hunger\": 2,\n    \"satiety\": 4,\n    \"energy\": 4\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs nutrition or training barriers and subjective scores (1..5), generating a follow-up agreement if needed."
+          },
+          "response": []
+        },
+        {
+          "name": "Acknowledge Coaching Case (coaching_ack)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"coaching_ack\",\n  \"payload\": {\n    \"id\": \"{{sampleCaseId}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Explicitly marks a coaching case/message as read/acknowledged."
+          },
+          "response": []
+        },
+        {
+          "name": "Decide on Coaching Case (coaching_decision)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"coaching_decision\",\n  \"payload\": {\n    \"id\": \"{{sampleCaseId}}\",\n    \"accept\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Accepts or declines a proposed coaching agreement."
+          },
+          "response": []
+        },
+        {
+          "name": "Report Coaching Outcome (coaching_outcome)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"coaching_outcome\",\n  \"payload\": {\n    \"id\": \"{{sampleCaseId}}\",\n    \"outcome\": \"helped\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Records outcome (helped | not_helped | not_tried) for an accepted coaching agreement."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "09. Nutrition Plans & Archives",
+      "description": "Read active/archived nutrition plans and lazy-load individual plan days.",
+      "item": [
+        {
+          "name": "List Nutrition Plan Refs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "plans"
+              ]
+            },
+            "description": "Lists active and archived nutrition plan references."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Full Nutrition Plan by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/plans/{{activePlanId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "plans",
+                "{{activePlanId}}"
+              ]
+            },
+            "description": "Fetches the full 7-day nutrition plan owned by the authenticated user."
+          },
+          "response": []
+        },
+        {
+          "name": "Lazy-Load Single Nutrition Plan Day",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/plans/{{activePlanId}}/days/{{todayDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "plans",
+                "{{activePlanId}}",
+                "days",
+                "{{todayDate}}"
+              ]
+            },
+            "description": "Fetches meals and macro targets for a single YYYY-MM-DD day inside the plan."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "10. Food, Beverage & Exercise Catalogs",
+      "description": "Egyptian/Gulf Arabic food catalog, prepared beverages, custom recipe calculator, and 868-exercise OpenExerciseDB catalog.",
+      "item": [
+        {
+          "name": "Get Catalog Provenance Manifest",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/catalog/manifest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "catalog",
+                "manifest"
+              ]
+            },
+            "description": "Returns pinned versions, hashes, licenses, and counts for both exercise and food catalogs."
+          },
+          "response": []
+        },
+        {
+          "name": "List Muscle Taxonomy & Arabic Labels",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/catalog/muscles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "catalog",
+                "muscles"
+              ]
+            },
+            "description": "Returns muscle taxonomy and bilingual labels."
+          },
+          "response": []
+        },
+        {
+          "name": "Search Foods (Arabic & English)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Foods returned\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const items = pm.response.json().items || [];",
+                  "  if (items.length) pm.collectionVariables.set(\"sampleFoodId\", items[0].id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/foods?q=فول&scope=all&includeEstimated=true&offset=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "foods"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "فول"
+                },
+                {
+                  "key": "scope",
+                  "value": "all"
+                },
+                {
+                  "key": "includeEstimated",
+                  "value": "true"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Searches the Egyptian & reference food catalog with Arabic normalization and colloquial synonyms."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Food Item Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/foods/{{sampleFoodId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "foods",
+                "{{sampleFoodId}}"
+              ]
+            },
+            "description": "Returns full provenance, nutrient basis, portions, and estimate metadata for a food item."
+          },
+          "response": []
+        },
+        {
+          "name": "Search Egyptian & Ramadan Beverages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/beverages?q=شاي&includeEstimated=true&offset=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "beverages"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "شاي"
+                },
+                {
+                  "key": "includeEstimated",
+                  "value": "true"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Searches prepared Egyptian, cafe, Ramadan, and fresh juice beverages."
+          },
+          "response": []
+        },
+        {
+          "name": "Calculate Custom Recipe / Beverage Nutrients",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Recipe calculated\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().nutrients).to.be.an(\"object\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ingredients\": [\n    {\n      \"key\": \"chicken\",\n      \"grams\": 150\n    },\n    {\n      \"key\": \"rice\",\n      \"grams\": 120\n    }\n  ],\n  \"finalWeightGrams\": 240\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/foods/calculate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "foods",
+                "calculate"
+              ]
+            },
+            "description": "Calculates aggregate nutrients and per-100g yield from verified ingredients."
+          },
+          "response": []
+        },
+        {
+          "name": "Search Exercises Catalog",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Exercises returned\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const items = pm.response.json().items || [];",
+                  "  if (items.length) pm.collectionVariables.set(\"sampleCatalogExerciseId\", encodeURIComponent(items[0].id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/exercises?q=bench&offset=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "exercises"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "bench"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Searches and filters the 868-exercise catalog (optional muscle & equipment filters)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Exercise Detail by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/exercises/{{sampleCatalogExerciseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "exercises",
+                "{{sampleCatalogExerciseId}}"
+              ]
+            },
+            "description": "Returns full exercise metadata (URL-encode IDs containing colons such as oedb%3A12)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "11. Offline Sync & User Settings",
+      "description": "Delta outbox sync feed for offline-first mobile clients, timezone/locale settings, notification preferences, and entitlements.",
+      "item": [
+        {
+          "name": "Get Incremental Sync Changes & Entity Deltas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Sync feed returned\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const d = pm.response.json();",
+                  "  if (typeof d.nextSeqCursor === \"number\") {",
+                  "    pm.collectionVariables.set(\"nextSeqCursor\", String(d.nextSeqCursor));",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/sync/changes?after=0&afterSeq={{nextSeqCursor}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "sync",
+                "changes"
+              ],
+              "query": [
+                {
+                  "key": "after",
+                  "value": "0"
+                },
+                {
+                  "key": "afterSeq",
+                  "value": "{{nextSeqCursor}}"
+                }
+              ]
+            },
+            "description": "Fetches incremental revision metadata and entity-level outbox deltas (upserts & delete tombstones)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Timezone & Locale (timezone)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"timezone\",\n  \"payload\": {\n    \"timezone\": \"Africa/Cairo\",\n    \"locale\": \"ar-EG\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Updates IANA timezone (e.g. Africa/Cairo, Asia/Riyadh, Asia/Dubai) and locale (ar-EG | ar-SA | en)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Notification Preferences",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/notifications/preferences",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "notifications",
+                "preferences"
+              ]
+            },
+            "description": "Returns stored reminder flags and quiet-hours configuration."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Notification Preferences (notification_preferences)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"notification_preferences\",\n  \"payload\": {\n    \"dailyReminder\": true,\n    \"workoutReminder\": true,\n    \"waterReminder\": true,\n    \"weeklyReviewReminder\": true,\n    \"quietHoursStart\": \"22:00\",\n    \"quietHoursEnd\": \"08:00\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Updates reminder toggles and HH:mm quiet-hours window."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Entitlements",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/entitlements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "entitlements"
+              ]
+            },
+            "description": "Returns current account tier and enabled feature flags."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "12. 90-Day Simulation Mode (?simulation=1)",
+      "description": "Isolated per-user 90-day virtual simulation sandbox (never touches real account data).",
+      "item": [
+        {
+          "name": "Reset / Start Simulation Round (simulation_reset)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{simRevision}},\n  \"action\": \"simulation_reset\",\n  \"payload\": {\n    \"source\": \"sample\",\n    \"confirm\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=full&simulation=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "full"
+                },
+                {
+                  "key": "simulation",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Starts a fresh 90-day simulation round using source: \"sample\" or \"current\"."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Simulation State",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/state?simulation=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "state"
+              ],
+              "query": [
+                {
+                  "key": "simulation",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Reads the isolated simulation namespace state and virtual clock."
+          },
+          "response": []
+        },
+        {
+          "name": "Fill Simulation Day Scenario (simulation_fill)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{simRevision}},\n  \"action\": \"simulation_fill\",\n  \"payload\": {\n    \"scenario\": \"consistent\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt&simulation=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                },
+                {
+                  "key": "simulation",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Fills an empty virtual day with synthetic logs (consistent | plateau | poor_recovery | missed_workout | low_adherence | pain)."
+          },
+          "response": []
+        },
+        {
+          "name": "Advance Simulation by 1 Day (simulation_next)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}"
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{simRevision}},\n  \"action\": \"simulation_next\",\n  \"payload\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt&simulation=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                },
+                {
+                  "key": "simulation",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Freezes current virtual day summary, advances clock by 1 day (up to day 90), and auto-renews expired nutrition week."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "13. Privacy, Export & GDPR Deletion",
+      "description": "Consent logging, normalized-table backfill, full JSON data export, and irreversible GDPR account erasure.",
+      "item": [
+        {
+          "name": "Record Privacy / Health Consent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consentType\": \"health_data_processing\",\n  \"version\": \"1.0.0\",\n  \"accepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/account/consents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "account",
+                "consents"
+              ]
+            },
+            "description": "Records versioned explicit user consent in Cloudflare D1."
+          },
+          "response": []
+        },
+        {
+          "name": "Backfill Normalized Tables",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/account/backfill",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "account",
+                "backfill"
+              ]
+            },
+            "description": "Backfills historical account logs into normalized D1 tables."
+          },
+          "response": []
+        },
+        {
+          "name": "Export Full Account Data (GDPR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/account/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "account",
+                "export"
+              ]
+            },
+            "description": "Returns complete machine-readable JSON export of profile, plans, logs, audit trail, and consents."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Account Permanently (GDPR — Destructive)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/account/delete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "account",
+                "delete"
+              ]
+            },
+            "description": "IRREVERSIBLE: Permanently erases account data, simulation copies, auth credentials, and revokes all tokens."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

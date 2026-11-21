@@ -27,7 +27,8 @@
     "sim:fast:verify": "node scripts/verify-simulation.mjs",
     "typecheck": "tsc -p tsconfig.quality.json",
     "test:fast": "node scripts/quality/run-tests.mjs fast",
-    "test:worker": "node scripts/quality/run-tests.mjs worker"
+    "test:worker": "node scripts/quality/run-tests.mjs worker",
+    "postman:generate": "node scripts/generate-postman.mjs"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
