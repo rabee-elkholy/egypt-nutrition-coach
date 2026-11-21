@@ -239,8 +239,17 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       const spec = parseYaml(await readFile('contracts/openapi.yaml', 'utf8'));
 
       assert.equal(col.info.schema, 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json');
+      assert.ok(col.info.description.includes('https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev'), 'Collection overview must document Production URL');
+      assert.ok(col.info.description.includes('http://127.0.0.1:8787'), 'Collection overview must document Dev URL');
       assert.equal(prodEnv.values.find(v => v.key === 'baseUrl').value, 'https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev');
       assert.equal(localEnv.values.find(v => v.key === 'baseUrl').value, 'http://127.0.0.1:8787');
+
+      const apiRefMd = await readFile('docs/API_REFERENCE.md', 'utf8');
+      assert.ok(apiRefMd.includes('https://egypt-nutrition-coach.egypt-nutrition-coach.workers.dev'), 'docs/API_REFERENCE.md must include Production URL');
+      assert.ok(apiRefMd.includes('http://127.0.0.1:8787'), 'docs/API_REFERENCE.md must include Dev URL');
+      for (const folder of col.item) {
+        assert.ok(apiRefMd.includes(`## ${folder.name}`), `docs/API_REFERENCE.md missing folder heading: ${folder.name}`);
+      }
 
       // Flatten all requests from folders
       const requests = [];
@@ -251,7 +260,17 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
         }
       };
       walk(col.item);
-      assert.ok(requests.length >= 60, `Expected >= 60 requests in Postman collection, got ${requests.length}`);
+      assert.equal(requests.length, 81, `Expected 81 requests in Postman collection, got ${requests.length}`);
+
+      for (const r of requests) {
+        const desc = r.request.description || '';
+        assert.ok(desc.includes('### Endpoint Info'), `Missing Endpoint Info docs on "${r.name}"`);
+        assert.ok(desc.includes('Production URL:'), `Missing Production URL docs on "${r.name}"`);
+        assert.ok(desc.includes('Dev URL:'), `Missing Dev URL docs on "${r.name}"`);
+        if (['POST', 'DELETE'].includes(r.request.method) && r.request.body?.raw) {
+          assert.ok(desc.includes('### Request Body Fields'), `Missing Request Body Fields docs on "${r.name}"`);
+        }
+      }
 
       // No unreplaced template placeholders
       const rawJson = JSON.stringify(col);
