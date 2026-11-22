@@ -13,6 +13,7 @@ import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reco
 import {volumeReview} from './training-review.mjs';
 import {nutritionEvidenceKey,matchingNutritionDecline} from '../nutrition-decisions.mjs';
 import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,SUPPORTED_LOCALES,needsHealthConfirmation,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES,isPregnantStatus,minSafeEnergyFloor} from '../coaching-shared.mjs';
+import {saveCustomRecipe,deleteCustomRecipe,logCardioSession,deleteCardioSession,dailyCardioMinutes,updateCycleSettings,logCycleEntry} from './wellness-tools.mjs';
 import {apiError} from '../coaching-error.mjs';
 
 const userTz=s=>s?.profile?.timezone||clockTimeZone()||'Africa/Cairo';
@@ -65,7 +66,8 @@ export function dailyWaterTarget(s,date=userToday(s)){
  const weekday=new Date(date+'T12:00:00Z').getUTCDay();
  const externalDays=Array.isArray(s?.profile?.externalTrainingDays)?s.profile.externalTrainingDays:[];
  const isWorkoutDay=scheduledSessions(s,date,1).some(x=>x.date===date)||(s?.sessions||[]).some(x=>x.date===date&&x.status!=='missed')||externalDays.includes(weekday);
- if(isWorkoutDay)ml+=500;
+ const isCardioHydrationDay=!isWorkoutDay&&dailyCardioMinutes(s,date)>=30;
+ if(isWorkoutDay||isCardioHydrationDay)ml+=500;
  const maternal=s?.profile?.maternalStatus||'none';
  if(isPregnantStatus(maternal))ml+=300;
  else if(maternal==='breastfeeding')ml+=600;
@@ -648,6 +650,18 @@ export function command(input,action,p){
   if(recentFreeze)throw apiError('STREAK_FREEZE_UNAVAILABLE','Weekly streak freeze allowance has already been used.',{status:409});
   const normalized=(s.streakFreezes||[]).map(entry=>typeof entry==='string'?entry:entry?.date).filter(Boolean);
   s.streakFreezes=[...new Set([...normalized,date])].sort();
+ }else if(action==='recipe_save'){
+  saveCustomRecipe(s,p);
+ }else if(action==='recipe_delete'){
+  deleteCustomRecipe(s,p);
+ }else if(action==='cardio_log'){
+  logCardioSession(s,p);
+ }else if(action==='cardio_delete'){
+  deleteCardioSession(s,p);
+ }else if(action==='cycle_settings'){
+  updateCycleSettings(s,p);
+ }else if(action==='cycle_log'){
+  logCycleEntry(s,p);
  }else if(action==='session'){
   const dayIndex=integer(p.dayIndex,0,6,'dayIndex'),date=dateForLog(p.date||currDate,s),day=s.workoutPlan?.days.find(d=>d.dayIndex===dayIndex);
   if(!day||!['completed','partial','missed'].includes(p.status))throw apiError('INVALID_WORKOUT_SESSION','Workout session day or status (completed, partial, missed) is invalid.',{status:400});

@@ -35,11 +35,11 @@ export function foodCommand(s,action,p){
  s.foodEntries||=[];
  const tz=s?.profile?.timezone||clockTimeZone();
  if(action==='food_entry'){
-  const date=dateForLog(p.date||localDate(clockNow(),tz),tz);if(!['planned','ingredient','manual'].includes(p.source))throw apiError('INVALID_FOOD_SOURCE','Food entry source must be planned, ingredient, or manual.',{status:400});
+  const date=dateForLog(p.date||localDate(clockNow(),tz),tz);if(!['planned','ingredient','recipe','manual'].includes(p.source))throw apiError('INVALID_FOOD_SOURCE','Food entry source must be planned, ingredient, recipe, or manual.',{status:400});
   if(!['breakfast','lunch','dinner','snack'].includes(p.slot))throw apiError('INVALID_MEAL_SLOT','slot must be one of breakfast, lunch, dinner, or snack.',{status:400});
   const displaySlot=p.displaySlot!=null?(DISPLAY_SLOTS.has(String(p.displaySlot))?String(p.displaySlot):(()=>{throw apiError('INVALID_MEAL_SLOT','Invalid displaySlot value.',{status:400});})()):null;
   const previous=s.foodLogs.find(d=>d.date===date);if(previous&&previous.source!=='entries')throw apiError('DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION','This day already has a daily total log; switch to detailed entries before adding individual meals.',{status:400});
-  let snapshot,mealId=null,planId=null,quantity;
+  let snapshot,mealId=null,planId=null,recipeId=null,recipeUnit=null,quantity;
   if(p.source==='planned'){
    const {plan,day,meal}=plannedMeal(s,p.mealId);if(day.date!==date)throw apiError('MEAL_DATE_MISMATCH','Logged date does not match the planned meal\'s scheduled date.',{status:400});if(p.slot!==meal.slot)throw apiError('MEAL_SLOT_MISMATCH','Logged slot does not match the planned meal\'s slot.',{status:400});
    if(s.foodEntries.some(e=>e.date===date&&e.mealId===meal.id))throw apiError('PLANNED_MEAL_ALREADY_LOGGED','Planned meal has already been logged; delete the entry first to adjust quantity.',{status:400});
@@ -68,12 +68,46 @@ export function foodCommand(s,action,p){
      snapshot={name:catItem.name,is_approximate:catItem.status==='estimated'||Boolean(catItem.isApproximate),values:Object.fromEntries(metrics.map(k=>[k,catItem.values[k]==null?null:String(Number(catItem.values[k])*quantity/100)])),ingredients:[{key:catItem.id,name:catItem.name,grams:String(quantity),state:catItem.state,food_id:catItem.id,source:catItem.source,reference:catItem.reference,values_per_100g:catItem.values}]};
     }
    }
+  }else if(p.source==='recipe'){
+   const targetId=typeof p.recipeId==='string'?p.recipeId.trim():'';
+   const recipe=(s.customRecipes||[]).find(r=>r.id===targetId);
+   if(!recipe)throw apiError('RECIPE_NOT_FOUND','Saved custom recipe not found.',{status:404});
+   const byGrams=p.grams!=null&&p.grams!==''&&p.servings==null;
+   let scaleRatio;
+   if(byGrams){
+    quantity=number(p.grams,1,3000,'grams');
+    recipeUnit='grams';
+    scaleRatio=quantity/(Number(recipe.totalGrams)||100);
+   }else{
+    quantity=number(p.servings??p.quantity??1,.1,10,'quantity');
+    recipeUnit='servings';
+    scaleRatio=quantity/(Number(recipe.servings)||1);
+   }
+   recipeId=recipe.id;
+   const values=Object.fromEntries(metrics.map(k=>{
+    const tot=recipe.totals?.[k];
+    return [k,tot==null?null:String(Math.round(Number(tot)*scaleRatio*100)/100)];
+   }));
+   snapshot={
+    name:recipe.name,
+    is_approximate:Boolean(recipe.isApproximate),
+    values,
+    ingredients:(recipe.ingredients||[]).map(ing=>({
+     key:ing.key||ing.foodId,
+     name:ing.name,
+     grams:String(Math.round(Number(ing.grams)*scaleRatio*10)/10),
+     state:ing.state||'as_sold',
+     food_id:ing.foodId,
+     source:ing.source||'catalog',
+     values_per_100g:ing.values_per_100g
+    }))
+   };
   }else{
    const name=typeof p.name==='string'?p.name.trim():'';if(!name||name.length>120)throw apiError('INVALID_MEAL_NAME','Manual meal name must be non-empty and at most 120 characters.',{status:400});
    snapshot={name,values:Object.fromEntries(metrics.map(k=>[k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))])),ingredients:[],is_approximate:true};
    if(snapshot.values.energy==null||Number(snapshot.values.energy)<=0)throw apiError('MANUAL_MEAL_ENERGY_REQUIRED','Positive actual energy (kcal > 0) is required for manual food entries.',{status:400});
   }
-  s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,...(displaySlot?{displaySlot}:{}),source:p.source,mealId,planId,quantity,at:isoNow(),snapshot:freezeSnapshot(snapshot)});
+  s.foodEntries.push({id:crypto.randomUUID(),date,slot:p.slot,...(displaySlot?{displaySlot}:{}),source:p.source,mealId,planId,...(recipeId?{recipeId,recipeUnit}:{}),quantity,at:isoNow(),snapshot:freezeSnapshot(snapshot)});
   refreshDay(s,date);
   Object.assign(s.foodLogs.find(d=>d.date===date),{complete:false,completionPolicy:1,confirmedAt:null});
  }else if(action==='food_switch_to_entries'){
@@ -87,7 +121,7 @@ export function foodCommand(s,action,p){
   const existing=s.foodEntries[idx];
   const nextSlot=p.slot!=null?p.slot:existing.slot;
   if(!SLOTS.has(nextSlot))throw apiError('INVALID_MEAL_SLOT','Meal slot must be breakfast, lunch, dinner, or snack.',{status:400});
-  let nextQuantity=existing.quantity,nextSnapshot=existing.snapshot;
+  let nextQuantity=existing.quantity,nextSnapshot=existing.snapshot,nextRecipeUnit=existing.recipeUnit;
   if(existing.source==='planned'){
    nextQuantity=p.quantity!=null?number(p.quantity,.25,3,'quantity'):existing.quantity;
    if(nextQuantity!==existing.quantity){
@@ -106,6 +140,20 @@ export function foodCommand(s,action,p){
     const factor=nextQuantity/(Number(existing.quantity)||1);
     nextSnapshot=freezeSnapshot(scaleSnapshot(existing.snapshot,factor));
    }
+  }else if(existing.source==='recipe'){
+   if(p.grams!=null&&p.grams!==''){
+    const prevTotalGrams=(existing.snapshot?.ingredients||[]).reduce((sum,i)=>sum+Number(i.grams||0),0)||(existing.recipeUnit==='grams'?Number(existing.quantity):100);
+    nextQuantity=number(p.grams,1,3000,'grams');
+    nextRecipeUnit='grams';
+    const factor=nextQuantity/(prevTotalGrams||1);
+    nextSnapshot=freezeSnapshot(scaleSnapshot(existing.snapshot,factor));
+   }else if(p.servings!=null||p.quantity!=null){
+    nextQuantity=number(p.servings??p.quantity,.1,10,'quantity');
+    const prevServings=existing.recipeUnit==='grams'?1:(Number(existing.quantity)||1);
+    nextRecipeUnit='servings';
+    const factor=nextQuantity/prevServings;
+    nextSnapshot=freezeSnapshot(scaleSnapshot(existing.snapshot,factor));
+   }
   }else{
    const nextName=p.name!=null?String(p.name).trim():existing.snapshot?.name||'';
    if(!nextName||nextName.length>120)throw apiError('INVALID_MEAL_NAME','Manual meal name must be non-empty and at most 120 characters.',{status:400});
@@ -117,7 +165,7 @@ export function foodCommand(s,action,p){
    if(nextVals.energy==null||Number(nextVals.energy)<=0)throw apiError('MANUAL_MEAL_ENERGY_REQUIRED','Positive actual energy (kcal > 0) is required for manual food entries.',{status:400});
    nextSnapshot=freezeSnapshot({...existing.snapshot,name:nextName,values:nextVals});
   }
-  s.foodEntries[idx]={...existing,slot:nextSlot,quantity:nextQuantity,snapshot:nextSnapshot,updatedAt:isoNow()};
+  s.foodEntries[idx]={...existing,slot:nextSlot,quantity:nextQuantity,...(nextRecipeUnit?{recipeUnit:nextRecipeUnit}:{}),snapshot:nextSnapshot,updatedAt:isoNow()};
   refreshDay(s,existing.date);
   Object.assign(s.foodLogs.find(d=>d.date===existing.date),{complete:false,confirmedAt:null,completionPolicy:1});
  }else if(action==='food_delete'){

@@ -1094,6 +1094,306 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       }));
       assert.equal(postDelOfferings.trialEligible, false, 'Trial tombstone must survive GDPR delete to prevent trial abuse');
     });
+
+    // 11. Wellness & V1 Feature Pack: Custom Home Recipes, Dedicated Cardio Tracking, Optional Female Cycle Awareness & Bilingual Grocery Sharing
+    await t.test('Custom recipes, dedicated cardio tracking, optional female cycle awareness & bilingual grocery list with full edge cases', async () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const maleJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com',
+        aud: 'curafit-android-client-id',
+        sub: 'google-sub-wellness-male',
+        email: 'wellness.male@curafit.app',
+        email_verified: true,
+        name: 'Tarek Runner',
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const maleAuth = await okJson(await call('/v1/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: maleJwt, deviceId: 'well-m-1' }),
+      }), 201);
+      const mToken = maleAuth.accessToken;
+      const mHdr = { Authorization: `Bearer ${mToken}` };
+
+      // 11a. Generate male profile with knee injury + nutrition_and_workouts
+      const mGen = await okJson(await postCmd(mToken, 0, 'generate', {
+        name: 'Tarek Runner', age: 31, sex: 'male', weight: 80, height: 178,
+        goal: 'lose', targetWeight: 74, activity: 'light', dietType: 'balanced',
+        serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5],
+        injuries: ['knee'], healthConfirmed: true,
+      }));
+      let mRev = mGen.revision;
+      const activePlanId = mGen.plans[0].id;
+      const todayDate = mGen.serverDate;
+
+      // Bilingual grocery list items include name, nameEn, nameAr & preparationState for WhatsApp sharing
+      const grocery = await okJson(await call(`/v1/plans/${encodeURIComponent(activePlanId)}/grocery-list?days=all`, { headers: mHdr }));
+      assert.ok(grocery.categories.length > 0);
+      const firstGroc = grocery.categories[0].items[0];
+      assert.ok(firstGroc.name && firstGroc.nameEn && firstGroc.nameAr, 'Grocery items must include name, nameEn, and nameAr');
+      assert.ok(['cooked', 'raw', 'as_sold', 'ready_to_eat', 'dry', 'raw_as_sold'].includes(firstGroc.preparationState));
+
+      // 11b. Custom Home Recipes ("My Recipes") — save, update, search, log by servings & grams, update portion, delete preserves frozen snapshot
+      await errJson(await postCmd(mToken, mRev, 'recipe_save', {
+        name: 'Bad', servings: 2, items: [{ foodId: 'nonexistent_food_xyz', grams: 100 }],
+      }, { minimal: true }), 400, 'INVALID_RECIPE_PAYLOAD');
+
+      const recSave1 = await okJson(await postCmd(mToken, mRev, 'recipe_save', {
+        name: 'Home Chicken Rice Bowl',
+        servings: 2,
+        notes: 'Light olive oil',
+        items: [{ foodId: 'chicken', grams: 300 }, { foodId: 'rice', grams: 200 }],
+      }, { minimal: true }));
+      mRev = recSave1.revision;
+
+      const recList1 = await okJson(await call('/v1/recipes?q=chicken', { headers: mHdr }));
+      assert.equal(recList1.total, 1);
+      const savedRecipe = recList1.items[0];
+      assert.equal(savedRecipe.servings, 2);
+      assert.equal(savedRecipe.totalGrams, 500);
+      assert.ok(savedRecipe.perServing.energy > 0 && savedRecipe.per100g.energy > 0);
+
+      // Update same recipe in place
+      const recUpdate = await okJson(await postCmd(mToken, mRev, 'recipe_save', {
+        id: savedRecipe.id,
+        name: 'Home Chicken Rice Bowl Deluxe',
+        servings: 2,
+        items: [{ foodId: 'chicken', grams: 300 }, { foodId: 'rice', grams: 250 }],
+      }, { minimal: true }));
+      mRev = recUpdate.revision;
+      const recList2 = await okJson(await call('/v1/recipes', { headers: mHdr }));
+      assert.equal(recList2.total, 1);
+      assert.equal(recList2.items[0].totalGrams, 550);
+
+      // Log 1.5 servings of saved recipe
+      const logRec1 = await okJson(await postCmd(mToken, mRev, 'food_entry', {
+        date: todayDate, slot: 'lunch', source: 'recipe', recipeId: savedRecipe.id, servings: 1.5,
+      }, { minimal: true }));
+      mRev = logRec1.revision;
+      // Log 200g of saved recipe
+      const logRec2 = await okJson(await postCmd(mToken, mRev, 'food_entry', {
+        date: todayDate, slot: 'dinner', source: 'recipe', recipeId: savedRecipe.id, grams: 200,
+      }, { minimal: true }));
+      mRev = logRec2.revision;
+
+      const diaryBeforeDel = await okJson(await call(`/v1/food-diary?date=${todayDate}`, { headers: mHdr }));
+      assert.equal(diaryBeforeDel.entries.length, 2);
+      const lunchRecEntry = diaryBeforeDel.entries.find((e) => e.slot === 'lunch');
+      const lunchEnergy15 = Number(lunchRecEntry.snapshot.values.energy);
+      assert.ok(lunchEnergy15 > 0);
+
+      // Atomic food_entry_update scales recipe entry from 1.5 -> 2.0 servings
+      const updRecEntry = await okJson(await postCmd(mToken, mRev, 'food_entry_update', {
+        id: lunchRecEntry.id, servings: 2.0,
+      }, { minimal: true }));
+      mRev = updRecEntry.revision;
+      const diaryAfterUpd = await okJson(await call(`/v1/food-diary?date=${todayDate}`, { headers: mHdr }));
+      const lunchEnergy20 = Number(diaryAfterUpd.entries.find((e) => e.id === lunchRecEntry.id).snapshot.values.energy);
+      assert.ok(Math.abs(lunchEnergy20 - (lunchEnergy15 * 2 / 1.5)) < 2, 'Recipe entry update must scale energy accurately');
+
+      // Delete saved recipe -> future log fails 404, but historical frozen diary entry remains intact!
+      const delRec = await okJson(await postCmd(mToken, mRev, 'recipe_delete', { id: savedRecipe.id }, { minimal: true }));
+      mRev = delRec.revision;
+      await errJson(await postCmd(mToken, mRev, 'recipe_delete', { id: savedRecipe.id }, { minimal: true }), 404, 'RECIPE_NOT_FOUND');
+      await errJson(await postCmd(mToken, mRev, 'food_entry', {
+        date: todayDate, slot: 'snack', source: 'recipe', recipeId: savedRecipe.id, servings: 1,
+      }, { minimal: true }), 404, 'RECIPE_NOT_FOUND');
+      const diaryAfterDel = await okJson(await call(`/v1/food-diary?date=${todayDate}`, { headers: mHdr }));
+      assert.equal(diaryAfterDel.entries.length, 2, 'Deleting saved recipe must never mutate or remove past food diary entries');
+      assert.equal(Number(diaryAfterDel.entries.find((e) => e.id === lunchRecEntry.id).snapshot.values.energy), lunchEnergy20);
+
+      // 11c. Dedicated Cardio Tracking — MET estimate, rest-day hydration boost, high-impact caution, dedupe, 5/day limit, Weekly Wrapped & delete
+      // Pick a guaranteed past non-workout day within the last 6 days (since workout days are [1, 3, 5])
+      const dCursor = new Date(`${todayDate}T12:00:00Z`);
+      let restDate = todayDate;
+      for (let i = 1; i <= 6; i++) {
+        const cand = new Date(dCursor.getTime() - i * 86400000);
+        if (![1, 3, 5].includes(cand.getUTCDay())) {
+          restDate = cand.toISOString().slice(0, 10);
+          break;
+        }
+      }
+      // Log water on restDate before cardio to capture baseline targetLiters
+      const wBefore = await okJson(await postCmd(mToken, mRev, 'water', { date: restDate, cups: 4 }, { minimal: true }));
+      mRev = wBefore.revision;
+      const wLogsBefore = await okJson(await call('/v1/water-logs', { headers: mHdr }));
+      const baseRestWater = wLogsBefore.items.find((x) => x.date === restDate).targetLiters;
+
+      // Log 35 min moderate brisk_walking on restDate -> boosts water target by +0.5L & estimates MET kcal
+      const c1 = await okJson(await postCmd(mToken, mRev, 'cardio_log', {
+        date: restDate, modality: 'brisk_walking', durationMinutes: 35, intensity: 'moderate', distanceKm: 3.1,
+      }, { minimal: true }));
+      mRev = c1.revision;
+      const wAfter = await okJson(await postCmd(mToken, mRev, 'water', { date: restDate, cups: 5 }, { minimal: true }));
+      mRev = wAfter.revision;
+      const wLogsAfter = await okJson(await call('/v1/water-logs', { headers: mHdr }));
+      const boostedRestWater = wLogsAfter.items.find((x) => x.date === restDate).targetLiters;
+      assert.ok(Math.abs((boostedRestWater - baseRestWater) - 0.5) < 0.05, `Expected +0.5L rest-day cardio hydration boost (${baseRestWater} -> ${boostedRestWater})`);
+
+      // High-impact running with declared knee injury returns non-blocking CARDIO_HIGH_IMPACT_CAUTION
+      const c2 = await okJson(await postCmd(mToken, mRev, 'cardio_log', {
+        date: todayDate, modality: 'running', durationMinutes: 25, intensity: 'vigorous',
+        source: 'health_connect', externalRecordId: 'hc-run-001',
+      }, { minimal: true }));
+      mRev = c2.revision;
+
+      // Dedupe by externalRecordId updates existing record instead of creating duplicate
+      const c2Dup = await okJson(await postCmd(mToken, mRev, 'cardio_log', {
+        date: todayDate, modality: 'running', durationMinutes: 30, intensity: 'vigorous',
+        source: 'health_connect', externalRecordId: 'hc-run-001',
+      }, { minimal: true }));
+      mRev = c2Dup.revision;
+
+      const cardioList = await okJson(await call('/v1/cardio-logs', { headers: mHdr }));
+      assert.equal(cardioList.total, 2, 'externalRecordId must dedupe instead of duplicating');
+      const runItem = cardioList.items.find((x) => x.externalRecordId === 'hc-run-001');
+      assert.equal(runItem.durationMinutes, 30);
+      assert.ok(runItem.estimatedKcal > 200);
+      assert.equal(runItem.safetyCaution?.code, 'CARDIO_HIGH_IMPACT_CAUTION');
+
+      // Bootstrap todaySummary.cardio + Weekly Wrapped cardioSessionsCount & cardioMinutes
+      const mBoot = await okJson(await call('/v1/bootstrap', { headers: mHdr }));
+      assert.equal(mBoot.todaySummary.cardio.sessionsCount, 1);
+      assert.equal(mBoot.todaySummary.cardio.totalMinutes, 30);
+      assert.equal(mBoot.todaySummary.cycleState, null, 'Male bootstrap must return cycleState: null');
+
+      const wrapped = await okJson(await call('/v1/progress/weekly-wrapped', { headers: mHdr }));
+      assert.ok(wrapped.cardioSessionsCount >= 2);
+      assert.ok(wrapped.cardioMinutes >= 65);
+
+      // Daily cap: 5 cardio logs max per date -> 6th returns 400 CARDIO_DAILY_LIMIT_EXCEEDED
+      for (let i = 0; i < 4; i++) {
+        const extra = await okJson(await postCmd(mToken, mRev, 'cardio_log', {
+          date: todayDate, modality: 'walking', durationMinutes: 15, intensity: 'low',
+        }, { minimal: true }));
+        mRev = extra.revision;
+      }
+      await errJson(await postCmd(mToken, mRev, 'cardio_log', {
+        date: todayDate, modality: 'walking', durationMinutes: 15, intensity: 'low',
+      }, { minimal: true }), 400, 'CARDIO_DAILY_LIMIT_EXCEEDED');
+
+      // Delete cardio session & 404 on nonexistent ID
+      const delCardio = await okJson(await postCmd(mToken, mRev, 'cardio_delete', { id: runItem.id }, { minimal: true }));
+      mRev = delCardio.revision;
+      await errJson(await postCmd(mToken, mRev, 'cardio_delete', { id: runItem.id }, { minimal: true }), 404, 'CARDIO_LOG_NOT_FOUND');
+
+      // Male profile strictly blocked from cycle awareness
+      const maleCycleState = await okJson(await call('/v1/cycle/state', { headers: mHdr }));
+      assert.equal(maleCycleState.available, false);
+      assert.equal(maleCycleState.enabled, false);
+      await errJson(await postCmd(mToken, mRev, 'cycle_settings', { enabled: true }, { minimal: true }), 403, 'CYCLE_TRACKING_UNAVAILABLE');
+      await errJson(await postCmd(mToken, mRev, 'cycle_log', { date: todayDate, periodStart: true }, { minimal: true }), 403, 'CYCLE_TRACKING_UNAVAILABLE');
+
+      // 11d. Optional Female Menstrual Cycle Awareness — opt-in, luteal water retention, brief note, widget privacy, periodStart advance, pregnancy auto-pause, consent lock & GDPR export/delete
+      const femaleJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com',
+        aud: 'curafit-android-client-id',
+        sub: 'google-sub-wellness-female',
+        email: 'wellness.female@curafit.app',
+        email_verified: true,
+        name: 'Salma Athlete',
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const femaleAuth = await okJson(await call('/v1/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: femaleJwt, deviceId: 'well-f-1' }),
+      }), 201);
+      const fToken = femaleAuth.accessToken;
+      const fHdr = { Authorization: `Bearer ${fToken}` };
+
+      const fGen = await okJson(await postCmd(fToken, 0, 'generate', {
+        name: 'Salma Athlete', age: 28, sex: 'female', weight: 64, height: 165,
+        goal: 'lose', targetWeight: 59, activity: 'moderate', dietType: 'balanced',
+        serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true,
+      }));
+      let fRev = fGen.revision;
+      const fToday = fGen.serverDate;
+
+      // Initially available=true, enabled=false, bootstrap.cycleState=null
+      const fCycleInit = await okJson(await call('/v1/cycle/state', { headers: fHdr }));
+      assert.equal(fCycleInit.available, true);
+      assert.equal(fCycleInit.enabled, false);
+      assert.equal(fCycleInit.disclaimer, 'wellness_tracking_not_contraception_or_medical_diagnosis');
+
+      // Opt-in with lastPeriodStartDate = 25 days ago -> Day 26 (late luteal, waterRetentionLikely=true)
+      const lutealAnchor = new Date(Date.parse(`${fToday}T12:00:00Z`) - 25 * 86400000).toISOString().slice(0, 10);
+      const cySet = await okJson(await postCmd(fToken, fRev, 'cycle_settings', {
+        enabled: true, averageCycleLengthDays: 28, averagePeriodLengthDays: 5, lastPeriodStartDate: lutealAnchor,
+      }, { minimal: true }));
+      fRev = cySet.revision;
+
+      const fCycleLuteal = await okJson(await call('/v1/cycle/state', { headers: fHdr }));
+      assert.equal(fCycleLuteal.enabled, true);
+      assert.equal(fCycleLuteal.currentCycleDay, 26);
+      assert.equal(fCycleLuteal.phase, 'luteal');
+      assert.equal(fCycleLuteal.waterRetentionLikely, true);
+      assert.equal(fCycleLuteal.coachingHintCode, 'CYCLE_LUTEAL_WATER_RETENTION');
+      assert.ok(fCycleLuteal.nextPeriodEstimateDate > fToday);
+
+      const fBoot = await okJson(await call('/v1/bootstrap', { headers: fHdr }));
+      assert.equal(fBoot.todaySummary.cycleState.phase, 'luteal');
+      assert.equal(fBoot.todaySummary.cycleState.waterRetentionLikely, true);
+
+      // Coaching brief includes CYCLE_LUTEAL_WATER_RETENTION pure-English note
+      const fBrief = await okJson(await call('/v1/coaching/brief', { headers: fHdr }));
+      assert.ok(fBrief.notes.some((n) => n.code === 'CYCLE_LUTEAL_WATER_RETENTION'), 'Coaching brief must emit CYCLE_LUTEAL_WATER_RETENTION in late luteal phase');
+
+      // Lock-screen Widget Snapshot NEVER leaks cycle data
+      const fWidget = await okJson(await call('/v1/widgets/snapshot', { headers: fHdr }));
+      assert.equal(fWidget.cycleState, undefined);
+      assert.ok(!JSON.stringify(fWidget).toLowerCase().includes('luteal'));
+
+      // Log periodStart=true today -> advances anchor & switches phase to menstrual (day 1)
+      const cyLog = await okJson(await postCmd(fToken, fRev, 'cycle_log', {
+        date: fToday, periodStart: true, flowLevel: 'medium', crampSeverity: 3, symptoms: ['cramps', 'fatigue'],
+      }, { minimal: true }));
+      fRev = cyLog.revision;
+      const fCycleMenstrual = await okJson(await call('/v1/cycle/state', { headers: fHdr }));
+      assert.equal(fCycleMenstrual.currentCycleDay, 1);
+      assert.equal(fCycleMenstrual.phase, 'menstrual');
+      assert.equal(fCycleMenstrual.coachingHintCode, 'CYCLE_MENSTRUAL_GENTLE_TRAINING');
+      assert.equal(fCycleMenstrual.recentLogs.length, 1);
+
+      // Switch to pregnancy -> cycle awareness auto-pauses with nextPeriodEstimateDate: null
+      const fPreg = await okJson(await postCmd(fToken, fRev, 'generate', {
+        name: 'Salma Athlete', age: 28, sex: 'female', weight: 65, height: 165,
+        goal: 'maintain', maternalStatus: 'pregnant_t2', activity: 'light', dietType: 'balanced',
+        serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true,
+      }));
+      fRev = fPreg.revision;
+      const fCyclePreg = await okJson(await call('/v1/cycle/state', { headers: fHdr }));
+      assert.equal(fCyclePreg.pausedReason, 'pregnancy');
+      assert.equal(fCyclePreg.nextPeriodEstimateDate, null);
+      assert.equal(fCyclePreg.coachingHintCode, 'CYCLE_PAUSED_PREGNANCY');
+
+      // Withdrawing health_data_processing consent blocks cycle_log & cycle_settings with 403 HEALTH_CONSENT_REQUIRED
+      await okJson(await call('/v1/account/consents', {
+        method: 'POST',
+        headers: { ...fHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consentType: 'health_data_processing', version: '1.0', accepted: false }),
+      }));
+      await errJson(await postCmd(fToken, fRev, 'cycle_log', { date: fToday, flowLevel: 'light' }, { minimal: true }), 403, 'HEALTH_CONSENT_REQUIRED');
+      await errJson(await postCmd(fToken, fRev, 'cycle_settings', { enabled: false }, { minimal: true }), 403, 'HEALTH_CONSENT_REQUIRED');
+
+      // GDPR Export contains cycleSettings, customRecipes, cardioLogs, cycleLogs
+      const fExport = await okJson(await call('/v1/account/export', { headers: fHdr }));
+      assert.ok(fExport.cycleSettings && fExport.cycleSettings.enabled === true);
+      assert.ok(Array.isArray(fExport.logs.cycleLogs) && fExport.logs.cycleLogs.length === 1);
+      assert.ok(Array.isArray(fExport.logs.customRecipes));
+      assert.ok(Array.isArray(fExport.logs.cardioLogs));
+
+      // GDPR Delete erases all 3 new wellness tables cleanly
+      const fDel = await okJson(await call('/v1/account/delete', {
+        method: 'DELETE',
+        headers: { ...fHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      }));
+      assert.equal(fDel.deleted, true);
+      assert.ok(fDel.tablesCleared >= 30, `Expected >= 30 cleared tables including 3 new wellness tables, got ${fDel.tablesCleared}`);
+    });
   } finally {
     await mf.dispose();
   }

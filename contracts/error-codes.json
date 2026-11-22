@@ -1792,6 +1792,58 @@
       "message": "unitSystem must be either metric or imperial.",
       "params": [],
       "retryable": false
+    },
+    "RECIPE_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Saved custom recipe not found.",
+      "params": [],
+      "retryable": false
+    },
+    "RECIPE_LIMIT_REACHED": {
+      "httpStatus": 409,
+      "message": "Maximum saved custom recipes limit ({max}) reached.",
+      "params": [
+        "max"
+      ],
+      "retryable": false
+    },
+    "INVALID_RECIPE_PAYLOAD": {
+      "httpStatus": 400,
+      "message": "Custom recipe payload is invalid or contains zero-energy ingredients.",
+      "params": [],
+      "retryable": false
+    },
+    "CARDIO_LOG_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Cardio session log not found.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_CARDIO_PAYLOAD": {
+      "httpStatus": 400,
+      "message": "Cardio session payload is invalid.",
+      "params": [],
+      "retryable": false
+    },
+    "CARDIO_DAILY_LIMIT_EXCEEDED": {
+      "httpStatus": 400,
+      "message": "Maximum number of cardio sessions ({max}) logged for this date has been reached.",
+      "params": [
+        "max"
+      ],
+      "retryable": false
+    },
+    "CYCLE_TRACKING_UNAVAILABLE": {
+      "httpStatus": 403,
+      "message": "Menstrual cycle awareness is only available for female profiles.",
+      "params": [],
+      "retryable": false
+    },
+    "INVALID_CYCLE_PAYLOAD": {
+      "httpStatus": 400,
+      "message": "Cycle settings or cycle log payload is invalid.",
+      "params": [],
+      "retryable": false
     }
   }
 }

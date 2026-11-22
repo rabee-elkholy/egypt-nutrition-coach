@@ -7,6 +7,7 @@ import {accountRecovery} from './recovery.mjs';
 import {deriveSyncDeltas} from './store.mjs';
 import {dayTotals} from './food.mjs';
 import {getFastingState} from './nutrition-tools.mjs';
+import {todayCardioSummary,bootstrapCycleSummary} from './wellness-tools.mjs';
 import {computeStreakAndEngagement} from './progress-analytics.mjs';
 import {coachingInbox} from '../coaching-journey.mjs';
 import {localDate,needsHealthConfirmation,needsScheduleConfirmation} from '../coaching-shared.mjs';
@@ -106,9 +107,11 @@ export const presentBootstrap=(s,extras={})=>{
    },
    hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters},
    activity:todayActivity?{steps:todayActivity.steps,activeEnergyKcal:todayActivity.activeEnergyKcal,source:todayActivity.source,updatedAt:todayActivity.at||null}:null,
+   cardio:todayCardioSummary(s,currDate),
    latestWeight,
    fastingState:getFastingState(s,clockNow()),
    ramadanMode:s.ramadanMode||{enabled:false,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false,endDate:null},
+   cycleState:bootstrapCycleSummary(s,clockNow()),
    recovery:{status:safety.length?(ready.status==='stop'?'stop':'hold'):ready.status,reasonCode:safety.length&&ready.status!=='stop'?'WORKOUT_SAFETY_EXCLUSION_HOLD':ready.reasonCode,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule&&!safety.length},
    scheduledWorkout:todaySched?{...todaySched,status:todaySess?.status||'scheduled'}:null
   },

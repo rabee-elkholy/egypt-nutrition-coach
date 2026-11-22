@@ -7,6 +7,7 @@ import {command,review,evaluateEligibility,progressSummary,previewPlan} from './
 import {catalog,exerciseAlternatives,regionForMuscle,workoutSafetyIssues} from './workouts.mjs';
 import {enrichExercise,matchesExerciseQuery,enrichMuscleCatalog,computeWorkoutPrs} from './workouts-insights.mjs';
 import {getPantryCatalog,getPantryAlternatives,getPlanGroceryList,lookupBarcode,submitBarcode,getFastingState} from './nutrition-tools.mjs';
+import {listCustomRecipes,listCardioLogs,computeCycleState} from './wellness-tools.mjs';
 import {computeProgressAnalytics,computeWeeklyWrapped,buildWidgetSnapshot} from './progress-analytics.mjs';
 import {authenticateSocialOAuth,linkOAuthProvider,unlinkOAuthProvider,listLinkedProviders,revokeAppleTokenOnDelete} from './oauth.mjs';
 import {handleSignedMediaRequest,signAvatarUrlIfNeeded,uploadProfileAvatar,deleteProfileAvatar,createProgressPhotoUploadUrl,confirmProgressPhoto,listProgressPhotos,deleteProgressPhoto,exportSignedMediaRefs,collectUserMediaKeys,purgeMediaKeys} from './media.mjs';
@@ -124,7 +125,8 @@ export default {async fetch(request,env){
     'multi_timezone','account_export_delete','coaching_agreements','coaching_feedback',
     'automatic_evidence_review','native_cloudflare_auth','social_oauth','pantry_finder',
     'grocery_list','barcode_lookup','ramadan_fasting','body_measurements','progress_photos_r2',
-    'store_subscriptions','push_notifications','widgets_snapshot','english_canonical_coaching_codes'
+    'store_subscriptions','push_notifications','widgets_snapshot','english_canonical_coaching_codes',
+    'custom_recipes','cardio_tracking','cycle_awareness'
    ],
    deferredFeatures:['ai_meal_parse','ai_coach_qa']
   },200,{},reqId);
@@ -514,6 +516,9 @@ export default {async fetch(request,env){
     return json(buildWidgetSnapshot(s,clockNow()),200,{ETag:etag},reqId);
    }
    if(url.pathname==='/v1/measurements')return json(paginateDateCollection(s.bodyMeasurements||[],url),200,{},reqId);
+   if(url.pathname==='/v1/recipes')return json(listCustomRecipes(s,{offset:url.searchParams.get('offset'),limit:url.searchParams.get('limit'),q:url.searchParams.get('q')}),200,{},reqId);
+   if(url.pathname==='/v1/cardio-logs')return json(listCardioLogs(s,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),offset:url.searchParams.get('offset'),limit:url.searchParams.get('limit')}),200,{},reqId);
+   if(url.pathname==='/v1/cycle/state')return json(computeCycleState(s,clockNow()),200,{},reqId);
    if(url.pathname==='/v1/workouts/prs')return json(computeWorkoutPrs(s,{since:url.searchParams.get('since')||null,exerciseId:url.searchParams.get('exerciseId')||null}),200,{},reqId);
    if(url.pathname==='/v1/nutrition/fasting-state')return json(getFastingState(s,clockNow()),200,{},reqId);
    if(url.pathname==='/v1/coaching/inbox')return json(coachingInbox(s,clockNow()),200,{},reqId);
@@ -636,6 +641,14 @@ export default {async fetch(request,env){
       }else{
        skippedRecords.push({index:i,type:rec.type,reason:'duplicate_external_record_id'});
       }
+     }else if(rec.type==='cardio'){
+      const alreadyHad=rec.externalRecordId&&(next.cardioLogs||[]).some(x=>x.externalRecordId===rec.externalRecordId);
+      if(!alreadyHad){
+       next=command(next,'cardio_log',{date:rec.date,modality:rec.modality,durationMinutes:rec.durationMinutes,intensity:rec.intensity||'moderate',distanceKm:rec.distanceKm,caloriesKcal:rec.caloriesKcal,notes:rec.notes,source:rec.source==='apple_health'?'apple_health':'health_connect',externalRecordId:rec.externalRecordId||null});
+       ingested++;
+      }else{
+       skippedRecords.push({index:i,type:'cardio',reason:'duplicate_external_record_id'});
+      }
      }
     }catch(recErr){
      skippedRecords.push({index:i,type:rec?.type||'unknown',code:recErr?.code||'VALIDATION_ERROR',reason:recErr?.message||'Record skipped'});
@@ -660,8 +673,8 @@ export default {async fetch(request,env){
   if(!body||Array.isArray(body)||typeof body.action!=='string'||!Number.isSafeInteger(body.revision)||body.revision<0||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload))return errorJson('Command body must include integer revision >= 0, string action, and object payload.',400,reqId,{code:'INVALID_COMMAND_ENVELOPE'});
   if(!key||key.length>100)return errorJson('Idempotency-Key header (1..100 characters) is required.',400,reqId,{code:'IDEMPOTENCY_KEY_REQUIRED'});
 
-  // Enforce withdrawn health_data_processing consent lock on personalized calculation commands
-  if(['generate','review','adaptation','renew_plan'].includes(body.action)&&await isHealthConsentWithdrawn(env.DB,user)){
+  // Enforce withdrawn health_data_processing consent lock on personalized calculation & cycle health commands
+  if(['generate','review','adaptation','renew_plan','cycle_settings','cycle_log'].includes(body.action)&&await isHealthConsentWithdrawn(env.DB,user)){
    return errorJson('Active health_data_processing consent is required to generate plans or compute coaching reviews.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
   }
 
@@ -724,8 +737,8 @@ export default {async fetch(request,env){
 
   if(['recovery','weight','food','food_entry','food_entry_update','food_complete','food_delete','copy_meal','session','session_delete','workout','workout_delete','coaching_feedback','renew_plan','comeback_restart','timezone','confirm_health','confirm_schedule'].includes(body.action))review(next);
   reconcileCoaching(next,clockNow());
-  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze'].includes(body.action))next.adaptations=structuredClone(s.adaptations);
-  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze','coaching_ack','coaching_decision','coaching_outcome'].includes(body.action))for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
+  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log'].includes(body.action))next.adaptations=structuredClone(s.adaptations);
+  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log','coaching_ack','coaching_decision','coaching_outcome'].includes(body.action))for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
   next.revision=s.revision+1;
   await saveAccount(env.DB,user,next,s.revision,{key,digest:intentDigest,action:body.action,payload:body.payload,previousState:s});
 

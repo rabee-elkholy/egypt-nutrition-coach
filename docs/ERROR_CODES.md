@@ -313,3 +313,11 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `AD_HOC_INJURY_WARNING` | `409` | No | `injuries` | This exercise conflicts with your declared joint injuries ({injuries}); pass overrideInjuryWarning: true to log it anyway. |
 | `INVALID_MATERNAL_PROFILE` | `400` | No | — | Maternal status is only applicable to female profiles aged 18 to 50. |
 | `INVALID_UNIT_SYSTEM` | `400` | No | — | unitSystem must be either metric or imperial. |
+| `RECIPE_NOT_FOUND` | `404` | No | — | Saved custom recipe not found. |
+| `RECIPE_LIMIT_REACHED` | `409` | No | `max` | Maximum saved custom recipes limit ({max}) reached. |
+| `INVALID_RECIPE_PAYLOAD` | `400` | No | — | Custom recipe payload is invalid or contains zero-energy ingredients. |
+| `CARDIO_LOG_NOT_FOUND` | `404` | No | — | Cardio session log not found. |
+| `INVALID_CARDIO_PAYLOAD` | `400` | No | — | Cardio session payload is invalid. |
+| `CARDIO_DAILY_LIMIT_EXCEEDED` | `400` | No | `max` | Maximum number of cardio sessions ({max}) logged for this date has been reached. |
+| `CYCLE_TRACKING_UNAVAILABLE` | `403` | No | — | Menstrual cycle awareness is only available for female profiles. |
+| `INVALID_CYCLE_PAYLOAD` | `400` | No | — | Cycle settings or cycle log payload is invalid. |

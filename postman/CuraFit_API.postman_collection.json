@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7c94f8e1-4c9a-4f3b-9b5a-2e8d6a1f0c31",
     "name": "CuraFit API v1",
-    "description": "# CuraFit API v1 — Cloudflare Workers & D1\n\nProduction-grade REST API running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** (`curafit-api` for Production, `curafit-api-dev` for Cloud Dev). Designed for **Kotlin Multiplatform Mobile (KMM)** with uniform JSON envelopes, 100% English machine-coded errors (`contracts/error-codes.json`), and canonical coaching codes (`contracts/coaching-codes.json`).\n\n---\n\n## 1. Servers & Environments\n\nSwitch between environments from the top-right **Environment selector** in Postman:\n\n| Environment Name | `baseUrl` | Cloudflare Worker / D1 | Purpose |\n| :--- | :--- | :--- | :--- |\n| **CuraFit — Cloud Dev** | `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` | `curafit-api-dev` / `curafit-db-dev` | Feature development & staging on Cloudflare edge (`dev` branch, full clone of Prod D1) |\n| **CuraFit — Production** | `https://curafit-api.egypt-nutrition-coach.workers.dev` | `curafit-api` / `egypt-nutrition-coaching` | Live Cloudflare Workers + D1 production server (`main` branch) |\n| **CuraFit — Local Dev** | `http://127.0.0.1:8787` | Local Miniflare | Local development server (`npm run dev`) |\n\n---\n\n## 2. Authentication (Cloudflare Native D1 + Direct OIDC)\n\n- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.\n- **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).\n- **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).\n- **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).\n\n---\n\n## 3. Unified Command Pipeline (`POST /v1/commands`), Revision & Idempotency\n\nAll domain mutations pass through `POST /v1/commands`:\n- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and intent (`action` + `payload`) on network timeout even after a revision rebase.\n- **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.params.currentRevision` and `error.details.mergeHints`.\n- **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt inside `data`; `?view=full` returns the full account snapshot inside `data`.\n\n---\n\n## 4. Uniform KMM Envelopes & Pure-English Error / Coaching Contracts\n\nEvery JSON endpoint returns the canonical envelope:\n\n- **Success (`2xx`):** `{ \"ok\": true, \"data\": <T>, \"meta\": { \"requestId\": \"<uuid>\", \"serverTime\": \"<iso8601>\", \"revision\"?: <int> } }`\n- **Error (`4xx` / `5xx`):** `{ \"ok\": false, \"error\": { \"code\", \"message\", \"params\", \"fieldErrors\", \"retryable\", \"details\"?: {...} }, \"meta\": { \"requestId\": \"<uuid>\", \"serverTime\": \"<iso8601>\" } }`\n\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |\n| `error.code` | `string` | Stable uppercase error code (282 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |\n| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |\n| `error.params` | `object` | Interpolation parameters for client-side localization |\n| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |\n| `error.retryable` | `boolean` | Whether the client may safely retry (`true` for `429`/`503`/`500`) |\n| `error.details` | `object` (optional) | Structured recovery data such as `currentRevision` and `mergeHints` on `409` |\n| `meta.requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |\n| `meta.serverTime` | `string (ISO-8601)` | Server UTC timestamp |\n\n> **Coaching Codes:** All coaching briefs, agreements, readiness summaries, and eligibility reasons return canonical English text plus `code` and `params` cataloged in `contracts/coaching-codes.json` (`docs/COACHING_CODES.md`). AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are deferred to the final AI rollout phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`).\n\n---\n\n## 5. Collection & Environment Variables Reference\n\n| Variable | Type | Scope | Description |\n| :--- | :--- | :--- | :--- |\n| `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |\n| `testEmail` | `string (email)` | Environment | Email used in internal Dev/QA Register / Login |\n| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) for internal Dev/QA routes |\n| `testNewPassword` | `string (secret)` | Environment | New password for Change Password |\n| `deviceId` | `string` | Environment | Client device ID (`max 120` chars) |\n| `clientPlatform` | `string (enum)` | Environment | `android` \\| `ios` \\| `web` |\n| `clientVersion` | `string` | Environment | App semantic version (e.g. `1.0.0`) |\n| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by OAuth / Register / Login / Refresh |\n| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by OAuth / Register / Login / Refresh |\n| `sessionId` | `string` | Collection (auto) | Current D1 session ID |\n| `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |\n| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |\n| `idempotencyKey` | `string (UUID)` | Pre-request (auto) | Fresh UUID generated before every request |\n| `todayDate` | `string (YYYY-MM-DD)` | Collection (auto) | Current server local date |\n| `lastEtag` | `string` | Collection (auto) | Last `ETag` response header for `If-None-Match` |\n| `activePlanId` | `string` | Collection (auto) | Active nutrition plan ID |\n| `activeWorkoutPlanId` | `string` | Collection (auto) | Active workout plan ID |\n| `sampleMealId` | `string (UUID)` | Collection (auto) | First meal ID from today's active plan |\n| `sampleAltTemplateId` | `string` | Collection (auto) | Alternative meal template ID |\n| `sampleFoodEntryId` | `string (UUID)` | Collection (auto) | Last created food entry ID |\n| `sampleDayIndex` | `integer (0..6)` | Collection (auto) | Workout weekday index (`0=Sun .. 6=Sat`) |\n| `sampleExerciseId` | `string` | Collection (auto) | Exercise ID in the active workout plan |\n| `sampleAltExerciseId` | `string` | Collection (auto) | Validated alternative exercise ID |\n| `sampleRescheduleDate` | `string (YYYY-MM-DD)` | Collection (auto) | Next available rest date within 13 days |\n| `sampleProposalId` | `string (UUID)` | Collection (auto) | Active pending adaptation proposal ID |\n| `sampleCaseId` | `string` | Collection (auto) | Active coaching agreement/case ID |\n| `sampleFoodId` | `string` | Collection (auto) | Food item ID from `/v1/foods` |\n| `sampleCatalogExerciseId` | `string (URL-encoded)` | Collection (auto) | Exercise catalog ID from `/v1/exercises` |\n| `nextSeqCursor` | `integer` | Collection (auto) | Incremental outbox sequence cursor for `/v1/sync/changes` |\n| `anonymousUserId` | `string` | Collection | Anonymous `anon:...` ID for `/v1/auth/claim-anonymous` |\n| `sampleBarcode` | `string` | Collection | Sample EAN/UPC barcode (`6221000000001`) for `/v1/foods/barcode/{ean}` |\n| `samplePhotoId` | `string` | Collection | Progress photo ID for `/v1/progress/photos/{photoId}` |\n| `signedMediaToken` | `string` | Collection | Short-lived HMAC-signed token for `/v1/media/signed/{token}` |\n| `oauthProvider` | `string (enum)` | Collection | OAuth provider (`google` \\| `apple`) for `/v1/auth/oauth/{provider}` |",
+    "description": "# CuraFit API v1 — Cloudflare Workers & D1\n\nProduction-grade REST API running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** (`curafit-api` for Production, `curafit-api-dev` for Cloud Dev). Designed for **Kotlin Multiplatform Mobile (KMM)** with uniform JSON envelopes, 100% English machine-coded errors (`contracts/error-codes.json`), and canonical coaching codes (`contracts/coaching-codes.json`).\n\n---\n\n## 1. Servers & Environments\n\nSwitch between environments from the top-right **Environment selector** in Postman:\n\n| Environment Name | `baseUrl` | Cloudflare Worker / D1 | Purpose |\n| :--- | :--- | :--- | :--- |\n| **CuraFit — Cloud Dev** | `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` | `curafit-api-dev` / `curafit-db-dev` | Feature development & staging on Cloudflare edge (`dev` branch, full clone of Prod D1) |\n| **CuraFit — Production** | `https://curafit-api.egypt-nutrition-coach.workers.dev` | `curafit-api` / `egypt-nutrition-coaching` | Live Cloudflare Workers + D1 production server (`main` branch) |\n| **CuraFit — Local Dev** | `http://127.0.0.1:8787` | Local Miniflare | Local development server (`npm run dev`) |\n\n---\n\n## 2. Authentication (Cloudflare Native D1 + Direct OIDC)\n\n- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.\n- **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).\n- **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).\n- **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).\n\n---\n\n## 3. Unified Command Pipeline (`POST /v1/commands`), Revision & Idempotency\n\nAll domain mutations pass through `POST /v1/commands`:\n- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and intent (`action` + `payload`) on network timeout even after a revision rebase.\n- **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.params.currentRevision` and `error.details.mergeHints`.\n- **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt inside `data`; `?view=full` returns the full account snapshot inside `data`.\n\n---\n\n## 4. Uniform KMM Envelopes & Pure-English Error / Coaching Contracts\n\nEvery JSON endpoint returns the canonical envelope:\n\n- **Success (`2xx`):** `{ \"ok\": true, \"data\": <T>, \"meta\": { \"requestId\": \"<uuid>\", \"serverTime\": \"<iso8601>\", \"revision\"?: <int> } }`\n- **Error (`4xx` / `5xx`):** `{ \"ok\": false, \"error\": { \"code\", \"message\", \"params\", \"fieldErrors\", \"retryable\", \"details\"?: {...} }, \"meta\": { \"requestId\": \"<uuid>\", \"serverTime\": \"<iso8601>\" } }`\n\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |\n| `error.code` | `string` | Stable uppercase error code (290 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |\n| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |\n| `error.params` | `object` | Interpolation parameters for client-side localization |\n| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |\n| `error.retryable` | `boolean` | Whether the client may safely retry (`true` for `429`/`503`/`500`) |\n| `error.details` | `object` (optional) | Structured recovery data such as `currentRevision` and `mergeHints` on `409` |\n| `meta.requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |\n| `meta.serverTime` | `string (ISO-8601)` | Server UTC timestamp |\n\n> **Coaching Codes:** All coaching briefs, agreements, readiness summaries, and eligibility reasons return canonical English text plus `code` and `params` cataloged in `contracts/coaching-codes.json` (`docs/COACHING_CODES.md`). AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are deferred to the final AI rollout phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`).\n\n---\n\n## 5. Collection & Environment Variables Reference\n\n| Variable | Type | Scope | Description |\n| :--- | :--- | :--- | :--- |\n| `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |\n| `testEmail` | `string (email)` | Environment | Email used in internal Dev/QA Register / Login |\n| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) for internal Dev/QA routes |\n| `testNewPassword` | `string (secret)` | Environment | New password for Change Password |\n| `deviceId` | `string` | Environment | Client device ID (`max 120` chars) |\n| `clientPlatform` | `string (enum)` | Environment | `android` \\| `ios` \\| `web` |\n| `clientVersion` | `string` | Environment | App semantic version (e.g. `1.0.0`) |\n| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by OAuth / Register / Login / Refresh |\n| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by OAuth / Register / Login / Refresh |\n| `sessionId` | `string` | Collection (auto) | Current D1 session ID |\n| `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |\n| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |\n| `idempotencyKey` | `string (UUID)` | Pre-request (auto) | Fresh UUID generated before every request |\n| `todayDate` | `string (YYYY-MM-DD)` | Collection (auto) | Current server local date |\n| `lastEtag` | `string` | Collection (auto) | Last `ETag` response header for `If-None-Match` |\n| `activePlanId` | `string` | Collection (auto) | Active nutrition plan ID |\n| `activeWorkoutPlanId` | `string` | Collection (auto) | Active workout plan ID |\n| `sampleMealId` | `string (UUID)` | Collection (auto) | First meal ID from today's active plan |\n| `sampleAltTemplateId` | `string` | Collection (auto) | Alternative meal template ID |\n| `sampleFoodEntryId` | `string (UUID)` | Collection (auto) | Last created food entry ID |\n| `sampleDayIndex` | `integer (0..6)` | Collection (auto) | Workout weekday index (`0=Sun .. 6=Sat`) |\n| `sampleExerciseId` | `string` | Collection (auto) | Exercise ID in the active workout plan |\n| `sampleAltExerciseId` | `string` | Collection (auto) | Validated alternative exercise ID |\n| `sampleRescheduleDate` | `string (YYYY-MM-DD)` | Collection (auto) | Next available rest date within 13 days |\n| `sampleProposalId` | `string (UUID)` | Collection (auto) | Active pending adaptation proposal ID |\n| `sampleCaseId` | `string` | Collection (auto) | Active coaching agreement/case ID |\n| `sampleFoodId` | `string` | Collection (auto) | Food item ID from `/v1/foods` |\n| `sampleCatalogExerciseId` | `string (URL-encoded)` | Collection (auto) | Exercise catalog ID from `/v1/exercises` |\n| `nextSeqCursor` | `integer` | Collection (auto) | Incremental outbox sequence cursor for `/v1/sync/changes` |\n| `anonymousUserId` | `string` | Collection | Anonymous `anon:...` ID for `/v1/auth/claim-anonymous` |\n| `sampleBarcode` | `string` | Collection | Sample EAN/UPC barcode (`6221000000001`) for `/v1/foods/barcode/{ean}` |\n| `samplePhotoId` | `string` | Collection | Progress photo ID for `/v1/progress/photos/{photoId}` |\n| `signedMediaToken` | `string` | Collection | Short-lived HMAC-signed token for `/v1/media/signed/{token}` |\n| `oauthProvider` | `string (enum)` | Collection | OAuth provider (`google` \\| `apple`) for `/v1/auth/oauth/{provider}` |",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -12356,13 +12356,484 @@
               "body": "{\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"REVISION_CONFLICT\",\n    \"message\": \"Account was updated; refresh and try again.\",\n    \"params\": {\n      \"expectedRevision\": 4,\n      \"serverRevision\": 5\n    },\n    \"fieldErrors\": [],\n    \"retryable\": false,\n    \"details\": {\n      \"currentRevision\": 5,\n      \"mergeHints\": {\n        \"expectedRevision\": 4,\n        \"serverRevision\": 5,\n        \"syncChangesEndpoint\": \"/v1/sync/changes?after=4\",\n        \"resolutionPolicy\": \"fetch_sync_deltas_then_rebase_or_retry\"\n      }\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
             }
           ]
+        },
+        {
+          "name": "List Saved Custom Recipes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/recipes?offset=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "recipes"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Lists the user's saved multi-ingredient home recipes (\"My Recipes\") with optional text search `q` (Free feature).\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/recipes?offset=0&limit=20`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/recipes?offset=0&limit=20`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/recipes?offset=0&limit=20`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/recipes?offset=0&limit=20`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
+          },
+          "response": []
+        },
+        {
+          "name": "Save Custom Home Recipe (recipe_save)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "Must be application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}",
+                "description": "Client platform: android | ios | web."
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}",
+                "description": "Client app semantic version (e.g. 1.0.0)."
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"recipe_save\",\n  \"payload\": {\n    \"name\": \"Home Grilled Chicken Rice Bowl\",\n    \"servings\": 2,\n    \"items\": [\n      {\n        \"foodId\": \"chicken\",\n        \"grams\": 300\n      },\n      {\n        \"foodId\": \"rice\",\n        \"grams\": 200\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Creates or updates a saved multi-ingredient home recipe (max 100 recipes) with verified per-serving and per-100g macros (Free feature).\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/commands?view=receipt`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |\n| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |\n| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Query Parameters\n| Parameter | Type | Required | Constraints / Default | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |\n| `action` | `string (const)` | Yes | \"recipe_save\" | Domain command action identifier. |\n| `payload` | `object` | Yes | JSON object | Action-specific payload for `recipe_save`. |\n| `payload.id` | `string` | No | Optional UUID for update | Existing recipe ID to update in place. |\n| `payload.name` | `string` | Yes | 2..80 chars | Recipe display name. |\n| `payload.servings` | `number` | Yes | 0.5..30 | Total servings produced by the recipe batch. |\n| `payload.items` | `Array<object>` | Yes | 1..25 items `{ foodId, grams }` | Catalog ingredient IDs and gram weights. |\n| `payload.notes` | `string` | No | max 300 chars | Optional preparation notes. |\n\n### Request Body Example\n```json\n{\n  \"revision\": {{revision}},\n  \"action\": \"recipe_save\",\n  \"payload\": {\n    \"name\": \"Home Grilled Chicken Rice Bowl\",\n    \"servings\": 2,\n    \"items\": [\n      {\n        \"foodId\": \"chicken\",\n        \"grams\": 300\n      },\n      {\n        \"foodId\": \"rice\",\n        \"grams\": 200\n      }\n    ]\n  }\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `true` when committed or idempotently replayed. |\n| `revision` | `integer` | New monotonic account revision. |\n| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |\n| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |\n| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |\n| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |\n| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |\n| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |\n| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |"
+          },
+          "response": [
+            {
+              "name": "200 OK — recipe_save Receipt",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"recipe_save\",\n  \"payload\": {\n    \"name\": \"Home Grilled Chicken Rice Bowl\",\n    \"servings\": 2,\n    \"items\": [\n      {\n        \"foodId\": \"chicken\",\n        \"grams\": 300\n      },\n      {\n        \"foodId\": \"rice\",\n        \"grams\": 200\n      }\n    ]\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"revision\": 2,\n    \"serverNow\": \"2026-11-21T12:30:00.000Z\",\n    \"serverDate\": \"2026-11-21\",\n    \"timezone\": \"Africa/Cairo\",\n    \"commandReceipt\": {\n      \"revision\": 2,\n      \"action\": \"recipe_save\",\n      \"replayed\": false,\n      \"at\": \"2026-11-21T12:30:00.000Z\"\n    },\n    \"affected\": [\n      {\n        \"entityType\": \"recipe_save\",\n        \"entityId\": \"example-id\",\n        \"op\": \"upsert\",\n        \"payload\": {}\n      }\n    ]\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\",\n    \"revision\": 2\n  }\n}"
+            },
+            {
+              "name": "409 Conflict — Stale Revision",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"recipe_save\",\n  \"payload\": {\n    \"name\": \"Home Grilled Chicken Rice Bowl\",\n    \"servings\": 2,\n    \"items\": [\n      {\n        \"foodId\": \"chicken\",\n        \"grams\": 300\n      },\n      {\n        \"foodId\": \"rice\",\n        \"grams\": 200\n      }\n    ]\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"REVISION_CONFLICT\",\n    \"message\": \"Account was updated; refresh and try again.\",\n    \"params\": {\n      \"expectedRevision\": 4,\n      \"serverRevision\": 5\n    },\n    \"fieldErrors\": [],\n    \"retryable\": false,\n    \"details\": {\n      \"currentRevision\": 5,\n      \"mergeHints\": {\n        \"expectedRevision\": 4,\n        \"serverRevision\": 5,\n        \"syncChangesEndpoint\": \"/v1/sync/changes?after=4\",\n        \"resolutionPolicy\": \"fetch_sync_deltas_then_rebase_or_retry\"\n      }\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete Custom Home Recipe (recipe_delete)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "Must be application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}",
+                "description": "Client platform: android | ios | web."
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}",
+                "description": "Client app semantic version (e.g. 1.0.0)."
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"recipe_delete\",\n  \"payload\": {\n    \"id\": \"recipe-id-placeholder\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Deletes a saved custom recipe while preserving frozen historical food diary snapshots intact.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/commands?view=receipt`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |\n| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |\n| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Query Parameters\n| Parameter | Type | Required | Constraints / Default | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |\n| `action` | `string (const)` | Yes | \"recipe_delete\" | Domain command action identifier. |\n| `payload` | `object` | Yes | JSON object | Action-specific payload for `recipe_delete`. |\n| `payload.id` | `string` | Yes | Saved recipe ID | ID of the saved recipe to delete. |\n\n### Request Body Example\n```json\n{\n  \"revision\": {{revision}},\n  \"action\": \"recipe_delete\",\n  \"payload\": {\n    \"id\": \"recipe-id-placeholder\"\n  }\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `true` when committed or idempotently replayed. |\n| `revision` | `integer` | New monotonic account revision. |\n| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |\n| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |\n| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |\n| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |\n| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |\n| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |\n| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |"
+          },
+          "response": [
+            {
+              "name": "200 OK — recipe_delete Receipt",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"recipe_delete\",\n  \"payload\": {\n    \"id\": \"recipe-id-placeholder\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"revision\": 2,\n    \"serverNow\": \"2026-11-21T12:30:00.000Z\",\n    \"serverDate\": \"2026-11-21\",\n    \"timezone\": \"Africa/Cairo\",\n    \"commandReceipt\": {\n      \"revision\": 2,\n      \"action\": \"recipe_delete\",\n      \"replayed\": false,\n      \"at\": \"2026-11-21T12:30:00.000Z\"\n    },\n    \"affected\": [\n      {\n        \"entityType\": \"recipe_delete\",\n        \"entityId\": \"example-id\",\n        \"op\": \"upsert\",\n        \"payload\": {}\n      }\n    ]\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\",\n    \"revision\": 2\n  }\n}"
+            },
+            {
+              "name": "409 Conflict — Stale Revision",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"recipe_delete\",\n  \"payload\": {\n    \"id\": \"recipe-id-placeholder\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"REVISION_CONFLICT\",\n    \"message\": \"Account was updated; refresh and try again.\",\n    \"params\": {\n      \"expectedRevision\": 4,\n      \"serverRevision\": 5\n    },\n    \"fieldErrors\": [],\n    \"retryable\": false,\n    \"details\": {\n      \"currentRevision\": 5,\n      \"mergeHints\": {\n        \"expectedRevision\": 4,\n        \"serverRevision\": 5,\n        \"syncChangesEndpoint\": \"/v1/sync/changes?after=4\",\n        \"resolutionPolicy\": \"fetch_sync_deltas_then_rebase_or_retry\"\n      }\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            }
+          ]
         }
       ]
     },
     {
       "id": "f0000016-0000-4000-8000-000000000016",
-      "name": "15. Workouts Insights, PRs, Analytics, Measurements & Widgets",
-      "description": "Workout UI modes, ad-hoc exercises, PR engine, multi-series progress analytics, weekly wrapped, body measurements, streak freeze, and home-screen widget snapshots.",
+      "name": "15. Workouts Insights, Cardio, Cycle Awareness, Analytics & Widgets",
+      "description": "Workout UI modes, ad-hoc exercises, dedicated cardio sessions, optional female cycle awareness, PR engine, multi-series progress analytics, weekly wrapped, body measurements, streak freeze, and home-screen widget snapshots.",
       "item": [
         {
           "name": "Set Workout UI Mode (workout_ui_mode)",
@@ -12801,6 +13272,939 @@
           ]
         },
         {
+          "name": "List Dedicated Cardio Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/cardio-logs?offset=0&limit=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "cardio-logs"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Lists dedicated walking/running/cycling/swimming/HIIT cardio sessions with summary totals (Free feature).\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/cardio-logs?offset=0&limit=30`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/cardio-logs?offset=0&limit=30`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/cardio-logs?offset=0&limit=30`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/cardio-logs?offset=0&limit=30`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
+          },
+          "response": []
+        },
+        {
+          "name": "Log Cardio Session (cardio_log)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "Must be application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}",
+                "description": "Client platform: android | ios | web."
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}",
+                "description": "Client app semantic version (e.g. 1.0.0)."
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cardio_log\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"modality\": \"brisk_walking\",\n    \"durationMinutes\": 35,\n    \"intensity\": \"moderate\",\n    \"distanceKm\": 3.2\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs a dedicated cardio or walking session with deterministic MET calorie estimation, rest-day hydration boost (>=30m), streak credit (>=20m), and non-blocking high-impact safety cautions (Free feature).\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/commands?view=receipt`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |\n| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |\n| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Query Parameters\n| Parameter | Type | Required | Constraints / Default | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |\n| `action` | `string (const)` | Yes | \"cardio_log\" | Domain command action identifier. |\n| `payload` | `object` | Yes | JSON object | Action-specific payload for `cardio_log`. |\n| `payload.date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Cardio session date. |\n| `payload.modality` | `string (enum)` | Yes | `walking` | `brisk_walking` | `running` | `cycling` | `stationary_bike` | `swimming` | `elliptical` | `rowing` | `jump_rope` | `hiit` | Cardio modality. |\n| `payload.durationMinutes` | `integer` | Yes | 5..360 | Session duration in minutes. |\n| `payload.intensity` | `string (enum)` | Yes | `low` | `moderate` | `vigorous` | Perceived cardio intensity. |\n| `payload.distanceKm` | `number` | No | 0..300 | Optional distance in kilometers. |\n| `payload.caloriesKcal` | `number` | No | 10..5000 | Optional wearable/manual energy expenditure (MET-estimated if omitted). |\n\n### Request Body Example\n```json\n{\n  \"revision\": {{revision}},\n  \"action\": \"cardio_log\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"modality\": \"brisk_walking\",\n    \"durationMinutes\": 35,\n    \"intensity\": \"moderate\",\n    \"distanceKm\": 3.2\n  }\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `true` when committed or idempotently replayed. |\n| `revision` | `integer` | New monotonic account revision. |\n| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |\n| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |\n| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |\n| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |\n| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |\n| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |\n| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |"
+          },
+          "response": [
+            {
+              "name": "200 OK — cardio_log Receipt",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cardio_log\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"modality\": \"brisk_walking\",\n    \"durationMinutes\": 35,\n    \"intensity\": \"moderate\",\n    \"distanceKm\": 3.2\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"revision\": 2,\n    \"serverNow\": \"2026-11-21T12:30:00.000Z\",\n    \"serverDate\": \"2026-11-21\",\n    \"timezone\": \"Africa/Cairo\",\n    \"commandReceipt\": {\n      \"revision\": 2,\n      \"action\": \"cardio_log\",\n      \"replayed\": false,\n      \"at\": \"2026-11-21T12:30:00.000Z\"\n    },\n    \"affected\": [\n      {\n        \"entityType\": \"cardio_log\",\n        \"entityId\": \"example-id\",\n        \"op\": \"upsert\",\n        \"payload\": {}\n      }\n    ]\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\",\n    \"revision\": 2\n  }\n}"
+            },
+            {
+              "name": "409 Conflict — Stale Revision",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cardio_log\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"modality\": \"brisk_walking\",\n    \"durationMinutes\": 35,\n    \"intensity\": \"moderate\",\n    \"distanceKm\": 3.2\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"REVISION_CONFLICT\",\n    \"message\": \"Account was updated; refresh and try again.\",\n    \"params\": {\n      \"expectedRevision\": 4,\n      \"serverRevision\": 5\n    },\n    \"fieldErrors\": [],\n    \"retryable\": false,\n    \"details\": {\n      \"currentRevision\": 5,\n      \"mergeHints\": {\n        \"expectedRevision\": 4,\n        \"serverRevision\": 5,\n        \"syncChangesEndpoint\": \"/v1/sync/changes?after=4\",\n        \"resolutionPolicy\": \"fetch_sync_deltas_then_rebase_or_retry\"\n      }\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete Cardio Session (cardio_delete)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "Must be application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}",
+                "description": "Client platform: android | ios | web."
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}",
+                "description": "Client app semantic version (e.g. 1.0.0)."
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cardio_delete\",\n  \"payload\": {\n    \"id\": \"cardio-log-id-placeholder\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Deletes a logged cardio session by ID.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/commands?view=receipt`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |\n| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |\n| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Query Parameters\n| Parameter | Type | Required | Constraints / Default | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |\n| `action` | `string (const)` | Yes | \"cardio_delete\" | Domain command action identifier. |\n| `payload` | `object` | Yes | JSON object | Action-specific payload for `cardio_delete`. |\n| `payload.id` | `string` | Yes | Cardio log ID | ID of the cardio session to delete. |\n\n### Request Body Example\n```json\n{\n  \"revision\": {{revision}},\n  \"action\": \"cardio_delete\",\n  \"payload\": {\n    \"id\": \"cardio-log-id-placeholder\"\n  }\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `true` when committed or idempotently replayed. |\n| `revision` | `integer` | New monotonic account revision. |\n| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |\n| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |\n| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |\n| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |\n| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |\n| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |\n| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |"
+          },
+          "response": [
+            {
+              "name": "200 OK — cardio_delete Receipt",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cardio_delete\",\n  \"payload\": {\n    \"id\": \"cardio-log-id-placeholder\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"revision\": 2,\n    \"serverNow\": \"2026-11-21T12:30:00.000Z\",\n    \"serverDate\": \"2026-11-21\",\n    \"timezone\": \"Africa/Cairo\",\n    \"commandReceipt\": {\n      \"revision\": 2,\n      \"action\": \"cardio_delete\",\n      \"replayed\": false,\n      \"at\": \"2026-11-21T12:30:00.000Z\"\n    },\n    \"affected\": [\n      {\n        \"entityType\": \"cardio_delete\",\n        \"entityId\": \"example-id\",\n        \"op\": \"upsert\",\n        \"payload\": {}\n      }\n    ]\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\",\n    \"revision\": 2\n  }\n}"
+            },
+            {
+              "name": "409 Conflict — Stale Revision",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cardio_delete\",\n  \"payload\": {\n    \"id\": \"cardio-log-id-placeholder\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"REVISION_CONFLICT\",\n    \"message\": \"Account was updated; refresh and try again.\",\n    \"params\": {\n      \"expectedRevision\": 4,\n      \"serverRevision\": 5\n    },\n    \"fieldErrors\": [],\n    \"retryable\": false,\n    \"details\": {\n      \"currentRevision\": 5,\n      \"mergeHints\": {\n        \"expectedRevision\": 4,\n        \"serverRevision\": 5,\n        \"syncChangesEndpoint\": \"/v1/sync/changes?after=4\",\n        \"resolutionPolicy\": \"fetch_sync_deltas_then_rebase_or_retry\"\n      }\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Female Cycle Awareness State",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/cycle/state",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "cycle",
+                "state"
+              ]
+            },
+            "description": "Returns optional female menstrual cycle awareness state, phase estimate, luteal water-retention flag, and pregnancy auto-pause status (`available: false` for non-female profiles; Free opt-in feature).\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/cycle/state`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/cycle/state`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/cycle/state`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/cycle/state`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Cycle Awareness Settings (cycle_settings)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "Must be application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}",
+                "description": "Client platform: android | ios | web."
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}",
+                "description": "Client app semantic version (e.g. 1.0.0)."
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cycle_settings\",\n  \"payload\": {\n    \"enabled\": true,\n    \"averageCycleLengthDays\": 28,\n    \"averagePeriodLengthDays\": 5,\n    \"lastPeriodStartDate\": \"{{todayDate}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Enables/disables optional female cycle awareness and configures average cycle/period lengths (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/commands?view=receipt`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |\n| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |\n| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Query Parameters\n| Parameter | Type | Required | Constraints / Default | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |\n| `action` | `string (const)` | Yes | \"cycle_settings\" | Domain command action identifier. |\n| `payload` | `object` | Yes | JSON object | Action-specific payload for `cycle_settings`. |\n| `payload.enabled` | `boolean` | Yes | boolean | Opt-in toggle for cycle awareness. |\n| `payload.averageCycleLengthDays` | `integer` | No | 21..45 (default 28) | Average menstrual cycle length in days. |\n| `payload.averagePeriodLengthDays` | `integer` | No | 2..10 (default 5) | Average period duration in days. |\n| `payload.lastPeriodStartDate` | `string (YYYY-MM-DD)` | No | Within last 180 days or null | Start date of last menstrual period. |\n\n### Request Body Example\n```json\n{\n  \"revision\": {{revision}},\n  \"action\": \"cycle_settings\",\n  \"payload\": {\n    \"enabled\": true,\n    \"averageCycleLengthDays\": 28,\n    \"averagePeriodLengthDays\": 5,\n    \"lastPeriodStartDate\": \"{{todayDate}}\"\n  }\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `true` when committed or idempotently replayed. |\n| `revision` | `integer` | New monotonic account revision. |\n| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |\n| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |\n| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |\n| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |\n| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |\n| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |\n| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |"
+          },
+          "response": [
+            {
+              "name": "200 OK — cycle_settings Receipt",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cycle_settings\",\n  \"payload\": {\n    \"enabled\": true,\n    \"averageCycleLengthDays\": 28,\n    \"averagePeriodLengthDays\": 5,\n    \"lastPeriodStartDate\": \"{{todayDate}}\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"revision\": 2,\n    \"serverNow\": \"2026-11-21T12:30:00.000Z\",\n    \"serverDate\": \"2026-11-21\",\n    \"timezone\": \"Africa/Cairo\",\n    \"commandReceipt\": {\n      \"revision\": 2,\n      \"action\": \"cycle_settings\",\n      \"replayed\": false,\n      \"at\": \"2026-11-21T12:30:00.000Z\"\n    },\n    \"affected\": [\n      {\n        \"entityType\": \"cycle_settings\",\n        \"entityId\": \"example-id\",\n        \"op\": \"upsert\",\n        \"payload\": {}\n      }\n    ]\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\",\n    \"revision\": 2\n  }\n}"
+            },
+            {
+              "name": "409 Conflict — Stale Revision",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cycle_settings\",\n  \"payload\": {\n    \"enabled\": true,\n    \"averageCycleLengthDays\": 28,\n    \"averagePeriodLengthDays\": 5,\n    \"lastPeriodStartDate\": \"{{todayDate}}\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"REVISION_CONFLICT\",\n    \"message\": \"Account was updated; refresh and try again.\",\n    \"params\": {\n      \"expectedRevision\": 4,\n      \"serverRevision\": 5\n    },\n    \"fieldErrors\": [],\n    \"retryable\": false,\n    \"details\": {\n      \"currentRevision\": 5,\n      \"mergeHints\": {\n        \"expectedRevision\": 4,\n        \"serverRevision\": 5,\n        \"syncChangesEndpoint\": \"/v1/sync/changes?after=4\",\n        \"resolutionPolicy\": \"fetch_sync_deltas_then_rebase_or_retry\"\n      }\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Log Daily Cycle Entry (cycle_log)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Command succeeded (HTTP 200)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "Must be application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+              },
+              {
+                "key": "X-Client-Platform",
+                "value": "{{clientPlatform}}",
+                "description": "Client platform: android | ios | web."
+              },
+              {
+                "key": "X-Client-Version",
+                "value": "{{clientVersion}}",
+                "description": "Client app semantic version (e.g. 1.0.0)."
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cycle_log\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"periodStart\": true,\n    \"flowLevel\": \"medium\",\n    \"crampSeverity\": 2,\n    \"symptoms\": [\n      \"cramps\",\n      \"fatigue\"\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/commands?view=receipt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "receipt"
+                }
+              ]
+            },
+            "description": "Logs period start, flow level, cramp severity, and wellness symptoms for a calendar date (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/commands?view=receipt`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |\n| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |\n| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Query Parameters\n| Parameter | Type | Required | Constraints / Default | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |\n| `action` | `string (const)` | Yes | \"cycle_log\" | Domain command action identifier. |\n| `payload` | `object` | Yes | JSON object | Action-specific payload for `cycle_log`. |\n| `payload.date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Calendar date for the cycle log. |\n| `payload.periodStart` | `boolean` | No | default: false | Marks day 1 of a new cycle and advances lastPeriodStartDate. |\n| `payload.flowLevel` | `string (enum)` | No | `none` | `spotting` | `light` | `medium` | `heavy` | Daily menstrual flow level. |\n| `payload.crampSeverity` | `integer` | No | 0..5 | Self-reported cramp intensity. |\n| `payload.symptoms` | `Array<string>` | No | Supported wellness symptom keys | Optional symptom tags (e.g. `cramps`, `bloating`, `fatigue`). |\n\n### Request Body Example\n```json\n{\n  \"revision\": {{revision}},\n  \"action\": \"cycle_log\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"periodStart\": true,\n    \"flowLevel\": \"medium\",\n    \"crampSeverity\": 2,\n    \"symptoms\": [\n      \"cramps\",\n      \"fatigue\"\n    ]\n  }\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `true` when committed or idempotently replayed. |\n| `revision` | `integer` | New monotonic account revision. |\n| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |\n| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |\n| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |\n| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |\n| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |\n| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |\n| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |"
+          },
+          "response": [
+            {
+              "name": "200 OK — cycle_log Receipt",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cycle_log\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"periodStart\": true,\n    \"flowLevel\": \"medium\",\n    \"crampSeverity\": 2,\n    \"symptoms\": [\n      \"cramps\",\n      \"fatigue\"\n    ]\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"revision\": 2,\n    \"serverNow\": \"2026-11-21T12:30:00.000Z\",\n    \"serverDate\": \"2026-11-21\",\n    \"timezone\": \"Africa/Cairo\",\n    \"commandReceipt\": {\n      \"revision\": 2,\n      \"action\": \"cycle_log\",\n      \"replayed\": false,\n      \"at\": \"2026-11-21T12:30:00.000Z\"\n    },\n    \"affected\": [\n      {\n        \"entityType\": \"cycle_log\",\n        \"entityId\": \"example-id\",\n        \"op\": \"upsert\",\n        \"payload\": {}\n      }\n    ]\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\",\n    \"revision\": 2\n  }\n}"
+            },
+            {
+              "name": "409 Conflict — Stale Revision",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}",
+                    "description": "Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script."
+                  },
+                  {
+                    "key": "X-Client-Platform",
+                    "value": "{{clientPlatform}}",
+                    "description": "Client platform: android | ios | web."
+                  },
+                  {
+                    "key": "X-Client-Version",
+                    "value": "{{clientVersion}}",
+                    "description": "Client app semantic version (e.g. 1.0.0)."
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"revision\": {{revision}},\n  \"action\": \"cycle_log\",\n  \"payload\": {\n    \"date\": \"{{todayDate}}\",\n    \"periodStart\": true,\n    \"flowLevel\": \"medium\",\n    \"crampSeverity\": 2,\n    \"symptoms\": [\n      \"cramps\",\n      \"fatigue\"\n    ]\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/commands?view=receipt",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "commands"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "receipt"
+                    }
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"REVISION_CONFLICT\",\n    \"message\": \"Account was updated; refresh and try again.\",\n    \"params\": {\n      \"expectedRevision\": 4,\n      \"serverRevision\": 5\n    },\n    \"fieldErrors\": [],\n    \"retryable\": false,\n    \"details\": {\n      \"currentRevision\": 5,\n      \"mergeHints\": {\n        \"expectedRevision\": 4,\n        \"serverRevision\": 5,\n        \"syncChangesEndpoint\": \"/v1/sync/changes?after=4\",\n        \"resolutionPolicy\": \"fetch_sync_deltas_then_rebase_or_retry\"\n      }\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
           "name": "Get Workout Personal Records (PRs)",
           "request": {
             "method": "GET",
@@ -12880,7 +14284,7 @@
                 "weekly-wrapped"
               ]
             },
-            "description": "Returns shareable weekly recap metrics.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/progress/weekly-wrapped`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/weekly-wrapped`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/weekly-wrapped`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/weekly-wrapped`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
+            "description": "Returns shareable privacy-safe weekly recap metrics including cardio session count and minutes.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/progress/weekly-wrapped`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/progress/weekly-wrapped`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/progress/weekly-wrapped`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/progress/weekly-wrapped`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
           },
           "response": []
         },
@@ -12906,7 +14310,7 @@
                 "snapshot"
               ]
             },
-            "description": "Ultra-lightweight (< 1.5 KB) snapshot for Android Glance & iOS WidgetKit with ETag support.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/widgets/snapshot`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/widgets/snapshot`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/widgets/snapshot`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/widgets/snapshot`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
+            "description": "Ultra-lightweight (< 1.5 KB) snapshot for Android Glance & iOS WidgetKit with ETag support (never exposes sensitive cycle data).\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/widgets/snapshot`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/widgets/snapshot`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/widgets/snapshot`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/widgets/snapshot`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
           },
           "response": []
         },

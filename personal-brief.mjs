@@ -120,5 +120,37 @@ export function personalBrief(state,today){
   const note={role:'followup',key:'coaching-'+journey.status,code:journey.reviewDue?'COACHING_REVIEW_DUE':journey.code||'COACHING_BARRIER_AGREEMENT',params:{caseId:journey.id,reviewOn:journey.reviewOn||null},priority:journey.reviewDue?'attention':'normal',text:fact,action:journey.reviewDue?'Report outcome: helped, not_helped, or not_tried.':journey.step,actionTarget:'feedback',caseId:journey.id};
   if(index>=0)notes[index]=note;else notes.push(note);
  }
+ if(state.profile?.sex==='female'&&state.cycleSettings?.enabled){
+  const maternal=state.profile?.maternalStatus||'none';
+  if(['pregnant','pregnant_t1','pregnant_t2','pregnant_t3'].includes(maternal)){
+   notes.push({
+    role:'followup',key:'cycle-paused-pregnancy',code:'CYCLE_PAUSED_PREGNANCY',params:{maternalStatus:maternal},priority:'normal',
+    text:`Menstrual cycle predictions are automatically paused during pregnancy (${maternal}); maternal safety guidance remains active.`,
+    action:'Follow your pregnancy nutrition and movement safety guidelines.',actionTarget:'recovery'
+   });
+  }else{
+   const loggedStart=(state.cycleLogs||[]).filter(l=>l.periodStart===true&&l.date&&l.date<=today).map(l=>l.date).sort().at(-1)||null;
+   const anchor=[state.cycleSettings.lastPeriodStartDate,loggedStart].filter(d=>d&&d<=today).sort().at(-1)||null;
+   if(anchor){
+    const elapsed=Math.max(0,Math.floor((Date.parse(`${today}T12:00:00Z`)-Date.parse(`${anchor}T12:00:00Z`))/86400000));
+    const cycleLen=Number(state.cycleSettings.averageCycleLengthDays)||28;
+    const periodLen=Number(state.cycleSettings.averagePeriodLengthDays)||5;
+    const cycleDay=(elapsed%cycleLen)+1;
+    if(cycleDay<=periodLen){
+     notes.push({
+      role:'followup',key:'cycle-menstrual',code:'CYCLE_MENSTRUAL_GENTLE_TRAINING',params:{cycleDay},priority:'normal',
+      text:`Cycle day ${cycleDay} (menstrual phase): listen to energy and cramp levels; lighter loads, walking, or extra rest are completely normal today.`,
+      action:'Adjust session intensity to your energy and log symptoms if helpful.',actionTarget:'recovery'
+     });
+    }else if(cycleDay>=cycleLen-5){
+     notes.push({
+      role:'followup',key:'cycle-luteal-retention',code:'CYCLE_LUTEAL_WATER_RETENTION',params:{cycleDay},priority:'normal',
+      text:`Cycle day ${cycleDay} (late luteal phase): temporary 0.5-2.0 kg water retention is normal; stay steady on your calorie target and avoid reacting to short-term scale jumps.`,
+      action:'Keep steady nutrition and hydration; track multi-week averages.',actionTarget:'food'
+     });
+    }
+   }
+  }
+ }
  return firstWeekMessages(state,today,notes);
 }

@@ -891,3 +891,81 @@ As a user finishing a workout session, I want to record how long the session too
 ### ANALYTICS
 - `workout_session_completed` (`status`: `"completed" | "partial"`, `completion_ratio`: `number`, `duration_min`: `number`, `rpe`: `number`, `prs_count`: `integer`)
 - `workout_summary_shared` (`ui_mode`: `"simple" | "pro"`, `has_prs`: `boolean`)
+
+---
+
+## US-WRK-11: Dedicated Cardio & Walking Session Tracking
+
+### METADATA
+| Field | Value |
+| :--- | :--- |
+| **Story ID** | `US-WRK-11` |
+| **Epic** | `EPIC-05` |
+| **Priority** | `High` |
+| **Labels** | `production`, `mobile`, `workouts`, `cardio`, `walking`, `activity` |
+| **Target Screens** | `LogCardioSheet`, `CardioHistorySection` (inside `Workouts` tab & `Today` Activity card) |
+| **Entitlement** | `Free` *(Core fitness tracking across all service tracks including `nutrition_only`)* |
+| **Backend Status** | `Implemented` (`GET /v1/cardio-logs`, `cardio_log`, `cardio_delete`) |
+
+### STORY
+As a user who walks briskly, runs, cycles, swims, or plays sports alongside (or instead of) gym resistance workouts, I want a clean 10-second cardio logger that records my modality, duration, intensity, and optional distance, estimates active calories transparently by MET formula, boosts my daily hydration goal when sessions exceed 30 minutes, warns me safely if a high-impact activity conflicts with my injuries or pregnancy, and counts toward my consistency streak without artificially inflating my diet calorie target.
+
+### PRECONDITIONS
+- User is authenticated (`onboardingCompleted == true`; works across `nutrition_and_workouts`, `workouts_only`, and `nutrition_only`).
+
+### SCREEN AND UI DETAILS
+1. **Log Cardio Bottom Sheet (`LogCardioSheet` — Launched from `+` Quick-Log, `Today` Activity Card, or `Workouts` Tab):**
+   - **Modality Grid (10 Clean Icons):** `Walking`, `Running`, `Cycling`, `Swimming`, `Elliptical`, `Rowing`, `Jump Rope`, `HIIT`, `Sports`, `Other`.
+   - **Duration Input (`5..360` min):** Quick preset chips (`15m`, `30m`, `45m`, `60m`) + custom stepper.
+   - **Intensity Selector:** `Low (Conversational)` | `Moderate (Brisk)` | `Vigorous (Hard)`.
+   - **Optional Fields:** Distance (`km` or `mi` converted to `km`, `0.1..300`), Manual Calories Override (`10..5000 kcal`, defaults to live MET estimate), Date (`past 90 days..today`), Notes (`<= 200` chars).
+   - **Non-Blocking Safety Caution Strip (`CARDIO_HIGH_IMPACT_CAUTION`):** If `modality` is high-impact (`running | jump_rope | hiit`) AND user has `knee_pain` / `ankle_pain` / `lower_back_pain`, pregnancy (`pregnant_t1|t2|t3`), or `seniorMode == true`, displays a calm amber tip suggesting lower-impact alternatives (`brisk walking`, `cycling`, `swimming`) while still permitting logging if cleared by user.
+2. **Today Activity & Cardio Summary Strip:**
+   - Displays today's logged cardio sessions (e.g., `"Brisk Walk • 35 min • ~175 kcal"`) with swipe-to-delete (`cardio_delete`).
+   - Clear info caption: *"Cardio boosts your hydration goal and streak — diet calories stay aligned to your deterministic plan."*
+
+### API & BACKEND CONTRACT
+1. **`GET /v1/cardio-logs?from={YYYY-MM-DD}&to={YYYY-MM-DD}&offset=0&limit=30`**
+   - Returns paginated `{ total, offset, limit, nextOffset, items: [{ id, date, modality, durationMinutes, intensity, distanceKm, estimatedKcal, calorieSource, safetyCaution, notes, source, externalRecordId, at }] }`.
+2. **`POST /v1/commands?view=receipt`** (`action: "cardio_log"`)
+   - Payload: `{ "date": "2026-11-21", "modality": "walking", "durationMinutes": 35, "intensity": "moderate", "distanceKm": 3.2, "notes": "Evening corniche walk", "source": "manual" }`.
+   - Server computes MET-based `estimatedKcal` (`round(MET * weightKg * (durationMinutes / 60))`) when `caloriesKcal` is omitted, deduplicates by `externalRecordId`, enforces max `5` sessions per date (`400 CARDIO_DAILY_LIMIT_EXCEEDED`), and attaches `safetyCaution` (`code: "CARDIO_HIGH_IMPACT_CAUTION"`) when high-impact conflicts with injury/pregnancy/senior constraints.
+3. **`POST /v1/commands?view=receipt`** (`action: "cardio_delete"`)
+   - Payload: `{ "id": "<cardioLogId>" }` (`404 CARDIO_LOG_NOT_FOUND`).
+   - Error Codes: `INVALID_CARDIO_PAYLOAD`, `CARDIO_DAILY_LIMIT_EXCEEDED`, `CARDIO_LOG_NOT_FOUND`, `DATE_IN_FUTURE`, `DATE_TOO_OLD`.
+
+### RULES & BUSINESS LOGIC
+1. **Zero TDEE Double-Counting:** Consistent with `US-HOME-06`, logged cardio does **not** automatically add eat-back calories onto the daily nutrition plan target; instead, real weight trends feed into the 14-day adaptive review (`US-CCH-03`).
+2. **Smart Hydration Boost (`dailyWaterTarget`):** Logging `>= 30` cumulative cardio minutes on a non-resistance-training date adds `+0.5 L` (`+2` cups) to `dailyWaterTarget(s, date)` (capped cleanly at `2.0..5.0 L`, never double-stacked on top of an already-applied resistance-day `+0.5 L` boost).
+3. **Gentle Streak & Weekly Wrapped Credit:** Logging `>= 20` cumulative cardio minutes qualifies the date for the active Gentle Streak (`US-PRG-04`), and `GET /v1/progress/weekly-wrapped` surfaces `cardioSessionsCount` and `cardioMinutes`.
+4. **Red-Flag Recovery Guard:** When `recovery.status == "stop"` (`RED_FLAGS_STOP`), `LogCardioSheet` displays the urgent medical-rest banner (`US-CCH-02`) advising rest before logging vigorous movement.
+5. **GDPR & Offline Sync:** Persisted in `coaching_cardio_logs`, works 100% offline via `outbox_commands`, included in `GET /v1/account/export`, and erased permanently in `DELETE /v1/account/delete`.
+
+### MAIN FLOW
+1. User taps `+` Quick-Log -> `Log Cardio`.
+2. User selects `Walking`, taps `30m`, picks `Moderate`, and taps `[Save Cardio]`.
+3. `cardio_log` commits (`estimatedKcal: 155`), Today's hydration target updates (`+2 cups`), Today Activity card displays `Walking • 30m`, and Gentle Streak marks today qualified.
+
+### EDGE CASES
+- **High-Impact Cardio Logged by Knee-Injury or Pregnant User:** Server records the entry cleanly and attaches `safetyCaution: { code: "CARDIO_HIGH_IMPACT_CAUTION", ... }`; UI shows a non-punitive low-impact swap suggestion (`walking`, `swimming`, `cycling`).
+- **Duplicate Wearable Cardio Import (`externalRecordId`):** Server deduplicates cleanly without creating duplicate sessions or inflating Weekly Wrapped minutes.
+- **More Than 5 Sessions on One Calendar Date:** Server rejects the 6th entry cleanly with `400 CARDIO_DAILY_LIMIT_EXCEEDED`.
+- **Accidental Entry Deleted (`cardio_delete`):** Removes the log cleanly and recalculates Today's hydration target & cardio total immediately.
+
+### ACCEPTANCE CRITERIA
+- **Scenario 1: Cardio session computes MET calories and boosts rest-day water target**
+  - **Given** an `80 kg` user on a rest day logs `35 min` moderate `walking` without manual calories
+  - **When** `cardio_log` commits
+  - **Then** server computes deterministic MET `estimatedKcal`, adds `+0.5 L` to today's `dailyWaterTarget`, and exposes today's cardio total inside `bootstrap.todaySummary.cardio`.
+- **Scenario 2: High-impact cardio triggers safety caution for knee injury or pregnancy**
+  - **Given** a user with `injuries: ["knee_pain"]` or `maternalStatus: "pregnant_t2"`
+  - **When** logging `running` or `hiit` via `cardio_log`
+  - **Then** the saved record includes `safetyCaution.code == "CARDIO_HIGH_IMPACT_CAUTION"`.
+- **Scenario 3: Deleting a cardio session removes it from logs and recalculates totals**
+  - **Given** a logged cardio session `id`
+  - **When** `cardio_delete` commits
+  - **Then** `GET /v1/cardio-logs` no longer contains that session and Weekly Wrapped totals reflect the removal.
+
+### ANALYTICS
+- `cardio_session_logged` (`modality`: `string`, `duration_min`: `integer`, `intensity`: `string`, `had_safety_caution`: `boolean`)
+- `cardio_session_deleted` (`cardio_id`: `string`)

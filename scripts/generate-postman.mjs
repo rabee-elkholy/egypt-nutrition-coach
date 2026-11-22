@@ -60,7 +60,7 @@ const COLLECTION_OVERVIEW_MD = [
   '| Field | Type | Description |',
   '| :--- | :--- | :--- |',
   '| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |',
-  '| `error.code` | `string` | Stable uppercase error code (282 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
+  '| `error.code` | `string` | Stable uppercase error code (290 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
   '| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |',
   '| `error.params` | `object` | Interpolation parameters for client-side localization |',
   '| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |',
@@ -2170,13 +2170,41 @@ const collection = {
             { name: 'endDate', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Optional Eid/Ramadan end date', description: 'Optional auto-expiration date for Ramadan mode.' }
           ],
           payload: { enabled: true, iftarTime: '18:15', suhoorCutoffTime: '04:00' }
+        }),
+        req({
+          name: 'List Saved Custom Recipes',
+          method: 'GET',
+          path: '/v1/recipes?offset=0&limit=20',
+          summary: 'Lists the user\'s saved multi-ingredient home recipes ("My Recipes") with optional text search `q` (Free feature).'
+        }),
+        cmdReq({
+          name: 'Save Custom Home Recipe (recipe_save)',
+          action: 'recipe_save',
+          summary: 'Creates or updates a saved multi-ingredient home recipe (max 100 recipes) with verified per-serving and per-100g macros (Free feature).',
+          payloadFields: [
+            { name: 'id', type: 'string', required: false, constraints: 'Optional UUID for update', description: 'Existing recipe ID to update in place.' },
+            { name: 'name', type: 'string', required: true, constraints: '2..80 chars', description: 'Recipe display name.' },
+            { name: 'servings', type: 'number', required: true, constraints: '0.5..30', description: 'Total servings produced by the recipe batch.' },
+            { name: 'items', type: 'Array<object>', required: true, constraints: '1..25 items `{ foodId, grams }`', description: 'Catalog ingredient IDs and gram weights.' },
+            { name: 'notes', type: 'string', required: false, constraints: 'max 300 chars', description: 'Optional preparation notes.' }
+          ],
+          payload: { name: 'Home Grilled Chicken Rice Bowl', servings: 2, items: [{ foodId: 'chicken', grams: 300 }, { foodId: 'rice', grams: 200 }] }
+        }),
+        cmdReq({
+          name: 'Delete Custom Home Recipe (recipe_delete)',
+          action: 'recipe_delete',
+          summary: 'Deletes a saved custom recipe while preserving frozen historical food diary snapshots intact.',
+          payloadFields: [
+            { name: 'id', type: 'string', required: true, constraints: 'Saved recipe ID', description: 'ID of the saved recipe to delete.' }
+          ],
+          payload: { id: 'recipe-id-placeholder' }
         })
       ]
     },
     {
       id: 'f0000016-0000-4000-8000-000000000016',
-      name: '15. Workouts Insights, PRs, Analytics, Measurements & Widgets',
-      description: 'Workout UI modes, ad-hoc exercises, PR engine, multi-series progress analytics, weekly wrapped, body measurements, streak freeze, and home-screen widget snapshots.',
+      name: '15. Workouts Insights, Cardio, Cycle Awareness, Analytics & Widgets',
+      description: 'Workout UI modes, ad-hoc exercises, dedicated cardio sessions, optional female cycle awareness, PR engine, multi-series progress analytics, weekly wrapped, body measurements, streak freeze, and home-screen widget snapshots.',
       item: [
         cmdReq({
           name: 'Set Workout UI Mode (workout_ui_mode)',
@@ -2199,10 +2227,60 @@ const collection = {
           ],
           payload: { date: '{{todayDate}}', exerciseId: '{{sampleCatalogExerciseId}}', sets: [{ reps: 12, kg: 10 }] }
         }),
+        req({ name: 'List Dedicated Cardio Logs', method: 'GET', path: '/v1/cardio-logs?offset=0&limit=30', summary: 'Lists dedicated walking/running/cycling/swimming/HIIT cardio sessions with summary totals (Free feature).' }),
+        cmdReq({
+          name: 'Log Cardio Session (cardio_log)',
+          action: 'cardio_log',
+          summary: 'Logs a dedicated cardio or walking session with deterministic MET calorie estimation, rest-day hydration boost (>=30m), streak credit (>=20m), and non-blocking high-impact safety cautions (Free feature).',
+          payloadFields: [
+            { name: 'date', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Valid ISO date', description: 'Cardio session date.' },
+            { name: 'modality', type: 'string (enum)', required: true, constraints: '`walking` | `brisk_walking` | `running` | `cycling` | `stationary_bike` | `swimming` | `elliptical` | `rowing` | `jump_rope` | `hiit`', description: 'Cardio modality.' },
+            { name: 'durationMinutes', type: 'integer', required: true, constraints: '5..360', description: 'Session duration in minutes.' },
+            { name: 'intensity', type: 'string (enum)', required: true, constraints: '`low` | `moderate` | `vigorous`', description: 'Perceived cardio intensity.' },
+            { name: 'distanceKm', type: 'number', required: false, constraints: '0..300', description: 'Optional distance in kilometers.' },
+            { name: 'caloriesKcal', type: 'number', required: false, constraints: '10..5000', description: 'Optional wearable/manual energy expenditure (MET-estimated if omitted).' }
+          ],
+          payload: { date: '{{todayDate}}', modality: 'brisk_walking', durationMinutes: 35, intensity: 'moderate', distanceKm: 3.2 }
+        }),
+        cmdReq({
+          name: 'Delete Cardio Session (cardio_delete)',
+          action: 'cardio_delete',
+          summary: 'Deletes a logged cardio session by ID.',
+          payloadFields: [
+            { name: 'id', type: 'string', required: true, constraints: 'Cardio log ID', description: 'ID of the cardio session to delete.' }
+          ],
+          payload: { id: 'cardio-log-id-placeholder' }
+        }),
+        req({ name: 'Get Female Cycle Awareness State', method: 'GET', path: '/v1/cycle/state', summary: 'Returns optional female menstrual cycle awareness state, phase estimate, luteal water-retention flag, and pregnancy auto-pause status (`available: false` for non-female profiles; Free opt-in feature).' }),
+        cmdReq({
+          name: 'Update Cycle Awareness Settings (cycle_settings)',
+          action: 'cycle_settings',
+          summary: 'Enables/disables optional female cycle awareness and configures average cycle/period lengths (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).',
+          payloadFields: [
+            { name: 'enabled', type: 'boolean', required: true, constraints: 'boolean', description: 'Opt-in toggle for cycle awareness.' },
+            { name: 'averageCycleLengthDays', type: 'integer', required: false, constraints: '21..45 (default 28)', description: 'Average menstrual cycle length in days.' },
+            { name: 'averagePeriodLengthDays', type: 'integer', required: false, constraints: '2..10 (default 5)', description: 'Average period duration in days.' },
+            { name: 'lastPeriodStartDate', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Within last 180 days or null', description: 'Start date of last menstrual period.' }
+          ],
+          payload: { enabled: true, averageCycleLengthDays: 28, averagePeriodLengthDays: 5, lastPeriodStartDate: '{{todayDate}}' }
+        }),
+        cmdReq({
+          name: 'Log Daily Cycle Entry (cycle_log)',
+          action: 'cycle_log',
+          summary: 'Logs period start, flow level, cramp severity, and wellness symptoms for a calendar date (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).',
+          payloadFields: [
+            { name: 'date', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Valid ISO date', description: 'Calendar date for the cycle log.' },
+            { name: 'periodStart', type: 'boolean', required: false, constraints: 'default: false', description: 'Marks day 1 of a new cycle and advances lastPeriodStartDate.' },
+            { name: 'flowLevel', type: 'string (enum)', required: false, constraints: '`none` | `spotting` | `light` | `medium` | `heavy`', description: 'Daily menstrual flow level.' },
+            { name: 'crampSeverity', type: 'integer', required: false, constraints: '0..5', description: 'Self-reported cramp intensity.' },
+            { name: 'symptoms', type: 'Array<string>', required: false, constraints: 'Supported wellness symptom keys', description: 'Optional symptom tags (e.g. `cramps`, `bloating`, `fatigue`).' }
+          ],
+          payload: { date: '{{todayDate}}', periodStart: true, flowLevel: 'medium', crampSeverity: 2, symptoms: ['cramps', 'fatigue'] }
+        }),
         req({ name: 'Get Workout Personal Records (PRs)', method: 'GET', path: '/v1/workouts/prs', summary: 'Returns best weight, reps, estimated 1RM, and session volume per exercise (with assisted-exercise load inversion).' }),
         req({ name: 'Get Progress Analytics', method: 'GET', path: '/v1/progress/analytics?range=30d', summary: 'Returns weight moving average trend, calorie adherence, training volume, and exercise e1RM series (`14d`/`30d` Free; `90d`/`all` Pro).' }),
-        req({ name: 'Get Weekly Wrapped Recap', method: 'GET', path: '/v1/progress/weekly-wrapped', summary: 'Returns shareable weekly recap metrics.' }),
-        req({ name: 'Get Home Widget Snapshot', method: 'GET', path: '/v1/widgets/snapshot', summary: 'Ultra-lightweight (< 1.5 KB) snapshot for Android Glance & iOS WidgetKit with ETag support.' }),
+        req({ name: 'Get Weekly Wrapped Recap', method: 'GET', path: '/v1/progress/weekly-wrapped', summary: 'Returns shareable privacy-safe weekly recap metrics including cardio session count and minutes.' }),
+        req({ name: 'Get Home Widget Snapshot', method: 'GET', path: '/v1/widgets/snapshot', summary: 'Ultra-lightweight (< 1.5 KB) snapshot for Android Glance & iOS WidgetKit with ETag support (never exposes sensitive cycle data).' }),
         req({ name: 'List Body Measurements', method: 'GET', path: '/v1/measurements?offset=0&limit=30', summary: 'Paginated waist, chest, hips, arms, thighs, and neck measurements.' }),
         cmdReq({
           name: 'Log Body Measurement (body_measurement)',

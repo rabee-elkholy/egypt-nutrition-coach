@@ -1419,6 +1419,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaginatedLogsResponse"
+  /v1/recipes:
+    get:
+      operationId: listCustomRecipes
+      summary: Paginated saved custom home recipes with optional text search (Free)
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated custom recipes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/cardio-logs:
+    get:
+      operationId: listCardioLogs
+      summary: Paginated dedicated cardio and walking session logs with date range filter and summary totals (Free)
+      parameters:
+        - $ref: "#/components/parameters/FromDateQuery"
+        - $ref: "#/components/parameters/ToDateQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated cardio session logs and summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/cycle/state:
+    get:
+      operationId: getCycleState
+      summary: Optional female menstrual cycle awareness state, phase estimate, luteal water retention flag, and pregnancy auto-pause status (Free, opt-in)
+      responses:
+        "200":
+          description: Cycle awareness state (returns available=false for non-female profiles)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
   /v1/profile/avatar:
     post:
       operationId: uploadProfileAvatar
@@ -2265,6 +2311,8 @@ components:
             - food_switch_to_entries
             - replace_meal
             - food_favorite
+            - recipe_save
+            - recipe_delete
             - copy_meal
             - grocery_toggle
             - fasting_log
@@ -2273,9 +2321,13 @@ components:
             - water
             - steps
             - activity
+            - cycle_settings
+            - cycle_log
             - recovery
             - workout
             - workout_delete
+            - cardio_log
+            - cardio_delete
             - session
             - session_delete
             - replace_exercise

@@ -4,6 +4,7 @@ import { groceryList, nutritionQualityIssues, sumSnapshots } from '../planner-co
 import { preferredPortion } from '../planner-household.mjs';
 import { assertDietDay } from '../diet-patterns.mjs';
 import { library, plannedMeal, activePlan } from './food.mjs';
+import { getFoodCatalogItem } from './food-catalog.mjs';
 import { clockNow, isoNow } from './clock.mjs';
 import { localDate, localTimeParts, number, integer } from '../coaching-shared.mjs';
 import { apiError } from '../coaching-error.mjs';
@@ -92,10 +93,15 @@ export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null)
       } catch {}
     }
     const checkRecord = checks[`${plan.id}:${item.ingredientKey}`];
+    const catItem = getFoodCatalogItem(item.food_id || item.ingredientKey);
+    const nameAr = catItem?.name_ar || ing?.label || item.name;
+    const nameEn = catItem?.name_en || item.name;
     buckets.get(aisleKey).items.push({
       ingredientKey: item.ingredientKey,
       foodId: item.food_id,
       name: item.name,
+      nameEn,
+      nameAr,
       state: item.state,
       preparationState: item.state,
       totalGrams,

@@ -242,7 +242,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
       assert.equal((await edge('bootstrap', { headers: { Authorization: `Bearer ${reg.accessToken}` } })).status, 401);
     });
 
-    await t.test('Postman collection & environments are valid v2.1, cover 100% of OpenAPI routes & 41 command actions, and execute live', async () => {
+    await t.test('Postman collection & environments are valid v2.1, cover 100% of OpenAPI routes & 47 command actions, and execute live', async () => {
       const col = JSON.parse(await readFile('postman/CuraFit_API.postman_collection.json', 'utf8'));
       const cloudDevEnv = JSON.parse(await readFile('postman/CuraFit_Cloud_Dev.postman_environment.json', 'utf8'));
       const prodEnv = JSON.parse(await readFile('postman/CuraFit_Production.postman_environment.json', 'utf8'));
@@ -274,7 +274,7 @@ test('Cloudflare-Native D1 Authentication & Postman Collection Verification Suit
         }
       };
       walk(col.item);
-      assert.equal(requests.length, 129, `Expected 129 requests in Postman collection, got ${requests.length}`);
+      assert.equal(requests.length, 138, `Expected 138 requests in Postman collection, got ${requests.length}`);
 
       for (const r of requests) {
         const desc = r.request.description || '';

@@ -25,6 +25,12 @@ function activityDatesSet(s) {
   for (const x of s.workoutLogs || []) if (x.date) dates.add(x.date);
   for (const x of s.sessions || []) if (x.date && x.status !== 'missed') dates.add(x.date);
   for (const x of s.checkins || []) if (x.date) dates.add(x.date);
+  const cardioByDate = new Map();
+  for (const x of s.cardioLogs || []) {
+    if (!x.date) continue;
+    cardioByDate.set(x.date, (cardioByDate.get(x.date) || 0) + Number(x.durationMinutes || 0));
+  }
+  for (const [d, mins] of cardioByDate) if (mins >= 20) dates.add(d);
   return dates;
 }
 
@@ -220,6 +226,10 @@ export function computeWeeklyWrapped(s, weekEndParam = null, now = clockNow()) {
   const logsWeek = (s.workoutLogs || []).filter(l => l.date >= weekStart && l.date <= weekEnd);
   const totalVolumeKg = Math.round(logsWeek.reduce((sum, l) => sum + workingSetsOf(l.sets).filter(set => !set.pain).reduce((v, set) => v + Number(set.kg || 0) * Number(set.reps || 0), 0), 0) * 10) / 10;
 
+  const cardioWeek = (s.cardioLogs || []).filter(c => c.date >= weekStart && c.date <= weekEnd);
+  const cardioSessionsCount = cardioWeek.length;
+  const cardioMinutes = cardioWeek.reduce((sum, c) => sum + Number(c.durationMinutes || 0), 0);
+
   const prs = computeWorkoutPrs(s, { since: weekStart });
   const newPrsCount = prs.items.filter(e => e.date <= weekEnd).length;
 
@@ -243,6 +253,8 @@ export function computeWeeklyWrapped(s, weekEndParam = null, now = clockNow()) {
     adherenceScorePct,
     workoutsCompleted,
     totalVolumeKg,
+    cardioSessionsCount,
+    cardioMinutes,
     newPrsCount,
     avgCalories,
     avgProteinGrams,

@@ -1,6 +1,6 @@
 # CuraFit API v1 — Production Backend Implementation & Contract Specification
 
-> **Purpose:** Complete engineering bridge between **CuraFit API v1** (`contracts/openapi.yaml` — **82 OpenAPI paths**, **41 `POST /v1/commands` actions**; `docs/API_REFERENCE.md` & `postman/CuraFit_API.postman_collection.json` — **16 Postman groups / 129 endpoints**; `contracts/error-codes.json` — **282 error codes**; `contracts/coaching-codes.json` — **83 coaching codes**) and the **Production Mobile User Stories** (`EPIC-01` .. `EPIC-10`).
+> **Purpose:** Complete engineering bridge between **CuraFit API v1** (`contracts/openapi.yaml` — **85 OpenAPI paths**, **47 `POST /v1/commands` actions**; `docs/API_REFERENCE.md` & `postman/CuraFit_API.postman_collection.json` — **16 Postman groups / 138 endpoints**; `contracts/error-codes.json` — **290 error codes**; `contracts/coaching-codes.json` — **88 coaching codes**) and the **Production Mobile User Stories** (`EPIC-01` .. `EPIC-10`).
 > **Audience:** Cloudflare Workers / D1 Backend Team, KMM Mobile Team (`shared` networking & SQLDelight), QA Automation.
 > **Contract Rules:**
 > 1. All endpoints preserve uniform `{ ok: true, data, meta }` and `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta }` envelopes.
@@ -10,7 +10,7 @@
 
 ---
 
-## 1. Master Coverage Matrix — Core API Operations (16 Postman Groups / 129 Endpoints, 82 OpenAPI Paths, 41 Command Actions)
+## 1. Master Coverage Matrix — Core API Operations (16 Postman Groups / 138 Endpoints, 85 OpenAPI Paths, 47 Command Actions)
 
 | # | Group | Operation / Command Action | Method & Path | Mobile User Stories | Status |
 | :-: | :--- | :--- | :--- | :--- | :--- |
@@ -130,9 +130,11 @@
   - `scheduledSessions`: 14-day projected schedule array (applying accepted `scheduleOverrides`, including `fromDate` on moved sessions).
   - `todaySummary.nutrition`: `{ energy, protein, carbs, fat, complete, targets: { energy, protein, carbs, fat } }`.
   - `todaySummary.activity`: `{ steps, activeEnergyKcal, source, updatedAt }`.
+  - `todaySummary.cardio`: `{ sessionsCount, totalMinutes, totalKcal }`.
   - `todaySummary.scheduledWorkout`: includes `fromDate` (`string | null`) when rescheduled.
   - `todaySummary.fastingState`: `{ mode, phase, windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, streakDays }`.
   - `todaySummary.ramadanMode`: `{ enabled, iftarTime, suhoorCutoffTime, workoutTiming, endDate }`.
+  - `todaySummary.cycleState`: `null` when non-female or disabled; otherwise `{ enabled, phase, cycleDay, waterRetentionLikely, pausedReason, nextPeriodEstimateDate, coachingHintCode }`.
   - `streakSummary`: `{ currentDays, longestDays, freezeAvailable, freezeUsedDates[], todayQualified }`.
   - `engagementState`: `{ daysSinceLastLog, lastLoggedAt, weeklyCheckinDue, comebackTier }` (`weeklyCheckinDue` uses `journeyStartedOn` + last weekly review/feedback cadence, not daily recovery check-ins).
   - `entitlements`: Canonical `tier: "pro" | "free"` object (`status`, `productId`, `provider`, `expiresAt`, `autoRenewEnabled`, `trialEligible`, `isInGracePeriod`, `isOnHold`, `isPaused`, `managementUrl`, `quotas`, `features`).
@@ -158,19 +160,19 @@
 - **Canonical Response:** `tier` (`"pro" | "free"`), `status` (`"none" | "active" | "trialing" | "grace_period" | "cancelled_active" | "billing_retry" | "account_hold" | "paused" | "expired"`), `productId`, `provider` (`"apple" | "google" | null`), `expiresAt`, `autoRenewEnabled`, `trialEligible` (respects `coaching_trial_tombstones`), `isInGracePeriod`, `isOnHold`, `isPaused`, `managementUrl` (Android includes `?sku={productId}&package={GOOGLE_PLAY_PACKAGE_NAME}`), `quotas: { aiParsesRemainingFree, aiCoachMessagesRemainingFree, freePlanRenewalsRemaining, dailyMealSwapsLimit, dailyMealSwapsRemaining, weeklyExerciseSwapsLimit, weeklyExerciseSwapsRemaining }`, `features[]` (`FREE_FEATURES` / `PRO_FEATURES`).
 
 ### M7. `GET /v1/capabilities`, `GET /v1/account/export`, `DELETE`/`POST /v1/account/delete` & Pure-English Contracts
-- `capabilities.features` advertises implemented capabilities plus `deferredFeatures: ["ai_meal_parse", "ai_coach_qa"]`, `minSupportedVersion: { android, ios }`, and `maintenanceMode: { active, message }`.
-- Pure-English copy + canonical `code` & `params` via **`contracts/coaching-codes.json` (83 codes)** across `GET /v1/coaching/brief` (`actionTarget` enum `[recovery, food, feedback, workout, water, review]`), `GET /v1/coaching/inbox` (dynamic `pushConfigured: boolean`), `POST /v1/eligibility`, and `action: "review"`.
+- `capabilities.features` advertises implemented capabilities (including `custom_recipes`, `cardio_tracking`, `cycle_awareness`) plus `deferredFeatures: ["ai_meal_parse", "ai_coach_qa"]`, `minSupportedVersion: { android, ios }`, and `maintenanceMode: { active, message }`.
+- Pure-English copy + canonical `code` & `params` via **`contracts/coaching-codes.json` (88 codes)** across `GET /v1/coaching/brief` (`actionTarget` enum `[recovery, food, feedback, workout, water, review]`), `GET /v1/coaching/inbox` (dynamic `pushConfigured: boolean`), `POST /v1/eligibility`, and `action: "review"`.
 - `Idempotency-Key` digest excludes `revision` in `POST /v1/commands`.
-- `GET /v1/account/export` includes `oauthIdentities`, `registeredDevices`, `aiMessages`, live `entitlements`, normalized logs, and short-lived signed URLs for avatar & progress photos.
-- `DELETE` / `POST /v1/account/delete` executes safe two-phase deletion: atomic D1 batch FIRST (including anonymized SHA-256 `coaching_trial_tombstones`), THEN best-effort R2 object purge and Apple Sign-In refresh-token revocation (`https://appleid.apple.com/auth/revoke`).
+- `GET /v1/account/export` includes `oauthIdentities`, `registeredDevices`, `customRecipes`, `cardioLogs`, `cycleLogs`, `cycleSettings`, `aiMessages`, live `entitlements`, normalized logs, and short-lived signed URLs for avatar & progress photos.
+- `DELETE` / `POST /v1/account/delete` executes safe two-phase deletion: atomic D1 batch FIRST (including anonymized SHA-256 `coaching_trial_tombstones` and full erasure of `coaching_custom_recipes`, `coaching_cardio_logs`, `coaching_cycle_logs`), THEN best-effort R2 object purge and Apple Sign-In refresh-token revocation (`https://appleid.apple.com/auth/revoke`).
 
-### M8. `POST /v1/commands` (`action: "food_entry"`) — Display Slot & Bounds Parity (`US-NUT-02`, `US-NUT-10`)
+### M8. `POST /v1/commands` (`action: "food_entry"`) — Display Slot, Custom Recipes & Bounds Parity (`US-NUT-02`, `US-NUT-10`, `US-NUT-12`)
 - **File:** `server/food.mjs`
-- Preserves canonical wire `slot` enum (`"breakfast" | "lunch" | "dinner" | "snack"`) while supporting optional `displaySlot`: `"breakfast" | "lunch" | "dinner" | "snack_1" | "snack_2" | "suhoor" | "iftar" | "night_snack"`, `quantity` `0.1..4.0` (planned meals), `grams` `1..2000`, and `unit: "reference"`.
+- Preserves canonical wire `slot` enum (`"breakfast" | "lunch" | "dinner" | "snack"`) while supporting optional `displaySlot`: `"breakfast" | "lunch" | "dinner" | "snack_1" | "snack_2" | "suhoor" | "iftar" | "night_snack"`, `source: "planned" | "ingredient" | "recipe" | "manual"`, `quantity` `0.1..4.0` (planned meals), `servings` `0.1..10.0` or `grams` `1..3000` (saved recipes with frozen snapshot), `grams` `1..2000` (ingredients), and `unit: "reference"`.
 
 ---
 
-## 3. Production Endpoints & All 41 Command Actions (Groups 13–16 + Full Command Registry)
+## 3. Production Endpoints & All 47 Command Actions (Groups 13–16 + Full Command Registry)
 
 ### 3.1 Social OAuth, OAuth Account Linking & Stateless Onboarding Preview (Group 13)
 
@@ -185,26 +187,29 @@
 
 ---
 
-### 3.2 Nutrition Tools — Pantry, Grocery, Favorites, Barcode, Fasting & Deferred AI Parse (Group 14)
+### 3.2 Nutrition Tools — Pantry, Grocery, Favorites, Custom Recipes, Barcode, Fasting & Deferred AI Parse (Group 14)
 
 | Method & Path | Story | Status | Request Summary | Response Summary |
 | :--- | :--- | :--- | :--- | :--- |
 | `GET /v1/foods/barcode/{ean}` | `US-NUT-06` | `Implemented` | Path `ean` (`8..14` digits); Pro-gated (`402`) when enforcement enabled | `{ barcode, nameAr, nameEn, brand, servingSizeGrams, servingLabel, valuesPer100g, provenance, isApproximate }` |
 | `POST /v1/foods/barcode` | `US-NUT-06` | `Implemented` | `{ barcode, nameAr?, nameEn, brand, servingSizeGrams, servingLabel, valuesPer100g }` | `{ barcode, status: "pending_review", createdAt }` |
 | `GET /v1/foods/favorites` | `US-NUT-07` | `Implemented` | Query `offset`, `limit` | `{ items: [{ id, name, source, key?, grams?, snapshot }] }` |
+| `GET /v1/recipes` | `US-NUT-12` | `Implemented` (`Free`) | Query `offset`, `limit`, `q?` | `{ total, offset, limit, nextOffset, items: [{ id, name, servings, totalGrams, gramsPerServing, perServing, per100g, totals, ingredients[], notes, createdAt, updatedAt }] }` |
 | `GET /v1/pantry/catalog` | `US-NUT-08` | `Implemented` (`Free`) | None (wraps `pantryCatalog(library)`) | `{ items: [{ id, label, labelEn, category, keys[] }] }` |
 | `POST /v1/pantry/alternatives` | `US-NUT-08` | `Implemented` (`Free`) | `{ mealId?, slot?, selectedIngredients: string[], limit?: 12 }` | `{ items: [{ templateId, name, snapshot, matchedIngredientKeys }] }` |
-| `GET /v1/plans/{planId}/grocery-list` | `US-NUT-09` | `Implemented` | Query `days=all\|remaining\|3`; Pro-gated (`402`) when enforcement enabled | `{ planId, daysScope, categories: [{ categoryId, label, items: [{ ingredientKey, name, preparationState: "cooked"\|"raw_as_sold", totalGrams, practicalQuantityLabel, checked, mealRefs[] }] }] }` |
+| `GET /v1/plans/{planId}/grocery-list` | `US-NUT-09` | `Implemented` | Query `days=all\|remaining\|3`; Pro-gated (`402`) when enforcement enabled | `{ planId, daysScope, categories: [{ categoryId, label, items: [{ ingredientKey, name, nameEn, nameAr, preparationState: "cooked"\|"raw_as_sold", totalGrams, practicalQuantityLabel, checked, mealRefs[] }] }] }` |
 | `GET /v1/nutrition/fasting-state` | `US-NUT-10`, `US-INT-03` | `Implemented` (`Free`) | None | `{ mode: "off" \| "if_16_8" \| "ramadan", phase: "fasting" \| "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, streakDays }` |
 | `POST /v1/nutrition/ai-parse` | `US-NUT-05` | **Deferred — Final AI Phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`)** | `{ inputType: "photo" \| "voice" \| "text", text?, imageBase64?, audioBase64?, locale, region, slot }` | Returns `501 FEATURE_DEFERRED_TO_AI_PHASE` until Final AI Phase rollout |
 
 ---
 
-### 3.3 Workouts Insights, Analytics, Measurements, Media, Widgets & Deferred AI Chat (Groups 15 & 16)
+### 3.3 Workouts Insights, Cardio, Cycle Awareness, Analytics, Measurements, Media, Widgets & Deferred AI Chat (Groups 15 & 16)
 
 | Method & Path | Story | Status | Request Summary | Response Summary |
 | :--- | :--- | :--- | :--- | :--- |
 | `GET /v1/workouts/prs` | `US-WRK-10` | `Implemented` | Query `since?`, `exerciseId?` | `{ items: [{ exerciseId, type, value, previousValue, reps, date, loadMode }], summaryByExercise }` (inverts lower-kg-is-better for `loadMode === "assisted"`) |
+| `GET /v1/cardio-logs` | `US-WRK-11` | `Implemented` (`Free`) | Query `from?`, `to?`, `offset`, `limit` | `{ total, offset, limit, nextOffset, summary: { sessionsCount, totalMinutes, totalKcal }, items: [{ id, date, modality, durationMinutes, intensity, distanceKm, estimatedKcal, source, externalRecordId, notes, safetyCaution }] }` |
+| `GET /v1/cycle/state` | `US-PRG-06` | `Implemented` (`Free`, Female Opt-In) | None (`available: false` for male profiles) | `{ available, enabled, pausedReason, disclaimer, settings, currentCycleDay, phase, waterRetentionLikely, nextPeriodEstimateDate, coachingHintCode, recentLogs[] }` |
 | `GET /v1/progress/analytics` | `US-PRG-01` | `Implemented` | Query `range=14d\|30d\|90d\|all` (`400 INVALID_DATE_RANGE`), `exerciseId?`; `90d`/`all` Pro-gated (`402`) when enforcement enabled | `{ weightSeries[], weightMovingAvg7d[], calorieAdherence[], weeklyVolume[], exercise1RmSeries[], estimatedWeeksRemaining }` (1RM excludes `pain: true`, `reps > 15`, assisted; forecast `null` during pregnancy) |
 | `GET /v1/measurements` | `US-PRG-02` | `Implemented` | Query `from?`, `to?`, `offset`, `limit` | `{ total, offset, limit, nextOffset, items: [{ id, date, waistCm, hipsCm, chestCm, neckCm, leftArmCm, rightArmCm, leftThighCm, rightThighCm, bodyFatPct, notes }] }` |
 | `POST /v1/progress/photos/upload-url` | `US-PRG-03` | `Implemented` | Required `[contentType, byteSize, pose, date]` (max **5 MB / `5242880`**); Pro-gated (`402`) when enforcement enabled | `{ photoId, objectKey, uploadUrl: "/v1/media/signed/<token>", maxBytes: 5242880, expiresAt }` |
@@ -212,8 +217,8 @@
 | `GET /v1/progress/photos` | `US-PRG-03` | `Implemented` | Query `offset`, `limit` (**always accessible even after Pro downgrade**) | `{ items: [{ id, date, pose, weightKgSnapshot, downloadUrl: "/v1/media/signed/<token>", expiresAt, createdAt }] }` |
 | `DELETE /v1/progress/photos/{photoId}` | `US-PRG-03` | `Implemented` | Path `photoId` (**always accessible even after Pro downgrade**) | `{ deleted: true, id }` |
 | `GET` / `PUT /v1/media/signed/{token}` | `US-PRG-03`, `US-PRF-01` | `Implemented` | User-bound HMAC-SHA256 signed R2 media URL (`403 INVALID_MEDIA_TOKEN` on invalid/expired/mismatched token) | Streams private R2 binary (`GET`) or validates & writes binary (`PUT`) |
-| `GET /v1/progress/weekly-wrapped` | `US-PRG-04` | `Implemented` | Query `weekEnd?` | `{ weekStart, weekEnd, adherenceScorePct, workoutsCompleted, totalVolumeKg, newPrsCount, avgCalories, avgProteinGrams, weightDeltaKg, badgesUnlocked[] }` (multi-track `adherenceScorePct`, up to 8 badges) |
-| `GET /v1/widgets/snapshot` | `US-PRG-05` | `Implemented` | None (compact `< 1.5 KB` with `ETag`) | `{ date, timezone, serviceTrack, caloriesRemaining, caloriesTarget, proteinGrams, carbsGrams, fatGrams, waterCups, waterTargetCups, fastingPhase, fastingEndsAt, nextWorkoutFocus, workoutStatus }` |
+| `GET /v1/progress/weekly-wrapped` | `US-PRG-04` | `Implemented` | Query `weekEnd?` | `{ weekStart, weekEnd, adherenceScorePct, workoutsCompleted, totalVolumeKg, cardioSessionsCount, cardioMinutes, newPrsCount, avgCalories, avgProteinGrams, weightDeltaKg, badgesUnlocked[] }` (multi-track `adherenceScorePct`, up to 8 badges) |
+| `GET /v1/widgets/snapshot` | `US-PRG-05` | `Implemented` | None (compact `< 1.5 KB` with `ETag`; NEVER includes cycle data) | `{ date, timezone, serviceTrack, caloriesRemaining, caloriesTarget, proteinGrams, carbsGrams, fatGrams, waterCups, waterTargetCups, streakDays, readinessStatus, fastingPhase, fastingEndsAt, nextWorkoutFocus, workoutStatus }` |
 | `POST /v1/coaching/chat` | `US-CCH-05` | **Deferred — Final AI Phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`)** | `{ threadId: "default", message: string (<=1000), locale }` | Returns `501 FEATURE_DEFERRED_TO_AI_PHASE` until Final AI Phase rollout |
 | `GET /v1/coaching/chat/history` | `US-CCH-05` | **Deferred — Final AI Phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`)** | Query `limit=50`, `before?` | Returns `501 FEATURE_DEFERRED_TO_AI_PHASE` until Final AI Phase rollout |
 
@@ -237,22 +242,28 @@
 
 ---
 
-### 3.5 Complete `POST /v1/commands` Domain Actions Registry (All 41 Actions)
+### 3.5 Complete `POST /v1/commands` Domain Actions Registry (All 47 Actions)
 
-All 41 canonical command actions execute atomically through `POST /v1/commands?view=receipt|full` with `revision` CAS, `Idempotency-Key`, and `coaching_sync_outbox`:
+All 47 canonical command actions execute atomically through `POST /v1/commands?view=receipt|full` with `revision` CAS, `Idempotency-Key`, and `coaching_sync_outbox`:
 
 - **Core Onboarding & Plan Actions (4):** `generate`, `confirm_health`, `confirm_schedule`, `renew_plan`
-- **Nutrition, Diary, Favorites, Grocery & Fasting Actions (12):** `food_entry`, `food_entry_update`, `food_delete`, `food_complete`, `food`, `food_switch_to_entries`, `replace_meal`, `food_favorite`, `copy_meal`, `grocery_toggle`, `fasting_log`, `ramadan_mode`
-- **Biometrics & Activity Actions (4):** `weight`, `water`, `steps`, `activity`
-- **Workouts & Training Actions (9):** `recovery`, `workout`, `workout_delete`, `session`, `session_delete`, `replace_exercise`, `ad_hoc_exercise`, `workout_ui_mode`, `reschedule`
+- **Nutrition, Diary, Favorites, Custom Recipes, Grocery & Fasting Actions (14):** `food_entry`, `food_entry_update`, `food_delete`, `food_complete`, `food`, `food_switch_to_entries`, `replace_meal`, `food_favorite`, `recipe_save`, `recipe_delete`, `copy_meal`, `grocery_toggle`, `fasting_log`, `ramadan_mode`
+- **Biometrics, Activity & Cycle Awareness Actions (6):** `weight`, `water`, `steps`, `activity`, `cycle_settings`, `cycle_log`
+- **Workouts, Cardio & Training Actions (11):** `recovery`, `workout`, `workout_delete`, `cardio_log`, `cardio_delete`, `session`, `session_delete`, `replace_exercise`, `ad_hoc_exercise`, `workout_ui_mode`, `reschedule`
 - **Coaching, Retention, Profile & Settings Actions (12):** `comeback_restart`, `profile_update`, `body_measurement`, `streak_freeze`, `review`, `adaptation`, `timezone`, `notification_preferences`, `coaching_feedback`, `coaching_decision`, `coaching_outcome`, `coaching_ack`
 
 Key production command payload contracts:
 
 | `action` Value | Story | Exact `payload` Contract |
 | :--- | :--- | :--- |
-| `food_entry_update` | `US-NUT-02` | `{ "id": string, "slot"?: "breakfast"\|"lunch"\|"dinner"\|"snack", "quantity"?: number, "grams"?: number, "unit"?: "reference"\|"grams", "name"?: string, "energy"?: number, "protein"?: number, "carbs"?: number, "fat"?: number }` |
+| `food_entry_update` | `US-NUT-02`, `US-NUT-12` | `{ "id": string, "slot"?: "breakfast"\|"lunch"\|"dinner"\|"snack", "quantity"?: number, "servings"?: number, "grams"?: number, "unit"?: "reference"\|"grams", "name"?: string, "energy"?: number, "protein"?: number, "carbs"?: number, "fat"?: number }` |
+| `recipe_save` | `US-NUT-12` | `{ "id"?: string, "name": string (2..80), "servings": number (0.5..30), "notes"?: string, "items": [{ "foodId": string, "grams": number (1..5000) }] }` (`1..25` ingredients, max `100` saved recipes -> `409 RECIPE_LIMIT_REACHED`) |
+| `recipe_delete` | `US-NUT-12` | `{ "id": string }` (frozen historical food_entries remain untouched; `404 RECIPE_NOT_FOUND`) |
 | `workout_delete` | `US-WRK-04` | `{ "id": string }` (reconciles session completion automatically; `404 WORKOUT_LOG_NOT_FOUND`) |
+| `cardio_log` | `US-WRK-11` | `{ "date": "YYYY-MM-DD", "modality": "walking"\|"brisk_walking"\|"running"\|"cycling"\|"stationary_bike"\|"swimming"\|"elliptical"\|"rowing"\|"jump_rope"\|"hiit", "durationMinutes": int (5..360), "intensity": "low"\|"moderate"\|"vigorous", "distanceKm"?: number, "caloriesKcal"?: number, "notes"?: string, "source"?: "manual"\|"health_connect"\|"apple_health", "externalRecordId"?: string }` (max `5`/day -> `400 CARDIO_DAILY_LIMIT_EXCEEDED`, rest-day `>=30m` adds `+0.5L` water target, `>=20m` credits streak) |
+| `cardio_delete` | `US-WRK-11` | `{ "id": string }` (`404 CARDIO_LOG_NOT_FOUND`) |
+| `cycle_settings` | `US-PRG-06` | `{ "enabled": boolean, "averageCycleLengthDays"?: int (21..45), "averagePeriodLengthDays"?: int (2..10), "lastPeriodStartDate"?: "YYYY-MM-DD" \| null }` (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent `403 HEALTH_CONSENT_REQUIRED`) |
+| `cycle_log` | `US-PRG-06` | `{ "date": "YYYY-MM-DD", "periodStart"?: boolean, "flowLevel"?: "none"\|"spotting"\|"light"\|"medium"\|"heavy", "symptoms"?: string[], "crampSeverity"?: int (0..5), "notes"?: string }` (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent) |
 | `session_delete` | `US-WRK-10` | `{ "id"?: string, "date"?: "YYYY-MM-DD", "dayIndex"?: 0..6 }` (`404 SESSION_NOT_FOUND`) |
 | `food_favorite` | `US-NUT-07` | `{ "op": "add" \| "remove", "id"?: string, "item"?: { "name": string, "source": "ingredient"\|"manual", "key"?: string, "grams"?: number, "snapshot"?: object } }` |
 | `copy_meal` | `US-NUT-07` | `{ "fromDate": "YYYY-MM-DD", "toDate": "YYYY-MM-DD", "slot": "breakfast" \| "lunch" \| "dinner" \| "snack" \| "all" }` |
@@ -268,9 +279,9 @@ Key production command payload contracts:
 
 ---
 
-## 4. Pure-English Error & Coaching Message Contracts (`contracts/error-codes.json` — 282 Codes & `contracts/coaching-codes.json` — 83 Codes)
+## 4. Pure-English Error & Coaching Message Contracts (`contracts/error-codes.json` — 290 Codes & `contracts/coaching-codes.json` — 88 Codes)
 
-All 282 error messages (`contracts/error-codes.json`) and 83 coaching/brief/review/eligibility messages (`contracts/coaching-codes.json`) are 100% pure English and validated automatically by `tests/error-contract.test.mjs`. Key production codes include:
+All 290 error messages (`contracts/error-codes.json`) and 88 coaching/brief/review/eligibility messages (`contracts/coaching-codes.json`) are 100% pure English and validated automatically by `tests/error-contract.test.mjs`. Key production codes include:
 
 | Error Code | HTTP | Canonical English `message` | Params | Retryable |
 | :--- | :---: | :--- | :--- | :---: |
@@ -299,15 +310,23 @@ All 282 error messages (`contracts/error-codes.json`) and 83 coaching/brief/revi
 | `MATERNAL_CALORIE_CUT_BLOCKED` | `422` | `Calorie reductions are disabled during pregnancy for maternal safety.` | `[]` | `false` |
 | `MAINTENANCE_MODE` | `503` | `Service is temporarily in maintenance mode; offline logging remains active.` | `[]` | `true` |
 | `CLIENT_UPDATE_REQUIRED` | `426` | `Please update CuraFit to the latest version to continue syncing.` | `["minVersion"]` | `false` |
+| `RECIPE_NOT_FOUND` | `404` | `Saved custom recipe not found.` | `[]` | `false` |
+| `RECIPE_LIMIT_REACHED` | `409` | `Maximum saved custom recipes limit reached.` | `["max"]` | `false` |
+| `INVALID_RECIPE_PAYLOAD` | `400` | `Custom recipe payload is invalid or contains zero-energy ingredients.` | `[]` | `false` |
+| `CARDIO_LOG_NOT_FOUND` | `404` | `Cardio session log not found.` | `[]` | `false` |
+| `INVALID_CARDIO_PAYLOAD` | `400` | `Cardio session payload is invalid.` | `[]` | `false` |
+| `CARDIO_DAILY_LIMIT_EXCEEDED` | `400` | `Maximum number of cardio sessions logged for this date has been reached.` | `["max"]` | `false` |
+| `CYCLE_TRACKING_UNAVAILABLE` | `403` | `Menstrual cycle awareness is only available for female profiles.` | `[]` | `false` |
+| `INVALID_CYCLE_PAYLOAD` | `400` | `Cycle settings or cycle log payload is invalid.` | `[]` | `false` |
 
-### Coaching Message Catalog (`contracts/coaching-codes.json` — 83 Codes)
-- Canonical registry mapping all 83 deterministic coaching, brief, review, and eligibility codes (including `RED_FLAGS_STOP`, `JOINT_PAIN_HOLD`, `RECOVERY_DELOAD_PROPOSAL`, `PERFORMANCE_DROP_CALORIE_CUT_HOLD`, `INSUFFICIENT_EVIDENCE_COVERAGE`, `MIN_SAFE_ENERGY_FLOOR_HOLD`, `MAX_SAFE_ENERGY_CEILING_HOLD`, `MATERNAL_CALORIE_CUT_BLOCKED`, `DOUBLE_PROGRESSION_READY`, `TREND_ON_TRACK`, `COOLDOWN_14D`, `BRIEF_TRAINING_PERFORMANCE`, `BRIEF_FOLLOWUP_TIRED`, `BRIEF_FOLLOWUP_SLEEP`, `BRIEF_FOLLOWUP_ACTIVITY`, `VOLUME_HOLD`) to pure-English templates and typed `params[]`. KMM resolves Arabic/English user copy deterministically from `(code, params)`.
+### Coaching Message Catalog (`contracts/coaching-codes.json` — 88 Codes)
+- Canonical registry mapping all 88 deterministic coaching, brief, review, and eligibility codes (including `RED_FLAGS_STOP`, `JOINT_PAIN_HOLD`, `RECOVERY_DELOAD_PROPOSAL`, `PERFORMANCE_DROP_CALORIE_CUT_HOLD`, `INSUFFICIENT_EVIDENCE_COVERAGE`, `MIN_SAFE_ENERGY_FLOOR_HOLD`, `MAX_SAFE_ENERGY_CEILING_HOLD`, `MATERNAL_CALORIE_CUT_BLOCKED`, `DOUBLE_PROGRESSION_READY`, `TREND_ON_TRACK`, `COOLDOWN_14D`, `BRIEF_TRAINING_PERFORMANCE`, `BRIEF_FOLLOWUP_TIRED`, `BRIEF_FOLLOWUP_SLEEP`, `BRIEF_FOLLOWUP_ACTIVITY`, `VOLUME_HOLD`, `CARDIO_HIGH_IMPACT_CAUTION`, `CYCLE_LUTEAL_WATER_RETENTION`, `CYCLE_MENSTRUAL_GENTLE_TRAINING`, `CYCLE_FOLLICULAR_PEAK_READINESS`, `CYCLE_PAUSED_PREGNANCY`) to pure-English templates and typed `params[]`. KMM resolves Arabic/English user copy deterministically from `(code, params)`.
 
 ---
 
 ## 5. Consolidated Cloudflare D1 & R2 Schema Migration (`drizzle/0006_production_features.sql`)
 
-> **Consolidated Pre-Production Schema:** All 14 production tables and columns — including `auto_applied` on `coaching_streak_freezes` and `coaching_trial_tombstones` — live in `drizzle/0006_production_features.sql`. There is **no `0007`** migration.
+> **Consolidated Pre-Production Schema:** All 17 production tables and columns — including `auto_applied` on `coaching_streak_freezes`, `coaching_trial_tombstones`, `coaching_custom_recipes`, `coaching_cardio_logs`, and `coaching_cycle_logs` — live in `drizzle/0006_production_features.sql`. There is **no `0007`** migration.
 
 ```sql
 ALTER TABLE `coaching_users` ADD COLUMN `avatar_url` text;
@@ -455,6 +474,47 @@ CREATE TABLE IF NOT EXISTS `coaching_trial_tombstones` (
   `identity_hash` text PRIMARY KEY NOT NULL,
   `provider` text NOT NULL,
   `recorded_at` text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS `coaching_custom_recipes` (
+  `user_id` text NOT NULL,
+  `id` text NOT NULL,
+  `name` text NOT NULL,
+  `servings` real NOT NULL,
+  `total_grams` real NOT NULL,
+  `payload_json` text NOT NULL,
+  `created_at` text NOT NULL,
+  `updated_at` text NOT NULL,
+  PRIMARY KEY(`user_id`, `id`)
+);
+CREATE INDEX IF NOT EXISTS `idx_custom_recipes_user_updated` ON `coaching_custom_recipes` (`user_id`, `updated_at` DESC);
+
+CREATE TABLE IF NOT EXISTS `coaching_cardio_logs` (
+  `user_id` text NOT NULL,
+  `id` text NOT NULL,
+  `date` text NOT NULL,
+  `modality` text NOT NULL,
+  `duration_minutes` integer NOT NULL,
+  `intensity` text NOT NULL,
+  `distance_km` real,
+  `estimated_kcal` integer NOT NULL,
+  `source` text NOT NULL,
+  `external_record_id` text,
+  `body` text NOT NULL,
+  `updated_at` text NOT NULL,
+  PRIMARY KEY(`user_id`, `id`)
+);
+CREATE INDEX IF NOT EXISTS `idx_cardio_logs_user_date` ON `coaching_cardio_logs` (`user_id`, `date` DESC);
+
+CREATE TABLE IF NOT EXISTS `coaching_cycle_logs` (
+  `user_id` text NOT NULL,
+  `date` text NOT NULL,
+  `period_start` integer DEFAULT 0 NOT NULL,
+  `flow_level` text NOT NULL,
+  `cramp_severity` integer DEFAULT 0 NOT NULL,
+  `body` text NOT NULL,
+  `updated_at` text NOT NULL,
+  PRIMARY KEY(`user_id`, `date`)
 );
 ```
 

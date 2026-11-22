@@ -16,7 +16,10 @@ export const FREE_FEATURES = [
   'safety_recovery_deload',
   'workout_reschedule',
   'injury_safety_swaps',
-  'comeback_protocol'
+  'comeback_protocol',
+  'custom_recipes',
+  'cardio_tracking',
+  'cycle_awareness'
 ];
 
 export const PRO_FEATURES = [

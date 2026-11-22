@@ -148,3 +148,46 @@ CREATE TABLE IF NOT EXISTS `coaching_trial_tombstones` (
 	`provider` text NOT NULL,
 	`recorded_at` text NOT NULL
 );
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `coaching_custom_recipes` (
+	`user_id` text NOT NULL,
+	`id` text NOT NULL,
+	`name` text NOT NULL,
+	`servings` real NOT NULL,
+	`total_grams` real NOT NULL,
+	`payload_json` text NOT NULL,
+	`created_at` text NOT NULL,
+	`updated_at` text NOT NULL,
+	PRIMARY KEY(`user_id`, `id`)
+);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_custom_recipes_user_updated` ON `coaching_custom_recipes` (`user_id`, `updated_at` DESC);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `coaching_cardio_logs` (
+	`user_id` text NOT NULL,
+	`id` text NOT NULL,
+	`date` text NOT NULL,
+	`modality` text NOT NULL,
+	`duration_minutes` integer NOT NULL,
+	`intensity` text NOT NULL,
+	`distance_km` real,
+	`estimated_kcal` integer NOT NULL,
+	`source` text NOT NULL,
+	`external_record_id` text,
+	`body` text NOT NULL,
+	`updated_at` text NOT NULL,
+	PRIMARY KEY(`user_id`, `id`)
+);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_cardio_logs_user_date` ON `coaching_cardio_logs` (`user_id`, `date` DESC);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `coaching_cycle_logs` (
+	`user_id` text NOT NULL,
+	`date` text NOT NULL,
+	`period_start` integer DEFAULT 0 NOT NULL,
+	`flow_level` text NOT NULL,
+	`cramp_severity` integer DEFAULT 0 NOT NULL,
+	`body` text NOT NULL,
+	`updated_at` text NOT NULL,
+	PRIMARY KEY(`user_id`, `date`)
+);

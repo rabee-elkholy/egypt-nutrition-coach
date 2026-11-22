@@ -89,3 +89,8 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `BRIEF_FOLLOWUP_SLEEP` | `brief` | `attention` | — | Short sleep was recorded recently; improving sleep duration will help stabilize appetite and recovery. |
 | `BRIEF_FOLLOWUP_ACTIVITY` | `brief` | `normal` | — | Recent daily step or movement feedback was logged and factored into your weekly coaching context. |
 | `VOLUME_HOLD` | `training` | `normal` | `muscle`, `currentSets` | Weekly volume for {muscle} is held at {currentSets} sets while monitoring recovery and progression. |
+| `CARDIO_HIGH_IMPACT_CAUTION` | `training` | `attention` | `modality`, `reasons` | High-impact cardio ({modality}) logged alongside joint, pregnancy, or senior safety considerations ({reasons}); consider low-impact alternatives like walking, cycling, or swimming if discomfort arises. |
+| `CYCLE_LUTEAL_WATER_RETENTION` | `brief` | `normal` | `cycleDay` | Cycle day {cycleDay} (late luteal phase): temporary 0.5-2.0 kg water retention is normal; stay steady on your calorie target and avoid reacting to short-term scale jumps. |
+| `CYCLE_MENSTRUAL_GENTLE_TRAINING` | `brief` | `normal` | `cycleDay` | Cycle day {cycleDay} (menstrual phase): listen to energy and cramp levels; lighter loads, walking, or extra rest are completely normal today. |
+| `CYCLE_FOLLICULAR_PEAK_READINESS` | `brief` | `normal` | `cycleDay` | Cycle day {cycleDay} (follicular phase): energy and recovery readiness are often higher during this window; a good time for quality resistance sessions. |
+| `CYCLE_PAUSED_PREGNANCY` | `brief` | `normal` | `maternalStatus` | Menstrual cycle predictions are automatically paused during pregnancy ({maternalStatus}); maternal safety guidance remains active. |

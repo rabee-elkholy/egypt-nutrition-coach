@@ -796,6 +796,8 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
                  "ingredientKey": "chicken",
                  "foodId": "usda:171077",
                  "name": "Skinless Chicken Breast",
+                 "nameEn": "Skinless Chicken Breast",
+                 "nameAr": "<arabic-catalog-label>",
                  "state": "cooked",
                  "preparationState": "cooked",
                  "totalGrams": 1050,
@@ -1011,3 +1013,89 @@ As a user aiming to unlock accurate 14-day adaptive calorie reviews from my Coac
 ### ANALYTICS
 - `food_day_confirmed` (`date`: `string`, `complete`: `boolean`, `adherence_pct`: `number`, `entries_count`: `integer`)
 - `legacy_food_day_converted` (`date`: `string`)
+
+---
+
+## US-NUT-12: Saved Custom Home Recipes ("My Recipes") & 1-Tap Portion Logging
+
+### METADATA
+| Field | Value |
+| :--- | :--- |
+| **Story ID** | `US-NUT-12` |
+| **Epic** | `EPIC-04` |
+| **Priority** | `High` |
+| **Labels** | `production`, `mobile`, `nutrition`, `recipes`, `mena-kitchen` |
+| **Target Screens** | `MyRecipesTab` (inside `FoodSearchScreen` & `NutritionHubScreen`), `CreateEditRecipeScreen`, `LogRecipePortionSheet` |
+| **Entitlement** | `Free` *(Core everyday MENA home-cooking logging)* |
+| **Backend Status** | `Implemented` (`GET /v1/recipes`, `recipe_save`, `recipe_delete`, `food_entry` `source: "recipe"`) |
+
+### STORY
+As a user who cooks recurring Egyptian or Gulf family dishes at home (e.g., baked oats tray, homemade grilled chicken kabsa, lentil soup pot), I want to build a recipe once from verified ingredients, save it under **"My Recipes"** with exact serving count and cooked yield weight, and log any fraction (`0.25..10` servings) or gram portion (`1..3000g`) into my daily food diary in one tap without recalculating every time.
+
+### PRECONDITIONS
+- User is authenticated (`serviceTrack != "workouts_only"` or browsing nutrition tools).
+
+### SCREEN AND UI DETAILS
+1. **My Recipes List (`MyRecipesTab`):**
+   - Displays saved user recipes ordered by most recently updated, each showing Recipe Name (Arabic or English), Total Servings (e.g., `4 servings`), Per-Serving Macros (`385 kcal • 34g P • 42g C • 9g F`), Quality Tier badge (`Verified Ingredients` vs `Contains Estimated`), and quick `[Log 1 Serving]` / `[Edit]` / `[Delete]` actions.
+   - Search filter bar + `[+ New Recipe]` primary CTA.
+   - Empty state: *"Save your favorite home-cooked trays and smoothies once, then log a portion in 1 tap."*
+2. **Create / Edit Recipe Builder (`CreateEditRecipeScreen`):**
+   - Inputs: Recipe Name (`2..120` chars), Number of Servings (`1..50`, integer or `0.5` step), optional Final Cooked Weight (`finalWeightGrams`, for accurate per-100g gram logging), optional Notes (`<= 240` chars).
+   - Ingredient picker (`1..30` verified catalog/planning ingredients with `grams` or `ml` + optional additions).
+   - Live macro preview card computing total pot macros, per-serving macros, and per-100g cooked macros before saving.
+3. **Log Recipe Portion Sheet (`LogRecipePortionSheet`):**
+   - Mode toggle: `[By Servings (0.25x, 0.5x, 1x, 1.5x, 2x)]` OR `[By Cooked Grams (1..3000g)]` (enabled when `finalWeightGrams` or `inputWeightGrams > 0`).
+   - Slot selector (`breakfast | lunch | dinner | snack`, plus Ramadan `displaySlot` mapping).
+   - CTA: `[Log Portion ({kcal} kcal)]`.
+
+### API & BACKEND CONTRACT
+1. **`GET /v1/recipes?q={optional}&offset=0&limit=30`**
+   - Returns paginated `{ total, offset, limit, nextOffset, items: [{ id, name, servings, totalGrams, finalWeightGrams, yieldRatio, qualityTier, ingredients[], additions[], notes, perServing, per100g, totals, createdAt, updatedAt }] }`.
+2. **`POST /v1/commands?view=receipt`** (`action: "recipe_save"`)
+   - Payload: `{ "id": "<optional-existing-uuid>", "name": "Homemade Chicken Rice Tray", "servings": 4, "ingredients": [{ "key": "chicken", "grams": 600 }, { "key": "rice", "grams": 300 }], "additions": [{ "key": "olive_oil", "grams": 20 }], "finalWeightGrams": 1100, "notes": "Oven baked" }`.
+   - Server computes exact verified nutrients using `calculatePreparedBeverageOrRecipe`, persists in `coaching_custom_recipes`, and rejects > 100 saved recipes with `409 RECIPE_LIMIT_REACHED`.
+3. **`POST /v1/commands?view=receipt`** (`action: "recipe_delete"`)
+   - Payload: `{ "id": "<recipeId>" }` (`404 RECIPE_NOT_FOUND`).
+4. **`POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "recipe"`)
+   - Payload: `{ "date": "2026-11-21", "slot": "lunch", "displaySlot": "iftar", "source": "recipe", "recipeId": "<recipeId>", "servings": 1.5 }` (OR `"grams": 275`).
+   - Server freezes the recipe snapshot onto the food entry at log time; `food_entry_update` also supports scaling `servings` or `grams` atomically in place.
+   - Error Codes: `INVALID_RECIPE_PAYLOAD`, `RECIPE_NOT_FOUND`, `RECIPE_LIMIT_REACHED`, `INGREDIENT_NOT_IN_CATALOG`, `LIQUID_DENSITY_MISSING`.
+
+### RULES & BUSINESS LOGIC
+1. **Immutable Historical Snapshots:** Editing or deleting a saved recipe NEVER alters or corrupts past `food_entry` logs previously recorded from that recipe, because every logged diary entry stores a frozen nutrient snapshot.
+2. **Zero-Energy Guard:** Recipes with `<= 0 kcal` total energy are rejected cleanly (`400 INVALID_RECIPE_PAYLOAD`).
+3. **Null-Nutrient Honesty:** If any ingredient lacks a reference micronutrient (e.g., sodium or fiber), per-serving & per-100g values preserve `null` cleanly rather than coercing to `0`.
+4. **Max Library Cap (`100` Recipes):** Prevents unbounded D1/bootstrap bloat (`409 RECIPE_LIMIT_REACHED`).
+5. **GDPR Compliance:** All rows in `coaching_custom_recipes` are included in `GET /v1/account/export` and permanently erased in `DELETE /v1/account/delete`.
+
+### MAIN FLOW
+1. User opens `FoodSearchScreen` -> `My Recipes` tab -> `[+ New Recipe]`.
+2. User names it `"High-Protein Oats Tray"`, sets `servings: 4`, adds `oats 240g` + `milk 600g` + `egg 120g`, and taps `[Save Recipe]`.
+3. `recipe_save` commits (`390 kcal / serving`).
+4. User taps `[Log 1 Serving]` -> selects `Breakfast` -> `food_entry` (`source: "recipe"`, `servings: 1`) commits and updates Today macros immediately.
+
+### EDGE CASES
+- **Recipe Deleted After Being Logged Yesterday:** Yesterday's food diary continues rendering exact frozen macros (`390 kcal`) with zero broken references.
+- **User Logs Non-Existent or Stale `recipeId` Offline:** Server returns `404 RECIPE_NOT_FOUND`; outbox poison-pill policy surfaces a clear dismissible alert and removes the stale pending entry cleanly.
+- **User Reaches 100 Saved Recipes:** `[+ New Recipe]` displays friendly prompt `"Maximum 100 saved recipes reached — delete an older recipe to add a new one"` (`RECIPE_LIMIT_REACHED`).
+- **Editing Logged Recipe Portion Later:** User edits `servings` from `1` to `1.5` via atomic `food_entry_update` without losing entry ID or reopening stale duplicates.
+
+### ACCEPTANCE CRITERIA
+- **Scenario 1: Creating and logging a custom recipe computes accurate scaled per-serving macros**
+  - **Given** user saves a 4-serving recipe via `recipe_save`
+  - **When** user logs `1.5` servings via `food_entry` (`source: "recipe"`)
+  - **Then** the diary entry stores `1.5x` per-serving calories and macros with a frozen snapshot.
+- **Scenario 2: Editing or deleting a recipe preserves historical food diary entries**
+  - **Given** a recipe was logged yesterday and then deleted via `recipe_delete`
+  - **When** user views yesterday's `GET /v1/food-diary`
+  - **Then** yesterday's entry retains its exact original name and nutrients intact.
+- **Scenario 3: Cap and validation errors are enforced cleanly**
+  - **Given** invalid empty ingredients or missing `recipeId`
+  - **When** submitting `recipe_save` or `food_entry` (`source: "recipe"`)
+  - **Then** server returns `400 INVALID_RECIPE_PAYLOAD` or `404 RECIPE_NOT_FOUND` with pure-English error codes.
+
+### ANALYTICS
+- `custom_recipe_saved` (`is_edit`: `boolean`, `ingredients_count`: `integer`, `servings`: `number`)
+- `custom_recipe_logged` (`unit_mode`: `"servings" | "grams"`, `slot`: `string`)
+- `custom_recipe_deleted` (`recipe_id`: `string`)

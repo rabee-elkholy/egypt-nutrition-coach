@@ -66,7 +66,7 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
 ### API & BACKEND CONTRACT
 1. **`GET /v1/bootstrap`**
    - **Headers:** `Authorization: Bearer <accessToken>`, `If-None-Match: <bootstrapEtag>` (smart state-fingerprint `ETag` `W/"boot-..."` that changes automatically on `revision`, local date, `entitlements`, `consents`, `avatar`, or `recovery.status` changes).
-   - **Response Fields Consumed:** `revision`, `serverDate`, `timezone`, `onboardingCompleted` (`boolean`), `onboarding` (`object | null` with `serviceTrack`, `journeyStartedOn`, `workoutUiMode`, `workoutPrefs`), `consents`, `profile` (incl. `activity`, `unitSystem`, `seniorMode`, `maternalStatus`, `workoutUiMode`), `eligibility`, `scheduledSessions` (14d), `todaySummary` (`nutrition` incl. `carbs`/`fat`/`targets`, `activity` incl. `updatedAt`, `hydration`, `latestWeight`, `recovery`, `scheduledWorkout` incl. `fromDate`, `fastingState`, `ramadanMode`), `unreadCoachingInboxCount` (`integer`), `pendingAdaptations`, `workoutSafetyIssues`, `entitlements`, `streakSummary`, `engagementState`, `notificationPreferences`.
+   - **Response Fields Consumed:** `revision`, `serverDate`, `timezone`, `onboardingCompleted` (`boolean`), `onboarding` (`object | null` with `serviceTrack`, `journeyStartedOn`, `workoutUiMode`, `workoutPrefs`), `consents`, `profile` (incl. `activity`, `unitSystem`, `seniorMode`, `maternalStatus`, `workoutUiMode`), `eligibility`, `scheduledSessions` (14d), `todaySummary` (`nutrition` incl. `carbs`/`fat`/`targets`, `activity` incl. `updatedAt`, `cardio` incl. `sessionsCount`/`totalMinutes`/`totalKcal`, `hydration`, `latestWeight`, `recovery`, `scheduledWorkout` incl. `fromDate`, `fastingState`, `ramadanMode`, `cycleState` nullable when not female or disabled), `unreadCoachingInboxCount` (`integer`), `pendingAdaptations`, `workoutSafetyIssues`, `entitlements`, `streakSummary`, `engagementState`, `notificationPreferences`.
 2. **`GET /v1/coaching/brief`** (Cached via `If-None-Match` `W/"brief-..."` ETag; pure-English + `code`/`params`/`actionTarget`)
 3. **`GET /v1/widgets/snapshot`** (For OS Home Screen Widgets — includes `streakDays`, `readinessStatus`, `caloriesRemaining`, `waterCups`, `waterTargetCups`, `fastingState`, `nextWorkout`)
 
@@ -384,14 +384,16 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
    - **Nutrition Actions** *(Hidden/Disabled if `serviceTrack == "workouts_only"`)*:
      - **AI Photo / Voice Meal Log** *(Final AI Phase — Deferred: `POST /v1/nutrition/ai-parse` returns `501 FEATURE_DEFERRED_TO_AI_PHASE` until AI rollout; hidden/coming-soon while `ai_meal_parse` is in `capabilities.deferredFeatures`)* -> Opens `AIMealLoggerScreen` (`US-NUT-05`).
      - **Scan Barcode** *(Pro badge if Free)* -> Opens `BarcodeScannerScreen` (`US-NUT-06`).
-     - **Search Food & Drinks** -> Opens `FoodSearchScreen` (`US-NUT-04`).
+     - **Search Food & My Recipes** -> Opens `FoodSearchScreen` / `MyRecipesTab` (`US-NUT-04`, `US-NUT-12`).
      - **Manual Calories / Quick Repeat** -> Opens `QuickRepeatAndManualSheet` (`US-NUT-07`).
    - **Health & Biometrics Actions:**
      - **Log Water (`+1 Cup` shortcut right on tile + tap to open)** -> `US-HOME-04`.
      - **Log Weight** -> `WeightLogBottomSheet` (`US-HOME-04`).
      - **Body Measurements** -> `MeasurementsEntrySheet` (`US-PRG-02`).
-   - **Training & Coach Actions:**
+     - **Cycle Check-In** *(Shown ONLY when `profile.sex == "female"` AND `todaySummary.cycleState.enabled == true`)* -> `CycleLogSheet` (`US-PRG-06`).
+   - **Training & Cardio Actions:**
      - **Daily Recovery Check-In** -> `RecoveryCheckinModal` (`US-CCH-02`).
+     - **Log Cardio / Walk** *(Available across all tracks)* -> `LogCardioSheet` (`US-WRK-11`).
      - **Start Today's Workout** *(Only if `serviceTrack != "nutrition_only"` & workout scheduled/incomplete)* -> `US-WRK-03`/`04`.
 2. **Meal Slot Pre-Selector Pill at Top of Sheet (for Food Actions):**
    - Auto-selects the most likely slot by local time (`05:00–10:59`: `Breakfast`; `11:00–16:59`: `Lunch`; `17:00–20:59`: `Snack` or `Dinner`; `21:00+`: `Dinner` / `Snack`; or `Suhoor`/`Iftar` during Ramadan Mode) — user can tap to override slot before picking an action.

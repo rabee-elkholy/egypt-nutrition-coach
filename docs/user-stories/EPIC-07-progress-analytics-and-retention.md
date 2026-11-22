@@ -279,31 +279,32 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
      - `First Step (Day 1)`, `7-Day Rhythm`, `30-Day Warrior`, `Hydration Master (7d 80%+)`, `First Double Progression PR`, `10-Day Food Evidence Unlock`, `Consistency Hero (4 Weeks)`, `Goal Milestone Reached`.
 2. **Weekly Wrapped Card (`WeeklyWrappedModal` — Triggered Every Friday/Saturday Morning or Accessible Anytime):**
    - Story-style clean summary cards for the past 7 days:
-     - Card 1: `Weekly Adherence Score: 88%` (multi-track `adherenceScorePct` accurately computed for `nutrition_only`, `workouts_only`, and `nutrition_and_workouts`)
-     - Card 2: `Training Summary: 4 Workouts • 14,250 kg Lifted • 2 New PRs`
-     - Card 3: `Nutrition & Weight: Avg 1,840 kcal • 142g Protein/day • -0.5 kg Trend`
-     - Card 4: `[Share Weekly Recap]` (privacy-safe image without raw clinical flags) + `[Plan Next Week]`.
+      - Card 1: `Weekly Adherence Score: 88%` (multi-track `adherenceScorePct` accurately computed for `nutrition_only`, `workouts_only`, and `nutrition_and_workouts`)
+      - Card 2: `Training & Cardio Summary: 4 Workouts • 14,250 kg Lifted • 2 New PRs • 95 min Cardio` (`cardioSessionsCount`, `cardioMinutes`)
+      - Card 3: `Nutrition & Weight: Avg 1,840 kcal • 142g Protein/day • -0.5 kg Trend`
+      - Card 4: `[Share to Instagram Stories / WhatsApp]` (renders privacy-safe 9:16 branded PNG card or localized WhatsApp recap without raw clinical flags, body weight, or cycle data) + `[Plan Next Week]`.
 
 ### API & BACKEND CONTRACT
-1. **`GET /v1/bootstrap`** -> Returns compact `streakSummary`: `{ currentDays, longestDays, freezeAvailable, freezeUsedDates[], todayQualified }`.
-2. **`GET /v1/progress/weekly-wrapped?weekEnd={YYYY-MM-DD}`** -> Computes multi-track `adherenceScorePct` (works accurately across `nutrition_only`, `workouts_only`, and `nutrition_and_workouts`) and returns aggregated 7-day scorecard + up to 8 unlocked milestone badges (`badgesUnlocked[]`).
+1. **`GET /v1/bootstrap`** -> Returns compact `streakSummary`: `{ currentDays, longestDays, freezeAvailable, freezeUsedDates[], todayQualified }` (qualifying activities include `>= 1` meal, workout session, `>= 20` min cardio, `>= 80%` water target, or recovery check-in).
+2. **`GET /v1/progress/weekly-wrapped?weekEnd={YYYY-MM-DD}`** -> Computes multi-track `adherenceScorePct` (works accurately across `nutrition_only`, `workouts_only`, and `nutrition_and_workouts`) and returns aggregated 7-day scorecard (`cardioSessionsCount`, `cardioMinutes`, workouts, nutrition, hydration, streak) + up to 8 unlocked milestone badges (`badgesUnlocked[]`).
 3. **`POST /v1/commands?view=receipt`** (`action: "streak_freeze"`) -> `{ "date": "2026-11-21" }` (max 1 freeze per 7 calendar days; stored in `coaching_streak_freezes` with `auto_applied` column).
    - Error Codes: `409 STREAK_FREEZE_UNAVAILABLE` (weekly freeze quota already used).
 
 ### RULES & BUSINESS LOGIC
 1. **Zero Punitive Language:** When a streak resets after missing 2+ unprotected days, show supportive encouragement (*"Streaks are just counters — your body keeps 100% of the work you've already done. Let's start a fresh chain today!"*).
 2. **Scheduled Rest Days Don't Break Workout Streaks:** Only active logging habit counts daily; workouts evaluate against `scheduledSessions` weekly completion rate.
+3. **Privacy-Safe Sharing:** Shared Weekly Wrapped cards & WhatsApp recaps omit exact body weight (`kg`), medical conditions, injuries, and any menstrual cycle details — sharing only consistency percentage, workouts/cardio counts, streak, unlocked badges, and CuraFit branding.
 
 ### MAIN FLOW
 1. User reaches Friday morning and sees a subtle celebration banner on Today: `"Your Weekly Wrapped is Ready! ✨"`.
-2. User taps to swipe through 3 colorful recap cards showing `89% Adherence`, `4/4 Workouts Done`, and `-0.5 kg` trend.
-3. User closes modal feeling motivated for the weekend.
+2. User taps to swipe through 3 colorful recap cards showing `89% Adherence`, `4/4 Workouts + 95m Cardio`, and `-0.5 kg` trend.
+3. User taps `[Share to WhatsApp / Stories]` to share a privacy-safe branded recap card, then closes modal feeling motivated for the weekend.
 
 ### EDGE CASES
 - **First Week (< 7 Days Since Onboarding):** Weekly Wrapped waits until `>= 5` days after `journeyStartedOn` before prompting proactively, while remaining viewable manually.
 - **Free User Already Used Weekly Streak Freeze (`STREAK_FREEZE_UNAVAILABLE`):** Disables extra freeze activation for the remaining 7-day window and displays clear countdown (`"Next freeze unlocks in 4 days"`).
 - **Timezone Travel Across Midnight Border (`Cairo -> London`):** Streak date calculation locks cleanly to `profile.timezone` (`US-PRF-05`) so flying late at night never falsely breaks a streak!
-- **Weekly Wrapped With `nutrition_only` or `workouts_only` Track:** Computes multi-track `adherenceScorePct` accurately for the active domain and omits inactive-domain metrics (e.g., `nutrition_only` hides lifted `kg` volume card while `workouts_only` celebrates full training & hydration adherence cleanly).
+- **Weekly Wrapped With `nutrition_only` or `workouts_only` Track:** Computes multi-track `adherenceScorePct` accurately for the active domain and omits inactive-domain metrics (e.g., `nutrition_only` hides lifted `kg` volume card while celebrating nutrition, hydration, and cardio sessions cleanly).
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Streak Freeze preserves active streak across one missed day**
@@ -317,7 +318,7 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
 - **Scenario 3: Weekly Wrapped summarizes single-track users without blank or zeroed cards**
   - **Given** `serviceTrack == "nutrition_only"` (or `"workouts_only"`) and user had 85% adherence in their active domain
   - **When** `WeeklyWrappedModal` opens
-  - **Then** `adherenceScorePct` reflects active-track consistency cleanly, up to 8 eligible milestone badges award properly, and inactive-domain cards are omitted.
+  - **Then** `adherenceScorePct` reflects active-track consistency cleanly, includes `cardioSessionsCount`/`cardioMinutes`, up to 8 eligible milestone badges award properly, and shared cards omit private clinical/weight data.
 
 ### ANALYTICS
 - `streak_sheet_viewed` (`current_days`: `integer`, `freeze_available`: `boolean`)
@@ -356,30 +357,30 @@ As a busy phone user checking my home screen dozens of times a day, I want light
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/widgets/snapshot`**
-   - Ultra-compact `< 1.5 KB` endpoint returning strictly `{ date, timezone, serviceTrack, caloriesRemaining, caloriesTarget, proteinGrams, carbsGrams, fatGrams, waterCups, waterTargetCups, fastingPhase, fastingEndsAt, nextWorkoutFocus, workoutStatus }` with short ETag caching for background widget refreshes.
-2. **`POST /v1/commands?view=receipt`** (`action: "water"`, `addCups: 1`) -> Invoked directly by iOS AppIntent / Android BroadcastReceiver when user taps `+1 Cup` on the home screen!
+   - Ultra-compact `< 1.5 KB` endpoint returning strictly `{ date, timezone, serviceTrack, caloriesRemaining, caloriesTarget, proteinGrams, carbsGrams, fatGrams, waterCups, waterTargetCups, streakDays, readinessStatus, fastingPhase, fastingEndsAt, nextWorkoutFocus, workoutStatus }` with short ETag caching for background widget refreshes.
+2. **`POST /v1/commands?view=receipt`** (`action: "water"`, `date: "YYYY-MM-DD"`, `addCups: 1`) -> Invoked directly by iOS AppIntent / Android BroadcastReceiver when user taps `+1 Cup` on the home screen (always includes explicit local `date` so midnight rollover never mutates the next day!).
 
 ### RULES & BUSINESS LOGIC
 1. **Midnight Stale Reset:** If `snapshot.date != deviceLocalDate()`, widget renders fresh day baseline (`0` consumed, full target, or background timeline entry at `00:01`) so yesterday's calories never linger at `8:00 AM`!
-2. **Offline Widget Action Queue:** If user taps `[+1 Cup]` on the widget while in airplane mode, increment shared local state immediately and enqueue `water` command into SQLDelight outbox for the main app sync worker.
-3. **Battery Friendly Refresh:** Respect OS widget budget (`TimelineProvider` / `WorkManager` updates on app data changes + periodic `>= 30 min` refresh, never polling every minute).
+2. **Offline Widget Action Queue:** If user taps `[+1 Cup]` on the widget while in airplane mode, increment shared local state immediately and enqueue `water` command (with explicit `date`) into SQLDelight outbox for the main app sync worker.
+3. **Battery Friendly Refresh & Lock Screen Privacy:** Respect OS widget budget (`TimelineProvider` / `WorkManager` updates on app data changes + periodic `>= 30 min` refresh, never polling every minute). Never display raw body weight (`kg`), medical conditions, or menstrual cycle data on Lock Screen widgets.
 
 ### MAIN FLOW
 1. User adds CuraFit Medium `4x2` widget to iPhone/Android home screen.
 2. At 2:00 PM, user finishes a glass of water, unlocks phone, and taps `[+1 Cup]` straight on the widget.
-3. `LogWaterIntent` updates local widget state immediately (`5/10 -> 6/10`), dispatches `POST /v1/commands` (`water`, `addCups: 1`), and updates the widget counter cleanly.
+3. `LogWaterIntent` updates local widget state immediately (`5/10 -> 6/10`), dispatches `POST /v1/commands` (`water`, explicit `date`, `addCups: 1`), and updates the widget counter cleanly.
 
 ### EDGE CASES
 - **Access Token Expired During Background Widget Refresh:** Widget extension acquires refresh token safely via shared Keychain App Group (`Mutex`-guarded) OR falls back to cached local SQLDelight values until app foregrounds.
 - **Arabic RTL Widget Mirroring:** Automatically obeys OS locale / app language override (`ar` RTL vs `en` LTR).
 - **Unauthenticated / Signed-Out / Onboarding Incomplete User Has Widget Pinned:** Renders `"Sign in to CuraFit to view today's progress"` and deep-links straight to `US-AUTH-01` / `US-MOB-01` while saving `pendingDeepLinkRoute` (`US-AUTH-01`).
-- **Simultaneous Taps of `+1 Cup` on Widget While App Is Offline:** AppIntent/Glance increments local shared water counter optimistically and inserts into shared SQLDelight `outbox_commands` with a unique `Idempotency-Key` so online flush never loses or doubles the cup.
+- **Simultaneous Taps of `+1 Cup` on Widget While App Is Offline:** AppIntent/Glance increments local shared water counter optimistically and inserts into shared SQLDelight `outbox_commands` with explicit `date` and a unique `Idempotency-Key` so online flush never loses or doubles the cup.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Interactive `+1 Cup` widget button increments water without opening app**
   - **Given** the CuraFit widget displays `4 / 10 cups`
   - **When** user taps `[+1 Cup]` on the home screen widget
-  - **Then** the widget updates to `5 / 10 cups` and dispatches `water` (`addCups: 1`) with an `Idempotency-Key`.
+  - **Then** the widget updates to `5 / 10 cups` and dispatches `water` (`date`, `addCups: 1`) with an `Idempotency-Key`.
 - **Scenario 2: Midnight rollover clears yesterday's logged calories**
   - **Given** widget cached `2026-11-21` consumption (`1,800 kcal`)
   - **When** device clock crosses midnight to `2026-11-22`
@@ -393,3 +394,85 @@ As a busy phone user checking my home screen dozens of times a day, I want light
 - `widget_installed_detected` (`platform`: `"android" | "ios"`, `widget_family`: `string`)
 - `widget_water_incremented` (`cups_after`: `integer`)
 - `widget_deep_link_opened` (`target`: `"today" | "workout" | "nutrition" | "fasting"`)
+
+---
+
+## US-PRG-06: Optional Female Menstrual Cycle Awareness & Scale Fluctuation Guidance
+
+### METADATA
+| Field | Value |
+| :--- | :--- |
+| **Story ID** | `US-PRG-06` |
+| **Epic** | `EPIC-07` |
+| **Priority** | `Medium` |
+| **Labels** | `production`, `mobile`, `wellness`, `cycle-awareness`, `women-health`, `privacy` |
+| **Target Screens** | `CycleAwarenessScreen`, `CycleLogSheet`, `CycleSettingsSheet` |
+| **Entitlement** | `Free` *(Inclusive women's health & scale reassurance — never paywalled)* |
+| **Backend Status** | `Implemented` (`GET /v1/cycle/state`, `cycle_settings`, `cycle_log`) |
+
+### STORY
+As a female user (especially when managing weight fluctuations, bloating, PCOS, or training fatigue), I want an **optional, opt-in** Menstrual Cycle Awareness feature that stays completely hidden unless I enable it, automatically pauses during pregnancy, explains temporary luteal/menstrual scale weight increases caused by water retention, and offers gentle training-intensity guidance on high-cramp days without making medical or contraception claims.
+
+### PRECONDITIONS
+- `profile.sex == "female"` (completely hidden from non-female profiles; backend enforces `403 CYCLE_TRACKING_UNAVAILABLE` for non-female profiles).
+- Active `health_data_processing` consent is granted (withdrawn consent returns `403 HEALTH_CONSENT_REQUIRED`).
+
+### SCREEN AND UI DETAILS
+1. **Opt-In Settings (`CycleSettingsSheet` — Accessible from Profile -> Health Preferences or Progress Tab for Female Users Only):**
+   - Master toggle: `[Enable Cycle Awareness]` (`enabled: false` by default so users who do not want it experience zero visual clutter).
+   - Inputs (when enabled): `Last Period Start Date` (`YYYY-MM-DD`), `Average Cycle Length` (`21..45` days, default `28`), `Average Period Length` (`2..10` days, default `5`).
+   - Clear non-medical disclaimer footer: *"Wellness coaching guidance only — not for contraception, fertility prediction, or medical diagnosis."*
+2. **Cycle Awareness Card (`CycleAwarenessScreen` & Compact Optional Strip on Today/Progress):**
+   - Displays current cycle day (`"Cycle Day 26 of 28 • Luteal Phase"`) and estimated next period date.
+   - **Scale Reassurance Pill (When `waterRetentionLikely == true`):** *"Temporary scale increases (+0.5 to 2 kg) are common water retention during this phase — focus on your 7-day trend!"* (`code: "CYCLE_LUTEAL_WATER_RETENTION"`).
+   - **Pregnancy Auto-Pause State (`maternalStatus in ["pregnant_t1", "pregnant_t2", "pregnant_t3"]`):** Displays calm `"Cycle tracking paused during pregnancy"` notice (`code: "CYCLE_PAUSED_PREGNANCY"`) and hides all period projections.
+3. **Quick Cycle Check-In Sheet (`CycleLogSheet`):**
+   - Toggle `[Period Started Today]` (`periodStart: true`), Flow Level (`none | spotting | light | medium | heavy`), Symptom Chips (`cramps`, `bloating`, `fatigue`, `headache`, `mood_swings`, `back_pain`, `cravings`), Cramp Severity (`0..5`), and optional Notes (`<= 200` chars).
+
+### API & BACKEND CONTRACT
+1. **`GET /v1/cycle/state`**
+   - Returns `{ available, enabled, pausedReason, disclaimer: "wellness_tracking_not_contraception_or_medical_diagnosis", settings: { averageCycleLengthDays, averagePeriodLengthDays, lastPeriodStartDate }, currentCycleDay, estimatedPhase: "menstrual" | "follicular" | "ovulatory" | "luteal" | "unknown", nextPeriodEstimateDate, waterRetentionLikely, coachingGuidance: { code, message, trainingIntensityHint }, recentLogs[] }`.
+   - Also surfaced as a compact optional `todaySummary.cycleState` inside `GET /v1/bootstrap` (`null` when not female or not enabled!).
+2. **`POST /v1/commands?view=receipt`** (`action: "cycle_settings"`)
+   - Payload: `{ "enabled": true, "averageCycleLengthDays": 28, "averagePeriodLengthDays": 5, "lastPeriodStartDate": "2026-11-01" }`.
+3. **`POST /v1/commands?view=receipt`** (`action: "cycle_log"`)
+   - Payload: `{ "date": "2026-11-21", "periodStart": false, "flowLevel": "medium", "symptoms": ["cramps", "bloating"], "crampSeverity": 3, "notes": "Lower energy today" }`.
+   - When `periodStart: true` on a date `>= lastPeriodStartDate`, server automatically advances `lastPeriodStartDate` cleanly.
+   - Error Codes: `403 CYCLE_TRACKING_UNAVAILABLE`, `403 HEALTH_CONSENT_REQUIRED`, `400 INVALID_CYCLE_PAYLOAD`, `DATE_IN_FUTURE`, `DATE_TOO_OLD`.
+
+### RULES & BUSINESS LOGIC
+1. **Strict Female Eligibility & Pregnancy Auto-Pause:** Non-female profiles receive `403 CYCLE_TRACKING_UNAVAILABLE` on `cycle_settings`/`cycle_log` and `{ available: false, enabled: false }` on `GET /v1/cycle/state`. Active pregnancy (`pregnant_t1|t2|t3`) automatically returns `pausedReason: "pregnancy"`, `estimatedPhase: "unknown"`, `nextPeriodEstimateDate: null`, and `coachingGuidance.code: "CYCLE_PAUSED_PREGNANCY"`.
+2. **Coaching Brief & Scale Reassurance Integration (`personal-brief.mjs`):** When enabled and not paused:
+   - Late luteal (`cycleDay >= cycleLength - 4`) or menstrual (`cycleDay <= periodLength`) sets `waterRetentionLikely: true` and emits `CYCLE_LUTEAL_WATER_RETENTION` in Coaching Brief so temporary scale fluctuations never discourage the user.
+   - High cramps (`crampSeverity >= 3`) or menstrual fatigue emits `CYCLE_MENSTRUAL_GENTLE_TRAINING` suggesting optional `-10..15%` working load reduction or low-impact movement.
+3. **Strict Privacy & GDPR Protection:** Cycle data is NEVER shown on Lock Screen widgets, NEVER included in shared Weekly Wrapped / Workout cards, requires active `health_data_processing` consent, is exported in `GET /v1/account/export`, and is permanently erased in `DELETE /v1/account/delete`.
+
+### MAIN FLOW
+1. Female user opens `Profile` -> `Cycle Awareness` and enables tracking with `lastPeriodStartDate = "2026-11-01"`, `cycleLength = 28`.
+2. `cycle_settings` commits; `GET /v1/cycle/state` computes Day `21` (`luteal`).
+3. On Day `26`, scale jumps `+1.1 kg`; Today & Coach Brief show reassuring `CYCLE_LUTEAL_WATER_RETENTION` note explaining temporary water retention.
+4. On Day `29`, user taps `[Period Started Today]` -> `cycle_log` (`periodStart: true`, `flowLevel: "medium"`, `crampSeverity: 3`) updates `lastPeriodStartDate` cleanly and surfaces `CYCLE_MENSTRUAL_GENTLE_TRAINING`.
+
+### EDGE CASES
+- **Male Profile Calls `cycle_settings` or `cycle_log`:** Rejected immediately with `403 CYCLE_TRACKING_UNAVAILABLE`.
+- **User Switches Profile `maternalStatus` to `pregnant_t1`:** Cycle tracking pauses automatically (`pausedReason: "pregnancy"`) without deleting historical logs, and resumes cleanly only if `maternalStatus` later changes back to `none` or `breastfeeding`.
+- **User Withdraws `health_data_processing` Consent:** `cycle_settings` and `cycle_log` return `403 HEALTH_CONSENT_REQUIRED` until consent is re-granted.
+- **Irregular Cycle (e.g., PCOS) Exceeding `averageCycleLengthDays`:** When elapsed days exceed `averageCycleLengthDays`, phase returns `"luteal"` calmly without displaying negative countdowns or diagnostic alarms.
+
+### ACCEPTANCE CRITERIA
+- **Scenario 1: Male profile is strictly blocked from cycle tracking mutations**
+  - **Given** `profile.sex == "male"`
+  - **When** submitting `cycle_settings` or `cycle_log`
+  - **Then** server returns `403 CYCLE_TRACKING_UNAVAILABLE` and `GET /v1/cycle/state` returns `available: false`.
+- **Scenario 2: Pregnancy automatically pauses cycle projections**
+  - **Given** an opted-in female user switches `maternalStatus` to `"pregnant_t2"`
+  - **When** `GET /v1/cycle/state` is called
+  - **Then** `pausedReason == "pregnancy"`, `nextPeriodEstimateDate == null`, and `coachingGuidance.code == "CYCLE_PAUSED_PREGNANCY"`.
+- **Scenario 3: Luteal phase surfaces scale water-retention reassurance**
+  - **Given** an opted-in non-pregnant female user on Day `26` of a `28`-day cycle
+  - **When** fetching `GET /v1/cycle/state` and `GET /v1/coaching/brief`
+  - **Then** `waterRetentionLikely == true` and `CYCLE_LUTEAL_WATER_RETENTION` is returned with zero Arabic in server text.
+
+### ANALYTICS
+- `cycle_awareness_toggled` (`enabled`: `boolean`, `cycle_length_days`: `integer`)
+- `cycle_log_submitted` (`period_start`: `boolean`, `symptoms_count`: `integer`, `cramp_severity`: `integer`)
