@@ -32,9 +32,9 @@ const COLLECTION_OVERVIEW_MD = [
   '',
   '---',
   '',
-  '## 2. Authentication (Cloudflare Native D1 + Direct OIDC)',
+  '## 2. Authentication (Google & Apple OIDC Only + First-Party JWT/D1 Sessions)',
   '',
-  '- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.',
+  '- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/auth/refresh`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.',
   '- **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).',
   '- **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).',
   '- **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).',
@@ -78,14 +78,11 @@ const COLLECTION_OVERVIEW_MD = [
   '| Variable | Type | Scope | Description |',
   '| :--- | :--- | :--- | :--- |',
   '| `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |',
-  '| `testEmail` | `string (email)` | Environment | Email used in internal Dev/QA Register / Login |',
-  '| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) for internal Dev/QA routes |',
-  '| `testNewPassword` | `string (secret)` | Environment | New password for Change Password |',
   '| `deviceId` | `string` | Environment | Client device ID (`max 120` chars) |',
   '| `clientPlatform` | `string (enum)` | Environment | `android` \\| `ios` \\| `web` |',
   '| `clientVersion` | `string` | Environment | App semantic version (e.g. `1.0.0`) |',
-  '| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by OAuth / Register / Login / Refresh |',
-  '| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by OAuth / Register / Login / Refresh |',
+  '| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by Google / Apple OIDC Sign-In or Refresh |',
+  '| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by Google / Apple OIDC Sign-In or Refresh |',
   '| `sessionId` | `string` | Collection (auto) | Current D1 session ID |',
   '| `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |',
   '| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |',
@@ -606,9 +603,6 @@ const collection = {
   ],
   variable: [
     { key: 'baseUrl', value: CLOUD_DEV_URL },
-    { key: 'testEmail', value: 'demo.user@curafit.app' },
-    { key: 'testPassword', value: 'CuraFit#2026!' },
-    { key: 'testNewPassword', value: 'CuraFit#2027!' },
     { key: 'accessToken', value: '' },
     { key: 'refreshToken', value: '' },
     { key: 'sessionId', value: '' },
@@ -708,29 +702,30 @@ const collection = {
     },
     {
       id: 'f0000002-0000-4000-8000-000000000002',
-      name: '02. Authentication (Cloudflare Native D1)',
-      description: 'First-party authentication on Cloudflare Workers + D1 using WebCrypto PBKDF2-SHA256 passwords, HS256 Access JWTs (15 min), and rotating D1 Refresh Tokens (30 days) with replay reuse detection.',
+      name: '02. Authentication (Google & Apple OIDC)',
+      description: 'Passwordless Google Sign-In & Apple Sign-In OIDC verification on Cloudflare Workers + D1, issuing first-party HS256 Access JWTs (15 min) and rotating D1 Refresh Tokens (30 days) with replay reuse detection.',
       item: [
         req({
-          name: 'Register User',
+          name: 'Sign In / Register with Google OIDC',
           method: 'POST',
-          path: '/v1/auth/register',
+          path: '/v1/auth/oauth/google',
           noAuth: true,
-          summary: 'Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and issues an Access JWT + Refresh Token pair. Auto-saves tokens in Postman.',
+          summary: 'Verifies a Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (creates a new D1 user on first sign-in or signs into an existing linked account). Auto-saves tokens in Postman.',
           fields: [
-            { name: 'email', type: 'string (email)', required: true, constraints: 'Trimmed, lowercased, max 160 chars, unique', description: 'User email address.' },
-            { name: 'password', type: 'string', required: true, constraints: '8..128 chars', description: 'Plaintext password (hashed via PBKDF2-SHA256 100k iterations).' },
-            { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name.' },
-            { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Optional client device identifier.' }
+            { name: 'idToken', type: 'string (JWT)', required: true, constraints: 'Google OIDC ID token', description: 'Signed Google ID token from mobile Google Sign-In.' },
+            { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Client device identifier.' },
+            { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name fallback.' },
+            { name: 'fullName', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional full name fallback.' },
+            { name: 'linkExisting', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, links Google to an existing verified account sharing the same verified email.' }
           ],
           responseFields: AUTH_RESPONSE_FIELDS,
           errors: [
-            { status: 400, code: 'INVALID_EMAIL / INVALID_PASSWORD', description: 'Malformed email or password shorter than 8 chars.' },
-            { status: 409, code: 'AUTH_EMAIL_ALREADY_EXISTS', description: 'Email is already registered.' },
+            { status: 401, code: 'AUTH_OAUTH_TOKEN_INVALID', description: 'Google ID token is missing, expired, malformed, or fails JWKS verification.' },
+            { status: 409, code: 'AUTH_PROVIDER_EMAIL_CONFLICT', description: 'Email is already associated with another OIDC provider; pass `linkExisting: true` after confirmation.' },
             { status: 429, code: 'RATE_LIMITED', description: 'Auth endpoint rate limit exceeded (30 req/min/IP).' }
           ],
-          examples: [AUTH_TOKEN_EXAMPLE(201)],
-          body: { email: '{{testEmail}}', password: '{{testPassword}}', name: 'Ahmed Mohamed', deviceId: '{{deviceId}}' },
+          examples: [AUTH_TOKEN_EXAMPLE(200), AUTH_TOKEN_EXAMPLE(201)],
+          body: { idToken: '<google-oidc-id-token>', deviceId: '{{deviceId}}', name: 'CuraFit User' },
           testScript: [
             ...SAVE_AUTH_TOKENS_TEST,
             'if (pm.response.code === 201) {',
@@ -739,24 +734,33 @@ const collection = {
           ]
         }),
         req({
-          name: 'Login User',
+          name: 'Sign In / Register with Apple OIDC',
           method: 'POST',
-          path: '/v1/auth/login',
+          path: '/v1/auth/oauth/apple',
           noAuth: true,
-          summary: 'Authenticates an existing user via email & password using constant-time PBKDF2 verification and returns a new Access JWT + Refresh Token.',
+          summary: 'Verifies an Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (exchanging `authorizationCode` for encrypted revocation storage on first Apple login). Auto-saves tokens in Postman.',
           fields: [
-            { name: 'email', type: 'string (email)', required: true, constraints: 'max 160 chars', description: 'Registered email.' },
-            { name: 'password', type: 'string', required: true, constraints: '1..128 chars', description: 'Account password.' },
-            { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Optional device ID.' }
+            { name: 'identityToken', type: 'string (JWT)', required: true, constraints: 'Apple OIDC identity token', description: 'Signed Apple identity token from Sign in with Apple.' },
+            { name: 'authorizationCode', type: 'string', required: false, constraints: 'Optional first-login code', description: 'Exchanged for encrypted Apple refresh token for GDPR revocation.' },
+            { name: 'fullName', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name sent on first Apple login.' },
+            { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name alias.' },
+            { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Client device identifier.' },
+            { name: 'linkExisting', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, links Apple to an existing verified account sharing the same verified email.' }
           ],
           responseFields: AUTH_RESPONSE_FIELDS,
           errors: [
-            { status: 401, code: 'AUTH_INVALID_CREDENTIALS', description: 'Email not found or password mismatch.' },
-            { status: 401, code: 'ACCOUNT_DELETED', description: 'Account was permanently erased via GDPR deletion.' }
+            { status: 401, code: 'AUTH_OAUTH_TOKEN_INVALID', description: 'Apple identity token is missing, expired, malformed, or fails JWKS verification.' },
+            { status: 409, code: 'AUTH_PROVIDER_EMAIL_CONFLICT', description: 'Email is already associated with another OIDC provider; pass `linkExisting: true` after confirmation.' },
+            { status: 429, code: 'RATE_LIMITED', description: 'Auth endpoint rate limit exceeded (30 req/min/IP).' }
           ],
-          examples: [AUTH_TOKEN_EXAMPLE(200)],
-          body: { email: '{{testEmail}}', password: '{{testPassword}}', deviceId: '{{deviceId}}' },
-          testScript: SAVE_AUTH_TOKENS_TEST
+          examples: [AUTH_TOKEN_EXAMPLE(200), AUTH_TOKEN_EXAMPLE(201)],
+          body: { identityToken: '<apple-oidc-identity-token>', authorizationCode: '<optional-auth-code>', fullName: 'CuraFit User', deviceId: '{{deviceId}}' },
+          testScript: [
+            ...SAVE_AUTH_TOKENS_TEST,
+            'if (pm.response.code === 201) {',
+            '  pm.collectionVariables.set("revision", "0");',
+            '}'
+          ]
         }),
         req({
           name: 'Refresh Access Token (Rotates Refresh Token)',
@@ -789,9 +793,9 @@ const collection = {
             { name: 'sessionId', type: 'string', description: 'Active session ID.' },
             { name: 'deviceId', type: 'string | null', description: 'Bound device ID.' },
             { name: 'authMethod', type: 'string (enum)', description: '`bearer_jwt` | `anonymous_cookie` | `platform_header`.' },
-            { name: 'isAnonymous', type: 'boolean', description: '`false` for registered JWT users.' },
+            { name: 'isAnonymous', type: 'boolean', description: '`false` for verified OIDC JWT users.' },
             { name: 'scopes', type: 'Array<string>', description: 'Granted scopes (`["coach:read","coach:write"]`).' },
-            { name: 'entitlement', type: 'string (enum)', description: '`free` | `premium`.' },
+            { name: 'entitlement', type: 'string (enum)', description: '`free` | `pro`.' },
             { name: 'issuedAt', type: 'string (ISO-8601) | null', description: 'JWT `iat` timestamp.' },
             { name: 'expiresAt', type: 'string (ISO-8601) | null', description: 'JWT `exp` timestamp.' }
           ],
@@ -803,28 +807,6 @@ const collection = {
             '  pm.expect(d.userId).to.be.a("string");',
             '});'
           ]
-        }),
-        req({
-          name: 'Change Password',
-          method: 'POST',
-          path: '/v1/auth/change-password',
-          summary: 'Verifies `currentPassword`, updates the PBKDF2-SHA256 hash in D1, and optionally revokes all other device sessions.',
-          fields: [
-            { name: 'currentPassword', type: 'string', required: true, constraints: 'Non-empty string', description: 'Existing account password.' },
-            { name: 'newPassword', type: 'string', required: true, constraints: '8..128 chars, must differ from current', description: 'New account password.' },
-            { name: 'revokeOtherSessions', type: 'boolean', required: false, constraints: 'default: true', description: 'If `true`, revokes all other devices while keeping current session active.' }
-          ],
-          responseFields: [
-            { name: 'changed', type: 'boolean', description: '`true` on success.' },
-            { name: 'revokedOtherSessions', type: 'boolean', description: 'Whether other sessions were invalidated.' },
-            { name: 'updatedAt', type: 'string (ISO-8601 UTC)', description: 'Password update timestamp.' }
-          ],
-          errors: [
-            { status: 400, code: 'PASSWORD_UNCHANGED', description: 'New password equals current password.' },
-            { status: 401, code: 'AUTH_INVALID_CREDENTIALS', description: 'Current password is incorrect.' }
-          ],
-          examples: [{ name: '200 OK — Password Changed', code: 200, body: { changed: true, revokedOtherSessions: true, updatedAt: '2026-11-21T12:35:00.000Z' } }],
-          body: { currentPassword: '{{testPassword}}', newPassword: '{{testNewPassword}}', revokeOtherSessions: true }
         }),
         req({
           name: 'Claim Anonymous Web Session',
@@ -1971,8 +1953,8 @@ const collection = {
     },
     {
       id: 'f0000014-0000-4000-8000-000000000014',
-      name: '13. Social OAuth, Plan Preview & Profile',
-      description: 'Direct Google/Apple OIDC verification on Cloudflare Workers, stateless onboarding plan preview, profile updates, and Comeback Protocol.',
+      name: '13. OAuth Linking, Plan Preview & Profile',
+      description: 'Linked OAuth provider management (Google/Apple), stateless onboarding plan preview, profile updates, and Comeback Protocol.',
       item: [
         req({
           name: 'Preview Onboarding Plan (Public)',
@@ -1997,39 +1979,10 @@ const collection = {
           body: { name: 'Preview User', age: 30, sex: 'male', weight: 82, height: 178, goal: 'lose', targetWeight: 75, activity: 'moderate', dietType: 'balanced', serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true }
         }),
         req({
-          name: 'Sign In / Register with Google OIDC',
-          method: 'POST',
-          path: '/v1/auth/oauth/google',
-          noAuth: true,
-          summary: 'Verifies Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens.',
-          fields: [
-            { name: 'idToken', type: 'string (JWT)', required: true, constraints: 'Google OIDC ID token', description: 'Signed Google ID token from mobile Google Sign-In.' },
-            { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Client device identifier.' },
-            { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name fallback.' },
-            { name: 'linkExisting', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, links Google to an existing verified account sharing the same email.' }
-          ],
-          body: { idToken: '<google-oidc-id-token>', deviceId: '{{deviceId}}', name: 'CuraFit User' }
-        }),
-        req({
-          name: 'Sign In / Register with Apple OIDC',
-          method: 'POST',
-          path: '/v1/auth/oauth/apple',
-          noAuth: true,
-          summary: 'Verifies Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens.',
-          fields: [
-            { name: 'identityToken', type: 'string (JWT)', required: true, constraints: 'Apple OIDC identity token', description: 'Signed Apple identity token from Sign in with Apple.' },
-            { name: 'authorizationCode', type: 'string', required: false, constraints: 'Optional first-login code', description: 'Exchanged for encrypted Apple refresh token for GDPR revocation.' },
-            { name: 'fullName', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name sent on first Apple login.' },
-            { name: 'deviceId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Client device identifier.' },
-            { name: 'linkExisting', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, links Apple to an existing verified account sharing the same verified email.' }
-          ],
-          body: { identityToken: '<apple-oidc-identity-token>', authorizationCode: '<optional-auth-code>', fullName: 'CuraFit User', deviceId: '{{deviceId}}' }
-        }),
-        req({
           name: 'List Linked OAuth Providers',
           method: 'GET',
           path: '/v1/auth/oauth/providers',
-          summary: 'Returns linked Google and Apple OAuth identities for the authenticated user and whether a fallback password exists.'
+          summary: 'Returns linked Google and Apple OAuth identities for the authenticated user.'
         }),
         req({
           name: 'Link OAuth Provider (Google or Apple)',
@@ -2469,9 +2422,6 @@ const cloudDevEnv = {
   values: [
     { key: 'baseUrl', value: CLOUD_DEV_URL, type: 'default', enabled: true, description: 'Canonical Cloudflare Workers Cloud Dev Base URL (curafit-api-dev)' },
     { key: 'envName', value: 'cloud-dev', type: 'default', enabled: true, description: 'Environment label' },
-    { key: 'testEmail', value: 'dev.user@curafit.app', type: 'default', enabled: true, description: 'Cloud Dev test user email (string, email)' },
-    { key: 'testPassword', value: '', type: 'secret', enabled: true, description: 'Set your Cloud Dev test password locally in Postman' },
-    { key: 'testNewPassword', value: '', type: 'secret', enabled: true, description: 'Set new password locally for Change Password' },
     { key: 'deviceId', value: 'postman-cloud-dev-01', type: 'default', enabled: true, description: 'Client device ID (string, max 120)' },
     { key: 'clientPlatform', value: 'android', type: 'default', enabled: true, description: 'android | ios' },
     { key: 'clientVersion', value: '1.0.0', type: 'default', enabled: true, description: 'Client semver' }
@@ -2485,9 +2435,6 @@ const prodEnv = {
   values: [
     { key: 'baseUrl', value: PROD_URL, type: 'default', enabled: true, description: 'Canonical Cloudflare Workers Production Base URL (curafit-api)' },
     { key: 'envName', value: 'production', type: 'default', enabled: true, description: 'Environment label' },
-    { key: 'testEmail', value: 'demo.user@curafit.app', type: 'default', enabled: true, description: 'Test user email (string, email)' },
-    { key: 'testPassword', value: '', type: 'secret', enabled: true, description: 'Set your Production test password locally in Postman' },
-    { key: 'testNewPassword', value: '', type: 'secret', enabled: true, description: 'Set new password locally for Change Password' },
     { key: 'deviceId', value: 'postman-prod-01', type: 'default', enabled: true, description: 'Client device ID (string, max 120)' },
     { key: 'clientPlatform', value: 'android', type: 'default', enabled: true, description: 'android | ios' },
     { key: 'clientVersion', value: '1.0.0', type: 'default', enabled: true, description: 'Client semver' }
@@ -2501,9 +2448,6 @@ const localEnv = {
   values: [
     { key: 'baseUrl', value: LOCAL_DEV_URL, type: 'default', enabled: true, description: 'Local Miniflare Dev Base URL (npm run dev on 127.0.0.1:8787)' },
     { key: 'envName', value: 'development', type: 'default', enabled: true, description: 'Environment label' },
-    { key: 'testEmail', value: 'dev.user@curafit.app', type: 'default', enabled: true, description: 'Local Dev test user email (string, email)' },
-    { key: 'testPassword', value: '', type: 'secret', enabled: true, description: 'Set your Local Dev test password locally in Postman' },
-    { key: 'testNewPassword', value: '', type: 'secret', enabled: true, description: 'Set new password locally for Change Password' },
     { key: 'deviceId', value: 'postman-local-dev-01', type: 'default', enabled: true, description: 'Client device ID (string, max 120)' },
     { key: 'clientPlatform', value: 'android', type: 'default', enabled: true, description: 'android | ios' },
     { key: 'clientVersion', value: '1.0.0', type: 'default', enabled: true, description: 'Client semver' }

@@ -235,18 +235,27 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
         body: JSON.stringify({ idToken: 'bad.jwt.token' }),
       }), 401, 'AUTH_OAUTH_TOKEN_INVALID');
 
-      // Password account cannot be hijacked by OAuth email match
-      await okJson(await call('/v1/auth/register', {
+      // Account sharing verified email across OAuth providers requires explicit linkExisting: true
+      const conflictAppleJwt = await appleSigner.signJwt({
+        iss: 'https://appleid.apple.com',
+        aud: 'com.curafit.ios',
+        sub: 'apple-sub-conflict',
+        email: 'oauth.conflict@curafit.app',
+        email_verified: true,
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      await okJson(await call('/v1/auth/oauth/apple', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'password.only@curafit.app', password: 'StrongPassword#2026' }),
+        body: JSON.stringify({ identityToken: conflictAppleJwt, fullName: 'Conflict User' }),
       }), 201);
 
       const conflictJwt = await googleSigner.signJwt({
         iss: 'https://accounts.google.com',
         aud: 'curafit-android-client-id',
         sub: 'google-sub-conflict',
-        email: 'password.only@curafit.app',
+        email: 'oauth.conflict@curafit.app',
         email_verified: true,
         iat: nowSec,
         exp: nowSec + 3600,
@@ -275,11 +284,22 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       assert.ok(appleReg.accessToken);
     });
 
-    // Main user for full lifecycle
-    const reg = await okJson(await call('/v1/auth/register', {
+    // Main user for full lifecycle (via Google OIDC)
+    const lifecycleNowSec = Math.floor(Date.now() / 1000);
+    const lifecycleJwt = await googleSigner.signJwt({
+      iss: 'https://accounts.google.com',
+      aud: 'curafit-android-client-id',
+      sub: 'google-sub-prod-lifecycle',
+      email: 'prod.lifecycle@curafit.app',
+      email_verified: true,
+      name: 'Prod User',
+      iat: lifecycleNowSec,
+      exp: lifecycleNowSec + 3600,
+    });
+    const reg = await okJson(await call('/v1/auth/oauth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'prod.lifecycle@curafit.app', password: 'StrongPassword#2026', name: 'Prod User' }),
+      body: JSON.stringify({ idToken: lifecycleJwt, name: 'Prod User', deviceId: 'pixel-prod-main' }),
     }), 201);
     const token = reg.accessToken;
     const authHdr = { Authorization: `Bearer ${token}` };
@@ -700,10 +720,20 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
         body: JSON.stringify({ subscriptionNotification: { notificationType: 2, purchaseToken: 'gp-tok-001' } }),
       }), 401, 'WEBHOOK_SIGNATURE_INVALID');
 
-      const hijacker = await okJson(await call('/v1/auth/register', {
+      const hijackNowSec = Math.floor(Date.now() / 1000);
+      const hijackerJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com',
+        aud: 'curafit-android-client-id',
+        sub: 'google-sub-hijacker',
+        email: 'hijacker@curafit.app',
+        email_verified: true,
+        iat: hijackNowSec,
+        exp: hijackNowSec + 3600,
+      });
+      const hijacker = await okJson(await call('/v1/auth/oauth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'hijacker@curafit.app', password: 'StrongPassword#2026' }),
+        body: JSON.stringify({ idToken: hijackerJwt, deviceId: 'pixel-hijacker' }),
       }), 201);
       const hijackHdr = { Authorization: `Bearer ${hijacker.accessToken}` };
 

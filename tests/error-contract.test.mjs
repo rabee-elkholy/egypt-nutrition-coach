@@ -12,7 +12,32 @@ const TEST_ENV = {
   AUTH_ISSUER: 'https://auth.egypt-nutrition-coach.local',
   AUTH_AUDIENCE: 'egypt-nutrition-coach-kmm',
   RATE_LIMIT_PER_MINUTE: '100',
+  OAUTH_GOOGLE_CLIENT_IDS: 'curafit-android-client-id',
 };
+
+function b64url(input) {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input);
+  return Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function createTestOidcSigner(kid = 'err-contract-k1') {
+  const kp = await crypto.subtle.generateKey(
+    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+    true,
+    ['sign', 'verify']
+  );
+  const pubJwk = await crypto.subtle.exportKey('jwk', kp.publicKey);
+  pubJwk.kid = kid;
+  pubJwk.use = 'sig';
+  pubJwk.alg = 'RS256';
+  const signJwt = async payload => {
+    const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid }));
+    const body = b64url(JSON.stringify(payload));
+    const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', kp.privateKey, new TextEncoder().encode(`${header}.${body}`));
+    return `${header}.${body}.${b64url(sig)}`;
+  };
+  return { jwksJson: JSON.stringify({ keys: [pubJwk] }), signJwt };
+}
 
 test('KMM Error Contract: pure English error catalog, source audit, and live HTTP envelopes', async t => {
   const catalogRaw = await readFile('contracts/error-codes.json', 'utf8');
@@ -121,9 +146,10 @@ test('KMM Error Contract: pure English error catalog, source audit, and live HTT
     try {
       const db = await mf.getD1Database('DB');
       await migrateLocal(db);
+      const googleSigner = await createTestOidcSigner('err-google-k1');
 
       const call = async (path, opts = {}, envExtra = {}) => {
-        const env = { ...TEST_ENV, ...envExtra, DB: db };
+        const env = { ...TEST_ENV, OAUTH_GOOGLE_JWKS_JSON: googleSigner.jwksJson, ...envExtra, DB: db };
         const req = new Request('https://curafit-api.egypt-nutrition-coach.workers.dev/v1/' + path, opts);
         return await cloudflareEntry.fetch(req, env, { waitUntil() {} });
       };
@@ -165,17 +191,36 @@ test('KMM Error Contract: pure English error catalog, source audit, and live HTT
       // 405 Method Not Allowed
       await assertErr(await call('health', { method: 'POST' }), 405, 'METHOD_NOT_ALLOWED');
 
-      // 401 Unauthenticated (raw worker without web cookie adapter) & invalid Bearer tokens
+      // 401 Unauthenticated (raw worker without web cookie adapter), invalid Bearer tokens, & missing OIDC token
       await assertErr(await mf.dispatchFetch('https://curafit-api.egypt-nutrition-coach.workers.dev/v1/state'), 401, 'UNAUTHENTICATED');
       await assertErr(await call('state', { headers: { Authorization: 'Basic abc' } }), 401, 'AUTH_HEADER_INVALID');
       await assertErr(await call('state', { headers: { Authorization: 'Bearer bad' } }), 401, 'AUTH_TOKEN_MALFORMED');
-
-      // 201 Register
-      const regData = await assertSuccess(
-        await call('auth/register', {
+      await assertErr(
+        await call('auth/oauth/google', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'contract@curafit.app', password: 'StrongPassword#2026' }),
+          body: JSON.stringify({ idToken: '' }),
+        }),
+        401,
+        'AUTH_OAUTH_TOKEN_INVALID'
+      );
+
+      // 201 Google OIDC Sign-In
+      const nowSec = Math.floor(Date.now() / 1000);
+      const googleJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com',
+        aud: 'curafit-android-client-id',
+        sub: 'google-sub-error-contract-01',
+        email: 'contract@curafit.app',
+        email_verified: true,
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const regData = await assertSuccess(
+        await call('auth/oauth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken: googleJwt }),
         }),
         201
       );

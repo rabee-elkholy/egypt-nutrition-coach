@@ -79,7 +79,7 @@ npx @openapitools/openapi-generator-cli generate \
 
 ## 3. Native Cloudflare Authentication & Token Lifecycle
 
-1. **Register / Login (`POST /v1/auth/register`, `POST /v1/auth/login`):**
+1. **Social OIDC Sign-In (`POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`):**
    - Returns `{ accessToken, expiresIn: 900, refreshToken, refreshExpiresIn: 2592000, sessionId, user }` inside `data`.
    - Attach `Authorization: Bearer <accessToken>`, `X-Client-Platform: android|ios`, and `X-Client-Version: <semver>` to authenticated requests. Never send custom identity headers (`oai-authenticated-user-id` is stripped at the edge).
 2. **Rotating Refresh Tokens (`POST /v1/auth/refresh`):**

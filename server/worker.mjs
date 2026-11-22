@@ -18,7 +18,7 @@ import {loadAccount,saveAccount,canonicalCommandDigest,exportFullAccountData,del
 import {mealAlternatives,dayTotals} from './food.mjs';
 import {searchFoodCatalog,getFoodCatalogItem,getFoodCatalogManifest,calculatePreparedBeverageOrRecipe} from './food-catalog.mjs';
 import {authenticateRequest,checkRateLimit} from './auth.mjs';
-import {registerUser,loginUser,refreshUserSession,logoutUserSession,changeUserPassword,revokeRefreshTokensForSession} from './native-auth.mjs';
+import {refreshUserSession,logoutUserSession,revokeRefreshTokensForSession} from './native-auth.mjs';
 import {formatSuccessBody,formatErrorBody,createApiError,logEvent} from './logger.mjs';
 import {personalBrief} from '../personal-brief.mjs';
 import {localDate,integer,validDate} from '../coaching-shared.mjs';
@@ -173,8 +173,8 @@ export default {async fetch(request,env){
    return json(previewPlan(body),200,{},reqId);
   }
 
-  // First-Party Cloudflare Workers + D1 Public Auth & Direct Social OAuth Endpoints
-  if(url.pathname==='/v1/auth/register'||url.pathname==='/v1/auth/login'||url.pathname==='/v1/auth/refresh'||((url.pathname==='/v1/auth/oauth/google'||url.pathname==='/v1/auth/oauth/apple')&&request.method!=='DELETE')){
+  // First-Party Cloudflare Workers + D1 Session Refresh & Direct Google/Apple OIDC Sign-In
+  if(url.pathname==='/v1/auth/refresh'||((url.pathname==='/v1/auth/oauth/google'||url.pathname==='/v1/auth/oauth/apple')&&request.method!=='DELETE')){
    if(request.method!=='POST')return errorJson('Only POST is allowed for this endpoint.',405,reqId,{code:'METHOD_NOT_ALLOWED',params:{allowedMethod:'POST'}},{Allow:'POST'});
    if(request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)throw createApiError('Cross-origin write requests are forbidden.',403,{code:'ORIGIN_FORBIDDEN'});
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
@@ -183,8 +183,6 @@ export default {async fetch(request,env){
    checkRateLimit(clientKey,'auth',env);
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
-   if(url.pathname==='/v1/auth/register')return json(await registerUser(env.DB,env,body,request),201,{},reqId);
-   if(url.pathname==='/v1/auth/login')return json(await hydrateAuthPayloadAvatar(await loginUser(env.DB,env,body,request),url.origin,env),200,{},reqId);
    if(url.pathname==='/v1/auth/refresh')return json(await hydrateAuthPayloadAvatar(await refreshUserSession(env.DB,env,body,request),url.origin,env),200,{},reqId);
    const provider=url.pathname.endsWith('/google')?'google':'apple';
    const oauthRes=await authenticateSocialOAuth(env.DB,env,provider,body,request);
@@ -314,12 +312,6 @@ export default {async fetch(request,env){
    const body=rawBody.trim()?JSON.parse(rawBody):{};
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
    return json(await logoutUserSession(env.DB,auth,body),200,{},reqId);
-  }
-  if(request.method==='POST'&&url.pathname==='/v1/auth/change-password'){
-   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
-   const body=JSON.parse(await requestJson(request));
-   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
-   return json(await changeUserPassword(env.DB,auth,body),200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/auth/claim-anonymous'){
    if(auth.isAnonymous)throw createApiError('Sign in with a verified account to claim an anonymous session.',403,{code:'CLAIM_REQUIRES_VERIFIED_ACCOUNT'});

@@ -1,6 +1,6 @@
 # CuraFit API v1 — Postman Collection & Cloudflare Workers Guide
 
-This directory contains the ready-to-use **Postman Collection v2.1** (`16` folders / `138` endpoints) and **three environment presets** (**Cloud Dev**, **Production**, and **Local Dev**) running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** with direct Google/Apple OIDC verification and zero third-party BaaS IdP dependency.
+This directory contains the ready-to-use **Postman Collection v2.1** (`16` folders / `135` endpoints) and **three environment presets** (**Cloud Dev**, **Production**, and **Local Dev**) running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** with direct Google/Apple OIDC verification and zero third-party BaaS IdP dependency.
 
 ## Files
 
@@ -16,10 +16,9 @@ This directory contains the ready-to-use **Postman Collection v2.1** (`16` folde
 1. Open Postman and click **Import** (or open the workspace directly).
 2. Import `CuraFit_API.postman_collection.json` along with `CuraFit_Cloud_Dev.postman_environment.json`, `CuraFit_Production.postman_environment.json`, and `CuraFit_Local_Dev.postman_environment.json`.
 3. Select **CuraFit — Cloud Dev** from the environment selector in the top-right corner for development and QA testing.
-4. Enter your local test password in the `testPassword` / `testNewPassword` environment variables (left blank in Git/public docs by design).
-5. Run requests in sequence (collection variables auto-populate from `res.data` and `res.meta`):
+4. Run requests in sequence (collection variables auto-populate from `res.data` and `res.meta`):
    1. `01. System & Health` -> **Health Check** and **Capabilities Manifest**
-   2. `02. Authentication (Cloudflare Native D1)` -> **Register User** (or **Login User**), which automatically saves `accessToken`, `refreshToken`, `sessionId`, and `userId`
+   2. `02. Authentication (Google & Apple OIDC)` -> **Sign In / Register with Google OIDC** (or **Sign In / Register with Apple OIDC**) using a signed OIDC ID/identity token, which automatically saves `accessToken`, `refreshToken`, `sessionId`, and `userId`
    3. `03. Onboarding & Pre-Screening` -> **Pre-Screening Eligibility Check** then **Generate Initial Plan**, which saves `revision`, `activePlanId`, `activeWorkoutPlanId`, `todayDate`, `sampleMealId`, `sampleDayIndex`, `sampleExerciseId`, and `sampleRescheduleDate`
    4. Exercise any domain endpoints across Nutrition, Hydration, Weight, Workouts, Recovery, Coaching, Catalog, Sync, and Privacy/GDPR.
 

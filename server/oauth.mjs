@@ -256,17 +256,16 @@ export async function authenticateSocialOAuth(db, env, provider, body, request) 
   // 2. If not linked yet, check email collision / prevent silent takeover of existing accounts
   if (!userRow && claims.email) {
     const byEmail = await db.prepare(
-      'SELECT user_id, email, password_hash, display_name, avatar_url, entitlement, created_at FROM coaching_users WHERE email=?'
+      'SELECT user_id, email, display_name, avatar_url, entitlement, created_at FROM coaching_users WHERE email=?'
     ).bind(claims.email).first();
     if (byEmail) {
       const otherOauth = await db.prepare(
         'SELECT provider FROM coaching_oauth_identities WHERE user_id=? AND provider!=? LIMIT 1'
       ).bind(byEmail.user_id, provider).first();
-      const hasPassword = byEmail.password_hash && byEmail.password_hash !== 'oauth_only';
-      if (!claims.emailVerified || (hasPassword && body?.linkExisting !== true) || (otherOauth && body?.linkExisting !== true)) {
+      if (!claims.emailVerified || (otherOauth && body?.linkExisting !== true)) {
         throw createApiError('An account with this email is already linked to another sign-in method.', 409, {
           code: 'AUTH_PROVIDER_EMAIL_CONFLICT',
-          params: { existingProvider: otherOauth?.provider || 'email' }
+          params: { existingProvider: otherOauth?.provider || 'other' }
         });
       }
       userRow = byEmail;
@@ -379,9 +378,7 @@ export async function unlinkOAuthProvider(db, userId, provider) {
       params: { provider }
     });
   }
-  const userRow = await db.prepare('SELECT password_hash FROM coaching_users WHERE user_id=?').bind(userId).first();
-  const hasPassword = Boolean(userRow?.password_hash && userRow.password_hash !== 'oauth_only');
-  if (list.length <= 1 && !hasPassword) {
+  if (list.length <= 1) {
     throw createApiError('Cannot unlink your only active sign-in provider; link another provider first.', 409, {
       code: 'CANNOT_UNLINK_LAST_AUTH_METHOD',
       params: { provider }

@@ -9,7 +9,7 @@
 
 ## Epic Overview
 
-`EPIC-02` handles every authentication, session lifecycle, token security, OAuth provider linking, account-conflict resolution, and offline-first synchronization scenario in CuraFit Mobile. Consistent with modern mobile UX and user choice, CuraFit mobile uses **Social-Only Passwordless Sign-In** (**Google Sign-In** on Android & iOS, plus mandatory **Sign in with Apple** on iOS). There is **no email/password login UI, no Forgot Password flow, and no Email Verification flow** in the mobile app; `/v1/auth/register` and `/v1/auth/login` exist on the server strictly as internal Dev/QA/test utility endpoints.
+`EPIC-02` handles every authentication, session lifecycle, token security, OAuth provider linking, account-conflict resolution, and offline-first synchronization scenario in CuraFit Mobile. Consistent with modern mobile UX and user choice, CuraFit uses **Social-Only Passwordless Sign-In** (**Google Sign-In** on Android & iOS, plus mandatory **Sign in with Apple** on iOS). There is **no email/password login UI, no Forgot Password flow, and no Email Verification flow** anywhere; legacy `/v1/auth/register`, `/v1/auth/login`, and `/v1/auth/change-password` endpoints are completely removed from the server (`404 ROUTE_NOT_FOUND`).
 
 ### Child User Stories
 - `US-AUTH-01`: Passwordless Social Sign-In Screen (Google & Apple), OAuth Account Linking, Entry Routing & Offline Fallback
@@ -142,7 +142,7 @@ As a mobile user who wants to sign in or save my personalized coaching plan with
      - `503 AUTH_JWKS_UNAVAILABLE`: Upstream Google/Apple JWKS unreachable -> Show retryable error button.
 
 ### RULES & BUSINESS LOGIC
-1. **No Password UI Anywhere:** Mobile builds strictly omit email/password login forms, registration forms, forgot-password flows, and email-verification flows. (`/v1/auth/register` and `/v1/auth/login` exist solely as internal Dev/QA/test utility endpoints.)
+1. **No Password Auth Anywhere:** Mobile builds and server API strictly omit email/password login forms, registration flows, change-password endpoints, forgot-password flows, and email-verification flows (authentication is 100% Google Sign-In & Apple Sign-In OIDC only).
 2. **Token Storage:** Save `accessToken`, `refreshToken`, `sessionId`, and `userId` exclusively inside platform-secure storage (**Android EncryptedSharedPreferences / Keystore**, **iOS Keychain**). Never write tokens to plaintext `SharedPreferences`, `UserDefaults`, or crash logs.
 3. **Cancellation Safety:** If the user dismisses the native Google account picker or Apple Sign-In sheet (`canceled`), perform zero API calls, show zero error toasts, re-enable buttons, and remain safely on `SocialLoginScreen`.
 4. **Google Play Services Missing (Android):** Catch `GooglePlayServicesNotAvailableException` / Credential Manager unavailability and offer the `"Continue with Apple"` fallback or prompt *"Google Play Services is required for Google Sign-In. Update Google Play Services or use Apple Sign-In."*

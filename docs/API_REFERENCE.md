@@ -16,9 +16,9 @@ Switch between environments from the top-right **Environment selector** in Postm
 
 ---
 
-## 2. Authentication (Cloudflare Native D1 + Direct OIDC)
+## 2. Authentication (Google & Apple OIDC Only + First-Party JWT/D1 Sessions)
 
-- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.
+- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/auth/refresh`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.
 - **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).
 - **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).
 - **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).
@@ -62,14 +62,11 @@ Every JSON endpoint returns the canonical envelope:
 | Variable | Type | Scope | Description |
 | :--- | :--- | :--- | :--- |
 | `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |
-| `testEmail` | `string (email)` | Environment | Email used in internal Dev/QA Register / Login |
-| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) for internal Dev/QA routes |
-| `testNewPassword` | `string (secret)` | Environment | New password for Change Password |
 | `deviceId` | `string` | Environment | Client device ID (`max 120` chars) |
 | `clientPlatform` | `string (enum)` | Environment | `android` \| `ios` \| `web` |
 | `clientVersion` | `string` | Environment | App semantic version (e.g. `1.0.0`) |
-| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by OAuth / Register / Login / Refresh |
-| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by OAuth / Register / Login / Refresh |
+| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by Google / Apple OIDC Sign-In or Refresh |
+| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by Google / Apple OIDC Sign-In or Refresh |
 | `sessionId` | `string` | Collection (auto) | Current D1 session ID |
 | `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |
 | `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |
@@ -98,7 +95,7 @@ Every JSON endpoint returns the canonical envelope:
 
 ---
 
-## 6. Complete Endpoint Reference (16 Groups / 138 Endpoints)
+## 6. Complete Endpoint Reference (16 Groups / 135 Endpoints)
 
 ## 01. System & Health
 
@@ -209,20 +206,20 @@ Returns API/schema/catalog versions, enabled feature flags, and native Cloudflar
 
 ---
 
-## 02. Authentication (Cloudflare Native D1)
+## 02. Authentication (Google & Apple OIDC)
 
-First-party authentication on Cloudflare Workers + D1 using WebCrypto PBKDF2-SHA256 passwords, HS256 Access JWTs (15 min), and rotating D1 Refresh Tokens (30 days) with replay reuse detection.
+Passwordless Google Sign-In & Apple Sign-In OIDC verification on Cloudflare Workers + D1, issuing first-party HS256 Access JWTs (15 min) and rotating D1 Refresh Tokens (30 days) with replay reuse detection.
 
-### Register User
+### Sign In / Register with Google OIDC
 
-Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and issues an Access JWT + Refresh Token pair. Auto-saves tokens in Postman.
+Verifies a Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (creates a new D1 user on first sign-in or signs into an existing linked account). Auto-saves tokens in Postman.
 
 ### Endpoint Info
 - **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/auth/register`
-- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/register`
-- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/register`
-- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/register`
+- **URL:** `{{baseUrl}}/v1/auth/oauth/google`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/google`
 - **Auth:** Public (`No Auth`)
 
 ### Headers
@@ -234,18 +231,18 @@ Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and
 ### Request Body Fields
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
-| `email` | `string (email)` | Yes | Trimmed, lowercased, max 160 chars, unique | User email address. |
-| `password` | `string` | Yes | 8..128 chars | Plaintext password (hashed via PBKDF2-SHA256 100k iterations). |
-| `name` | `string` | No | max 100 chars | Optional display name. |
-| `deviceId` | `string` | No | max 120 chars | Optional client device identifier. |
+| `idToken` | `string (JWT)` | Yes | Google OIDC ID token | Signed Google ID token from mobile Google Sign-In. |
+| `deviceId` | `string` | No | max 120 chars | Client device identifier. |
+| `name` | `string` | No | max 100 chars | Optional display name fallback. |
+| `fullName` | `string` | No | max 100 chars | Optional full name fallback. |
+| `linkExisting` | `boolean` | No | default: false | When `true`, links Google to an existing verified account sharing the same verified email. |
 
 ### Request Body Example
 ```json
 {
-  "email": "{{testEmail}}",
-  "password": "{{testPassword}}",
-  "name": "Ahmed Mohamed",
-  "deviceId": "{{deviceId}}"
+  "idToken": "<google-oidc-id-token>",
+  "deviceId": "{{deviceId}}",
+  "name": "CuraFit User"
 }
 ```
 
@@ -265,9 +262,37 @@ Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and
 ### Possible Error Responses
 | HTTP Status | Error Code | When |
 | :---: | :--- | :--- |
-| `400` | `INVALID_EMAIL / INVALID_PASSWORD` | Malformed email or password shorter than 8 chars. |
-| `409` | `AUTH_EMAIL_ALREADY_EXISTS` | Email is already registered. |
+| `401` | `AUTH_OAUTH_TOKEN_INVALID` | Google ID token is missing, expired, malformed, or fails JWKS verification. |
+| `409` | `AUTH_PROVIDER_EMAIL_CONFLICT` | Email is already associated with another OIDC provider; pass `linkExisting: true` after confirmation. |
 | `429` | `RATE_LIMITED` | Auth endpoint rate limit exceeded (30 req/min/IP). |
+
+#### Example Response — 200 OK — Token Pair
+```json
+{
+  "ok": true,
+  "data": {
+    "tokenType": "Bearer",
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
+    "expiresIn": 900,
+    "expiresAt": "2026-11-21T12:45:00.000Z",
+    "refreshToken": "cfrt_example_opaque_refresh_token_32bytes",
+    "refreshExpiresIn": 2592000,
+    "refreshExpiresAt": "2026-12-21T12:30:00.000Z",
+    "sessionId": "sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b",
+    "user": {
+      "userId": "user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "email": "demo.user@curafit.app",
+      "name": "Ahmed Mohamed",
+      "entitlement": "free",
+      "createdAt": "2026-11-21T12:30:00.000Z"
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
 
 #### Example Response — 201 Created — Token Pair
 ```json
@@ -299,16 +324,16 @@ Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and
 
 ---
 
-### Login User
+### Sign In / Register with Apple OIDC
 
-Authenticates an existing user via email & password using constant-time PBKDF2 verification and returns a new Access JWT + Refresh Token.
+Verifies an Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (exchanging `authorizationCode` for encrypted revocation storage on first Apple login). Auto-saves tokens in Postman.
 
 ### Endpoint Info
 - **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/auth/login`
-- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/login`
-- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/login`
-- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/login`
+- **URL:** `{{baseUrl}}/v1/auth/oauth/apple`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/apple`
 - **Auth:** Public (`No Auth`)
 
 ### Headers
@@ -320,15 +345,19 @@ Authenticates an existing user via email & password using constant-time PBKDF2 v
 ### Request Body Fields
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
-| `email` | `string (email)` | Yes | max 160 chars | Registered email. |
-| `password` | `string` | Yes | 1..128 chars | Account password. |
-| `deviceId` | `string` | No | max 120 chars | Optional device ID. |
+| `identityToken` | `string (JWT)` | Yes | Apple OIDC identity token | Signed Apple identity token from Sign in with Apple. |
+| `authorizationCode` | `string` | No | Optional first-login code | Exchanged for encrypted Apple refresh token for GDPR revocation. |
+| `fullName` | `string` | No | max 100 chars | Optional display name sent on first Apple login. |
+| `name` | `string` | No | max 100 chars | Optional display name alias. |
+| `deviceId` | `string` | No | max 120 chars | Client device identifier. |
+| `linkExisting` | `boolean` | No | default: false | When `true`, links Apple to an existing verified account sharing the same verified email. |
 
 ### Request Body Example
 ```json
 {
-  "email": "{{testEmail}}",
-  "password": "{{testPassword}}",
+  "identityToken": "<apple-oidc-identity-token>",
+  "authorizationCode": "<optional-auth-code>",
+  "fullName": "CuraFit User",
   "deviceId": "{{deviceId}}"
 }
 ```
@@ -349,10 +378,39 @@ Authenticates an existing user via email & password using constant-time PBKDF2 v
 ### Possible Error Responses
 | HTTP Status | Error Code | When |
 | :---: | :--- | :--- |
-| `401` | `AUTH_INVALID_CREDENTIALS` | Email not found or password mismatch. |
-| `401` | `ACCOUNT_DELETED` | Account was permanently erased via GDPR deletion. |
+| `401` | `AUTH_OAUTH_TOKEN_INVALID` | Apple identity token is missing, expired, malformed, or fails JWKS verification. |
+| `409` | `AUTH_PROVIDER_EMAIL_CONFLICT` | Email is already associated with another OIDC provider; pass `linkExisting: true` after confirmation. |
+| `429` | `RATE_LIMITED` | Auth endpoint rate limit exceeded (30 req/min/IP). |
 
 #### Example Response — 200 OK — Token Pair
+```json
+{
+  "ok": true,
+  "data": {
+    "tokenType": "Bearer",
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
+    "expiresIn": 900,
+    "expiresAt": "2026-11-21T12:45:00.000Z",
+    "refreshToken": "cfrt_example_opaque_refresh_token_32bytes",
+    "refreshExpiresIn": 2592000,
+    "refreshExpiresAt": "2026-12-21T12:30:00.000Z",
+    "sessionId": "sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b",
+    "user": {
+      "userId": "user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "email": "demo.user@curafit.app",
+      "name": "Ahmed Mohamed",
+      "entitlement": "free",
+      "createdAt": "2026-11-21T12:30:00.000Z"
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+#### Example Response — 201 Created — Token Pair
 ```json
 {
   "ok": true,
@@ -489,9 +547,9 @@ Returns authenticated caller identity, session ID, auth method, scopes, entitlem
 | `sessionId` | `string` | Active session ID. |
 | `deviceId` | `string | null` | Bound device ID. |
 | `authMethod` | `string (enum)` | `bearer_jwt` | `anonymous_cookie` | `platform_header`. |
-| `isAnonymous` | `boolean` | `false` for registered JWT users. |
+| `isAnonymous` | `boolean` | `false` for verified OIDC JWT users. |
 | `scopes` | `Array<string>` | Granted scopes (`["coach:read","coach:write"]`). |
-| `entitlement` | `string (enum)` | `free` | `premium`. |
+| `entitlement` | `string (enum)` | `free` | `pro`. |
 | `issuedAt` | `string (ISO-8601) | null` | JWT `iat` timestamp. |
 | `expiresAt` | `string (ISO-8601) | null` | JWT `exp` timestamp. |
 
@@ -513,71 +571,6 @@ Returns authenticated caller identity, session ID, auth method, scopes, entitlem
     "entitlement": "free",
     "issuedAt": "2026-11-21T12:30:00.000Z",
     "expiresAt": "2026-11-21T12:45:00.000Z"
-  },
-  "meta": {
-    "requestId": "req-uuid",
-    "serverTime": "2026-11-21T12:30:00.000Z"
-  }
-}
-```
-
----
-
-### Change Password
-
-Verifies `currentPassword`, updates the PBKDF2-SHA256 hash in D1, and optionally revokes all other device sessions.
-
-### Endpoint Info
-- **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/auth/change-password`
-- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/change-password`
-- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/change-password`
-- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/change-password`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Content-Type` | `string` | Yes | Must be application/json |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Request Body Fields
-| Field | Type | Required | Constraints / Allowed Values | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `currentPassword` | `string` | Yes | Non-empty string | Existing account password. |
-| `newPassword` | `string` | Yes | 8..128 chars, must differ from current | New account password. |
-| `revokeOtherSessions` | `boolean` | No | default: true | If `true`, revokes all other devices while keeping current session active. |
-
-### Request Body Example
-```json
-{
-  "currentPassword": "{{testPassword}}",
-  "newPassword": "{{testNewPassword}}",
-  "revokeOtherSessions": true
-}
-```
-
-### Response Fields
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `changed` | `boolean` | `true` on success. |
-| `revokedOtherSessions` | `boolean` | Whether other sessions were invalidated. |
-| `updatedAt` | `string (ISO-8601 UTC)` | Password update timestamp. |
-
-### Possible Error Responses
-| HTTP Status | Error Code | When |
-| :---: | :--- | :--- |
-| `400` | `PASSWORD_UNCHANGED` | New password equals current password. |
-| `401` | `AUTH_INVALID_CREDENTIALS` | Current password is incorrect. |
-
-#### Example Response — 200 OK — Password Changed
-```json
-{
-  "ok": true,
-  "data": {
-    "changed": true,
-    "revokedOtherSessions": true,
-    "updatedAt": "2026-11-21T12:35:00.000Z"
   },
   "meta": {
     "requestId": "req-uuid",
@@ -6630,9 +6623,9 @@ Creates a persisted support ticket or catalog correction report in D1.
 
 ---
 
-## 13. Social OAuth, Plan Preview & Profile
+## 13. OAuth Linking, Plan Preview & Profile
 
-Direct Google/Apple OIDC verification on Cloudflare Workers, stateless onboarding plan preview, profile updates, and Comeback Protocol.
+Linked OAuth provider management (Google/Apple), stateless onboarding plan preview, profile updates, and Comeback Protocol.
 
 ### Preview Onboarding Plan (Public)
 
@@ -6692,85 +6685,9 @@ Stateless onboarding calculation returning daily kcal/macros, safe calorie floor
 
 ---
 
-### Sign In / Register with Google OIDC
-
-Verifies Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens.
-
-### Endpoint Info
-- **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/auth/oauth/google`
-- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`
-- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`
-- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/google`
-- **Auth:** Public (`No Auth`)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Content-Type` | `string` | Yes | Must be application/json |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Request Body Fields
-| Field | Type | Required | Constraints / Allowed Values | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `idToken` | `string (JWT)` | Yes | Google OIDC ID token | Signed Google ID token from mobile Google Sign-In. |
-| `deviceId` | `string` | No | max 120 chars | Client device identifier. |
-| `name` | `string` | No | max 100 chars | Optional display name fallback. |
-| `linkExisting` | `boolean` | No | default: false | When `true`, links Google to an existing verified account sharing the same email. |
-
-### Request Body Example
-```json
-{
-  "idToken": "<google-oidc-id-token>",
-  "deviceId": "{{deviceId}}",
-  "name": "CuraFit User"
-}
-```
-
----
-
-### Sign In / Register with Apple OIDC
-
-Verifies Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens.
-
-### Endpoint Info
-- **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/auth/oauth/apple`
-- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`
-- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`
-- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/apple`
-- **Auth:** Public (`No Auth`)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Content-Type` | `string` | Yes | Must be application/json |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Request Body Fields
-| Field | Type | Required | Constraints / Allowed Values | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `identityToken` | `string (JWT)` | Yes | Apple OIDC identity token | Signed Apple identity token from Sign in with Apple. |
-| `authorizationCode` | `string` | No | Optional first-login code | Exchanged for encrypted Apple refresh token for GDPR revocation. |
-| `fullName` | `string` | No | max 100 chars | Optional display name sent on first Apple login. |
-| `deviceId` | `string` | No | max 120 chars | Client device identifier. |
-| `linkExisting` | `boolean` | No | default: false | When `true`, links Apple to an existing verified account sharing the same verified email. |
-
-### Request Body Example
-```json
-{
-  "identityToken": "<apple-oidc-identity-token>",
-  "authorizationCode": "<optional-auth-code>",
-  "fullName": "CuraFit User",
-  "deviceId": "{{deviceId}}"
-}
-```
-
----
-
 ### List Linked OAuth Providers
 
-Returns linked Google and Apple OAuth identities for the authenticated user and whether a fallback password exists.
+Returns linked Google and Apple OAuth identities for the authenticated user.
 
 ### Endpoint Info
 - **Method:** `GET`

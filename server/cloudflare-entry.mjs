@@ -42,8 +42,6 @@ const PUBLIC_PATHS = new Set([
   '/v1/health',
   '/v1/capabilities',
   '/v1/plans/preview',
-  '/v1/auth/register',
-  '/v1/auth/login',
   '/v1/auth/refresh',
   '/v1/auth/oauth/google',
   '/v1/auth/oauth/apple',

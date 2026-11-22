@@ -6,7 +6,7 @@ info:
   description: |
     Canonical API contract for CuraFit (`v1`) on Cloudflare Workers + Cloudflare D1 + Cloudflare R2.
     - **Uniform Envelopes:** All `2xx` responses return `{ ok: true, data, meta: { requestId, serverTime, revision? } }`. All `4xx`/`5xx` responses return `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta: { requestId, serverTime } }` with **100% English** error messages (`contracts/error-codes.json`) and canonical coaching codes (`contracts/coaching-codes.json`) for KMM mobile localization.
-    - **Authentication (Cloudflare Native + Direct OIDC):** First-party email/password authentication via `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`, plus direct Google/Apple OIDC verification via `POST /v1/auth/oauth/google` and `POST /v1/auth/oauth/apple`. Mobile KMM clients send `Authorization: Bearer <JWT>`.
+    - **Authentication (Google & Apple OIDC Only + First-Party JWT/D1 Sessions):** Passwordless OIDC authentication ONLY via `POST /v1/auth/oauth/google` and `POST /v1/auth/oauth/apple`, issuing first-party HS256 JWT access tokens and rotating D1 refresh tokens managed via `POST /v1/auth/refresh`, `GET /v1/auth/session`, `POST /v1/auth/logout`, `POST /v1/auth/revoke`, `POST /v1/auth/claim-anonymous`, `GET /v1/auth/oauth/providers`, `POST /v1/auth/oauth/link`, and `DELETE /v1/auth/oauth/{provider}`. Mobile KMM clients send `Authorization: Bearer <JWT>`.
     - **Idempotency:** All `POST /v1/commands` writes require a unique `Idempotency-Key` header (UUID) and `revision` integer. Canonical JSON hashing excludes `revision` so timeout + rebase replay succeeds cleanly.
     - **Slim Responses:** Append `?view=receipt` or send `Prefer: return=minimal` on `POST /v1/commands` to receive a compact delta receipt inside `data`.
     - **Deferred Final AI Phase:** AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are reserved for the final AI rollout phase and return `501 FEATURE_DEFERRED_TO_AI_PHASE`.
@@ -672,52 +672,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncChangesResponse"
-  /v1/auth/register:
-    post:
-      operationId: registerAuthUser
-      summary: Register a new user account on Cloudflare D1 and issue Access JWT + rotating Refresh Token
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AuthRegisterRequest"
-      responses:
-        "201":
-          description: User registered and session issued
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthTokenResponse"
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "409":
-          $ref: "#/components/responses/ConflictError"
-        "429":
-          $ref: "#/components/responses/RateLimitedError"
-  /v1/auth/login:
-    post:
-      operationId: loginAuthUser
-      summary: Authenticate with email and password on Cloudflare D1 and issue Access JWT + Refresh Token
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AuthLoginRequest"
-      responses:
-        "200":
-          description: Login succeeded
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthTokenResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "429":
-          $ref: "#/components/responses/RateLimitedError"
   /v1/auth/refresh:
     post:
       operationId: refreshAuthToken
@@ -757,27 +711,6 @@ paths:
             application/json:
               schema:
                 type: object
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-  /v1/auth/change-password:
-    post:
-      operationId: changeAuthPassword
-      summary: Verify current password, update PBKDF2-SHA256 hash in D1, and optionally revoke other sessions
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AuthChangePasswordRequest"
-      responses:
-        "200":
-          description: Password updated
-          content:
-            application/json:
-              schema:
-                type: object
-        "400":
-          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
   /v1/auth/session:
@@ -1117,7 +1050,7 @@ paths:
   /v1/auth/oauth/providers:
     get:
       operationId: listOAuthProviders
-      summary: List linked OAuth providers (Google, Apple) and whether a password fallback exists
+      summary: List linked OAuth providers (Google, Apple)
       responses:
         "200":
           description: Linked OAuth identities
@@ -2615,40 +2548,6 @@ components:
           type: boolean
         resyncRequired:
           type: boolean
-    AuthRegisterRequest:
-      type: object
-      required:
-        - email
-        - password
-      properties:
-        email:
-          type: string
-          format: email
-          maxLength: 160
-        password:
-          type: string
-          minLength: 8
-          maxLength: 128
-        name:
-          type: string
-          maxLength: 100
-        deviceId:
-          type: string
-          maxLength: 120
-    AuthLoginRequest:
-      type: object
-      required:
-        - email
-        - password
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-        deviceId:
-          type: string
-          maxLength: 120
     AuthRefreshRequest:
       type: object
       required:
@@ -2666,21 +2565,6 @@ components:
           type: string
         allDevices:
           type: boolean
-    AuthChangePasswordRequest:
-      type: object
-      required:
-        - currentPassword
-        - newPassword
-      properties:
-        currentPassword:
-          type: string
-        newPassword:
-          type: string
-          minLength: 8
-          maxLength: 128
-        revokeOtherSessions:
-          type: boolean
-          default: true
     AuthUser:
       type: object
       required:

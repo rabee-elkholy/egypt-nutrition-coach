@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7c94f8e1-4c9a-4f3b-9b5a-2e8d6a1f0c31",
     "name": "CuraFit API v1",
-    "description": "# CuraFit API v1 — Cloudflare Workers & D1\n\nProduction-grade REST API running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** (`curafit-api` for Production, `curafit-api-dev` for Cloud Dev). Designed for **Kotlin Multiplatform Mobile (KMM)** with uniform JSON envelopes, 100% English machine-coded errors (`contracts/error-codes.json`), and canonical coaching codes (`contracts/coaching-codes.json`).\n\n---\n\n## 1. Servers & Environments\n\nSwitch between environments from the top-right **Environment selector** in Postman:\n\n| Environment Name | `baseUrl` | Cloudflare Worker / D1 | Purpose |\n| :--- | :--- | :--- | :--- |\n| **CuraFit — Cloud Dev** | `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` | `curafit-api-dev` / `curafit-db-dev` | Feature development & staging on Cloudflare edge (`dev` branch, full clone of Prod D1) |\n| **CuraFit — Production** | `https://curafit-api.egypt-nutrition-coach.workers.dev` | `curafit-api` / `egypt-nutrition-coaching` | Live Cloudflare Workers + D1 production server (`main` branch) |\n| **CuraFit — Local Dev** | `http://127.0.0.1:8787` | Local Miniflare | Local development server (`npm run dev`) |\n\n---\n\n## 2. Authentication (Cloudflare Native D1 + Direct OIDC)\n\n- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.\n- **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).\n- **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).\n- **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).\n\n---\n\n## 3. Unified Command Pipeline (`POST /v1/commands`), Revision & Idempotency\n\nAll domain mutations pass through `POST /v1/commands`:\n- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and intent (`action` + `payload`) on network timeout even after a revision rebase.\n- **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.params.currentRevision` and `error.details.mergeHints`.\n- **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt inside `data`; `?view=full` returns the full account snapshot inside `data`.\n\n---\n\n## 4. Uniform KMM Envelopes & Pure-English Error / Coaching Contracts\n\nEvery JSON endpoint returns the canonical envelope:\n\n- **Success (`2xx`):** `{ \"ok\": true, \"data\": <T>, \"meta\": { \"requestId\": \"<uuid>\", \"serverTime\": \"<iso8601>\", \"revision\"?: <int> } }`\n- **Error (`4xx` / `5xx`):** `{ \"ok\": false, \"error\": { \"code\", \"message\", \"params\", \"fieldErrors\", \"retryable\", \"details\"?: {...} }, \"meta\": { \"requestId\": \"<uuid>\", \"serverTime\": \"<iso8601>\" } }`\n\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |\n| `error.code` | `string` | Stable uppercase error code (290 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |\n| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |\n| `error.params` | `object` | Interpolation parameters for client-side localization |\n| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |\n| `error.retryable` | `boolean` | Whether the client may safely retry (`true` for `429`/`503`/`500`) |\n| `error.details` | `object` (optional) | Structured recovery data such as `currentRevision` and `mergeHints` on `409` |\n| `meta.requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |\n| `meta.serverTime` | `string (ISO-8601)` | Server UTC timestamp |\n\n> **Coaching Codes:** All coaching briefs, agreements, readiness summaries, and eligibility reasons return canonical English text plus `code` and `params` cataloged in `contracts/coaching-codes.json` (`docs/COACHING_CODES.md`). AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are deferred to the final AI rollout phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`).\n\n---\n\n## 5. Collection & Environment Variables Reference\n\n| Variable | Type | Scope | Description |\n| :--- | :--- | :--- | :--- |\n| `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |\n| `testEmail` | `string (email)` | Environment | Email used in internal Dev/QA Register / Login |\n| `testPassword` | `string (secret)` | Environment | Password (`8..128` chars) for internal Dev/QA routes |\n| `testNewPassword` | `string (secret)` | Environment | New password for Change Password |\n| `deviceId` | `string` | Environment | Client device ID (`max 120` chars) |\n| `clientPlatform` | `string (enum)` | Environment | `android` \\| `ios` \\| `web` |\n| `clientVersion` | `string` | Environment | App semantic version (e.g. `1.0.0`) |\n| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by OAuth / Register / Login / Refresh |\n| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by OAuth / Register / Login / Refresh |\n| `sessionId` | `string` | Collection (auto) | Current D1 session ID |\n| `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |\n| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |\n| `idempotencyKey` | `string (UUID)` | Pre-request (auto) | Fresh UUID generated before every request |\n| `todayDate` | `string (YYYY-MM-DD)` | Collection (auto) | Current server local date |\n| `lastEtag` | `string` | Collection (auto) | Last `ETag` response header for `If-None-Match` |\n| `activePlanId` | `string` | Collection (auto) | Active nutrition plan ID |\n| `activeWorkoutPlanId` | `string` | Collection (auto) | Active workout plan ID |\n| `sampleMealId` | `string (UUID)` | Collection (auto) | First meal ID from today's active plan |\n| `sampleAltTemplateId` | `string` | Collection (auto) | Alternative meal template ID |\n| `sampleFoodEntryId` | `string (UUID)` | Collection (auto) | Last created food entry ID |\n| `sampleDayIndex` | `integer (0..6)` | Collection (auto) | Workout weekday index (`0=Sun .. 6=Sat`) |\n| `sampleExerciseId` | `string` | Collection (auto) | Exercise ID in the active workout plan |\n| `sampleAltExerciseId` | `string` | Collection (auto) | Validated alternative exercise ID |\n| `sampleRescheduleDate` | `string (YYYY-MM-DD)` | Collection (auto) | Next available rest date within 13 days |\n| `sampleProposalId` | `string (UUID)` | Collection (auto) | Active pending adaptation proposal ID |\n| `sampleCaseId` | `string` | Collection (auto) | Active coaching agreement/case ID |\n| `sampleFoodId` | `string` | Collection (auto) | Food item ID from `/v1/foods` |\n| `sampleCatalogExerciseId` | `string (URL-encoded)` | Collection (auto) | Exercise catalog ID from `/v1/exercises` |\n| `nextSeqCursor` | `integer` | Collection (auto) | Incremental outbox sequence cursor for `/v1/sync/changes` |\n| `anonymousUserId` | `string` | Collection | Anonymous `anon:...` ID for `/v1/auth/claim-anonymous` |\n| `sampleBarcode` | `string` | Collection | Sample EAN/UPC barcode (`6221000000001`) for `/v1/foods/barcode/{ean}` |\n| `samplePhotoId` | `string` | Collection | Progress photo ID for `/v1/progress/photos/{photoId}` |\n| `signedMediaToken` | `string` | Collection | Short-lived HMAC-signed token for `/v1/media/signed/{token}` |\n| `oauthProvider` | `string (enum)` | Collection | OAuth provider (`google` \\| `apple`) for `/v1/auth/oauth/{provider}` |",
+    "description": "# CuraFit API v1 — Cloudflare Workers & D1\n\nProduction-grade REST API running natively on **Cloudflare Workers + Cloudflare D1 + Cloudflare R2** (`curafit-api` for Production, `curafit-api-dev` for Cloud Dev). Designed for **Kotlin Multiplatform Mobile (KMM)** with uniform JSON envelopes, 100% English machine-coded errors (`contracts/error-codes.json`), and canonical coaching codes (`contracts/coaching-codes.json`).\n\n---\n\n## 1. Servers & Environments\n\nSwitch between environments from the top-right **Environment selector** in Postman:\n\n| Environment Name | `baseUrl` | Cloudflare Worker / D1 | Purpose |\n| :--- | :--- | :--- | :--- |\n| **CuraFit — Cloud Dev** | `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` | `curafit-api-dev` / `curafit-db-dev` | Feature development & staging on Cloudflare edge (`dev` branch, full clone of Prod D1) |\n| **CuraFit — Production** | `https://curafit-api.egypt-nutrition-coach.workers.dev` | `curafit-api` / `egypt-nutrition-coaching` | Live Cloudflare Workers + D1 production server (`main` branch) |\n| **CuraFit — Local Dev** | `http://127.0.0.1:8787` | Local Miniflare | Local development server (`npm run dev`) |\n\n---\n\n## 2. Authentication (Google & Apple OIDC Only + First-Party JWT/D1 Sessions)\n\n- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/auth/refresh`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.\n- **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).\n- **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).\n- **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).\n\n---\n\n## 3. Unified Command Pipeline (`POST /v1/commands`), Revision & Idempotency\n\nAll domain mutations pass through `POST /v1/commands`:\n- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and intent (`action` + `payload`) on network timeout even after a revision rebase.\n- **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.params.currentRevision` and `error.details.mergeHints`.\n- **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt inside `data`; `?view=full` returns the full account snapshot inside `data`.\n\n---\n\n## 4. Uniform KMM Envelopes & Pure-English Error / Coaching Contracts\n\nEvery JSON endpoint returns the canonical envelope:\n\n- **Success (`2xx`):** `{ \"ok\": true, \"data\": <T>, \"meta\": { \"requestId\": \"<uuid>\", \"serverTime\": \"<iso8601>\", \"revision\"?: <int> } }`\n- **Error (`4xx` / `5xx`):** `{ \"ok\": false, \"error\": { \"code\", \"message\", \"params\", \"fieldErrors\", \"retryable\", \"details\"?: {...} }, \"meta\": { \"requestId\": \"<uuid>\", \"serverTime\": \"<iso8601>\" } }`\n\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |\n| `error.code` | `string` | Stable uppercase error code (290 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |\n| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |\n| `error.params` | `object` | Interpolation parameters for client-side localization |\n| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |\n| `error.retryable` | `boolean` | Whether the client may safely retry (`true` for `429`/`503`/`500`) |\n| `error.details` | `object` (optional) | Structured recovery data such as `currentRevision` and `mergeHints` on `409` |\n| `meta.requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |\n| `meta.serverTime` | `string (ISO-8601)` | Server UTC timestamp |\n\n> **Coaching Codes:** All coaching briefs, agreements, readiness summaries, and eligibility reasons return canonical English text plus `code` and `params` cataloged in `contracts/coaching-codes.json` (`docs/COACHING_CODES.md`). AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are deferred to the final AI rollout phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`).\n\n---\n\n## 5. Collection & Environment Variables Reference\n\n| Variable | Type | Scope | Description |\n| :--- | :--- | :--- | :--- |\n| `baseUrl` | `string (URL)` | Environment | Server base URL (`Cloud Dev`, `Production`, or `Local Dev`) |\n| `deviceId` | `string` | Environment | Client device ID (`max 120` chars) |\n| `clientPlatform` | `string (enum)` | Environment | `android` \\| `ios` \\| `web` |\n| `clientVersion` | `string` | Environment | App semantic version (e.g. `1.0.0`) |\n| `accessToken` | `string (JWT)` | Collection (auto) | Auto-saved by Google / Apple OIDC Sign-In or Refresh |\n| `refreshToken` | `string` | Collection (auto) | Auto-saved & rotated by Google / Apple OIDC Sign-In or Refresh |\n| `sessionId` | `string` | Collection (auto) | Current D1 session ID |\n| `userId` | `string` | Collection (auto) | Authenticated user ID (`user:<uuid>`) |\n| `revision` | `integer` | Collection (auto) | Current optimistic-concurrency revision |\n| `idempotencyKey` | `string (UUID)` | Pre-request (auto) | Fresh UUID generated before every request |\n| `todayDate` | `string (YYYY-MM-DD)` | Collection (auto) | Current server local date |\n| `lastEtag` | `string` | Collection (auto) | Last `ETag` response header for `If-None-Match` |\n| `activePlanId` | `string` | Collection (auto) | Active nutrition plan ID |\n| `activeWorkoutPlanId` | `string` | Collection (auto) | Active workout plan ID |\n| `sampleMealId` | `string (UUID)` | Collection (auto) | First meal ID from today's active plan |\n| `sampleAltTemplateId` | `string` | Collection (auto) | Alternative meal template ID |\n| `sampleFoodEntryId` | `string (UUID)` | Collection (auto) | Last created food entry ID |\n| `sampleDayIndex` | `integer (0..6)` | Collection (auto) | Workout weekday index (`0=Sun .. 6=Sat`) |\n| `sampleExerciseId` | `string` | Collection (auto) | Exercise ID in the active workout plan |\n| `sampleAltExerciseId` | `string` | Collection (auto) | Validated alternative exercise ID |\n| `sampleRescheduleDate` | `string (YYYY-MM-DD)` | Collection (auto) | Next available rest date within 13 days |\n| `sampleProposalId` | `string (UUID)` | Collection (auto) | Active pending adaptation proposal ID |\n| `sampleCaseId` | `string` | Collection (auto) | Active coaching agreement/case ID |\n| `sampleFoodId` | `string` | Collection (auto) | Food item ID from `/v1/foods` |\n| `sampleCatalogExerciseId` | `string (URL-encoded)` | Collection (auto) | Exercise catalog ID from `/v1/exercises` |\n| `nextSeqCursor` | `integer` | Collection (auto) | Incremental outbox sequence cursor for `/v1/sync/changes` |\n| `anonymousUserId` | `string` | Collection | Anonymous `anon:...` ID for `/v1/auth/claim-anonymous` |\n| `sampleBarcode` | `string` | Collection | Sample EAN/UPC barcode (`6221000000001`) for `/v1/foods/barcode/{ean}` |\n| `samplePhotoId` | `string` | Collection | Progress photo ID for `/v1/progress/photos/{photoId}` |\n| `signedMediaToken` | `string` | Collection | Short-lived HMAC-signed token for `/v1/media/signed/{token}` |\n| `oauthProvider` | `string (enum)` | Collection | OAuth provider (`google` \\| `apple`) for `/v1/auth/oauth/{provider}` |",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -67,18 +67,6 @@
     {
       "key": "baseUrl",
       "value": "https://curafit-api-dev.egypt-nutrition-coach.workers.dev"
-    },
-    {
-      "key": "testEmail",
-      "value": "demo.user@curafit.app"
-    },
-    {
-      "key": "testPassword",
-      "value": "CuraFit#2026!"
-    },
-    {
-      "key": "testNewPassword",
-      "value": "CuraFit#2027!"
     },
     {
       "key": "accessToken",
@@ -378,11 +366,11 @@
     },
     {
       "id": "f0000002-0000-4000-8000-000000000002",
-      "name": "02. Authentication (Cloudflare Native D1)",
-      "description": "First-party authentication on Cloudflare Workers + D1 using WebCrypto PBKDF2-SHA256 passwords, HS256 Access JWTs (15 min), and rotating D1 Refresh Tokens (30 days) with replay reuse detection.",
+      "name": "02. Authentication (Google & Apple OIDC)",
+      "description": "Passwordless Google Sign-In & Apple Sign-In OIDC verification on Cloudflare Workers + D1, issuing first-party HS256 Access JWTs (15 min) and rotating D1 Refresh Tokens (30 days) with replay reuse detection.",
       "item": [
         {
-          "name": "Register User",
+          "name": "Sign In / Register with Google OIDC",
           "event": [
             {
               "listen": "test",
@@ -427,7 +415,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"name\": \"Ahmed Mohamed\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
+              "raw": "{\n  \"idToken\": \"<google-oidc-id-token>\",\n  \"deviceId\": \"{{deviceId}}\",\n  \"name\": \"CuraFit User\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -435,138 +423,18 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/v1/auth/register",
+              "raw": "{{baseUrl}}/v1/auth/oauth/google",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "v1",
                 "auth",
-                "register"
+                "oauth",
+                "google"
               ]
             },
-            "description": "Registers a new user in Cloudflare D1 (`coaching_users`), creates a session, and issues an Access JWT + Refresh Token pair. Auto-saves tokens in Postman.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/auth/register`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/register`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/register`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/register`\n- **Auth:** Public (`No Auth`)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `email` | `string (email)` | Yes | Trimmed, lowercased, max 160 chars, unique | User email address. |\n| `password` | `string` | Yes | 8..128 chars | Plaintext password (hashed via PBKDF2-SHA256 100k iterations). |\n| `name` | `string` | No | max 100 chars | Optional display name. |\n| `deviceId` | `string` | No | max 120 chars | Optional client device identifier. |\n\n### Request Body Example\n```json\n{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"name\": \"Ahmed Mohamed\",\n  \"deviceId\": \"{{deviceId}}\"\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `tokenType` | `string (const)` | Always `\"Bearer\"`. |\n| `accessToken` | `string (JWT)` | HS256 signed JWT for `Authorization: Bearer <token>`. |\n| `expiresIn` | `integer (seconds)` | Access token TTL in seconds (default `900`). |\n| `expiresAt` | `string (ISO-8601 UTC)` | Access token expiration timestamp. |\n| `refreshToken` | `string` | Opaque rotating refresh token (`cfrt_...`). Store securely on device. |\n| `refreshExpiresIn` | `integer (seconds)` | Refresh token TTL in seconds (default `2592000` = 30 days). |\n| `refreshExpiresAt` | `string (ISO-8601 UTC)` | Refresh token expiration timestamp. |\n| `sessionId` | `string` | Server D1 session ID (`sess_<uuid>`). |\n| `user` | `object` | `{ userId, email, name, entitlement, createdAt }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `400` | `INVALID_EMAIL / INVALID_PASSWORD` | Malformed email or password shorter than 8 chars. |\n| `409` | `AUTH_EMAIL_ALREADY_EXISTS` | Email is already registered. |\n| `429` | `RATE_LIMITED` | Auth endpoint rate limit exceeded (30 req/min/IP). |"
-          },
-          "response": [
-            {
-              "name": "201 Created — Token Pair",
-              "originalRequest": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json",
-                    "description": "Must be application/json"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "application/json",
-                    "description": "JSON response format"
-                  }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"name\": \"Ahmed Mohamed\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/v1/auth/register",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "v1",
-                    "auth",
-                    "register"
-                  ]
-                }
-              },
-              "status": "Created",
-              "code": 201,
-              "_postman_previewlanguage": "json",
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json; charset=utf-8"
-                },
-                {
-                  "key": "Cache-Control",
-                  "value": "no-store"
-                }
-              ],
-              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"tokenType\": \"Bearer\",\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature\",\n    \"expiresIn\": 900,\n    \"expiresAt\": \"2026-11-21T12:45:00.000Z\",\n    \"refreshToken\": \"cfrt_example_opaque_refresh_token_32bytes\",\n    \"refreshExpiresIn\": 2592000,\n    \"refreshExpiresAt\": \"2026-12-21T12:30:00.000Z\",\n    \"sessionId\": \"sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b\",\n    \"user\": {\n      \"userId\": \"user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d\",\n      \"email\": \"demo.user@curafit.app\",\n      \"name\": \"Ahmed Mohamed\",\n      \"entitlement\": \"free\",\n      \"createdAt\": \"2026-11-21T12:30:00.000Z\"\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
-            }
-          ]
-        },
-        {
-          "name": "Login User",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Auth token pair returned\", function () {",
-                  "  pm.expect([200, 201]).to.include(pm.response.code);",
-                  "  const res = pm.response.json();",
-                  "  pm.expect(res.ok).to.eql(true);",
-                  "  const d = res.data || res;",
-                  "  pm.expect(d.accessToken).to.be.a(\"string\");",
-                  "  pm.expect(d.refreshToken).to.be.a(\"string\");",
-                  "  pm.collectionVariables.set(\"accessToken\", d.accessToken);",
-                  "  pm.collectionVariables.set(\"refreshToken\", d.refreshToken);",
-                  "  pm.collectionVariables.set(\"sessionId\", d.sessionId);",
-                  "  if (d.user && d.user.userId) pm.collectionVariables.set(\"userId\", d.user.userId);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "description": "Must be application/json"
-              },
-              {
-                "key": "Accept",
-                "value": "application/json",
-                "description": "JSON response format"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/v1/auth/login",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "auth",
-                "login"
-              ]
-            },
-            "description": "Authenticates an existing user via email & password using constant-time PBKDF2 verification and returns a new Access JWT + Refresh Token.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/auth/login`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/login`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/login`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/login`\n- **Auth:** Public (`No Auth`)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `email` | `string (email)` | Yes | max 160 chars | Registered email. |\n| `password` | `string` | Yes | 1..128 chars | Account password. |\n| `deviceId` | `string` | No | max 120 chars | Optional device ID. |\n\n### Request Body Example\n```json\n{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"deviceId\": \"{{deviceId}}\"\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `tokenType` | `string (const)` | Always `\"Bearer\"`. |\n| `accessToken` | `string (JWT)` | HS256 signed JWT for `Authorization: Bearer <token>`. |\n| `expiresIn` | `integer (seconds)` | Access token TTL in seconds (default `900`). |\n| `expiresAt` | `string (ISO-8601 UTC)` | Access token expiration timestamp. |\n| `refreshToken` | `string` | Opaque rotating refresh token (`cfrt_...`). Store securely on device. |\n| `refreshExpiresIn` | `integer (seconds)` | Refresh token TTL in seconds (default `2592000` = 30 days). |\n| `refreshExpiresAt` | `string (ISO-8601 UTC)` | Refresh token expiration timestamp. |\n| `sessionId` | `string` | Server D1 session ID (`sess_<uuid>`). |\n| `user` | `object` | `{ userId, email, name, entitlement, createdAt }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `401` | `AUTH_INVALID_CREDENTIALS` | Email not found or password mismatch. |\n| `401` | `ACCOUNT_DELETED` | Account was permanently erased via GDPR deletion. |"
+            "description": "Verifies a Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (creates a new D1 user on first sign-in or signs into an existing linked account). Auto-saves tokens in Postman.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/auth/oauth/google`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/google`\n- **Auth:** Public (`No Auth`)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `idToken` | `string (JWT)` | Yes | Google OIDC ID token | Signed Google ID token from mobile Google Sign-In. |\n| `deviceId` | `string` | No | max 120 chars | Client device identifier. |\n| `name` | `string` | No | max 100 chars | Optional display name fallback. |\n| `fullName` | `string` | No | max 100 chars | Optional full name fallback. |\n| `linkExisting` | `boolean` | No | default: false | When `true`, links Google to an existing verified account sharing the same verified email. |\n\n### Request Body Example\n```json\n{\n  \"idToken\": \"<google-oidc-id-token>\",\n  \"deviceId\": \"{{deviceId}}\",\n  \"name\": \"CuraFit User\"\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `tokenType` | `string (const)` | Always `\"Bearer\"`. |\n| `accessToken` | `string (JWT)` | HS256 signed JWT for `Authorization: Bearer <token>`. |\n| `expiresIn` | `integer (seconds)` | Access token TTL in seconds (default `900`). |\n| `expiresAt` | `string (ISO-8601 UTC)` | Access token expiration timestamp. |\n| `refreshToken` | `string` | Opaque rotating refresh token (`cfrt_...`). Store securely on device. |\n| `refreshExpiresIn` | `integer (seconds)` | Refresh token TTL in seconds (default `2592000` = 30 days). |\n| `refreshExpiresAt` | `string (ISO-8601 UTC)` | Refresh token expiration timestamp. |\n| `sessionId` | `string` | Server D1 session ID (`sess_<uuid>`). |\n| `user` | `object` | `{ userId, email, name, entitlement, createdAt }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `401` | `AUTH_OAUTH_TOKEN_INVALID` | Google ID token is missing, expired, malformed, or fails JWKS verification. |\n| `409` | `AUTH_PROVIDER_EMAIL_CONFLICT` | Email is already associated with another OIDC provider; pass `linkExisting: true` after confirmation. |\n| `429` | `RATE_LIMITED` | Auth endpoint rate limit exceeded (30 req/min/IP). |"
           },
           "response": [
             {
@@ -590,7 +458,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
+                  "raw": "{\n  \"idToken\": \"<google-oidc-id-token>\",\n  \"deviceId\": \"{{deviceId}}\",\n  \"name\": \"CuraFit User\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -598,19 +466,258 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/v1/auth/login",
+                  "raw": "{{baseUrl}}/v1/auth/oauth/google",
                   "host": [
                     "{{baseUrl}}"
                   ],
                   "path": [
                     "v1",
                     "auth",
-                    "login"
+                    "oauth",
+                    "google"
                   ]
                 }
               },
               "status": "OK",
               "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"tokenType\": \"Bearer\",\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature\",\n    \"expiresIn\": 900,\n    \"expiresAt\": \"2026-11-21T12:45:00.000Z\",\n    \"refreshToken\": \"cfrt_example_opaque_refresh_token_32bytes\",\n    \"refreshExpiresIn\": 2592000,\n    \"refreshExpiresAt\": \"2026-12-21T12:30:00.000Z\",\n    \"sessionId\": \"sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b\",\n    \"user\": {\n      \"userId\": \"user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d\",\n      \"email\": \"demo.user@curafit.app\",\n      \"name\": \"Ahmed Mohamed\",\n      \"entitlement\": \"free\",\n      \"createdAt\": \"2026-11-21T12:30:00.000Z\"\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            },
+            {
+              "name": "201 Created — Token Pair",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"idToken\": \"<google-oidc-id-token>\",\n  \"deviceId\": \"{{deviceId}}\",\n  \"name\": \"CuraFit User\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/auth/oauth/google",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "auth",
+                    "oauth",
+                    "google"
+                  ]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"tokenType\": \"Bearer\",\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature\",\n    \"expiresIn\": 900,\n    \"expiresAt\": \"2026-11-21T12:45:00.000Z\",\n    \"refreshToken\": \"cfrt_example_opaque_refresh_token_32bytes\",\n    \"refreshExpiresIn\": 2592000,\n    \"refreshExpiresAt\": \"2026-12-21T12:30:00.000Z\",\n    \"sessionId\": \"sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b\",\n    \"user\": {\n      \"userId\": \"user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d\",\n      \"email\": \"demo.user@curafit.app\",\n      \"name\": \"Ahmed Mohamed\",\n      \"entitlement\": \"free\",\n      \"createdAt\": \"2026-11-21T12:30:00.000Z\"\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Sign In / Register with Apple OIDC",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Auth token pair returned\", function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "  const res = pm.response.json();",
+                  "  pm.expect(res.ok).to.eql(true);",
+                  "  const d = res.data || res;",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\");",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\");",
+                  "  pm.collectionVariables.set(\"accessToken\", d.accessToken);",
+                  "  pm.collectionVariables.set(\"refreshToken\", d.refreshToken);",
+                  "  pm.collectionVariables.set(\"sessionId\", d.sessionId);",
+                  "  if (d.user && d.user.userId) pm.collectionVariables.set(\"userId\", d.user.userId);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set(\"revision\", \"0\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "Must be application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "JSON response format"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identityToken\": \"<apple-oidc-identity-token>\",\n  \"authorizationCode\": \"<optional-auth-code>\",\n  \"fullName\": \"CuraFit User\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/oauth/apple",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "oauth",
+                "apple"
+              ]
+            },
+            "description": "Verifies an Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (exchanging `authorizationCode` for encrypted revocation storage on first Apple login). Auto-saves tokens in Postman.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/auth/oauth/apple`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/apple`\n- **Auth:** Public (`No Auth`)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `identityToken` | `string (JWT)` | Yes | Apple OIDC identity token | Signed Apple identity token from Sign in with Apple. |\n| `authorizationCode` | `string` | No | Optional first-login code | Exchanged for encrypted Apple refresh token for GDPR revocation. |\n| `fullName` | `string` | No | max 100 chars | Optional display name sent on first Apple login. |\n| `name` | `string` | No | max 100 chars | Optional display name alias. |\n| `deviceId` | `string` | No | max 120 chars | Client device identifier. |\n| `linkExisting` | `boolean` | No | default: false | When `true`, links Apple to an existing verified account sharing the same verified email. |\n\n### Request Body Example\n```json\n{\n  \"identityToken\": \"<apple-oidc-identity-token>\",\n  \"authorizationCode\": \"<optional-auth-code>\",\n  \"fullName\": \"CuraFit User\",\n  \"deviceId\": \"{{deviceId}}\"\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `tokenType` | `string (const)` | Always `\"Bearer\"`. |\n| `accessToken` | `string (JWT)` | HS256 signed JWT for `Authorization: Bearer <token>`. |\n| `expiresIn` | `integer (seconds)` | Access token TTL in seconds (default `900`). |\n| `expiresAt` | `string (ISO-8601 UTC)` | Access token expiration timestamp. |\n| `refreshToken` | `string` | Opaque rotating refresh token (`cfrt_...`). Store securely on device. |\n| `refreshExpiresIn` | `integer (seconds)` | Refresh token TTL in seconds (default `2592000` = 30 days). |\n| `refreshExpiresAt` | `string (ISO-8601 UTC)` | Refresh token expiration timestamp. |\n| `sessionId` | `string` | Server D1 session ID (`sess_<uuid>`). |\n| `user` | `object` | `{ userId, email, name, entitlement, createdAt }`. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `401` | `AUTH_OAUTH_TOKEN_INVALID` | Apple identity token is missing, expired, malformed, or fails JWKS verification. |\n| `409` | `AUTH_PROVIDER_EMAIL_CONFLICT` | Email is already associated with another OIDC provider; pass `linkExisting: true` after confirmation. |\n| `429` | `RATE_LIMITED` | Auth endpoint rate limit exceeded (30 req/min/IP). |"
+          },
+          "response": [
+            {
+              "name": "200 OK — Token Pair",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"identityToken\": \"<apple-oidc-identity-token>\",\n  \"authorizationCode\": \"<optional-auth-code>\",\n  \"fullName\": \"CuraFit User\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/auth/oauth/apple",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "auth",
+                    "oauth",
+                    "apple"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"tokenType\": \"Bearer\",\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature\",\n    \"expiresIn\": 900,\n    \"expiresAt\": \"2026-11-21T12:45:00.000Z\",\n    \"refreshToken\": \"cfrt_example_opaque_refresh_token_32bytes\",\n    \"refreshExpiresIn\": 2592000,\n    \"refreshExpiresAt\": \"2026-12-21T12:30:00.000Z\",\n    \"sessionId\": \"sess_8c7b1e3a-2b4d-4c8f-a1b2-3c4d5e6f7a8b\",\n    \"user\": {\n      \"userId\": \"user:1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d\",\n      \"email\": \"demo.user@curafit.app\",\n      \"name\": \"Ahmed Mohamed\",\n      \"entitlement\": \"free\",\n      \"createdAt\": \"2026-11-21T12:30:00.000Z\"\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+            },
+            {
+              "name": "201 Created — Token Pair",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "description": "Must be application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "description": "JSON response format"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"identityToken\": \"<apple-oidc-identity-token>\",\n  \"authorizationCode\": \"<optional-auth-code>\",\n  \"fullName\": \"CuraFit User\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/auth/oauth/apple",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "auth",
+                    "oauth",
+                    "apple"
+                  ]
+                }
+              },
+              "status": "Created",
+              "code": 201,
               "_postman_previewlanguage": "json",
               "header": [
                 {
@@ -784,7 +891,7 @@
                 "session"
               ]
             },
-            "description": "Returns authenticated caller identity, session ID, auth method, scopes, entitlement tier, and JWT timestamps.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/auth/session`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/session`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/session`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/session`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `userId` | `string` | Internal user ID (`user:<uuid>` or `anon:<hash>`). |\n| `subject` | `string` | JWT `sub` claim. |\n| `sessionId` | `string` | Active session ID. |\n| `deviceId` | `string | null` | Bound device ID. |\n| `authMethod` | `string (enum)` | `bearer_jwt` | `anonymous_cookie` | `platform_header`. |\n| `isAnonymous` | `boolean` | `false` for registered JWT users. |\n| `scopes` | `Array<string>` | Granted scopes (`[\"coach:read\",\"coach:write\"]`). |\n| `entitlement` | `string (enum)` | `free` | `premium`. |\n| `issuedAt` | `string (ISO-8601) | null` | JWT `iat` timestamp. |\n| `expiresAt` | `string (ISO-8601) | null` | JWT `exp` timestamp. |"
+            "description": "Returns authenticated caller identity, session ID, auth method, scopes, entitlement tier, and JWT timestamps.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/auth/session`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/session`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/session`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/session`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `userId` | `string` | Internal user ID (`user:<uuid>` or `anon:<hash>`). |\n| `subject` | `string` | JWT `sub` claim. |\n| `sessionId` | `string` | Active session ID. |\n| `deviceId` | `string | null` | Bound device ID. |\n| `authMethod` | `string (enum)` | `bearer_jwt` | `anonymous_cookie` | `platform_header`. |\n| `isAnonymous` | `boolean` | `false` for verified OIDC JWT users. |\n| `scopes` | `Array<string>` | Granted scopes (`[\"coach:read\",\"coach:write\"]`). |\n| `entitlement` | `string (enum)` | `free` | `pro`. |\n| `issuedAt` | `string (ISO-8601) | null` | JWT `iat` timestamp. |\n| `expiresAt` | `string (ISO-8601) | null` | JWT `exp` timestamp. |"
           },
           "response": [
             {
@@ -824,99 +931,6 @@
                 }
               ],
               "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"userId\": \"user:1a2b\",\n    \"subject\": \"user:1a2b\",\n    \"sessionId\": \"sess_123\",\n    \"deviceId\": \"postman-prod-01\",\n    \"authMethod\": \"bearer_jwt\",\n    \"isAnonymous\": false,\n    \"scopes\": [\n      \"coach:read\",\n      \"coach:write\"\n    ],\n    \"entitlement\": \"free\",\n    \"issuedAt\": \"2026-11-21T12:30:00.000Z\",\n    \"expiresAt\": \"2026-11-21T12:45:00.000Z\"\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
-            }
-          ]
-        },
-        {
-          "name": "Change Password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "description": "Must be application/json"
-              },
-              {
-                "key": "Accept",
-                "value": "application/json",
-                "description": "JSON response format"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"currentPassword\": \"{{testPassword}}\",\n  \"newPassword\": \"{{testNewPassword}}\",\n  \"revokeOtherSessions\": true\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/v1/auth/change-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "auth",
-                "change-password"
-              ]
-            },
-            "description": "Verifies `currentPassword`, updates the PBKDF2-SHA256 hash in D1, and optionally revokes all other device sessions.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/auth/change-password`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/change-password`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/change-password`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/change-password`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `currentPassword` | `string` | Yes | Non-empty string | Existing account password. |\n| `newPassword` | `string` | Yes | 8..128 chars, must differ from current | New account password. |\n| `revokeOtherSessions` | `boolean` | No | default: true | If `true`, revokes all other devices while keeping current session active. |\n\n### Request Body Example\n```json\n{\n  \"currentPassword\": \"{{testPassword}}\",\n  \"newPassword\": \"{{testNewPassword}}\",\n  \"revokeOtherSessions\": true\n}\n```\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `changed` | `boolean` | `true` on success. |\n| `revokedOtherSessions` | `boolean` | Whether other sessions were invalidated. |\n| `updatedAt` | `string (ISO-8601 UTC)` | Password update timestamp. |\n\n### Possible Error Responses\n| HTTP Status | Error Code | When |\n| :---: | :--- | :--- |\n| `400` | `PASSWORD_UNCHANGED` | New password equals current password. |\n| `401` | `AUTH_INVALID_CREDENTIALS` | Current password is incorrect. |"
-          },
-          "response": [
-            {
-              "name": "200 OK — Password Changed",
-              "originalRequest": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json",
-                    "description": "Must be application/json"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "application/json",
-                    "description": "JSON response format"
-                  }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"currentPassword\": \"{{testPassword}}\",\n  \"newPassword\": \"{{testNewPassword}}\",\n  \"revokeOtherSessions\": true\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/v1/auth/change-password",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "v1",
-                    "auth",
-                    "change-password"
-                  ]
-                }
-              },
-              "status": "OK",
-              "code": 200,
-              "_postman_previewlanguage": "json",
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json; charset=utf-8"
-                },
-                {
-                  "key": "Cache-Control",
-                  "value": "no-store"
-                }
-              ],
-              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"changed\": true,\n    \"revokedOtherSessions\": true,\n    \"updatedAt\": \"2026-11-21T12:35:00.000Z\"\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
             }
           ]
         },
@@ -10367,8 +10381,8 @@
     },
     {
       "id": "f0000014-0000-4000-8000-000000000014",
-      "name": "13. Social OAuth, Plan Preview & Profile",
-      "description": "Direct Google/Apple OIDC verification on Cloudflare Workers, stateless onboarding plan preview, profile updates, and Comeback Protocol.",
+      "name": "13. OAuth Linking, Plan Preview & Profile",
+      "description": "Linked OAuth provider management (Google/Apple), stateless onboarding plan preview, profile updates, and Comeback Protocol.",
       "item": [
         {
           "name": "Preview Onboarding Plan (Public)",
@@ -10414,94 +10428,6 @@
           "response": []
         },
         {
-          "name": "Sign In / Register with Google OIDC",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "description": "Must be application/json"
-              },
-              {
-                "key": "Accept",
-                "value": "application/json",
-                "description": "JSON response format"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"idToken\": \"<google-oidc-id-token>\",\n  \"deviceId\": \"{{deviceId}}\",\n  \"name\": \"CuraFit User\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/v1/auth/oauth/google",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "auth",
-                "oauth",
-                "google"
-              ]
-            },
-            "description": "Verifies Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/auth/oauth/google`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/google`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/google`\n- **Auth:** Public (`No Auth`)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `idToken` | `string (JWT)` | Yes | Google OIDC ID token | Signed Google ID token from mobile Google Sign-In. |\n| `deviceId` | `string` | No | max 120 chars | Client device identifier. |\n| `name` | `string` | No | max 100 chars | Optional display name fallback. |\n| `linkExisting` | `boolean` | No | default: false | When `true`, links Google to an existing verified account sharing the same email. |\n\n### Request Body Example\n```json\n{\n  \"idToken\": \"<google-oidc-id-token>\",\n  \"deviceId\": \"{{deviceId}}\",\n  \"name\": \"CuraFit User\"\n}\n```"
-          },
-          "response": []
-        },
-        {
-          "name": "Sign In / Register with Apple OIDC",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "description": "Must be application/json"
-              },
-              {
-                "key": "Accept",
-                "value": "application/json",
-                "description": "JSON response format"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"identityToken\": \"<apple-oidc-identity-token>\",\n  \"authorizationCode\": \"<optional-auth-code>\",\n  \"fullName\": \"CuraFit User\",\n  \"deviceId\": \"{{deviceId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/v1/auth/oauth/apple",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "auth",
-                "oauth",
-                "apple"
-              ]
-            },
-            "description": "Verifies Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens.\n\n### Endpoint Info\n- **Method:** `POST`\n- **URL:** `{{baseUrl}}/v1/auth/oauth/apple`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/apple`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/apple`\n- **Auth:** Public (`No Auth`)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Content-Type` | `string` | Yes | Must be application/json |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Request Body Fields\n| Field | Type | Required | Constraints / Allowed Values | Description |\n| :--- | :--- | :---: | :--- | :--- |\n| `identityToken` | `string (JWT)` | Yes | Apple OIDC identity token | Signed Apple identity token from Sign in with Apple. |\n| `authorizationCode` | `string` | No | Optional first-login code | Exchanged for encrypted Apple refresh token for GDPR revocation. |\n| `fullName` | `string` | No | max 100 chars | Optional display name sent on first Apple login. |\n| `deviceId` | `string` | No | max 120 chars | Client device identifier. |\n| `linkExisting` | `boolean` | No | default: false | When `true`, links Apple to an existing verified account sharing the same verified email. |\n\n### Request Body Example\n```json\n{\n  \"identityToken\": \"<apple-oidc-identity-token>\",\n  \"authorizationCode\": \"<optional-auth-code>\",\n  \"fullName\": \"CuraFit User\",\n  \"deviceId\": \"{{deviceId}}\"\n}\n```"
-          },
-          "response": []
-        },
-        {
           "name": "List Linked OAuth Providers",
           "request": {
             "method": "GET",
@@ -10524,7 +10450,7 @@
                 "providers"
               ]
             },
-            "description": "Returns linked Google and Apple OAuth identities for the authenticated user and whether a fallback password exists.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/auth/oauth/providers`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/providers`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/providers`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/providers`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
+            "description": "Returns linked Google and Apple OAuth identities for the authenticated user.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/auth/oauth/providers`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/auth/oauth/providers`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/auth/oauth/providers`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/auth/oauth/providers`\n- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |"
           },
           "response": []
         },

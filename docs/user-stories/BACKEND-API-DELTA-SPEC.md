@@ -1,6 +1,6 @@
 # CuraFit API v1 — Production Backend Implementation & Contract Specification
 
-> **Purpose:** Complete engineering bridge between **CuraFit API v1** (`contracts/openapi.yaml` — **85 OpenAPI paths**, **47 `POST /v1/commands` actions**; `docs/API_REFERENCE.md` & `postman/CuraFit_API.postman_collection.json` — **16 Postman groups / 138 endpoints**; `contracts/error-codes.json` — **290 error codes**; `contracts/coaching-codes.json` — **88 coaching codes**) and the **Production Mobile User Stories** (`EPIC-01` .. `EPIC-10`).
+> **Purpose:** Complete engineering bridge between **CuraFit API v1** (`contracts/openapi.yaml` — **82 OpenAPI paths**, **47 `POST /v1/commands` actions**; `docs/API_REFERENCE.md` & `postman/CuraFit_API.postman_collection.json` — **16 Postman groups / 135 endpoints**; `contracts/error-codes.json` — **290 error codes**; `contracts/coaching-codes.json` — **88 coaching codes**) and the **Production Mobile User Stories** (`EPIC-01` .. `EPIC-10`).
 > **Audience:** Cloudflare Workers / D1 Backend Team, KMM Mobile Team (`shared` networking & SQLDelight), QA Automation.
 > **Contract Rules:**
 > 1. All endpoints preserve uniform `{ ok: true, data, meta }` and `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta }` envelopes.
@@ -10,89 +10,86 @@
 
 ---
 
-## 1. Master Coverage Matrix — Core API Operations (16 Postman Groups / 138 Endpoints, 85 OpenAPI Paths, 47 Command Actions)
+## 1. Master Coverage Matrix — Core API Operations (16 Postman Groups / 135 Endpoints, 82 OpenAPI Paths, 47 Command Actions)
 
 | # | Group | Operation / Command Action | Method & Path | Mobile User Stories | Status |
 | :-: | :--- | :--- | :--- | :--- | :--- |
 | 1 | 01. System | Health Check | `GET /v1/health` | `US-MOB-01`, `US-PRF-07` | `Implemented` |
 | 2 | 01. System | Capabilities Manifest | `GET /v1/capabilities` | `US-MOB-01`, `US-AUTH-04`, `US-PRF-07` | `Implemented` (feature flags, `deferredFeatures`, `minSupportedVersion`, `maintenanceMode`) |
-| 3 | 02. Auth | Register User (Email/Password) | `POST /v1/auth/register` | *Omitted on mobile (Google & Apple OAuth Only)* | `QA / Legacy Only` |
-| 4 | 02. Auth | Login User (Email/Password) | `POST /v1/auth/login` | *Omitted on mobile (Google & Apple OAuth Only)* | `QA / Legacy Only` |
-| 5 | 02. Auth | Refresh Access Token (Rotating `cfrt_...`) | `POST /v1/auth/refresh` | `US-AUTH-03` | `Implemented` |
-| 6 | 02. Auth | Inspect Current Session | `GET /v1/auth/session` | `US-AUTH-03` | `Implemented` |
-| 7 | 02. Auth | Change Password | `POST /v1/auth/change-password` | *Omitted on mobile (Google & Apple OAuth Only)* | `QA / Legacy Only` |
-| 8 | 02. Auth | Claim Anonymous Web Session | `POST /v1/auth/claim-anonymous` | `US-AUTH-02` *(Legacy / Web-migration only)* | `Legacy / Web-Migration Only` |
-| 9 | 02. Auth | Revoke Session (Current or All Devices) | `POST /v1/auth/revoke` | `US-PRF-06` | `Implemented` (clears push tokens on `allDevices: true`) |
-| 10 | 02. Auth | Logout | `POST /v1/auth/logout` | `US-PRF-06` | `Implemented` (clears push tokens automatically) |
-| 11 | 03. Onboarding | Pre-Screening Eligibility Check | `POST /v1/eligibility` | `US-MOB-03`..`09`, `US-PRF-02`..`04` | `Implemented` |
-| 12 | 03. Onboarding | Generate Initial / Updated Plan (`generate`) | `POST /v1/commands?view=full` | `US-MOB-09`, `US-AUTH-02`, `US-PRF-02`..`04` | `Implemented` (requires `health_data_processing` consent) |
-| 13 | 03. Onboarding | Confirm Health (`confirm_health`) | `POST /v1/commands?view=receipt` | `US-WRK-01` | `Implemented` |
-| 14 | 03. Onboarding | Confirm Schedule (`confirm_schedule`) | `POST /v1/commands?view=receipt` | `US-WRK-01` | `Implemented` |
-| 15 | 03. Onboarding | Renew Weekly Nutrition Plan (`renew_plan`) | `POST /v1/commands?view=receipt` | `US-NUT-01`, `US-CCH-06` | `Implemented` (free renewal quota + `402 PRO_ENTITLEMENT_REQUIRED` + `403 HEALTH_CONSENT_REQUIRED`) |
-| 16 | 04. State | Get Bootstrap (`If-None-Match`) | `GET /v1/bootstrap` | `US-MOB-01`, `US-AUTH-02`, `US-AUTH-04`, `US-HOME-01`, `US-WRK-02`, `US-CCH-06`, `US-PRG-04` | `Implemented` |
-| 17 | 04. State | Get Full Account State | `GET /v1/state` | `US-AUTH-04` (resync fallback) | `Implemented` |
-| 18 | 04. State | Get 14-Day Progress Summary | `GET /v1/progress/summary` | `US-NUT-11`, `US-PRG-01` | `Implemented` |
-| 19 | 05. Nutrition | Get Food Diary for Date | `GET /v1/food-diary?date=` | `US-HOME-02`, `US-NUT-01`, `US-NUT-02` | `Implemented` |
-| 20 | 05. Nutrition | Log Planned Meal (`food_entry` planned) | `POST /v1/commands?view=receipt` | `US-HOME-03`, `US-NUT-02` | `Implemented` (`displaySlot` metadata) |
-| 21 | 05. Nutrition | Log Reference Ingredient (`food_entry` ingredient) | `POST /v1/commands?view=receipt` | `US-NUT-04`, `US-NUT-05`, `US-NUT-06` | `Implemented` (`displaySlot` metadata + `unit: "reference"`) |
-| 22 | 05. Nutrition | Log Manual Food Entry (`food_entry` manual) | `POST /v1/commands?view=receipt` | `US-NUT-04`, `US-NUT-05`, `US-NUT-06`, `US-NUT-07` | `Implemented` (`displaySlot` metadata) |
-| 23 | 05. Nutrition | Update Food Entry (`food_entry_update`) | `POST /v1/commands?view=receipt` | `US-NUT-02` | `Implemented` |
-| 24 | 05. Nutrition | Confirm Food Day Complete (`food_complete`) | `POST /v1/commands?view=receipt` | `US-HOME-02`, `US-NUT-11` | `Implemented` |
-| 25 | 05. Nutrition | Delete Food Entry (`food_delete`) | `POST /v1/commands?view=receipt` | `US-NUT-02` | `Implemented` |
-| 26 | 05. Nutrition | Log Legacy Daily Total (`food`) | `POST /v1/commands?view=receipt` | `US-NUT-11` (Legacy fallback) | `Implemented` |
-| 27 | 05. Nutrition | Switch Legacy Day (`food_switch_to_entries`) | `POST /v1/commands?view=receipt` | `US-NUT-11` | `Implemented` |
-| 28 | 05. Nutrition | Get Meal Alternatives | `GET /v1/meal-alternatives?mealId=` | `US-HOME-03`, `US-NUT-03` | `Implemented` |
-| 29 | 05. Nutrition | Replace Planned Meal (`replace_meal`) | `POST /v1/commands?view=receipt` | `US-NUT-03`, `US-NUT-08` | `Implemented` (free swap quota via `coaching_usage_quotas`) |
-| 30 | 06. Biometrics | Log Water — Set/Increment Cups (`water`) | `POST /v1/commands?view=receipt` | `US-HOME-04`, `US-PRG-05` | `Implemented` |
-| 31 | 06. Biometrics | List Water Logs | `GET /v1/water-logs` | `US-HOME-04`, `US-PRG-01` | `Implemented` |
-| 32 | 06. Biometrics | Log Body Weight (`weight`) | `POST /v1/commands?view=receipt` | `US-HOME-04`, `US-CCH-06` | `Implemented` |
-| 33 | 06. Biometrics | List Weight Logs | `GET /v1/weight-logs` | `US-HOME-04`, `US-PRG-01`, `US-INT-01` | `Implemented` |
-| 34 | 06. Biometrics | Log Daily Steps (`steps`) | `POST /v1/commands?view=receipt` | `US-HOME-06` | `Implemented` |
-| 35 | 06. Biometrics | Log Activity & Active Energy (`activity`) | `POST /v1/commands?view=receipt` | `US-HOME-06` | `Implemented` |
-| 36 | 06. Biometrics | List Activity Logs | `GET /v1/activity-logs` | `US-HOME-06`, `US-INT-01` | `Implemented` |
-| 37 | 06. Biometrics | Ingest Wearables Batch | `POST /v1/wearables/ingest` | `US-HOME-06`, `US-INT-01` | `Implemented` |
-| 38 | 07. Workouts | List Workout Plans | `GET /v1/workout-plans` | `US-WRK-01` | `Implemented` |
-| 39 | 07. Workouts | Get Workout Plan by ID | `GET /v1/workout-plans/{id}` | `US-AUTH-02`, `US-HOME-03`, `US-WRK-01` | `Implemented` |
-| 40 | 07. Workouts | Log Exercise Sets (`workout`) | `POST /v1/commands?view=receipt` | `US-WRK-03`, `US-WRK-04`, `US-WRK-05` | `Implemented` (`entryMode`, `setType`, `supersetGroupId`, max `15` sets) |
-| 41 | 07. Workouts | Delete Workout Log (`workout_delete`) | `POST /v1/commands?view=receipt` | `US-WRK-04` | `Implemented` |
-| 42 | 07. Workouts | List Workout Logs | `GET /v1/workout-logs` | `US-WRK-04`, `US-PRG-01` | `Implemented` |
-| 43 | 07. Workouts | Complete/Update Session (`session`) | `POST /v1/commands?view=receipt` | `US-WRK-09`, `US-WRK-10` | `Implemented` |
-| 44 | 07. Workouts | Delete Session (`session_delete`) | `POST /v1/commands?view=receipt` | `US-WRK-10` | `Implemented` |
-| 45 | 07. Workouts | List Workout Sessions | `GET /v1/sessions` | `US-WRK-01`, `US-WRK-10` | `Implemented` |
-| 46 | 07. Workouts | Get Exercise Alternatives | `GET /v1/exercise-alternatives` | `US-WRK-08` | `Implemented` |
-| 47 | 07. Workouts | Replace Exercise (`replace_exercise`) | `POST /v1/commands?view=receipt` | `US-WRK-08` | `Implemented` (free weekly quota `2/wk`, safety swaps always Free) |
-| 48 | 07. Workouts | Propose Reschedule (`reschedule`) | `POST /v1/commands?view=receipt` | `US-WRK-09` | `Implemented` |
-| 49 | 08. Coaching | Submit Recovery Check-In (`recovery`) | `POST /v1/commands?view=full` | `US-CCH-02`, `US-CCH-06` | `Implemented` |
-| 50 | 08. Coaching | List Recovery Check-Ins | `GET /v1/checkins` | `US-CCH-02`, `US-PRG-01` | `Implemented` |
-| 51 | 08. Coaching | Trigger Adaptive Review (`review`) | `POST /v1/commands?view=full` | `US-CCH-01`, `US-CCH-03`, `US-CCH-06` | `Implemented` (floors/ceiling, maternal/senior caps, 83 coaching codes, `403 HEALTH_CONSENT_REQUIRED`) |
-| 52 | 08. Coaching | Accept/Reject Proposal (`adaptation`) | `POST /v1/commands?view=receipt` | `US-WRK-09`, `US-CCH-03` | `Implemented` (Free for `recovery`/`schedule`; Pro for `calories`/`weekly_volume`/`maintenance`; 7-day maintenance plan) |
-| 53 | 08. Coaching | Get On-Demand Coaching Brief | `GET /v1/coaching/brief` | `US-HOME-01`, `US-HOME-03`, `US-CCH-01` | `Implemented` (`code`/`params` + `actionTarget` enum) |
-| 54 | 08. Coaching | Get Coaching Inbox | `GET /v1/coaching/inbox` | `US-HOME-01`, `US-CCH-01`, `US-CCH-04` | `Implemented` (pure-English `code`/`params` + dynamic `pushConfigured`) |
-| 55 | 08. Coaching | Get Coaching History | `GET /v1/coaching/history` | `US-CCH-04` | `Implemented` |
-| 56 | 08. Coaching | Submit Coaching Feedback (`coaching_feedback`) | `POST /v1/commands?view=receipt` | `US-WRK-09`, `US-CCH-04`, `US-CCH-06` | `Implemented` |
-| 57 | 08. Coaching | Acknowledge Case (`coaching_ack`) | `POST /v1/commands?view=receipt` | `US-CCH-04` | `Implemented` |
-| 58 | 08. Coaching | Decide Coaching Case (`coaching_decision`) | `POST /v1/commands?view=receipt` | `US-CCH-04` | `Implemented` |
-| 59 | 08. Coaching | Report Outcome (`coaching_outcome`) | `POST /v1/commands?view=receipt` | `US-CCH-04` | `Implemented` |
-| 60 | 09. Plans | List Nutrition Plan Refs | `GET /v1/plans` | `US-NUT-01` | `Implemented` |
-| 61 | 09. Plans | Get Full Nutrition Plan | `GET /v1/plans/{planId}` | `US-AUTH-02`, `US-NUT-01` | `Implemented` |
-| 62 | 09. Plans | Lazy-Load Single Plan Day | `GET /v1/plans/{planId}/days/{date}` | `US-HOME-03`, `US-NUT-01` | `Implemented` |
-| 63 | 10. Catalogs | Get Catalog Provenance Manifest | `GET /v1/catalog/manifest` | `US-WRK-07`, `US-PRF-07` | `Implemented` |
-| 64 | 10. Catalogs | List Muscle Taxonomy & Labels | `GET /v1/catalog/muscles` | `US-WRK-07` | `Implemented` (enriched with Arabic translations via `data/exercises-i18n.json`) |
-| 65 | 10. Catalogs | Search Foods (AR/EN + Synonyms) | `GET /v1/foods` | `US-NUT-04` | `Implemented` |
-| 66 | 10. Catalogs | Get Food Item Detail | `GET /v1/foods/{id}` | `US-NUT-04` | `Implemented` |
-| 67 | 10. Catalogs | Search Egyptian & Ramadan Beverages | `GET /v1/beverages` | `US-NUT-04` | `Implemented` |
-| 68 | 10. Catalogs | Calculate Custom Recipe / Drink | `POST /v1/foods/calculate` | `US-NUT-04` | `Implemented` |
-| 69 | 10. Catalogs | Search Exercises Catalog (868 items) | `GET /v1/exercises` | `US-WRK-05`, `US-WRK-07` | `Implemented` (`nameAr`, nullable `mediaUrl`/`thumbnailUrl`) |
-| 70 | 10. Catalogs | Get Exercise Detail by ID | `GET /v1/exercises/{id}` | `US-WRK-07` | `Implemented` (`nameAr`, `instructionsAr`, `commonMistakes*`, nullable `mediaUrl`/`thumbnailUrl`) |
-| 71 | 11. Settings | Get Incremental Sync Changes & Deltas | `GET /v1/sync/changes` | `US-AUTH-04` | `Implemented` |
-| 72 | 11. Settings | Update Timezone & Locale (`timezone`) | `POST /v1/commands?view=receipt` | `US-MOB-02`, `US-HOME-01`, `US-PRF-05` | `Implemented` |
-| 73 | 11. Settings | Get Notification Preferences | `GET /v1/notifications/preferences` | `US-INT-02` | `Implemented` (includes `exemptSuhoorFromQuietHours` & lead time `15\|30\|60\|120`) |
-| 74 | 11. Settings | Update Notification Prefs (`notification_preferences`) | `POST /v1/commands?view=receipt` | `US-INT-02` | `Implemented` |
-| 75 | 11. Settings | Get Entitlements | `GET /v1/entitlements` | `US-NUT-03`, `US-WRK-08`, `US-MON-01`, `US-MON-04` | `Implemented` (`tier: "pro" \| "free"`, full billing state machine & quotas) |
-| 76 | 12. Privacy | Record Privacy / Health Consent | `POST /v1/account/consents` | `US-MOB-09`, `US-AUTH-02`, `US-PRF-06` | `Implemented` (persists `recordedAt`; withdrawing `health_data_processing` returns `403 HEALTH_CONSENT_REQUIRED`) |
-| 77 | 12. Privacy | Backfill Normalized Tables | `POST /v1/account/backfill` | *Internal/Server Migration Ops* | `Implemented` |
-| 78 | 12. Privacy | Export Full Account Data (GDPR) | `GET /v1/account/export` | `US-PRF-06` | `Implemented` (`oauthIdentities`, `registeredDevices`, `aiMessages`, live `entitlements`, signed media URLs) |
-| 79 | 12. Privacy | Delete Account Permanently (GDPR) | `DELETE` / `POST /v1/account/delete` | `US-PRF-06` | `Implemented` (two-phase: atomic D1 + `coaching_trial_tombstones` FIRST, then R2 purge + Apple revoke) |
+| 3 | 02. Auth | Refresh Access Token (Rotating `cfrt_...`) | `POST /v1/auth/refresh` | `US-AUTH-03` | `Implemented` |
+| 4 | 02. Auth | Inspect Current Session | `GET /v1/auth/session` | `US-AUTH-03` | `Implemented` |
+| 5 | 02. Auth | Claim Anonymous Web Session | `POST /v1/auth/claim-anonymous` | `US-AUTH-02` *(Legacy / Web-migration only)* | `Legacy / Web-Migration Only` |
+| 6 | 02. Auth | Revoke Session (Current or All Devices) | `POST /v1/auth/revoke` | `US-PRF-06` | `Implemented` (clears push tokens on `allDevices: true`) |
+| 7 | 02. Auth | Logout | `POST /v1/auth/logout` | `US-PRF-06` | `Implemented` (clears push tokens automatically) |
+| 8 | 03. Onboarding | Pre-Screening Eligibility Check | `POST /v1/eligibility` | `US-MOB-03`..`09`, `US-PRF-02`..`04` | `Implemented` |
+| 9 | 03. Onboarding | Generate Initial / Updated Plan (`generate`) | `POST /v1/commands?view=full` | `US-MOB-09`, `US-AUTH-02`, `US-PRF-02`..`04` | `Implemented` (requires `health_data_processing` consent) |
+| 10 | 03. Onboarding | Confirm Health (`confirm_health`) | `POST /v1/commands?view=receipt` | `US-WRK-01` | `Implemented` |
+| 11 | 03. Onboarding | Confirm Schedule (`confirm_schedule`) | `POST /v1/commands?view=receipt` | `US-WRK-01` | `Implemented` |
+| 12 | 03. Onboarding | Renew Weekly Nutrition Plan (`renew_plan`) | `POST /v1/commands?view=receipt` | `US-NUT-01`, `US-CCH-06` | `Implemented` (free renewal quota + `402 PRO_ENTITLEMENT_REQUIRED` + `403 HEALTH_CONSENT_REQUIRED`) |
+| 13 | 04. State | Get Bootstrap (`If-None-Match`) | `GET /v1/bootstrap` | `US-MOB-01`, `US-AUTH-02`, `US-AUTH-04`, `US-HOME-01`, `US-WRK-02`, `US-CCH-06`, `US-PRG-04` | `Implemented` |
+| 14 | 04. State | Get Full Account State | `GET /v1/state` | `US-AUTH-04` (resync fallback) | `Implemented` |
+| 15 | 04. State | Get 14-Day Progress Summary | `GET /v1/progress/summary` | `US-NUT-11`, `US-PRG-01` | `Implemented` |
+| 16 | 05. Nutrition | Get Food Diary for Date | `GET /v1/food-diary?date=` | `US-HOME-02`, `US-NUT-01`, `US-NUT-02` | `Implemented` |
+| 17 | 05. Nutrition | Log Planned Meal (`food_entry` planned) | `POST /v1/commands?view=receipt` | `US-HOME-03`, `US-NUT-02` | `Implemented` (`displaySlot` metadata) |
+| 18 | 05. Nutrition | Log Reference Ingredient (`food_entry` ingredient) | `POST /v1/commands?view=receipt` | `US-NUT-04`, `US-NUT-05`, `US-NUT-06` | `Implemented` (`displaySlot` metadata + `unit: "reference"`) |
+| 19 | 05. Nutrition | Log Manual Food Entry (`food_entry` manual) | `POST /v1/commands?view=receipt` | `US-NUT-04`, `US-NUT-05`, `US-NUT-06`, `US-NUT-07` | `Implemented` (`displaySlot` metadata) |
+| 20 | 05. Nutrition | Update Food Entry (`food_entry_update`) | `POST /v1/commands?view=receipt` | `US-NUT-02` | `Implemented` |
+| 21 | 05. Nutrition | Confirm Food Day Complete (`food_complete`) | `POST /v1/commands?view=receipt` | `US-HOME-02`, `US-NUT-11` | `Implemented` |
+| 22 | 05. Nutrition | Delete Food Entry (`food_delete`) | `POST /v1/commands?view=receipt` | `US-NUT-02` | `Implemented` |
+| 23 | 05. Nutrition | Log Legacy Daily Total (`food`) | `POST /v1/commands?view=receipt` | `US-NUT-11` (Legacy fallback) | `Implemented` |
+| 24 | 05. Nutrition | Switch Legacy Day (`food_switch_to_entries`) | `POST /v1/commands?view=receipt` | `US-NUT-11` | `Implemented` |
+| 25 | 05. Nutrition | Get Meal Alternatives | `GET /v1/meal-alternatives?mealId=` | `US-HOME-03`, `US-NUT-03` | `Implemented` |
+| 26 | 05. Nutrition | Replace Planned Meal (`replace_meal`) | `POST /v1/commands?view=receipt` | `US-NUT-03`, `US-NUT-08` | `Implemented` (free swap quota via `coaching_usage_quotas`) |
+| 27 | 06. Biometrics | Log Water — Set/Increment Cups (`water`) | `POST /v1/commands?view=receipt` | `US-HOME-04`, `US-PRG-05` | `Implemented` |
+| 28 | 06. Biometrics | List Water Logs | `GET /v1/water-logs` | `US-HOME-04`, `US-PRG-01` | `Implemented` |
+| 29 | 06. Biometrics | Log Body Weight (`weight`) | `POST /v1/commands?view=receipt` | `US-HOME-04`, `US-CCH-06` | `Implemented` |
+| 30 | 06. Biometrics | List Weight Logs | `GET /v1/weight-logs` | `US-HOME-04`, `US-PRG-01`, `US-INT-01` | `Implemented` |
+| 31 | 06. Biometrics | Log Daily Steps (`steps`) | `POST /v1/commands?view=receipt` | `US-HOME-06` | `Implemented` |
+| 32 | 06. Biometrics | Log Activity & Active Energy (`activity`) | `POST /v1/commands?view=receipt` | `US-HOME-06` | `Implemented` |
+| 33 | 06. Biometrics | List Activity Logs | `GET /v1/activity-logs` | `US-HOME-06`, `US-INT-01` | `Implemented` |
+| 34 | 06. Biometrics | Ingest Wearables Batch | `POST /v1/wearables/ingest` | `US-HOME-06`, `US-INT-01` | `Implemented` |
+| 35 | 07. Workouts | List Workout Plans | `GET /v1/workout-plans` | `US-WRK-01` | `Implemented` |
+| 36 | 07. Workouts | Get Workout Plan by ID | `GET /v1/workout-plans/{id}` | `US-AUTH-02`, `US-HOME-03`, `US-WRK-01` | `Implemented` |
+| 37 | 07. Workouts | Log Exercise Sets (`workout`) | `POST /v1/commands?view=receipt` | `US-WRK-03`, `US-WRK-04`, `US-WRK-05` | `Implemented` (`entryMode`, `setType`, `supersetGroupId`, max `15` sets) |
+| 38 | 07. Workouts | Delete Workout Log (`workout_delete`) | `POST /v1/commands?view=receipt` | `US-WRK-04` | `Implemented` |
+| 39 | 07. Workouts | List Workout Logs | `GET /v1/workout-logs` | `US-WRK-04`, `US-PRG-01` | `Implemented` |
+| 40 | 07. Workouts | Complete/Update Session (`session`) | `POST /v1/commands?view=receipt` | `US-WRK-09`, `US-WRK-10` | `Implemented` |
+| 41 | 07. Workouts | Delete Session (`session_delete`) | `POST /v1/commands?view=receipt` | `US-WRK-10` | `Implemented` |
+| 42 | 07. Workouts | List Workout Sessions | `GET /v1/sessions` | `US-WRK-01`, `US-WRK-10` | `Implemented` |
+| 43 | 07. Workouts | Get Exercise Alternatives | `GET /v1/exercise-alternatives` | `US-WRK-08` | `Implemented` |
+| 44 | 07. Workouts | Replace Exercise (`replace_exercise`) | `POST /v1/commands?view=receipt` | `US-WRK-08` | `Implemented` (free weekly quota `2/wk`, safety swaps always Free) |
+| 45 | 07. Workouts | Propose Reschedule (`reschedule`) | `POST /v1/commands?view=receipt` | `US-WRK-09` | `Implemented` |
+| 46 | 08. Coaching | Submit Recovery Check-In (`recovery`) | `POST /v1/commands?view=full` | `US-CCH-02`, `US-CCH-06` | `Implemented` |
+| 47 | 08. Coaching | List Recovery Check-Ins | `GET /v1/checkins` | `US-CCH-02`, `US-PRG-01` | `Implemented` |
+| 48 | 08. Coaching | Trigger Adaptive Review (`review`) | `POST /v1/commands?view=full` | `US-CCH-01`, `US-CCH-03`, `US-CCH-06` | `Implemented` (floors/ceiling, maternal/senior caps, 83 coaching codes, `403 HEALTH_CONSENT_REQUIRED`) |
+| 49 | 08. Coaching | Accept/Reject Proposal (`adaptation`) | `POST /v1/commands?view=receipt` | `US-WRK-09`, `US-CCH-03` | `Implemented` (Free for `recovery`/`schedule`; Pro for `calories`/`weekly_volume`/`maintenance`; 7-day maintenance plan) |
+| 50 | 08. Coaching | Get On-Demand Coaching Brief | `GET /v1/coaching/brief` | `US-HOME-01`, `US-HOME-03`, `US-CCH-01` | `Implemented` (`code`/`params` + `actionTarget` enum) |
+| 51 | 08. Coaching | Get Coaching Inbox | `GET /v1/coaching/inbox` | `US-HOME-01`, `US-CCH-01`, `US-CCH-04` | `Implemented` (pure-English `code`/`params` + dynamic `pushConfigured`) |
+| 52 | 08. Coaching | Get Coaching History | `GET /v1/coaching/history` | `US-CCH-04` | `Implemented` |
+| 53 | 08. Coaching | Submit Coaching Feedback (`coaching_feedback`) | `POST /v1/commands?view=receipt` | `US-WRK-09`, `US-CCH-04`, `US-CCH-06` | `Implemented` |
+| 54 | 08. Coaching | Acknowledge Case (`coaching_ack`) | `POST /v1/commands?view=receipt` | `US-CCH-04` | `Implemented` |
+| 55 | 08. Coaching | Decide Coaching Case (`coaching_decision`) | `POST /v1/commands?view=receipt` | `US-CCH-04` | `Implemented` |
+| 56 | 08. Coaching | Report Outcome (`coaching_outcome`) | `POST /v1/commands?view=receipt` | `US-CCH-04` | `Implemented` |
+| 57 | 09. Plans | List Nutrition Plan Refs | `GET /v1/plans` | `US-NUT-01` | `Implemented` |
+| 58 | 09. Plans | Get Full Nutrition Plan | `GET /v1/plans/{planId}` | `US-AUTH-02`, `US-NUT-01` | `Implemented` |
+| 59 | 09. Plans | Lazy-Load Single Plan Day | `GET /v1/plans/{planId}/days/{date}` | `US-HOME-03`, `US-NUT-01` | `Implemented` |
+| 60 | 10. Catalogs | Get Catalog Provenance Manifest | `GET /v1/catalog/manifest` | `US-WRK-07`, `US-PRF-07` | `Implemented` |
+| 61 | 10. Catalogs | List Muscle Taxonomy & Labels | `GET /v1/catalog/muscles` | `US-WRK-07` | `Implemented` (enriched with Arabic translations via `data/exercises-i18n.json`) |
+| 62 | 10. Catalogs | Search Foods (AR/EN + Synonyms) | `GET /v1/foods` | `US-NUT-04` | `Implemented` |
+| 63 | 10. Catalogs | Get Food Item Detail | `GET /v1/foods/{id}` | `US-NUT-04` | `Implemented` |
+| 64 | 10. Catalogs | Search Egyptian & Ramadan Beverages | `GET /v1/beverages` | `US-NUT-04` | `Implemented` |
+| 65 | 10. Catalogs | Calculate Custom Recipe / Drink | `POST /v1/foods/calculate` | `US-NUT-04` | `Implemented` |
+| 66 | 10. Catalogs | Search Exercises Catalog (868 items) | `GET /v1/exercises` | `US-WRK-05`, `US-WRK-07` | `Implemented` (`nameAr`, nullable `mediaUrl`/`thumbnailUrl`) |
+| 67 | 10. Catalogs | Get Exercise Detail by ID | `GET /v1/exercises/{id}` | `US-WRK-07` | `Implemented` (`nameAr`, `instructionsAr`, `commonMistakes*`, nullable `mediaUrl`/`thumbnailUrl`) |
+| 68 | 11. Settings | Get Incremental Sync Changes & Deltas | `GET /v1/sync/changes` | `US-AUTH-04` | `Implemented` |
+| 69 | 11. Settings | Update Timezone & Locale (`timezone`) | `POST /v1/commands?view=receipt` | `US-MOB-02`, `US-HOME-01`, `US-PRF-05` | `Implemented` |
+| 70 | 11. Settings | Get Notification Preferences | `GET /v1/notifications/preferences` | `US-INT-02` | `Implemented` (includes `exemptSuhoorFromQuietHours` & lead time `15\|30\|60\|120`) |
+| 71 | 11. Settings | Update Notification Prefs (`notification_preferences`) | `POST /v1/commands?view=receipt` | `US-INT-02` | `Implemented` |
+| 72 | 11. Settings | Get Entitlements | `GET /v1/entitlements` | `US-NUT-03`, `US-WRK-08`, `US-MON-01`, `US-MON-04` | `Implemented` (`tier: "pro" \| "free"`, full billing state machine & quotas) |
+| 73 | 12. Privacy | Record Privacy / Health Consent | `POST /v1/account/consents` | `US-MOB-09`, `US-AUTH-02`, `US-PRF-06` | `Implemented` (persists `recordedAt`; withdrawing `health_data_processing` returns `403 HEALTH_CONSENT_REQUIRED`) |
+| 74 | 12. Privacy | Backfill Normalized Tables | `POST /v1/account/backfill` | *Internal/Server Migration Ops* | `Implemented` |
+| 75 | 12. Privacy | Export Full Account Data (GDPR) | `GET /v1/account/export` | `US-PRF-06` | `Implemented` (`oauthIdentities`, `registeredDevices`, `aiMessages`, live `entitlements`, signed media URLs) |
+| 76 | 12. Privacy | Delete Account Permanently (GDPR) | `DELETE` / `POST /v1/account/delete` | `US-PRF-06` | `Implemented` (two-phase: atomic D1 + `coaching_trial_tombstones` FIRST, then R2 purge + Apple revoke) |
 
 *(Groups 13–16 endpoints and the complete list of all 41 command actions are detailed in Section 3 below.)*
 
@@ -181,7 +178,7 @@
 | `POST /v1/plans/preview` | `US-MOB-05`..`09`, `US-PRF-02` | Public (IP rate-limited): draft biometrics, `maternalStatus`, `goal`, `targetWeight`, `goalPace`, `serviceTrack`, `activity`, `diseases`, `dietType`, `region`, workout setup | `{ calories, macros: { protein, carbs, fat }, waterTargetLiters, estimatedWeeksMin, estimatedWeeksMax, recommendedSplit, seniorMode, warnings[], clinicalBlocks[] }` |
 | `POST /v1/auth/oauth/google` | `US-AUTH-01` | Public (`30 req/min/IP`): `{ idToken, deviceId, platform, locale, timezone }` | `{ tokenType, accessToken, expiresIn: 900, expiresAt, refreshToken, refreshExpiresIn, refreshExpiresAt, sessionId, isNewUser, provider: "google", user: { userId, email, name, avatarUrl, entitlement, createdAt } }` |
 | `POST /v1/auth/oauth/apple` | `US-AUTH-01` | Public (`30 req/min/IP`): `{ identityToken, authorizationCode, fullName?, deviceId, platform, locale, timezone }` | Same auth envelope (`provider: "apple"`), hydrates signed `avatarUrl` (900s TTL) |
-| `GET /v1/auth/oauth/providers` | `US-PRF-01`, `US-PRF-06` | Bearer Auth: lists linked Google/Apple OAuth identities & password fallback status | `{ providers: [{ provider, email, linkedAt }], hasPassword }` |
+| `GET /v1/auth/oauth/providers` | `US-PRF-01`, `US-PRF-06` | Bearer Auth: lists linked Google/Apple OAuth identities | `{ items: [{ provider, email, linkedAt }] }` |
 | `POST /v1/auth/oauth/link` | `US-PRF-01`, `US-PRF-06` | Bearer Auth: `{ provider: "google" \| "apple", idToken?, identityToken?, authorizationCode? }` | `{ linked: true, provider, providers[] }` |
 | `DELETE /v1/auth/oauth/{provider}` | `US-PRF-01`, `US-PRF-06` | Bearer Auth: path `provider` (`google` \| `apple`) | `{ unlinked: true, provider }` (`409 CANNOT_UNLINK_LAST_AUTH_METHOD` if last sign-in method) |
 
