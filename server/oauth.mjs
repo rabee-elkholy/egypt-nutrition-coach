@@ -299,9 +299,18 @@ export async function authenticateSocialOAuth(db, env, provider, body, request) 
         'INSERT INTO coaching_users(user_id,email,password_hash,display_name,avatar_url,entitlement,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)'
       ).bind(userId, syntheticEmail, 'oauth_only', userRow.display_name, userRow.avatar_url, 'free', nowIso, nowIso)
     );
-  } else if (fullName && !userRow.display_name) {
-    userRow.display_name = fullName;
-    stmts.push(db.prepare('UPDATE coaching_users SET display_name=?, updated_at=? WHERE user_id=?').bind(fullName, nowIso, userRow.user_id));
+  } else {
+    const nextName = fullName && !userRow.display_name ? fullName : null;
+    const nextAvatar = claims.picture && !userRow.avatar_url ? claims.picture : null;
+    if (nextName || nextAvatar) {
+      if (nextName) userRow.display_name = nextName;
+      if (nextAvatar) userRow.avatar_url = nextAvatar;
+      stmts.push(
+        db.prepare(
+          "UPDATE coaching_users SET display_name=COALESCE(NULLIF(display_name,''),?), avatar_url=COALESCE(NULLIF(avatar_url,''),?), updated_at=? WHERE user_id=?"
+        ).bind(nextName, nextAvatar, nowIso, userRow.user_id)
+      );
+    }
   }
 
   stmts.push(
@@ -360,6 +369,11 @@ export async function linkOAuthProvider(db, env, userId, provider, body = {}) {
   await db.prepare(
     'INSERT OR REPLACE INTO coaching_oauth_identities(provider,subject,user_id,email,apple_refresh_token_enc,created_at) VALUES(?,?,?,?,?,?)'
   ).bind(provider, claims.subject, userId, claims.email || null, appleTokenEnc, nowIso).run();
+  if (claims.picture) {
+    await db.prepare(
+      "UPDATE coaching_users SET avatar_url=?, updated_at=? WHERE user_id=? AND (avatar_url IS NULL OR avatar_url='')"
+    ).bind(claims.picture, nowIso, userId).run();
+  }
   const providers = await listLinkedProviders(db, userId);
   return { linked: true, provider, providers };
 }

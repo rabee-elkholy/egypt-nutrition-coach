@@ -59,10 +59,11 @@ As a new or returning mobile user launching the app, I want the app to automatic
   - Default fallback if outside these zones: `egypt` (`Egypt`).
 - Display a compact region badge in the top header allowing the user to manually switch regions at any time via a bottom sheet.
 
-**2. First Chat Question (**`account_check`)
+**2. First Chat Question (`account_check`)**
 
 - **Coach Greeting Bubble:**
-  - *"Welcome to your Smart Nutrition & Workout Coach! Before we start building your personalized plan, do you already have an account with us?"*
+  - *"Welcome to CuraFit! Give me 2 quick minutes to learn about your body and routine so I can craft a pro-grade nutrition & workout blueprint tailored 100% to you. First, do you already have an account with us?"*
+  - **Micro-Why Caption:** *"Your answers let us calculate clinical-grade calories, safe workouts, and local meals for your exact goal."*
 - **Sticky Bottom Input Area (2 Action Cards):**
   - Option 1: `[No, I'm a new user — Let's start]` (`account_check = "no"`)
   - Option 2: `[Yes, I already have an account — Sign In]` (`account_check = "yes"`)
@@ -214,11 +215,18 @@ As a user going through the conversational onboarding, I want a fast, natural ch
 
 - When the user taps any previous User Answer Bubble (`stepId`):
   - Open an **Edit Answer Bottom Sheet** (or inline active input dock focused on that question) displaying the question prompt and the user's current selection pre-highlighted, plus a `[Cancel]` button.
-  - When the user confirms the new value:
+- When the user confirms the new value:
     - Update the answer bubble text in-place with an `"Edited ✓"` indicator.
     - Run the **Dependency Invalidation Matrix** (see below).
     - If any downstream answers were invalidated, show a brief coach notification bubble (*"Since you updated [Question Name], let's quickly confirm this step as well:"*) and focus the first invalidated step.
     - If no downstream answers were invalidated, return the user directly to the step they were on before editing (including returning directly to the `summary` screen with recalculated numbers if they edited from `summary`).
+
+**5. Conversational Energy & Micro-Value Copy Standards (Compact UI Rule)**
+
+To make onboarding feel engaging and scientifically valuable without adding screen clutter or long paragraphs:
+- **1-Line Micro-Why Caption (`12sp`, muted text):** Directly under each question bubble, include at most 1 concise line (<= 12 words) explaining *why* that input personalizes their plan.
+- **Instant 1-Line Coach Micro-Reactions:** Immediately after key milestone answers (`name`, `current_weight`, `goal_pace`, `workout_days`, `conditions`), emit a crisp 1-line dynamic insight showing the plan taking shape live (e.g., healthy weight range preview, timeline confidence, or weekly split tip).
+- **Crisp 1-Line Card Subtitles (`5–8 words`):** Every `single-select` card displays a brief, scannable subtitle clarifying how options differ without expanding card height excessively.
 
 ---
 
@@ -271,7 +279,7 @@ Never wipe all downstream answers blindly. Apply these exact rules:
 | `target_weight` | Keep `goal_pace` selection if already chosen (`slow`/`moderate`/`fast`), and automatically recalculate `estimated_weeks_min..max` for the new weight difference. If `abs(current_weight - newTargetWeight) < 0.5`, skip `goal_pace`. |
 | `service_track` | **If switched to **`'nutrition_only'`: Bypass Workout Block steps (keep any previously entered workout answers cached in draft in case user switches back, or exclude from active payload; when `goal == 'muscle_gain'`, support optional `externalTrainingDays` or default cleanly with an informational coaching note). Prompt any unanswered Nutrition Block steps.<br>**If switched to **`'workouts_only'`: Bypass Nutrition Block steps and prompt any unanswered Workout Block steps.<br>**If switched to **`'nutrition_and_workouts'`: Prompt any unanswered steps in either Workout or Nutrition blocks in sequence. |
 | `workout_location` | **If changed to **`'home_only'`: Clear `workout_day_split` and `workout_split` (auto-handled for home). Prompt `home_equipment` if unanswered.<br>**If changed to **`'gym_only'`: Clear `workout_day_split` and `home_equipment`. Prompt `workout_split` if `workout_days.length >= 3` and unanswered.<br>**If changed to **`'home_and_gym'`: Prompt `workout_day_split` (mapped to `workout_days`), `home_equipment`, and `workout_split` (if `workout_days.length >= 3`). |
-| `workout_days` | **If **`workout_location == 'home_and_gym'`: Preserve day-location assignments for days that remain selected; require assignment for newly added days in `workout_day_split`.<br>**If **`workout_split` was already selected: Check if the selected `workout_split` is still valid for the new `workout_days.length` (`full_body`: 1–4d, `upper_lower`: 2–6d, `ppl`: 3–7d, `bro_split`: 3–6d). If `workout_days.length < 3`, clear `workout_split`. If invalid for the new count, clear `workout_split` and re-prompt. |
+| `workout_days` | **If **`workout_location == 'home_and_gym'`: Preserve day-location assignments for days that remain selected; require assignment for newly added days in `workout_day_split`.<br>**If **`workout_split` was already selected: Check if the selected `workout_split` is still valid for the new `workout_days.length` (`full_body`: 1–4d, `upper_lower`: 2–6d, `ppl`: 3–7d, `bro_split`: 4–6d). If `workout_days.length < 3`, clear `workout_split`. If invalid for the new count, clear `workout_split` and re-prompt. |
 | `conditions` | Check if current `diet_type` is medically blocked by the newly added condition(s) (e.g., `'diabetes_t1'`, `'diabetes_t2'`, `'gout'`, `'kidney'`, or `'cholesterol'` blocking `'keto'`; `'diabetes_t1'` or `'diabetes_t2'` blocking `'intermittent_fasting'`; `'kidney'` blocking `'high_protein'`). If blocked, clear `diet_type` (and `if_start_hour` / `meals_count`) and re-prompt `diet_type`. |
 | `diet_type` | **If changed to **`'intermittent_fasting'`: Clear `meals_count` and prompt `if_start_hour`.<br>**If changed to **`'balanced'`: Clear `if_start_hour` and prompt `meals_count`.<br>**If changed to any other diet:** Clear both `if_start_hour` and `meals_count`. |
 
@@ -357,7 +365,8 @@ As a user starting the onboarding questions, I want to enter my name and age qui
 **1. Step: **`name` (User's Preferred Name)
 
 - **Coach Bubble:**
-  - *"Welcome aboard! What name would you like me to call you?"*
+  - *"Welcome aboard! What name should I put on your personal coaching plan?"*
+  - **Micro-Why Caption:** *"Personalizes your daily coach brief, check-ins, and weekly recaps."*
 - **Input Control (**`text`):
   - Text field placeholder: `"Type your name here..."`
   - Primary button: `[Confirm]`
@@ -366,7 +375,9 @@ As a user starting the onboarding questions, I want to enter my name and age qui
 **2. Step: **`age` (User's Age in Years)
 
 - **Coach Bubble:**
-  - *"Nice to meet you, {name}! How old are you?"*
+  - *"Great to meet you, {name}! How old are you?"*
+  - **Micro-Why Caption:** *"Age fine-tunes your resting metabolic rate (BMR) and safe training intensity."*
+  - *(After valid adult input, optional 1-line transition before `gender`: *"Metabolic baseline ready — let's dial in your body profile."*) *
 - **Input Control (**`number-with-chips`):
   - Quick-select chips: `[18]`, `[22]`, `[25]`, `[30]`, `[35]`, `[40]`, `[50]`.
   - Numeric input field (Compose `KeyboardType.Number` / SwiftUI `.numberPad`, placeholder `"e.g. 28"`) + `[Confirm]` button.
@@ -474,24 +485,27 @@ As a user completing my physical profile, I want to specify my biological sex, m
 
 **1. Step: **`gender` (Biological Sex)
 
-- **Coach Bubble:** *"Got it, {name}! What is your biological sex? (Required for accurate metabolic rate and daily nutrient equations)"*
+- **Coach Bubble:** *"What is your biological sex?"*
+  - **Micro-Why Caption:** *"Used strictly for accurate metabolic rate (Mifflin-St Jeor) and nutrient baselines."*
 - **Input Control (**`single-select` — 2 Cards):
-  - `male`: `Male`
-  - `female`: `Female`
+  - `male`: `Male` — Subtitle: `"Standard male BMR equation & calorie floor (1,500 kcal)"`
+  - `female`: `Female` — Subtitle: `"Female BMR equation, calorie floor & maternal/cycle options"`
 
 **2. Conditional Step: **`maternal_status` (Shown ONLY if `gender == 'female'` AND `18 <= age <= 50`)
 
-- **Coach Bubble:** *"Are you currently pregnant or breastfeeding? (So we can adjust your daily calories, protein, and hydration, and filter out unsafe diets or exercises)"*
+- **Coach Bubble:** *"Are you currently pregnant or breastfeeding?"*
+  - **Micro-Why Caption:** *"Safely calibrates pregnancy/lactation calories, protein, hydration & exercise filters."*
 - **Input Control (**`single-select` — 5 Cards):
-  - `none`: `None`
-  - `pregnant_t1`: `Pregnant — 1st Trimester (Months 1–3)` — Subtitle: `"Focuses on weight maintenance and blocks calorie deficits"`
-  - `pregnant_t2`: `Pregnant — 2nd Trimester (Months 4–6)` — Subtitle: `"Adds +340 kcal/day and +15g protein/day"`
-  - `pregnant_t3`: `Pregnant — 3rd Trimester (Months 7–9)` — Subtitle: `"Adds +450 kcal/day and +25g protein/day"`
-  - `breastfeeding`: `Breastfeeding` — Subtitle: `"Adds +400 kcal/day, +20g protein/day, and +600 ml water/day"`
+  - `none`: `None` — Subtitle: `"Standard adult nutrition and training targets"`
+  - `pregnant_t1`: `Pregnant — 1st Trimester (Months 1–3)` — Subtitle: `"Maintenance focus; blocks calorie deficits"`
+  - `pregnant_t2`: `Pregnant — 2nd Trimester (Months 4–6)` — Subtitle: `"Adds +340 kcal/day & +15g protein"`
+  - `pregnant_t3`: `Pregnant — 3rd Trimester (Months 7–9)` — Subtitle: `"Adds +450 kcal/day & +25g protein"`
+  - `breastfeeding`: `Breastfeeding` — Subtitle: `"Adds +400 kcal, +20g protein & +600 ml water"`
 
 **3. Step: **`height` (Height in cm — or ft/in when `unitSystem == "imperial"`)
 
 - **Coach Bubble:** *"What is your height in centimeters (cm)?"* (includes a compact `[Metric (cm/kg) | Imperial (ft/lb)]` unit toggle persisting `unitSystem: "metric" | "imperial"`, converting imperial inputs deterministically to canonical metric `cm`/`kg` on wire!).
+  - **Micro-Why Caption:** *"Combines with weight to calculate your healthy BMI range and ideal weight window."*
 - **Input Control (**`number-with-chips`):
   - Quick-select chips: `[155]`, `[160]`, `[165]`, `[170]`, `[175]`, `[180]`, `[185]`.
   - Numeric input (`120` to `230` cm) + `[Confirm]`.
@@ -499,9 +513,12 @@ As a user completing my physical profile, I want to specify my biological sex, m
 **4. Step: **`current_weight` (Current Body Weight in kg — or lb when `unitSystem == "imperial"`)
 
 - **Coach Bubble:** *"And what is your current weight in kilograms (kg)?"*
+  - **Micro-Why Caption:** *"Sets exact protein targets, daily hydration liters, and starting energy."*
 - **Input Control (**`number-with-chips`):
   - Quick-select chips: `[55]`, `[65]`, `[75]`, `[85]`, `[95]`, `[105]`, `[120]`.
   - Numeric input (`35` to `250` kg, supports 1 decimal place e.g. `82.5`) + `[Confirm]`.
+- **Instant Coach Micro-Reaction (Rendered right after confirming weight):**
+  - *"Logged, {name}! At {height} cm, your healthy BMI weight zone is {minHealthyWeight}–{maxHealthyWeight} kg — let's pick your goal."*
 
 ---
 
@@ -607,17 +624,19 @@ As a user setting my body transformation goal, I want the coach to recommend the
 
 - **Coach Bubble:**
   - Displays personalized BMI insight + question:
-  - *"Your current BMI is ****{currentBmi}****, and the healthy weight range for your height ({height} cm) is between ****{minHealthyWeight} kg and {maxHealthyWeight} kg****. What is your primary goal right now?"*
-- **Input Control (**`single-select` — Dynamic Options with `Recommended` Badge):
-  - `lose`: `Lose Fat & Weight` *(Hidden/blocked if *`maternal_status` is `pregnant_t1`, `pregnant_t2`, or `pregnant_t3`, **OR if `currentBmi < 18.5`**; marked `⭐ Recommended` if `currentBmi >= 25`)
-  - `muscle_gain`: `Build Muscle & Tone` *(Marked *`⭐ Recommended` if `18.5 <= currentBmi < 25` and not pregnant)
-  - `gain`: `Gain Weight (Healthy Mass)` *(Marked *`⭐ Recommended` if `currentBmi < 18.5`)
-  - `maintain`: `Maintain Weight & General Health` *(Marked *`⭐ Recommended` if pregnant)
+  - *"Your current BMI is ****{currentBmi}**** (healthy zone for {height} cm: ****{minHealthyWeight}–{maxHealthyWeight} kg****). What is your primary goal right now?"*
+  - **Micro-Why Caption:** *"Sets your safe calorie direction and protein ratio without guesswork."*
+- **Input Control (**`single-select` — Dynamic Options with `Recommended` Badge & 1-Line Subtitles):
+  - `lose`: `Lose Fat & Weight` — Subtitle: `"Steady calorie deficit to drop fat while protecting lean muscle"` *(Hidden/blocked if *`maternal_status` is `pregnant_t1`, `pregnant_t2`, or `pregnant_t3`, **OR if `currentBmi < 18.5`**; marked `⭐ Recommended` if `currentBmi >= 25`)
+  - `muscle_gain`: `Build Muscle & Tone` — Subtitle: `"Lean surplus (or recomp at current weight) for strength & shape"` *(Marked *`⭐ Recommended` if `18.5 <= currentBmi < 25` and not pregnant)
+  - `gain`: `Gain Weight (Healthy Mass)` — Subtitle: `"Structured calorie surplus for steady, healthy mass gain"` *(Marked *`⭐ Recommended` if `currentBmi < 18.5`)
+  - `maintain`: `Maintain Weight & General Health` — Subtitle: `"Balanced maintenance calories focused on energy, habits & fitness"` *(Marked *`⭐ Recommended` if pregnant)
 
 **2. Conditional Step: **`target_weight` (Shown ONLY if `goal != 'maintain'`)
 
 - **Coach Bubble (Explicitly shows the user's Ideal Weight Range):**
-  - *"Awesome! What target weight (in kg) would you like to reach?"*
+  - *"Great goal! What target weight (in kg) would you like to aim for?"*
+  - **Micro-Why Caption:** *"Calculates your realistic weekly milestone window cleanly."*
   - **Highlighted Info Banner inside Bubble:**
 *"Healthy Ideal Weight Range for your height ({height} cm): ****{minHealthyWeight} kg – {maxHealthyWeight} kg**** (Ideal midpoint: ~****{idealMidWeight} kg****)."*
 - **Input Control (**`number-with-chips`):
@@ -641,14 +660,17 @@ As a user setting my body transformation goal, I want the coach to recommend the
 **4. Conditional Step: **`goal_pace` (Shown ONLY if `goal != 'maintain'` AND `abs(current_weight - target_weight) >= 0.5`)
 
 - **Coach Bubble:**
-  - *"At what weekly pace would you like to reach ****{target_weight} kg**** (a difference of ****{weightDiff} kg****)?"*
+  - *"At what weekly pace would you like to reach ****{target_weight} kg**** ({weightDiff} kg to go)?"*
+  - **Micro-Why Caption:** *"Controls daily hunger vs. speed within safe clinical calorie floors."*
 - **Input Control (**`single-select` — Dynamic Cards with Calculated Timeline Range):
   - **Option 1: **`slow` (`Steady & Easy`)
-    - Subtitle: `"Easiest adherence with minimal hunger — Est. timeline: {slowWeeksMin}–{slowWeeksMax} weeks"`
+    - Subtitle: `"Easiest adherence, minimal hunger — Est. {slowWeeksMin}–{slowWeeksMax} weeks"`
   - **Option 2: **`moderate` (`Balanced & Sustainable ⭐ (Recommended)`) *(Hidden if *`maternal_status == 'breastfeeding'` and `goal == 'lose'`, where only `slow` capped at `-300 kcal` is allowed)
-    - Subtitle: `"Optimal balance between speed and muscle retention — Est. timeline: {modWeeksMin}–{modWeeksMax} weeks"`
+    - Subtitle: `"Best speed-to-muscle balance — Est. {modWeeksMin}–{modWeeksMax} weeks"`
   - **Option 3: **`fast` (`Fast & Intensive`) *(Hidden when *`seniorMode == true` or `maternal_status != 'none'`)
-    - Subtitle: `"Higher daily adjustment within safe clinical caps — Est. timeline: {fastWeeksMin}–{fastWeeksMax} weeks"`
+    - Subtitle: `"Faster results, higher focus — Est. {fastWeeksMin}–{fastWeeksMax} weeks"`
+- **Instant Coach Micro-Reaction:**
+  - *"Locked in! At a {pace} pace, reaching {target_weight} kg fits cleanly in {estimated_weeks_min}–{estimated_weeks_max} weeks."*
 
 ---
 
@@ -761,31 +783,35 @@ As a user customizing my coaching program, I want to choose whether I want Nutri
 
 **1. Step: **`service_track` (Coaching Track Selection)
 
-- **Coach Bubble:** *"What would you like your custom plan to include, {name}?"*
+- **Coach Bubble:** *"How would you like CuraFit to coach you, {name}?"*
+  - **Micro-Why Caption:** *"Skips irrelevant questions and configures your 5-tab Home dashboard."*
 - **Input Control (**`single-select` — 3 Cards):
-  - `nutrition_and_workouts`: `Nutrition + Workouts ⭐ (Recommended)` — Subtitle: `"Calculated meal plan + tailored workout schedule for fastest results"`
-  - `nutrition_only`: `Nutrition Plan Only` — Subtitle: `"Daily meal plan, calories, and macros without a workout schedule"`
-  - `workouts_only`: `Workout Plan Only` — Subtitle: `"Structured training program without a meal plan"`
+  - `nutrition_and_workouts`: `Nutrition + Workouts ⭐ (Recommended)` — Subtitle: `"Synced meals & training for fastest body transformation"`
+  - `nutrition_only`: `Nutrition Plan Only` — Subtitle: `"Personalized daily meals, calories & macros (keeps Cardio & Exercise Library)"`
+  - `workouts_only`: `Workout Plan Only` — Subtitle: `"Tailored training schedule without a meal plan"`
 
 **2. Conditional Step: **`fitness_level` (Shown ONLY if `service_track != 'nutrition_only'`)
 
-- **Coach Bubble:** *"What is your current fitness and training experience level?"*
+- **Coach Bubble:** *"What is your current training experience?"*
+  - **Micro-Why Caption:** *"Sets weekly working sets (2–4 sets), intensity (RIR), and Player Mode (Simple vs. Pro)."*
 - **Input Control (**`single-select` — 3 Cards):
-  - `beginner`: `Beginner` — Subtitle: `"New to training or returning after a long break (2 sets/exercise, RIR 3, Simple Mode default)"`
-  - `intermediate`: `Intermediate ⭐` — Subtitle: `"Training consistently for several months with good form (3 sets/exercise, RIR 2)"`
-  - `advanced`: `Advanced` — Subtitle: `"Training consistently for 1+ years with high intensity (4 sets on compound movements when sessionDuration >= 45m, falling back to 3 if time-constrained)"`
+  - `beginner`: `Beginner` — Subtitle: `"New or returning — 2 sets/exercise, RIR 3, guided Simple Mode"`
+  - `intermediate`: `Intermediate ⭐` — Subtitle: `"Consistent 3–12 mo — 3 sets/exercise, RIR 2, balanced load"`
+  - `advanced`: `Advanced` — Subtitle: `"1+ years training — up to 4 compound sets (>=45m) & RIR 2"`
 
 **3. Conditional Step: **`workout_location` (Asked BEFORE Days & Split; Shown ONLY if `service_track != 'nutrition_only'`)
 
-- **Coach Bubble:** *"Where do you prefer to work out? (Asking this first so we tailor your equipment and training split to your location)"*
+- **Coach Bubble:** *"Where will you work out?"*
+  - **Micro-Why Caption:** *"Tailors exercises to your real equipment and skips unnecessary split prompts at home."*
 - **Input Control (**`single-select` — 3 Cards):
-  - `gym_only`: `Gym Only` — Subtitle: `"Full access to machines, barbells, dumbbells, and cables"`
-  - `home_only`: `Home Only` — Subtitle: `"Home workouts tailored to your available equipment"`
-  - `home_and_gym`: `Mix (Home & Gym)` — Subtitle: `"Combine gym days and home days across your week"`
+  - `gym_only`: `Gym Only` — Subtitle: `"Full access to machines, cables, barbells & dumbbells"`
+  - `home_only`: `Home Only` — Subtitle: `"Home routines built strictly around what you own"`
+  - `home_and_gym`: `Mix (Home & Gym)` — Subtitle: `"Alternate gym days and home days each week"`
 
 **4. Conditional Step: **`workout_days` (Exact Weekday Picker; Shown ONLY if `service_track != 'nutrition_only'`)
 
-- **Coach Bubble:** *"Which exact days of the week do you want to work out? (Pick the specific days that fit your schedule)"*
+- **Coach Bubble:** *"Which exact days fit your weekly workout routine?"*
+  - **Micro-Why Caption:** *"Locks workouts onto your calendar and boosts hydration (+500 ml) on training days."*
 - **Input Control (**`weekdays` Multi-Select):
   - **7 Day Toggle Pills (Ordered Saturday to Friday):**
     - `0`: `Saturday` (`Sat`)
@@ -800,10 +826,14 @@ As a user customizing my coaching program, I want to choose whether I want Nutri
     - `[4 Days (Sat, Sun, Tue, Thu)]` -> `[0, 1, 3, 5]`
     - `[5 Days (Sat, Sun, Mon, Wed, Thu)]` -> `[0, 1, 2, 4, 5]`
   - **Live Counter & Confirm Button:** `[Confirm Selected Days ({count} days)]` (Requires `1 <= count <= 7`).
+- **Instant Coach Micro-Reaction:**
+  - If `count == 4` and `workout_location != 'home_only'`: *"4 gym days is the golden sweet spot for muscle growth and strong recovery."*
+  - Otherwise: *"{count} training days locked into your weekly calendar."*
 
 **5. Conditional Step: **`workout_day_split` (Shown ONLY if `workout_location == 'home_and_gym'`)
 
-- **Coach Bubble:** *"Since you chose a Mix of Home & Gym, choose where you will train on each of your selected days:"*
+- **Coach Bubble:** *"Which days are at the Gym vs. at Home?"*
+  - **Micro-Why Caption:** *"Matches each day's exercises precisely to that day's location."*
 - **Input Control (**`day-location-split`):
   - Renders one row per selected day in `workout_days` (e.g., `Saturday`, `Monday`, `Wednesday`), each with a 2-segment toggle:
     - `[Gym]` vs. `[Home]`
@@ -812,14 +842,19 @@ As a user customizing my coaching program, I want to choose whether I want Nutri
 
 **6. Conditional Step: **`home_equipment` (Shown ONLY if `workout_location == 'home_only'` OR `workout_location == 'home_and_gym'`)
 
-- **Coach Bubble:** *"What equipment do you have available at home? (Select all that apply, or choose Bodyweight Only)"*
-- **Input Control (**`multi-select` — 6 Options):
-  - `none`: `Bodyweight Only (No Equipment)` *(Mutually exclusive with all other options)*
-  - `dumbbells`: `Dumbbells`
-  - `resistance_bands` *(UI alias `bands` accepted and normalized to `resistance_bands`)*: `Resistance Bands`
-  - `pullup_bar`: `Doorway Pull-up Bar`
-  - `kettlebell`: `Kettlebell`
-  - `bench`: `Flat/Adjustable Bench`
+- **Coach Bubble:** *"What equipment do you have at home?"*
+  - **Micro-Why Caption:** *"Filters every exercise strictly to equipment you actually own — zero impossible moves."*
+- **Input Control (**`multi-select` — All 10 Backend Options):
+  - `none`: `Bodyweight Only (No Equipment)` — Subtitle: `"Uses bodyweight only"` *(Mutually exclusive with all other options)*
+  - `dumbbells`: `Dumbbells` — Subtitle: `"Free-weight isolation & compound progress"`
+  - `resistance_bands` *(alias `bands` accepted)*: `Resistance Bands` — Subtitle: `"Joint-friendly progressive tension"`
+  - `pullup_bar`: `Doorway Pull-Up Bar` — Subtitle: `"Vertical pulling & lat development"`
+  - `kettlebell`: `Kettlebell` — Subtitle: `"Dynamic hinges & full-body conditioning"`
+  - `bench` *(alias `chair` accepted)*: `Flat / Adjustable Bench` — Subtitle: `"Pressing angles & split-squat support"`
+  - `barbell`: `Home Barbell` — Subtitle: `"Heavy compound strength lifts"`
+  - `yoga_mat`: `Yoga / Exercise Mat` — Subtitle: `"Floor core, mobility & mat work"`
+  - `jump_rope`: `Jump Rope` — Subtitle: `"Compact high-burn conditioning"`
+  - `cardio_machine`: `Home Cardio Machine` — Subtitle: `"Treadmill, bike, or indoor cardio"`
 
 ---
 
@@ -913,43 +948,46 @@ As a user whose program includes workouts, I want the app to ask me for my prefe
 **1. Conditional Step: **`workout_split` (Shown ONLY if `workout_location != 'home_only'` AND `workout_days.length >= 3`)
 
 - **Coach Bubble:**
-  - *"For your ****{workout_days.length} training days/week****, how would you like to structure your workout split?"*
-- **Input Control (**`single-select` — Dynamically Filtered by `daysCount = workout_days.length`):
-  - `auto`: `Coach's Smart Choice ⭐ (Recommended)` — *Always shown. Automatically assigns the scientifically optimal split for *`daysCount`:
-    - Subtitle dynamically shows what it resolves to (`<= 3` days: `"Full Body Split"`; `4` days: `"Upper / Lower Split (2x/week frequency)"`; `>= 5` days: `"Push / Pull / Legs (PPL)"`).
-  - `full_body`: `Full Body Split` — *Shown ONLY when *`1 <= daysCount <= 4`
-    - Subtitle: `"Trains all major muscle groups in each session — Ideal for 2 to 3 days/week"`
-  - `upper_lower`: `Upper / Lower Split` — *Shown ONLY when *`2 <= daysCount <= 6`
-    - Subtitle: `"Alternates upper-body and lower-body sessions — Ideal for 4 days/week"`
-  - `ppl`: `Push / Pull / Legs (PPL)` — *Shown ONLY when *`3 <= daysCount <= 7`
-    - Subtitle: `"Separates pushing, pulling, and leg muscles — Ideal for 3, 5, or 6 days/week"`
-  - `bro_split`: `Body-Part Split (Bro Split)` — *Shown ONLY when *`5 <= daysCount <= 6` *(backend auto-falls back to `full_body` if `< 5` days)*
-    - Subtitle: `"Focuses on 1–2 specific muscle groups per day (Chest, Back, Shoulders, Arms, Legs)"`
+  - *"For your ****{workout_days.length} training days/week****, how should we split your muscle groups?"*
+  - **Micro-Why Caption:** *"Controls recovery between sessions and weekly stimulus per muscle."*
+- **Input Control (**`single-select` — Dynamically Filtered by `daysCount = workout_days.length`, showing all **5** real backend splits at 4 days!):
+  - `auto`: `Coach's Smart Choice ⭐ (Recommended)` — *Always shown (`1..7` days). Resolves deterministically to `Full Body` (`<= 3d`), `Upper / Lower` (`4d`), or `Push / Pull / Legs` (`>= 5d`).*
+    - Subtitle dynamically shows the resolved split (e.g., for `4d`: `"Scientifically pairs Upper / Lower twice a week"`).
+  - `upper_lower`: `Upper / Lower Split` — *Shown when *`2 <= daysCount <= 6`
+    - Subtitle: `"Alternates upper & lower body — ideal 2x/wk frequency for 4d"`
+  - `full_body`: `Full Body Split` — *Shown when *`1 <= daysCount <= 4`
+    - Subtitle: `"Hits every major muscle group each session — great flexibility"`
+  - `ppl`: `Push / Pull / Legs (PPL)` — *Shown when *`3 <= daysCount <= 7`
+    - Subtitle: `"3d rotates Push/Pull/Legs · 4d adds Full Body · 5d adds Upper/Lower"`
+  - `bro_split`: `Body-Part Split (Bro Split)` — *Shown when *`4 <= daysCount <= 6` *(backend auto-falls back to `full_body` only when `< 4` days)*
+    - Subtitle: `"Focused muscle days (4d: Chest+Tri, Back+Bi, Shoulders+Core, Legs; 5–6d: 1 muscle/day)"`
 
 **2. Conditional Step: **`session_duration` (Shown ONLY if `service_track != 'nutrition_only'`)
 
-- **Coach Bubble:** *"How many minutes would you like each workout session to last?"*
+- **Coach Bubble:** *"How long should each workout session last?"*
+  - **Micro-Why Caption:** *"Keeps every workout strictly inside your clock budget including warm-up and rest."*
 - **Input Control (**`single-select` — 5 Cards):
-  - `20`: `20 Minutes (Express)`
-  - `30`: `30 Minutes (Compact)`
-  - `45`: `45 Minutes ⭐ (Recommended)`
-  - `60`: `60 Minutes (Full Session)`
-  - `90`: `90 Minutes (Extended)`
+  - `20`: `20 Minutes (Express)` — Subtitle: `"Fast compound essentials when time is tight"`
+  - `30`: `30 Minutes (Compact)` — Subtitle: `"Efficient strength focus with short rest periods"`
+  - `45`: `45 Minutes ⭐ (Recommended)` — Subtitle: `"Ideal balance for full compound + accessory work"`
+  - `60`: `60 Minutes (Full Session)` — Subtitle: `"Complete main lifts plus targeted hypertrophy isolation"`
+  - `90`: `90 Minutes (Extended)` — Subtitle: `"Maximum volume and longer heavy-compound recovery"`
 
 **3. Conditional Step: **`injuries` (Shown ONLY if `service_track != 'nutrition_only'`)
 
-- **Coach Bubble:** *"Do you have any current joint pain or injuries we should protect during workouts? (Select all that apply, or choose No Injuries)"*
-- **Input Control (**`multi-select`):
-  - `none`: `No Injuries (100% Ready)` *(Mutually exclusive with all injury items)*
-  - `knee`: `Knee Pain / Injury`
-  - `lower_back`: `Lower Back Pain / Disc Issue`
-  - `shoulder`: `Shoulder Pain / Impingement`
-  - `neck`: `Neck / Cervical Pain`
-  - `wrist`: `Wrist / Carpal Tunnel Pain`
-  - `ankle`: `Ankle Instability / Sprain`
-  - `elbow`: `Elbow Pain (Tennis / Golfer's Elbow)`
-  - `hip`: `Hip Tightness / Pain`
-  - `diastasis_recti`: `Postpartum Diastasis Recti (Abdominal Separation)` *(Shown ONLY when *`gender == 'female'`)
+- **Coach Bubble:** *"Any current joint pain or injuries we must protect?"*
+  - **Micro-Why Caption:** *"Automatically swaps out risky lifts for joint-safe alternatives."*
+- **Input Control (**`multi-select` — All 10 Options):
+  - `none`: `No Injuries (100% Ready)` — Subtitle: `"Full joint-safe exercise pool enabled"` *(Mutually exclusive with all injury items)*
+  - `knee`: `Knee Pain / Injury` — Subtitle: `"Protects knees from squats, lunges & jumps"`
+  - `lower_back`: `Lower Back Pain / Disc Issue` — Subtitle: `"Removes heavy spinal hinges & deadlifts"`
+  - `shoulder`: `Shoulder Pain / Impingement` — Subtitle: `"Avoids painful overhead & upright-row strain"`
+  - `neck`: `Neck / Cervical Pain` — Subtitle: `"Excludes cervical load & shrug movements"`
+  - `wrist`: `Wrist / Carpal Tunnel Pain` — Subtitle: `"Removes stressful wrist-flexion curls & dips"`
+  - `ankle`: `Ankle Instability / Sprain` — Subtitle: `"Excludes jumping, hops, lunges & calf impact"`
+  - `elbow`: `Elbow Pain (Tennis / Golfer's Elbow)` — Subtitle: `"Swaps skull-crushers & dips for cable/neutral grips"`
+  - `hip`: `Hip Tightness / Pain` — Subtitle: `"Removes deep sumo, wide-stance & split-squats"`
+  - `diastasis_recti`: `Postpartum Diastasis Recti (Abdominal Separation)` — Subtitle: `"Replaces crunches & sit-ups with deep core safety"` *(Shown ONLY when *`gender == 'female'`)
 
 ---
 
@@ -958,12 +996,16 @@ As a user whose program includes workouts, I want the app to ask me for my prefe
 1. **When **`workout_split` is Automatically Skipped:
   - **Condition A (**`workout_location == 'home_only'`): Skipped automatically (`workout_split = 'auto'`), because home workouts are structured around available home equipment and full-body/upper-lower metabolic templates rather than gym machine splits.
   - **Condition B (**`workout_days.length <= 2`): Skipped automatically (`workout_split = 'full_body'`), because training 1–2 days/week scientifically requires Full Body sessions to hit every muscle group weekly.
-2. `auto` Split Resolution Algorithm (`server/workouts.mjs` & `previewPlan`):
-  - If `workoutSplit != 'auto'` and valid for `daysCount`, use `workoutSplit` (backend falls back to `'full_body'` if `upper_lower` with `< 2` days, `ppl` with `< 3` days, or `bro_split` with `< 5` days).
+2. `auto` & Explicit Split Resolution Algorithm (`server/workouts.mjs` & `previewPlan`):
+  - If `workoutSplit != 'auto'` and valid for `daysCount`:
+    - `upper_lower`: `>= 2` days (`upper` / `lower` alternating)
+    - `ppl`: `>= 3` days (`4d`: `push / pull / legs / full_body`; `5d`: `push / pull / legs / upper / lower`; `3` or `6+`: `push / pull / legs` rotation)
+    - `bro_split`: `>= 4` days (`4d`: `chest_tri / back_bi / shoulders_core / legs`; `5–6d`: `chest / back / legs / shoulders / arms / core`)
+    - Backend falls back to `'full_body'` only when `upper_lower < 2`, `ppl < 3`, or `bro_split < 4` days (or if home equipment lacks exercises for split focus days).
   - If `workoutSplit == 'auto'`:
     - `daysCount <= 3` -> `'full_body'`
     - `daysCount == 4` -> `'upper_lower'`
-    - `daysCount >= 5` -> `'ppl'`
+    - `daysCount >= 5` -> `'ppl'` (`5d`: `push / pull / legs / upper / lower`)
 3. **Session Duration Time-Budget Engine (`server/workouts.mjs`):**
   - Every session reserves `300s` (`5 min`) dynamic warm-up plus per-exercise working/rest/transition time (`sets * repMax * 3 * (unilateral ? 2 : 1) + (sets - 1) * restSeconds + 60`) strictly capped at `sessionDuration * 60` seconds (`20`, `30`, `45`, `60`, or `90` minutes).
 4. **Injury, Senior & Trimester-Aware Pregnancy Contraindication Matrix (`server/workouts.mjs`):**
@@ -1044,7 +1086,8 @@ As a user whose program includes nutrition, I want to specify my daily non-exerc
 
 **1. Step: **`activity` (Daily Non-Workout Activity Level)
 
-- **Coach Bubble:** *"Outside of workouts, how active is your typical daily routine and job?"*
+- **Coach Bubble:** *"Outside of workouts, how active is your typical daily routine?"*
+  - **Micro-Why Caption:** *"Adjusts non-exercise burn (NEAT), which drives up to 30% of daily energy needs."*
 - **Input Control (**`single-select` — 4 Cards):
   - `sedentary`: `Sedentary / Desk Job (1.2x)` — Subtitle: `"Mostly sitting, office/computer work, under 4,000 steps/day"`
   - `light`: `Lightly Active (1.375x)` — Subtitle: `"Light daily movement, teaching, housework, 4,000–7,500 steps/day"`
@@ -1053,64 +1096,78 @@ As a user whose program includes nutrition, I want to specify my daily non-exerc
 
 **2. Step: **`conditions` (Clinical & Metabolic Health Conditions)
 
-- **Coach Bubble:** *"Do you have any health or metabolic conditions we should tailor your nutrition around? (Select all that apply, or choose None)"*
-- **Input Control (**`multi-select` — 12 Options):
-  - `none`: `None (No Health Conditions)` *(Mutually exclusive with all clinical options)*
-  - `insulin_resistance`: `Insulin Resistance / Prediabetes`
-  - `diabetes_t2`: `Type 2 Diabetes`
-  - `diabetes_t1`: `Type 1 Diabetes`
-  - `pcos`: `PCOS (Polycystic Ovary Syndrome)` *(Shown ONLY when *`gender == 'female'`)
-  - `hypothyroid`: `Hypothyroidism (Underactive Thyroid)`
-  - `hypertension`: `High Blood Pressure (Hypertension)`
-  - `cholesterol`: `High Cholesterol / Triglycerides`
-  - `ibs`: `IBS / Sensitive Colon`
-  - `celiac`: `Celiac Disease / Gluten Intolerance`
-  - `gout`: `Gout / High Uric Acid`
-  - `kidney`: `Chronic Kidney Sensitivity / Mild Renal Issue`
+- **Coach Bubble:** *"Any health or food-sensitivity conditions we should protect your meals around?"*
+  - **Micro-Why Caption:** *"Auto-filters risky ingredients, hides unsafe diets, and adjusts metabolic equations."*
+- **Input Control (**`multi-select` — All 17 Backend Options: `none` + 16 Supported Clinical/Wellness Conditions):
+  - `none`: `None (No Health Conditions)` — Subtitle: `"Standard healthy adult meal filtering"` *(Mutually exclusive with all clinical options)*
+  - `insulin_resistance`: `Insulin Resistance / Prediabetes` — Subtitle: `"Recommends Low Carb & removes high-glycemic honey"`
+  - `diabetes_t2`: `Type 2 Diabetes` — Subtitle: `"Protects glycemic balance; hides Keto & IF"`
+  - `diabetes_t1`: `Type 1 Diabetes` — Subtitle: `"Strict carb-timing awareness; hides Keto & IF"`
+  - `pcos`: `PCOS (Polycystic Ovary Syndrome)` — Subtitle: `"Supports insulin sensitivity via Low Carb priority"` *(Shown ONLY when *`gender == 'female'`)
+  - `hypothyroid`: `Hypothyroidism (Underactive Thyroid)` — Subtitle: `"Applies realistic -5% BMR calibration"`
+  - `hypertension`: `High Blood Pressure (Hypertension)` — Subtitle: `"Limits sodium, removes pickles/salted cheeses & prioritizes DASH"`
+  - `cholesterol`: `High Cholesterol / Triglycerides` — Subtitle: `"Prefers lean fats & Mediterranean; blocks Keto"`
+  - `ibs`: `IBS / Sensitive Colon` — Subtitle: `"Removes high-FODMAP triggers like fried legumes & heavy onion"`
+  - `celiac`: `Celiac Disease / Gluten Intolerance` — Subtitle: `"Auto-enforces 100% gluten-free meals & excludes wheat"`
+  - `gout`: `Gout / High Uric Acid` — Subtitle: `"Caps protein <= 1.4 g/kg, removes purines & adds +500 ml water"`
+  - `kidney`: `Chronic Kidney Sensitivity / Mild Renal Issue` — Subtitle: `"Protects renal load (protein <= 1.1 g/kg; blocks High Protein/Keto)"`
+  - `favism`: `Favism (G6PD Deficiency)` — Subtitle: `"Strictly removes all fava beans & falafel from plan & swaps"`
+  - `lactose_intolerance`: `Lactose Intolerance / Dairy Sensitivity` — Subtitle: `"Auto-excludes milk, yogurt & dairy while replacing protein sources"`
+  - `anemia`: `Iron-Deficiency Anemia` — Subtitle: `"Recorded clinically for nutrition review & iron-aware planning"`
+  - `vitamin_d_deficiency`: `Vitamin D Deficiency` — Subtitle: `"Recorded clinically to guide Vitamin-D nutrient awareness"`
+  - `fatty_liver`: `Fatty Liver (NAFLD)` — Subtitle: `"Recorded clinically to support liver-friendly whole-food planning"`
 
 **3. Step: **`diet_type` (Diet School Selection — Dynamically Filtered by Medical Safety)
 
-- **Coach Bubble:** *"Which nutrition style do you prefer? (We have highlighted the best fit for your body and automatically hidden any unsafe options)"*
+- **Coach Bubble:** *"Which eating style matches your taste best?"*
+  - **Micro-Why Caption:** *"Shapes your daily meal variety and macros — unsafe clinical options are already hidden."*
 - **Input Control (**`single-select` — Up to 9 Diet Schools):
-  - `balanced`: `Balanced Local Cuisine ⭐` — `"All food groups in smart portions from your local kitchen"`
-  - `low_carb`: `Low Carb (Moderate Carbohydrate Reduction)` — `"Reduces sugars and refined starches for steady blood sugar and fat loss"`
-  - `high_protein`: `High Protein Athlete` — `"Maximizes muscle retention, recovery, and satiety"`
-  - `intermittent_fasting`: `Intermittent Fasting (16:8)` — `"16-hour fasting window + 8-hour eating window"`
-  - `keto`: `Ketogenic Diet (Strict Keto)` — `"70% healthy fats, 25% protein, <= 50g total carbs/day"`
-  - `mediterranean`: `Mediterranean Diet` — `"Heart-healthy olive oil, fish, legumes, vegetables, and whole grains"`
-  - `dash`: `DASH Diet (Blood Pressure & Heart Friendly)` — `"Low sodium, potassium-rich whole foods"`
-  - `vegetarian`: `Vegetarian (Plant-Based + Dairy & Eggs)` — `"No meat, poultry, or fish"`
-  - `vegan`: `100% Vegan (Strictly Plant-Based)` — `"No animal products of any kind"`
+  - `balanced`: `Balanced Local Cuisine ⭐` — Subtitle: `"Flexible home-cooked variety; choose 2–5 meals/day"`
+  - `low_carb`: `Low Carb (Moderate Reduction)` — Subtitle: `"Reduces refined carbs (<=130g) for steady energy & insulin control"`
+  - `high_protein`: `High Protein Athlete` — Subtitle: `"Maximizes satiety, recovery & lean muscle retention"`
+  - `intermittent_fasting`: `Intermittent Fasting (16:8)` — Subtitle: `"Eat in a structured 8h window with zero food restrictions"`
+  - `keto`: `Ketogenic Diet (Strict Keto)` — Subtitle: `"High healthy fats, strict <= 50g total carbs/day"`
+  - `mediterranean`: `Mediterranean Diet` — Subtitle: `"Heart-healthy olive oil, fish, legumes & whole grains"`
+  - `dash`: `DASH Diet (Blood Pressure & Heart Friendly)` — Subtitle: `"Low sodium (<1800mg), potassium-rich whole foods"`
+  - `vegetarian`: `Vegetarian (Plant-Based + Dairy & Eggs)` — Subtitle: `"Meatless meals powered by eggs, dairy & legumes"`
+  - `vegan`: `100% Vegan (Strictly Plant-Based)` — Subtitle: `"100% plant proteins, grains & nuts — zero animal products"`
 
 **4. Conditional Step: **`if_start_hour` (Shown ONLY if `diet_type == 'intermittent_fasting'`)
 
-- **Coach Bubble:** *"For your 16:8 Intermittent Fasting schedule, what time do you prefer to eat your first meal (break your fast)?"*
-- **Input Control (**`single-select` — 4 Time Windows):
+- **Coach Bubble:** *"When would you like to eat your first meal (break your fast)?"*
+  - **Micro-Why Caption:** *"Aligns your 8-hour eating window and fasting timer with your daily routine."*
+- **Input Control (**`single-select` + custom hour picker covering full backend range `6..16` / `06:00`–`16:00`):
+  - `8`: `8:00 AM (Eating window: 8:00 AM – 4:00 PM)`
   - `10`: `10:00 AM (Eating window: 10:00 AM – 6:00 PM)`
   - `12`: `12:00 PM ⭐ (Eating window: 12:00 PM – 8:00 PM)`
   - `14`: `2:00 PM (Eating window: 2:00 PM – 10:00 PM)`
   - `16`: `4:00 PM (Eating window: 4:00 PM – 12:00 AM)`
+  - Plus compact `[Pick Custom Start Hour (06:00–16:00)]` stepper (`integer 6..16`) matching `resolveEatingStart` in `server/coaching.mjs`.
 
 **5. Conditional Step: **`meals_count` (Shown ONLY if `diet_type == 'balanced'`)
 
-- **Coach Bubble:** *"How many meals and snacks would you like per day?"*
+- **Coach Bubble:** *"How many meals and snacks fit your daily schedule?"*
+  - **Micro-Why Caption:** *"Distributes the exact same daily calories across your preferred meal rhythm."*
 - **Input Control (**`single-select` — 4 Options):
-  - `2`: `2 Main Meals per Day` — `"Larger portions, minimal prep time"`
-  - `3`: `3 Main Meals per Day ⭐ (Recommended)` — `"Breakfast, Lunch, and Dinner"`
-  - `4`: `3 Main Meals + 1 Snack (4 Total)` — `"Ideal for afternoon hunger control"`
-  - `5`: `3 Main Meals + 2 Snacks (5 Total)` — `"Great for high calorie targets or muscle gain"`
+  - `2`: `2 Main Meals per Day` — Subtitle: `"Larger portions, minimal kitchen prep"`
+  - `3`: `3 Main Meals per Day ⭐ (Recommended)` — Subtitle: `"Classic Breakfast, Lunch & Dinner"`
+  - `4`: `3 Main Meals + 1 Snack (4 Total)` — Subtitle: `"Extra afternoon satiety without shrinking main meals"`
+  - `5`: `3 Main Meals + 2 Snacks (5 Total)` — Subtitle: `"Ideal for high calorie targets or muscle gain"`
+  - *(Note: Specialty diets use structured meal layouts in `FIXED_DIET_MEALS` — `keto`: 3 meals, `intermittent_fasting`: 3 feeds inside 8h window, other specialty diets: 4 feeds — so users aren't asked an ineffective `meals_count` question.)*
 
 **6. Step: **`budget` (Grocery Budget Level)
 
-- **Coach Bubble:** *"What grocery budget level suits you best so we pick realistic ingredients?"*
+- **Coach Bubble:** *"What grocery budget fits your weekly shopping best?"*
+  - **Micro-Why Caption:** *"Keeps every suggested meal realistic, affordable, and available nearby."*
 - **Input Control (**`single-select` — 3 Cards):
-  - `low`: `Economic / Budget-Friendly` — `"Focuses on eggs, legumes, cottage/local cheese, oats, chicken, and seasonal produce"`
-  - `medium`: `Moderate / Standard ⭐ (Recommended)` — `"Balanced variety of poultry, red meat, fish, dairy, and everyday groceries"`
-  - `high`: `Premium / Open Budget` — `"Includes salmon, steak, nuts, avocado, berries, and specialty items"`
+  - `low`: `Economic / Budget-Friendly` — Subtitle: `"Eggs, cottage/feta cheese, legumes, oats, chicken & seasonal produce"`
+  - `medium`: `Moderate / Standard ⭐ (Recommended)` — Subtitle: `"Balanced mix of poultry, beef, fish, dairy & everyday groceries"`
+  - `high`: `Premium / Open Budget` — Subtitle: `"Adds salmon, steak, nuts, avocado, berries & specialty cuts"`
 
 **7. Step: **`allergies` (Food Exclusions & Allergies)
 
-- **Coach Bubble:** *"Lastly, are there any foods you are allergic to or strongly dislike so we exclude them completely?"*
+- **Coach Bubble:** *"Almost done! Any foods you are allergic to or strongly dislike?"*
+  - **Micro-Why Caption:** *"Excluded 100% across your plan, meal swaps, and grocery list — never auto-relaxed."*
 - **Input Control (**`multi-select` — 15 Options):
   - `none`: `None (I Eat Everything)` *(Mutually exclusive with all exclusion items)*
   - `dairy`: `Dairy & Milk`
@@ -1148,8 +1205,10 @@ As a user whose program includes nutrition, I want to specify my daily non-exerc
   - If `conditions` includes `hypertension` -> Recommend `dash` (`⭐`).
   - If `conditions` includes `cholesterol` -> Recommend `mediterranean` (`⭐`).
   - Otherwise -> Recommend `balanced` (`⭐`).
-3. **Automatic Ingredient-Level Clinical Filters (**`clinicalIngredientFilters`):
+3. **Automatic Ingredient-Level Clinical Filters (`clinicalIngredientFilters`):**
   - `celiac` -> Auto-injects `gluten` exclusion even if user doesn't manually toggle `gluten` in `allergies`.
+  - `favism` -> Auto-injects `fava` exclusion (removes fava beans & falafel automatically even if user taps `none` in `allergies`).
+  - `lactose_intolerance` -> Auto-injects `dairy`, `milk`, `yogurt`, `cheese` exclusions and removes dairy protein sources automatically.
   - `hypertension` -> Filters out high-sodium items (pickles, salted cheeses, processed meats).
   - `gout` -> Filters out high-purine items (organ meats, sardines/anchovies, concentrated meat gravies) and increases daily water target by `+500 ml`.
   - `ibs` -> Filters out heavy high-FODMAP triggers (fried legumes, raw onion/garlic-heavy meals).
@@ -1230,9 +1289,13 @@ As a user who has answered all onboarding questions, I want to review a comprehe
 
 **SCREEN AND UI DETAILS**
 
-**1. Summary Header & Region Switcher**
+**1. Staged Blueprint Reveal (1.5s Entry Transition) & Summary Header**
 
-- **Title:** *"Your Personalized Plan is Ready, {name}!"*
+- On first transition from the last question (`allergies` or `injuries`) to `summary`, display a crisp 1.5-second live build card while `POST /v1/plans/preview` resolves:
+  - `1. Calculating BMR, Calories & Macros ✓`
+  - `2. Applying Clinical & Regional Meal Filters ✓`
+  - `3. Structuring Your Weekly Workout Blueprint ✓`
+- **Title:** *"Your Personalized Blueprint is Ready, {name}!"*
 - **Region Selector Pill:** `[Region: Egypt / Gulf / Levant / Maghreb ▾]` — Changing the region immediately calls `POST /v1/plans/preview` (with deterministic local fallback) to refresh regional dish names and climate hydration in the preview.
 
 **2. Live Numerical Preview Cards (Hero Metrics Grid)**

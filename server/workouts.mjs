@@ -21,7 +21,7 @@ const regionAliases={quads:'quadriceps',adductors:'hips'};
 export function regionForMuscle(id){const group=byMuscle.get(id)?.group_id||id;return regionAliases[group]||group;}
 export function primaryRegions(exercise){return [...new Set(exercise.muscles.filter(m=>m.role==='primary').map(m=>regionForMuscle(m.muscle_id)))];}
 export function muscleRegions(exercise){return [...new Set(exercise.muscles.map(m=>regionForMuscle(m.muscle_id)))];}
-const schemes={full_body:['squat','horizontal_push','horizontal_pull','hinge','anti_extension','vertical_pull'],upper:['horizontal_push','horizontal_pull','vertical_push','vertical_pull','elbow_flexion','elbow_extension'],lower:['squat','hinge','lunge','knee_flexion','plantar_flexion','anti_extension'],push:['horizontal_push','vertical_push','shoulder_abduction','elbow_extension'],pull:['horizontal_pull','vertical_pull','elbow_flexion','scapular_elevation'],legs:['squat','hinge','lunge','knee_flexion','plantar_flexion'],chest:['horizontal_push','horizontal_push','elbow_extension'],back:['horizontal_pull','vertical_pull','scapular_elevation'],shoulders:['vertical_push','shoulder_abduction','horizontal_pull'],arms:['elbow_flexion','elbow_extension','elbow_flexion'],core:['squat','hinge','anti_extension']};
+const schemes={full_body:['squat','horizontal_push','horizontal_pull','hinge','anti_extension','vertical_pull'],upper:['horizontal_push','horizontal_pull','vertical_push','vertical_pull','elbow_flexion','elbow_extension'],lower:['squat','hinge','lunge','knee_flexion','plantar_flexion','anti_extension'],push:['horizontal_push','vertical_push','shoulder_abduction','elbow_extension'],pull:['horizontal_pull','vertical_pull','elbow_flexion','scapular_elevation'],legs:['squat','hinge','lunge','knee_flexion','plantar_flexion'],chest:['horizontal_push','horizontal_push','elbow_extension'],back:['horizontal_pull','vertical_pull','scapular_elevation'],shoulders:['vertical_push','shoulder_abduction','horizontal_pull'],arms:['elbow_flexion','elbow_extension','elbow_flexion'],core:['squat','hinge','anti_extension'],chest_tri:['horizontal_push','horizontal_push','vertical_push','elbow_extension'],back_bi:['horizontal_pull','vertical_pull','scapular_elevation','elbow_flexion'],shoulders_core:['vertical_push','shoulder_abduction','horizontal_pull','anti_extension']};
 // Conservative exclusion policy, not a clinical clearance or rehabilitation prescription.
 export const INJURY_POLICY_VERSION=2;
 const INJURY_PATTERNS={
@@ -108,7 +108,7 @@ export function workoutPlan(draft){
  if(isPregnantStatus(safetyProfile.maternalStatus))warnings.push('Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded.');
  if(days.length===7)warnings.push('7-day schedule detected: monitor daily recovery closely and keep intensity moderate on back-to-back sessions.');
  if(split==='upper_lower'&&days.length<2){warnings.push('Upper/Lower split requires at least 2 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
- if(split==='bro_split'&&days.length<5){warnings.push('Single-muscle Bro Split requires at least 5 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
+ if(split==='bro_split'&&days.length<4){warnings.push('Bro Split requires at least 4 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
  if(split==='ppl'&&days.length<3){warnings.push('Push/Pull/Legs split requires at least 3 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
  const goalNote=goal==='lose'?'Resistance plan designed to preserve lean muscle mass during fat loss (pair with light walking when feasible).':goal==='muscle_gain'||goal==='gain'?'Hypertrophy-focused resistance plan emphasizing full range of motion and progressive overload.':'Balanced strength and mobility plan for fitness maintenance and joint health.';
  // Track used exercises per focus/pattern across the week so multi-day full_body or repeated focus days rotate variations deterministically
@@ -116,7 +116,7 @@ export function workoutPlan(draft){
  const sessions=days.map((dayIndex,i)=>{
   const rawLocation=draft.workoutLocation==='home_only'?'home':draft.workoutLocation==='home_and_gym'?(draft.dayLocations?.[dayIndex]||'home'):'gym';
   const location=['gym','gym_only'].includes(rawLocation)?'gym':'home';
-  const focus=split==='upper_lower'?(i%2?'lower':'upper'):split==='ppl'?['push','pull','legs'][i%3]:split==='bro_split'?['chest','back','legs','shoulders','arms','core'][i%6]:'full_body';
+  const focus=split==='upper_lower'?(i%2?'lower':'upper'):split==='ppl'?(days.length===4?['push','pull','legs','full_body'][i]:days.length===5?['push','pull','legs','upper','lower'][i]:['push','pull','legs'][i%3]):split==='bro_split'?(days.length===4?['chest_tri','back_bi','shoulders_core','legs'][i]:['chest','back','legs','shoulders','arms','core'][i%6]):'full_body';
   const focusOccurrence=focusOccurrenceCount.get(focus)||0;
   focusOccurrenceCount.set(focus,focusOccurrence+1);
   const used=[],missing=[];let seconds=300;

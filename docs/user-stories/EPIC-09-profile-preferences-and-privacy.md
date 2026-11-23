@@ -216,8 +216,8 @@ As a user whose gym membership, free schedule, injuries, or coaching track chang
      - `Fitness Level`: `Beginner` | `Intermediate` | `Advanced`.
      - `Training Location`: `Gym Only` (`gym_only`) | `Home Only` (`home_only`) | `Mix (Home & Gym)` (`home_and_gym`).
      - `Exact Workout Weekdays` (`Saturday..Friday` pills `1..7` days) + `Per-Day Location Split` (if Mix).
-     - `Available Home Equipment` (if `Home` or `Mix` — `Bodyweight Only`, `Dumbbells`, `Resistance Bands`, `Pull-up Bar`, `Kettlebell`, `Bench`).
-     - `Workout Split` (shown ONLY if location != `home_only` AND days `>= 3`, filtered dynamically by day count!).
+     - `Available Home Equipment` (if `Home` or `Mix` — `Bodyweight Only` [`none`], `Dumbbells` [`dumbbells`], `Resistance Bands` [`resistance_bands`], `Pull-up Bar` [`pull_up_bar`], `Kettlebell` [`kettlebell`], `Bench` [`bench`], `Barbell` [`barbell`], `Yoga Mat` [`yoga_mat`], `Jump Rope` [`jump_rope`], `Cardio Machine` [`cardio_machine`]).
+     - `Workout Split` (shown when `location != home_only` AND days `>= 2`, filtered dynamically by day count: `2–6d` `smart_auto` / `full_body` / `upper_lower`; `3–6d` `ppl` [4d balanced `push/pull/legs/full_body`, 5d `push/pull/legs/upper/lower`]; `4–6d` `bro_split` — exposing all 5 splits at `4+` days!).
      - `Session Duration`: `20` | `30` | `45` | `60` | `90 min`.
      - `Joint Pain & Injuries`: `None`, `Knee`, `Lower Back`, `Shoulder`, `Neck`, `Wrist`, `Ankle`, `Elbow`, `Hip`, `Postpartum Diastasis Recti` (if Female).
      - *(If `serviceTrack == "workouts_only"`):* Explicit `Health Readiness Confirmation` checkbox (`healthConfirmed: true`).
@@ -287,9 +287,9 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 ### SCREEN AND UI DETAILS
 1. **Form Sections (Mirroring `US-MOB-08` Medical Guardrails):**
    - `Daily Activity (`profile.activity`)`: `Sedentary (1.2x)` | `Light (1.375x)` | `Moderate (1.55x)` | `Very Active (1.725x)`.
-   - `Health & Metabolic Conditions`: Multi-select chips (`None`, `Insulin Resistance`, `Type 2 Diabetes`, `Type 1 Diabetes`, `PCOS` [Female], `Hypothyroid`, `Hypertension`, `High Cholesterol`, `IBS`, `Celiac / Gluten`, `Gout`, `Kidney Sensitivity`).
+   - `Health & Metabolic Conditions`: Multi-select chips (`None`, `Insulin Resistance` [`insulin_resistance`], `Type 2 Diabetes` [`type2_diabetes`], `Type 1 Diabetes` [`type1_diabetes`], `PCOS` [`pcos`, Female], `Hypothyroid` [`hypothyroid`], `Hypertension` [`hypertension`], `High Cholesterol` [`high_cholesterol`], `IBS` [`ibs`], `Celiac / Gluten` [`celiac`], `Lactose Intolerance` [`lactose_intolerance`], `Favism` [`favism`], `Anemia` [`anemia`], `Vitamin D Deficiency` [`vitamin_d_deficiency`], `Fatty Liver` [`fatty_liver`], `Gout` [`gout`], `Kidney Sensitivity` [`kidney_sensitivity`]).
    - `Diet School` *(Clinically filtered live — hides `Keto` / `IF` whenever blocked by newly checked conditions or maternal status, including conservative blocks on `keto + cholesterol` and `intermittent_fasting + breastfeeding`, highlighting `⭐ Recommended` fit!)*: `Balanced`, `Low Carb`, `High Protein`, `Intermittent Fasting (16:8)`, `Keto`, `Mediterranean`, `DASH`, `Vegetarian`, `Vegan`.
-   - `IF Start Hour` (`10 / 12 / 14 / 16`) *(Only if `intermittent_fasting`)* OR `Meals & Snacks per Day` (`2 / 3 / 4 / 5`) *(Only if `balanced`)*.
+   - `IF Start Hour` (`6..16`, i.e., `6:00 AM` to `4:00 PM`) *(Only if `intermittent_fasting`)* OR `Meals & Snacks per Day` (`2 / 3 / 4 / 5`) *(Only if `balanced`)*.
    - `Grocery Budget Tier` (`budget: "low" | "medium" | "high"`): `Economic` | `Moderate` | `Premium`.
    - `Regional Cuisine`: `Egypt` | `Gulf (GCC)` | `Levant` | `Maghreb`.
    - `Food Allergies & Exclusions`: Multi-select (`None`, `Dairy`, `Eggs`, `Fish`, `Shellfish`, `Peanuts`, `Tree Nuts`, `Wheat & Gluten`, `Soy`, `Sesame/Tahini`, `Red Meat`, `Poultry`, `Legumes`, `Oats`, `Spicy` — wire key `"spicy"`).
@@ -365,7 +365,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 
 ### API & BACKEND CONTRACT
 1. **`POST /v1/commands?view=receipt`** (`action: "timezone"`)
-   - Payload: `{ "timezone": "Asia/Riyadh", "locale": "ar-SA" }` (supports `ar-EG`, `ar-SA`, `en`, and any valid IANA timezone via `validTimeZone`).
+   - Payload: `{ "timezone": "Asia/Riyadh", "locale": "ar-SA" }` (supports all 14 `SUPPORTED_LOCALES`: `en`, `ar`, `ar-EG`, `ar-SA`, `ar-AE`, `ar-KW`, `ar-QA`, `ar-BH`, `ar-OM`, `ar-JO`, `ar-LB`, `ar-MA`, `ar-TN`, `ar-DZ`, and any valid IANA timezone via `validTimeZone`).
    - Error Codes: `400 INVALID_TIMEZONE`, `400 INVALID_LOCALE`.
 2. **`POST /v1/commands?view=receipt`** (`action: "profile_update"`)
    - Payload: `{ "unitSystem": "metric" | "imperial" }` (exposed in `bootstrap.profile` and `bootstrap.preferences`).

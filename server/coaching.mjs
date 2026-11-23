@@ -151,7 +151,8 @@ export function previewPlan(d={}){
  const waterTarget=dailyWaterTarget(mockState,currDate);
  const level=normalized.fitnessLevel||'beginner',loc=normalized.workoutLocation||'gym_only';
  const workoutUiModeDefault=(level==='beginner'||loc==='home_only')?'simple':'pro';
- const recommendedSplit=normalized.serviceTrack==='nutrition_only'?null:(normalized.workoutSplitPreference&&normalized.workoutSplitPreference!=='auto'?normalized.workoutSplitPreference:(workoutDaysCount<=3?'full_body':workoutDaysCount>=5?'ppl':'upper_lower'));
+ const reqSplit=normalized.workoutSplitPreference||'auto';
+ const recommendedSplit=normalized.serviceTrack==='nutrition_only'?null:(reqSplit==='auto'?(workoutDaysCount<=3?'full_body':workoutDaysCount>=5?'ppl':'upper_lower'):((reqSplit==='upper_lower'&&workoutDaysCount<2)||(reqSplit==='ppl'&&workoutDaysCount<3)||(reqSplit==='bro_split'&&workoutDaysCount<4))?'full_body':reqSplit);
  const warnings=[...(targets.notes||[]),...(elig.notes||[]).map(n=>n.message)];
  return {
   eligibility:elig,

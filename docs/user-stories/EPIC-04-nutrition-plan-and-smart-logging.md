@@ -878,7 +878,8 @@ As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I wa
      - Phase Label (`"Fasting Phase — Hydration & Black Coffee/Tea Only"` vs `"Eating Window Open"`).
      - Live `HH:MM:SS` countdown + Start Time & Target Break-Fast Time.
      - Metabolic stage badges along the arc (`0–4h Digestion`, `4–12h Blood Sugar Balance`, `12–16h Fat Oxidation`).
-     - Primary button: `[Start Fast Now]` / `[End Fast Early]` / `[Adjust 16:8 Start Hour (10 / 12 / 14 / 16)]`.
+     - Fasting Protocol Presets: `14:10 (14h)` (`14_10`), `16:8 (16h ⭐)` (`16_8`), `18:6 (18h)` (`18_6`), `Ramadan` (`ramadan`), or custom `targetHours` (`8..24h`).
+     - Primary button: `[Start Fast Now]` / `[End Fast Early]` / `[Adjust Window Start Hour (8 AM – 4 PM / 8..16)]`.
 2. **Ramadan Mode Banner & Settings (`RamadanSettingsSheet`):**
    - Prominent toggle `[Ramadan Mode 🌙]`:
      - Auto-detects Maghrib / Fajr prayer window by user's region/city (`Cairo`, `Riyadh`, `Dubai`, `Amman`, `Casablanca`, etc., with manual time override).
@@ -895,7 +896,7 @@ As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I wa
 ### API & BACKEND CONTRACT
 1. **`GET /v1/nutrition/fasting-state`** -> Returns standardized DTO `{ mode: "off" | "if_16_8" | "ramadan", phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, streakDays }` (also embedded inside `GET /v1/bootstrap` -> `todaySummary.fastingState` & `todaySummary.ramadanMode`).
 2. **`POST /v1/commands?view=receipt`** (`action: "fasting_log"`)
-   - Payload: `{ "op": "start" | "end" | "adjust_window", "at": "<iso8601>", "ifStartHour": 12 }`.
+   - Payload: `{ "op": "start" | "end" | "adjust_window", "preset": "14_10" | "16_8" | "18_6" | "ramadan", "targetHours": 16, "at": "<iso8601>", "ifStartHour": 12 }` (`targetHours` supports `8..24`; `adjust_window` accepts `ifStartHour` `8..16`, including `8` for `8:00 AM`).
 3. **`POST /v1/commands?view=receipt`** (`action: "ramadan_mode"`)
    - Payload: `{ "enabled": true, "iftarTime": "18:05", "suhoorCutoffTime": "04:20", "workoutTiming": "post_iftar", "medicalClearanceAcknowledged": true }`.
 

@@ -1424,6 +1424,148 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       assert.equal(fDel.deleted, true);
       assert.ok(fDel.tablesCleared >= 30, `Expected >= 30 cleared tables including 3 new wellness tables, got ${fDel.tablesCleared}`);
     });
+
+    // 12. Google Avatar Backfill (Apple-first -> Link Google -> Refresh/Bootstrap) & Non-Overwrite Guard + 4-Day Split API Parity
+    await t.test('Google OAuth picture backfills empty avatar on login/link without overwriting existing avatars + 4-day split API parity', async () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const avAppleJwt = await appleSigner.signJwt({
+        iss: 'https://appleid.apple.com',
+        aud: 'com.curafit.ios',
+        sub: 'apple-sub-avatar-backfill',
+        email: 'avatar.backfill@curafit.app',
+        email_verified: true,
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const appleAuth = await okJson(await call('/v1/auth/oauth/apple', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identityToken: avAppleJwt, fullName: 'Avatar Backfill', deviceId: 'ios-av-1' }),
+      }), 201);
+      assert.equal(appleAuth.user.avatarUrl, null);
+      const avToken = appleAuth.accessToken;
+      const avHdr = { Authorization: `Bearer ${avToken}` };
+
+      // 4-day gym bro_split via generate + preview parity
+      const prev4Bro = await okJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Split Check', age: 29, sex: 'male', weight: 80, height: 178,
+          goal: 'gain', activity: 'moderate', dietType: 'balanced',
+          serviceTrack: 'nutrition_and_workouts', workoutLocation: 'gym_only',
+          selectedWorkoutDays: [0, 1, 3, 4], workoutSplitPreference: 'bro_split', healthConfirmed: true,
+        }),
+      }));
+      assert.equal(prev4Bro.recommendedSplit, 'bro_split');
+
+      const prev3Bro = await okJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Split Fallback', age: 29, sex: 'male', weight: 80, height: 178,
+          goal: 'gain', activity: 'moderate', dietType: 'balanced',
+          serviceTrack: 'nutrition_and_workouts', workoutLocation: 'gym_only',
+          selectedWorkoutDays: [0, 2, 4], workoutSplitPreference: 'bro_split', healthConfirmed: true,
+        }),
+      }));
+      assert.equal(prev3Bro.recommendedSplit, 'full_body');
+
+      const avGen = await okJson(await postCmd(avToken, 0, 'generate', {
+        name: 'Avatar Backfill', age: 29, sex: 'male', weight: 80, height: 178,
+        goal: 'gain', activity: 'moderate', dietType: 'balanced',
+        serviceTrack: 'nutrition_and_workouts', workoutLocation: 'gym_only',
+        selectedWorkoutDays: [0, 1, 3, 4], workoutSplitPreference: 'bro_split', healthConfirmed: true,
+      }));
+      assert.equal(avGen.workoutPlan.split, 'bro_split');
+      assert.deepEqual(avGen.workoutPlan.days.map((d) => d.focus), ['chest_tri', 'back_bi', 'shoulders_core', 'legs']);
+
+      const bootBefore = await okJson(await call('/v1/bootstrap', { headers: avHdr }));
+      assert.equal(bootBefore.profile.avatarUrl, null);
+
+      // Link Google account carrying picture claim -> backfills null avatar_url
+      const firstPhoto = 'https://lh3.googleusercontent.com/a/backfill-photo';
+      const linkGoogleJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com',
+        aud: 'curafit-android-client-id',
+        sub: 'google-sub-avatar-backfill',
+        email: 'avatar.backfill@curafit.app',
+        email_verified: true,
+        name: 'Avatar Backfill',
+        picture: firstPhoto,
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const linkedGoogle = await okJson(await call('/v1/auth/oauth/link', {
+        method: 'POST',
+        headers: { ...avHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'google', idToken: linkGoogleJwt }),
+      }));
+      assert.equal(linkedGoogle.linked, true);
+
+      const refreshed = await okJson(await call('/v1/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: appleAuth.refreshToken, deviceId: 'ios-av-1' }),
+      }));
+      assert.equal(refreshed.user.avatarUrl, firstPhoto);
+
+      const bootAfter = await okJson(await call('/v1/bootstrap', { headers: { Authorization: `Bearer ${refreshed.accessToken}` } }));
+      assert.equal(bootAfter.profile.avatarUrl, firstPhoto);
+
+      // Re-signing in with a different Google picture claim must NOT overwrite existing avatar_url
+      const secondGoogleJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com',
+        aud: 'curafit-android-client-id',
+        sub: 'google-sub-avatar-backfill',
+        email: 'avatar.backfill@curafit.app',
+        email_verified: true,
+        name: 'Avatar Backfill',
+        picture: 'https://lh3.googleusercontent.com/a/should-not-overwrite',
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const reSignedIn = await okJson(await call('/v1/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: secondGoogleJwt, deviceId: 'android-av-2' }),
+      }), 200);
+      assert.equal(reSignedIn.user.avatarUrl, firstPhoto, 'Existing avatar_url must not be overwritten by subsequent Google login');
+
+      // Also verify existing user without avatar gets backfilled on direct Google sign-in
+      const noPicAppleJwt = await appleSigner.signJwt({
+        iss: 'https://appleid.apple.com',
+        aud: 'com.curafit.ios',
+        sub: 'apple-sub-direct-backfill',
+        email: 'direct.backfill@curafit.app',
+        email_verified: true,
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const appleNoPic = await okJson(await call('/v1/auth/oauth/apple', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identityToken: noPicAppleJwt, fullName: 'Direct Backfill' }),
+      }), 201);
+      assert.equal(appleNoPic.user.avatarUrl, null);
+      const secondPhoto = 'https://lh3.googleusercontent.com/a/direct-login-backfill';
+      const directGoogleJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com',
+        aud: 'curafit-android-client-id',
+        sub: 'google-sub-direct-backfill',
+        email: 'direct.backfill@curafit.app',
+        email_verified: true,
+        picture: secondPhoto,
+        iat: nowSec,
+        exp: nowSec + 3600,
+      });
+      const mergedLogin = await okJson(await call('/v1/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: directGoogleJwt, linkExisting: true }),
+      }), 200);
+      assert.equal(mergedLogin.user.avatarUrl, secondPhoto);
+    });
   } finally {
     await mf.dispose();
   }

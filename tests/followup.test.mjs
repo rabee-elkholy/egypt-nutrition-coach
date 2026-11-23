@@ -72,6 +72,19 @@ test('training respects time and split preferences, including equipment setup',(
  const short=workoutPlan({...draft,sessionDuration:20,workoutLocation:'home_only',homeEquipment:['none']});
  for(const day of short.days){assert.ok(day.estimatedMinutes<=20);for(const e of day.exercises)assert.ok(e.equipment.every(x=>x.equipment_id==='bodyweight'));}
  const split=workoutPlan({...draft,selectedWorkoutDays:[0,1,2,4,5],workoutSplitPreference:'bro_split'});assert.equal(split.split,'bro_split');assert.deepEqual(split.days.map(d=>d.focus),['chest','back','legs','shoulders','arms']);
+ const bro4=workoutPlan({...draft,workoutLocation:'gym_only',selectedWorkoutDays:[0,1,3,4],workoutSplitPreference:'bro_split'});assert.equal(bro4.split,'bro_split');assert.deepEqual(bro4.days.map(d=>d.focus),['chest_tri','back_bi','shoulders_core','legs']);
+ const bro3=workoutPlan({...draft,workoutLocation:'gym_only',selectedWorkoutDays:[0,2,4],workoutSplitPreference:'bro_split'});assert.equal(bro3.split,'full_body');
+ const ppl4=workoutPlan({...draft,workoutLocation:'gym_only',selectedWorkoutDays:[0,1,3,4],workoutSplitPreference:'ppl'});assert.equal(ppl4.split,'ppl');assert.deepEqual(ppl4.days.map(d=>d.focus),['push','pull','legs','full_body']);
+ const ppl5=workoutPlan({...draft,workoutLocation:'gym_only',selectedWorkoutDays:[0,1,2,4,5],workoutSplitPreference:'ppl'});assert.equal(ppl5.split,'ppl');assert.deepEqual(ppl5.days.map(d=>d.focus),['push','pull','legs','upper','lower']);
+});
+test('previewPlan and workoutPlan maintain 4-day/5-day split parity and fallbacks',async()=>{
+ const {previewPlan}=await import('../server/coaching.mjs');
+ const base={...draft,serviceTrack:'nutrition_and_workouts',workoutLocation:'gym_only'};
+ assert.equal(previewPlan({...base,selectedWorkoutDays:[0,1,3,4],workoutSplitPreference:'bro_split'}).recommendedSplit,'bro_split');
+ assert.equal(previewPlan({...base,selectedWorkoutDays:[0,2,4],workoutSplitPreference:'bro_split'}).recommendedSplit,'full_body');
+ assert.equal(previewPlan({...base,selectedWorkoutDays:[0,1,3,4],workoutSplitPreference:'ppl'}).recommendedSplit,'ppl');
+ assert.equal(previewPlan({...base,selectedWorkoutDays:[0,2],workoutSplitPreference:'ppl'}).recommendedSplit,'full_body');
+ assert.equal(previewPlan({...base,selectedWorkoutDays:[0,2],workoutSplitPreference:'upper_lower'}).recommendedSplit,'upper_lower');
 });
 test('source quads/adductors map to check-in regions consistently',async()=>{
  const {regionForMuscle,muscleRegions,catalog}=await import('../server/workouts.mjs');assert.equal(regionForMuscle('quadriceps'),'quadriceps');assert.equal(regionForMuscle('hip_adductors'),'hips');

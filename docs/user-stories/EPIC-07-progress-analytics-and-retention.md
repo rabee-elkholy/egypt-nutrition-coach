@@ -427,7 +427,7 @@ As a female user (especially when managing weight fluctuations, bloating, PCOS, 
    - **Scale Reassurance Pill (When `waterRetentionLikely == true`):** *"Temporary scale increases (+0.5 to 2 kg) are common water retention during this phase — focus on your 7-day trend!"* (`code: "CYCLE_LUTEAL_WATER_RETENTION"`).
    - **Pregnancy Auto-Pause State (`maternalStatus in ["pregnant_t1", "pregnant_t2", "pregnant_t3"]`):** Displays calm `"Cycle tracking paused during pregnancy"` notice (`code: "CYCLE_PAUSED_PREGNANCY"`) and hides all period projections.
 3. **Quick Cycle Check-In Sheet (`CycleLogSheet`):**
-   - Toggle `[Period Started Today]` (`periodStart: true`), Flow Level (`none | spotting | light | medium | heavy`), Symptom Chips (`cramps`, `bloating`, `fatigue`, `headache`, `mood_swings`, `back_pain`, `cravings`), Cramp Severity (`0..5`), and optional Notes (`<= 200` chars).
+   - Toggle `[Period Started Today]` (`periodStart: true`), Flow Level (`none | spotting | light | medium | heavy`), Symptom Chips (all 9 backend `CYCLE_SYMPTOMS`: `cramps`, `bloating`, `fatigue`, `headache`, `mood_changes`, `cravings`, `back_pain`, `tender_breasts`, `insomnia`), Cramp Severity (`0..5`), and optional Notes (`<= 200` chars).
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/cycle/state`**

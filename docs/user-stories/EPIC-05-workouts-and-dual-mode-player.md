@@ -915,7 +915,7 @@ As a user who walks briskly, runs, cycles, swims, or plays sports alongside (or 
 
 ### SCREEN AND UI DETAILS
 1. **Log Cardio Bottom Sheet (`LogCardioSheet` — Launched from `+` Quick-Log, `Today` Activity Card, or `Workouts` Tab):**
-   - **Modality Grid (10 Clean Icons):** `Walking`, `Running`, `Cycling`, `Swimming`, `Elliptical`, `Rowing`, `Jump Rope`, `HIIT`, `Sports`, `Other`.
+   - **Modality Grid (10 Clean Icons — exact backend `CARDIO_MODALITIES` keys):** `Walking` (`walking`), `Brisk Walking` (`brisk_walking`), `Running` (`running`), `Cycling` (`cycling`), `Stationary Bike` (`stationary_bike`), `Swimming` (`swimming`), `Elliptical` (`elliptical`), `Rowing` (`rowing`), `Jump Rope` (`jump_rope`), `HIIT` (`hiit`).
    - **Duration Input (`5..360` min):** Quick preset chips (`15m`, `30m`, `45m`, `60m`) + custom stepper.
    - **Intensity Selector:** `Low (Conversational)` | `Moderate (Brisk)` | `Vigorous (Hard)`.
    - **Optional Fields:** Distance (`km` or `mi` converted to `km`, `0.1..300`), Manual Calories Override (`10..5000 kcal`, defaults to live MET estimate), Date (`past 90 days..today`), Notes (`<= 200` chars).
