@@ -16,7 +16,7 @@
 ### Child User Stories
 - `US-CCH-01`: Coach Hub Home — 3-Specialist Care Team Strip, Daily Brief, Readiness Pill & Priority Action Queue
 - `US-CCH-02`: Daily Recovery & Readiness Check-In (Body-Map Soreness, Pain Regions & Urgent Red-Flag Safety Stop)
-## US-CCH-03: Adaptive Review Engine & Explicit Proposal Cards ("View Evidence & Eligibility", Calories, 24h Deload, Volume & Maintenance)
+- `US-CCH-03`: Adaptive Review Engine & Explicit Proposal Cards ("View Evidence & Eligibility", Calories, 24h Deload, Volume & Maintenance)
 - `US-CCH-04`: Coaching Inbox, Barrier Check-In (`hunger`/`energy`/`satiety`) & Active Coaching Agreements
 - `US-CCH-05`: Guarded AI Coach Q&A ("Ask the Coach" — Log-Grounded Chat with Strict Safety Guardrails) *(Final AI Phase — Deferred)*
 - `US-CCH-06`: Structured Weekly Care-Team Check-In, Scientific Progress Audit & Zero-Guilt "Comeback Protocol"
