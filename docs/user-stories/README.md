@@ -5,7 +5,7 @@
 > **Scope:** Full Production Scope (No MVP Deferral — All 10 Epics / 68 Stories Target Production Launch)
 > **Target Platforms:** Kotlin Multiplatform Mobile (KMM — Android & iOS), Native Jetpack Compose & SwiftUI UI
 > **Target Markets:** Middle East & North Africa (`egypt`, `gulf`, `levant`, `maghreb`) — Bilingual Arabic (RTL) & English (LTR)
-> **Backend Baseline:** CuraFit API v1 (`Cloudflare Workers + D1 + R2`) — `84` OpenAPI paths (`contracts/openapi.yaml`), `50` command actions, `293` canonical error codes (`contracts/error-codes.json`), `97` canonical coaching codes (`contracts/coaching-codes.json`), Postman collection (`16` groups / `140` endpoints) — Cloud Dev (`https://curafit-api-dev.egypt-nutrition-coach.workers.dev`) & Production (`https://curafit-api.egypt-nutrition-coach.workers.dev`)
+> **Backend Baseline:** CuraFit API v1 (`Cloudflare Workers + D1 + R2`) — `84` OpenAPI paths (`contracts/openapi.yaml`), `50` command actions, `294` canonical error codes (`contracts/error-codes.json`), `97` canonical coaching codes (`contracts/coaching-codes.json`), Postman collection (`16` groups / `140` endpoints) — Cloud Dev (`https://curafit-api-dev.egypt-nutrition-coach.workers.dev`) & Production (`https://curafit-api.egypt-nutrition-coach.workers.dev`)
 > **Implementation Status:** All non-AI endpoints and commands across `EPIC-01`..`EPIC-10` are **Implemented & Live** in CuraFit API v1. Only the 3 Final AI Phase endpoints (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) remain explicitly deferred to the Final AI Phase (returning `501 FEATURE_DEFERRED_TO_AI_PHASE` until AI rollout).
 
 ---
@@ -68,7 +68,7 @@ CuraFit Mobile is an end-to-end, clinically guarded, culturally native **Nutriti
 | **EPIC-08** | [`KAN-92`](https://abdulrahman-alaa.atlassian.net/browse/KAN-92) | [EPIC-08-wearables-and-smart-notifications.md](EPIC-08-wearables-and-smart-notifications.md) — *Apple Health / Health Connect Sync & Intelligent Push Notifications* | `US-INT-01` .. `US-INT-03` (`KAN-93`..`KAN-95`) | **3** | Implemented (Live in API v1) |
 | **EPIC-09** | [`KAN-96`](https://abdulrahman-alaa.atlassian.net/browse/KAN-96) | [EPIC-09-profile-preferences-and-privacy.md](EPIC-09-profile-preferences-and-privacy.md) — *Profile Management, Plan Reconfiguration, Localization & GDPR Privacy* | `US-PRF-01` .. `US-PRF-07` (`KAN-97`..`KAN-103`) | **7** | Implemented (Live in API v1) |
 | **EPIC-10** | [`KAN-104`](https://abdulrahman-alaa.atlassian.net/browse/KAN-104) | [EPIC-10-monetization-and-subscriptions.md](EPIC-10-monetization-and-subscriptions.md) — *Freemium Entitlements, Soft Paywall, 7-Day Free Trial & Subscription Management* | `US-MON-01` .. `US-MON-04` (`KAN-105`..`KAN-108`) | **4** | Implemented (Live in API v1) |
-| **CONTRACT** | — | [BACKEND-API-DELTA-SPEC.md](BACKEND-API-DELTA-SPEC.md) — *Complete API Contract Reference (`84` OpenAPI Paths, `50` Command Actions, `140` Postman Requests, `293` Error Codes, `97` Coaching Codes & D1/R2 Schema)* | Cross-cutting Reference | — | Production Contract Reference |
+| **CONTRACT** | — | [BACKEND-API-DELTA-SPEC.md](BACKEND-API-DELTA-SPEC.md) — *Complete API Contract Reference (`84` OpenAPI Paths, `50` Command Actions, `140` Postman Requests, `294` Error Codes, `97` Coaching Codes & D1/R2 Schema)* | Cross-cutting Reference | — | Production Contract Reference |
 | **TOTAL** | **10 Epics** | **All 13 Documentation Files** | **`68` Stories (`KAN-34` .. `KAN-111`)** | **68** | **66 Live + 2 Final AI Phase** |
 
 ---
@@ -86,7 +86,7 @@ CuraFit Mobile is an end-to-end, clinically guarded, culturally native **Nutriti
   - On any **permanent `4xx` error** (every `4xx` except `409 REVISION_CONFLICT`, and excluding retryable `429 RATE_LIMITED`), the outbox worker immediately moves that mutation to a `failed_terminal` / discardable state, rolls back its optimistic local row, surfaces a clear dismissible user notification with the localized reason, and continues draining remaining queued mutations instead of retrying forever.
 
 ### 4.2 Pure-English Error & Coaching Message Contracts + Client Localization
-- Every API `error.code` (`293` canonical codes in `contracts/error-codes.json`) returns strictly canonical English in `error.message` and `fieldErrors[].message`.
+- Every API `error.code` (`294` canonical codes in `contracts/error-codes.json`) returns strictly canonical English in `error.message` and `fieldErrors[].message`.
 - Every server coaching, brief, review, and eligibility message returns strictly canonical English paired with deterministic `code` and `params` (`97` canonical codes in `contracts/coaching-codes.json`).
 - Mobile clients **never display raw server English text** to Arabic users; instead, KMM resolves localized strings in `ar` and `en` by `(error.code, error.params)` or `(coachingCode, params)` (e.g., `RECOVERY_DELOAD_PROPOSAL`, `PERFORMANCE_DROP_CALORIE_CUT_HOLD`, `INSUFFICIENT_EVIDENCE_COVERAGE`, `DOUBLE_PROGRESSION_READY`, `RED_FLAGS_STOP`, `CYCLE_LUTEAL_WATER_RETENTION`).
 

@@ -135,6 +135,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `SCHEDULE_ALREADY_CONFIRMED` | `400` | No | — | Workout schedule weekday convention has already been confirmed. |
 | `INVALID_SCHEDULE_MAPPING` | `400` | No | — | Provide a unique weekday index (0..6) for each workout day in dayMap. |
 | `INVALID_AGE` | `400` | No | — | age must be a whole number of years between 18 and 95. |
+| `INVALID_BIRTH_DATE` | `400` | No | `minAge`, `maxAge`, `computedAge` | Date of birth must correspond to an adult aged 18 to 95 years. |
 | `INVALID_PROFILE_METRICS` | `400` | No | — | Invalid sex, activity level, or goal selection. |
 | `INVALID_TRAINING_DAYS` | `400` | No | — | trainingDays must be an integer between 0 and 7. |
 | `INVALID_GOAL_PACE` | `400` | No | — | goalPace must be one of slow, moderate, or fast. |

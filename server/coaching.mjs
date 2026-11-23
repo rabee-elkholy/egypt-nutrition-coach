@@ -12,7 +12,7 @@ import {library,activePlan,foodCommand,replaceMeal,plannedEnergyForDate,dayTotal
 import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reconcileSessions} from './training-state.mjs';
 import {volumeReview} from './training-review.mjs';
 import {nutritionEvidenceKey,matchingNutritionDecline} from '../nutrition-decisions.mjs';
-import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,SUPPORTED_LOCALES,needsHealthConfirmation,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES,isPregnantStatus,minSafeEnergyFloor} from '../coaching-shared.mjs';
+import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,SUPPORTED_LOCALES,needsHealthConfirmation,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES,isPregnantStatus,minSafeEnergyFloor,computeAgeFromBirthDate,resolveProfileBirthDateAndAge,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
 import {saveCustomRecipe,deleteCustomRecipe,logCardioSession,deleteCardioSession,dailyCardioMinutes,updateCycleSettings,logCycleEntry} from './wellness-tools.mjs';
 import {apiError} from '../coaching-error.mjs';
 
@@ -54,6 +54,7 @@ export function normalize(s){
  let reopened=false;
  for(const log of s.foodLogs)if(log.source==='entries'&&log.completionPolicy!==1){log.legacyCompletion=!!log.complete;log.complete=false;log.completionPolicy=1;log.confirmedAt=null;reopened=true;}
  if(reopened){for(const a of s.adaptations)if(a.status==='pending')a.status='superseded';s.lastReview=null;}
+ if(s.profile?.birthDate)s.profile=effectiveProfileWithLiveAge(s.profile,localDate(clockNow(),s.profile.timezone||'Africa/Cairo'));
  s.workoutSafetyIssues=workoutSafetyIssues(s);
  if(s.workoutSafetyIssues.length){for(const a of s.adaptations)if(a.status==='pending')a.status='superseded';for(const day of s.workoutPlan.days)for(const exercise of day.exercises){delete exercise.suggestedKg;delete exercise.progressionReason;}}
  ensureTrainingState(s);reconcileSessions(s);return s;
@@ -119,7 +120,10 @@ export function previewPlan(d={}){
  const normalized=normalizeWeekdayDraft(d);
  const rawDiseases=normalized.diseases??normalized.conditions;
  const elig=evaluateEligibility({...normalized,diseases:rawDiseases});
- const age=integer(normalized.age,18,95,'age'),weight=number(normalized.weight,35,250,'weight'),height=number(normalized.height,120,230,'height');
+ const tz=normalized.timezone&&validTimeZone(normalized.timezone)?normalized.timezone:defaultTimezoneForRegion(normalized.region||'egypt');
+ const currDate=localDate(clockNow(),tz);
+ const {birthDate,age}=resolveProfileBirthDateAndAge(normalized,currDate);
+ const weight=number(normalized.weight,35,250,'weight'),height=number(normalized.height,120,230,'height');
  if(!['male','female'].includes(normalized.sex))throw apiError('INVALID_SEX','sex must be male or female.',{status:400});
  const goal=normalized.goal||'maintain';
  if(!['lose','maintain','gain','muscle_gain'].includes(goal))throw apiError('INVALID_GOAL','goal must be one of lose, maintain, gain, or muscle_gain.',{status:400});
@@ -157,8 +161,6 @@ export function previewPlan(d={}){
   recomposition
  });
  const targets=applyDietMacroPreview(baseTargets,dietType,weight);
- const tz=normalized.timezone||defaultTimezoneForRegion(normalized.region||'egypt');
- const currDate=localDate(clockNow(),tz);
  const currWeekday=new Date(currDate+'T12:00:00Z').getUTCDay();
  const selectedDays=Array.isArray(normalized.selectedWorkoutDays)?normalized.selectedWorkoutDays:extDays;
  const baseWaterProfile={weight,activity:normalized.activity||normalized.dailyActivity||'light',maternalStatus,diseases:declaredDiseases};
@@ -194,6 +196,8 @@ export function previewPlan(d={}){
   estimatedWeeksMax:targets.forecast?.estimated_weeks_max??0,
   recommendedSplit,
   seniorMode,
+  computedAge:age,
+  ...(birthDate?{birthDate}:{}),
   warnings,
   clinicalBlocks:elig.reasons||[],
   workoutUiModeDefault
@@ -204,7 +208,10 @@ export function generate(s,d,seed=crypto.randomUUID()){
  d=normalizeWeekdayDraft(d);
  if(d.overwriteExisting===false&&s.profile)throw apiError('PROFILE_ALREADY_EXISTS','An existing profile already exists on this account; pass overwriteExisting: true to replace it.',{status:409});
  const rawDiseasesInput=d.diseases??d.conditions;
- const age=integer(d.age,18,95,'age'),weight=number(d.weight,35,250,'weight'),height=number(d.height,120,230,'height');
+ const dobTz=d.timezone&&validTimeZone(String(d.timezone).trim())?String(d.timezone).trim():defaultTimezoneForRegion(d.region||'egypt');
+ const dobRefDate=localDate(clockNow(),dobTz);
+ const {birthDate,age}=resolveProfileBirthDateAndAge(d,dobRefDate);
+ const weight=number(d.weight,35,250,'weight'),height=number(d.height,120,230,'height');
  if(!['male','female'].includes(d.sex))throw apiError('INVALID_SEX','sex must be male or female.',{status:400});
  if(rawDiseasesInput!=null&&!Array.isArray(rawDiseasesInput)||d.injuries!=null&&!Array.isArray(d.injuries))throw apiError('INVALID_HEALTH_FLAGS','diseases and injuries must be arrays of condition IDs.',{status:400});
  const maternalStatus=d.maternalStatus||'none';
@@ -237,6 +244,7 @@ export function generate(s,d,seed=crypto.randomUUID()){
  const profile={
   weekdayConvention:'js_sunday_0',
   name:cleanName.slice(0,50),
+  ...(birthDate?{birthDate}:{}),
   age,weight,height,sex:d.sex,goal:d.goal,
   targetWeight:d.targetWeight!=null&&d.targetWeight!==''?number(d.targetWeight,35,250,'targetWeight'):null,
   bmiWarningOverride:d.bmiWarningOverride===true,
@@ -396,6 +404,7 @@ function validateEnergyChange(s,energy,delta=0){
 }
 function adjustCalories(s,a){
  const currDate=userToday(s);
+ if(s.profile?.birthDate)s.profile=effectiveProfileWithLiveAge(s.profile,currDate);
  const previous=activePlan(s),energy=Number(previous.targets.energy)+a.delta;
  validateEnergyChange(s,energy,a.delta);
  const effective=dateOffset(currDate,1),plan=structuredClone(previous);
@@ -433,6 +442,7 @@ export function command(input,action,p){
   const earlyRenew=p?.earlyRenew===true;
   if(!earlyRenew&&current.days.at(-1).date>=currDate)throw apiError('PLAN_STILL_ACTIVE','Current weekly nutrition plan is still active; renewal is allowed after it ends or with earlyRenew: true.',{status:400});
   const start=currDate;
+  if(s.profile?.birthDate)s.profile=effectiveProfileWithLiveAge(s.profile,currDate);
   const next=makeWeek(s.profile,s.preferences,library,start,crypto.randomUUID(),s.nutritionAdjustment?.energy??null);
   if(earlyRenew){
    const todayPlanDay=current.days.find(d=>d.date===currDate);
@@ -575,6 +585,7 @@ export function command(input,action,p){
   const shouldRenew=p.renewMealPlan===true||p.renewPlan===true;
   if(shouldRenew&&activePlan(s)){
    const current=activePlan(s);
+   if(s.profile?.birthDate)s.profile=effectiveProfileWithLiveAge(s.profile,currDate);
    const next=makeWeek(s.profile,s.preferences,library,currDate,crypto.randomUUID(),null);
    next.created_at=isoNow();next.parent_id=current.id;next.effective_from=currDate;next.changeReason='Comeback plan renewal with updated profile weight';
    s.plans.push(next);s.active_plan_id=next.id;s.nutritionContextStartedOn=currDate;
@@ -802,7 +813,8 @@ export function command(input,action,p){
    adjustCalories(s,a);
   }
   else if(a.kind==='maintenance'){
-   const before=activePlan(s),profile={...s.profile,weight:Math.round(a.averageWeight*10)/10,goal:'maintain',targetWeight:null};
+   const liveProfile=effectiveProfileWithLiveAge(s.profile,currDate);
+   const before=activePlan(s),profile={...liveProfile,weight:Math.round(a.averageWeight*10)/10,goal:'maintain',targetWeight:null};
    const start=dateOffset(currDate,1);
    if(s.foodEntries.some(e=>e.date>=start))throw apiError('FUTURE_FOOD_ENTRIES_CONFLICT','Food logs already exist on or after the effective adjustment date.',{status:400});
    const plan=makeWeek(profile,s.preferences,library,start,crypto.randomUUID());
@@ -828,8 +840,17 @@ export function command(input,action,p){
 }
 export function evaluateEligibility(d={}){
  const reasons=[],questions=[],notes=[];
- const ageNum=Number(d.age),weightNum=Number(d.weight),heightNum=Number(d.height);
- if(d.age==null||!Number.isInteger(ageNum)||ageNum<18||ageNum>95){reasons.push({code:'AGE_UNSUPPORTED_OR_MISSING',severity:'requires_review',message:'Automated planning is available for adults aged 18 to 95 only.'});}
+ const dobTz=d.timezone&&validTimeZone(String(d.timezone).trim())?String(d.timezone).trim():defaultTimezoneForRegion(d.region||'egypt');
+ const todayDate=localDate(clockNow(),dobTz);
+ const rawBirthDate=d.birthDate!=null&&String(d.birthDate).trim()!==''?String(d.birthDate).trim():null;
+ let ageNum=NaN;
+ if(rawBirthDate){
+  if(validDate(rawBirthDate)&&rawBirthDate<=todayDate)ageNum=computeAgeFromBirthDate(rawBirthDate,todayDate);
+ }else if(d.age!=null&&d.age!==''){
+  ageNum=Number(d.age);
+ }
+ const weightNum=Number(d.weight),heightNum=Number(d.height);
+ if(!Number.isInteger(ageNum)||ageNum<18||ageNum>95){reasons.push({code:'AGE_UNSUPPORTED_OR_MISSING',severity:'requires_review',message:'Automated planning is available for adults aged 18 to 95 only.'});}
  else if(ageNum>=70){notes.push({code:'SENIOR_MODE_ACTIVE',severity:'info',message:'Senior safety mode (70+) is active: moderate deficit cap (-400 kcal), protein floor >= 1.2 g/kg, and joint-friendly low-impact exercises.'});}
  const rawDiseases=d.diseases??d.conditions;
  const diseases=Array.isArray(rawDiseases)?rawDiseases.filter(x=>x&&x!=='none'):[];
@@ -859,13 +880,14 @@ export function evaluateEligibility(d={}){
   notes,
   questions,
   seniorMode:Number.isInteger(ageNum)&&ageNum>=70&&ageNum<=95,
+  computedAge:Number.isInteger(ageNum)?ageNum:null,
   supportedAdaptations:{
    diseases:diseases.filter(x=>SUPPORTED_WELLNESS_CONDITIONS.has(x)),
    injuries:injuries.filter(x=>SUPPORTED_MILD_INJURIES.has(x)),
    maternalStatus:maternal||'none'
   },
   permittedFunctions:status==='requires_review'?['browse_food_catalog','browse_exercise_catalog','export_clinical_summary']:['generate_plan','log_execution','adaptive_review'],
-  clinicalSummary:status==='requires_review'?{generatedAt:isoNow(),age:Number.isFinite(ageNum)?ageNum:null,weightKg:Number.isFinite(weightNum)?weightNum:null,heightCm:Number.isFinite(heightNum)?heightNum:null,declaredDiseases:diseases,declaredInjuries:injuries,maternalStatus:maternal||'none',note:'Automated screening summary suitable for sharing with a physician, registered dietitian, or physical therapist.'}:null
+  clinicalSummary:status==='requires_review'?{generatedAt:isoNow(),...(rawBirthDate?{birthDate:rawBirthDate}:{}),age:Number.isFinite(ageNum)?ageNum:null,weightKg:Number.isFinite(weightNum)?weightNum:null,heightCm:Number.isFinite(heightNum)?heightNum:null,declaredDiseases:diseases,declaredInjuries:injuries,maternalStatus:maternal||'none',note:'Automated screening summary suitable for sharing with a physician, registered dietitian, or physical therapist.'}:null
  };
 }
 export function progressSummary(s){

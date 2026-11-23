@@ -44,7 +44,7 @@ Every JSON endpoint returns the canonical envelope:
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |
-| `error.code` | `string` | Stable uppercase error code (293 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
+| `error.code` | `string` | Stable uppercase error code (294 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
 | `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |
 | `error.params` | `object` | Interpolation parameters for client-side localization |
 | `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |
@@ -781,7 +781,7 @@ Deterministic clinical/physiological pre-screening, initial 7-day nutrition & wo
 
 ### Pre-Screening Eligibility Check
 
-Public fast deterministic pre-onboarding screening checking age (18..70), BMI boundaries (12.5..65), medical conditions, injuries, and maternal status before plan generation.
+Public fast deterministic pre-onboarding screening checking date of birth (`birthDate`, adults 18..95), BMI boundaries (12.5..65), medical conditions, injuries, and maternal status before plan generation.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -800,7 +800,8 @@ Public fast deterministic pre-onboarding screening checking age (18..70), BMI bo
 ### Request Body Fields
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
-| `age` | `integer` | Yes | 18..70 | User age in years. |
+| `birthDate` | `string (YYYY-MM-DD)` | No | Valid date resulting in 18..95 yrs (canonical) | Canonical ISO date of birth (`YYYY-MM-DD`); server computes adult age dynamically. |
+| `age` | `integer` | No | 18..95 (legacy fallback) | Legacy integer age fallback when `birthDate` is omitted. |
 | `sex` | `string (enum)` | Yes | `male` | `female` | Biological sex for BMR/energy calculation. |
 | `height` | `number` | Yes | 120..230 (cm) | Height in centimeters. |
 | `weight` | `number` | Yes | 35..250 (kg) | Current body weight in kg. |
@@ -814,7 +815,7 @@ Public fast deterministic pre-onboarding screening checking age (18..70), BMI bo
 ### Request Body Example
 ```json
 {
-  "age": 29,
+  "birthDate": "1997-05-14",
   "sex": "male",
   "height": 178,
   "weight": 82,
@@ -898,7 +899,8 @@ Creates the user profile, generates a personalized 7-day regional nutrition plan
 | `action` | `string (const)` | Yes | "generate" | Domain command action identifier. |
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `generate`. |
 | `payload.name` | `string` | No | max 100 chars | Display name. |
-| `payload.age` | `integer` | Yes | 18..70 | Age in years. |
+| `payload.birthDate` | `string (YYYY-MM-DD)` | No | Valid DOB resulting in 18..95 yrs (canonical) | Canonical ISO date of birth (`YYYY-MM-DD`); server computes live age dynamically and enables birthday rollover. |
+| `payload.age` | `integer` | No | 18..95 (legacy fallback) | Legacy integer age fallback when `birthDate` is omitted. |
 | `payload.weight` | `number` | Yes | 35..250 (kg) | Current weight in kg. |
 | `payload.height` | `number` | Yes | 120..230 (cm) | Height in cm. |
 | `payload.sex` | `string (enum)` | Yes | `male` | `female` | Biological sex. |
@@ -925,7 +927,7 @@ Creates the user profile, generates a personalized 7-day regional nutrition plan
   "action": "generate",
   "payload": {
     "name": "Ahmed Mohamed",
-    "age": 29,
+    "birthDate": "1997-05-14",
     "weight": 82,
     "height": 178,
     "sex": "male",
@@ -6838,7 +6840,8 @@ Stateless onboarding calculation returning daily kcal/macros, safe calorie floor
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
 | `name` | `string` | No | max 100 chars | Optional display name. |
-| `age` | `integer` | Yes | 18..70 | Age in years. |
+| `birthDate` | `string (YYYY-MM-DD)` | No | Valid DOB resulting in 18..95 yrs (canonical) | Canonical ISO date of birth (`YYYY-MM-DD`); server computes live age dynamically. |
+| `age` | `integer` | No | 18..95 (legacy fallback) | Legacy integer age fallback when `birthDate` is omitted. |
 | `sex` | `string (enum)` | Yes | `male` | `female` | Biological sex. |
 | `weight` | `number` | Yes | 35..250 (kg) | Current body weight in kg. |
 | `height` | `number` | Yes | 120..230 (cm) | Height in cm. |
@@ -6854,7 +6857,7 @@ Stateless onboarding calculation returning daily kcal/macros, safe calorie floor
 ```json
 {
   "name": "Preview User",
-  "age": 30,
+  "birthDate": "1997-05-14",
   "sex": "male",
   "weight": 82,
   "height": 178,

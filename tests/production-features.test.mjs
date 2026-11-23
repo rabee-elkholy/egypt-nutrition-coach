@@ -1662,14 +1662,62 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
         body: JSON.stringify({ provider: 'google', idToken: ownerGoogleJwt }),
       }), 409, 'AUTH_OAUTH_ALREADY_LINKED_OTHER_USER');
 
-      // 3. Generate female account -> Recent foods, food_entry_batch, range diary, barcode, grocery preview & earlyRenew
+      // 3. Canonical birthDate eligibility, preview, validation, and generate female account -> Recent foods, food_entry_batch, range diary, barcode, grocery preview & earlyRenew
+      const dobEligOk = await okJson(await call('/v1/eligibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ birthDate: '1996-05-14', sex: 'female', weight: 65, height: 165, goal: 'lose' }),
+      }));
+      assert.equal(dobEligOk.status, 'eligible');
+      assert.ok(dobEligOk.computedAge >= 29);
+
+      const dobEligUnder = await okJson(await call('/v1/eligibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ birthDate: '2015-05-01', sex: 'female', weight: 65, height: 165, goal: 'lose' }),
+      }));
+      assert.equal(dobEligUnder.status, 'requires_review');
+      assert.ok(dobEligUnder.reasons.some((r) => r.code === 'AGE_UNSUPPORTED_OR_MISSING'));
+
+      const dobPreviewOk = await okJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ birthDate: '1996-05-14', sex: 'female', weight: 65, height: 165, goal: 'lose', serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true }),
+      }));
+      assert.equal(dobPreviewOk.birthDate, '1996-05-14');
+      assert.ok(dobPreviewOk.computedAge >= 29);
+
+      await errJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ birthDate: '1998-02-30', sex: 'female', weight: 65, height: 165, goal: 'lose' }),
+      }), 400, 'INVALID_BIRTH_DATE');
+
+      await errJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ birthDate: '2015-05-01', sex: 'female', weight: 65, height: 165, goal: 'lose' }),
+      }), 400, 'INVALID_BIRTH_DATE');
+
+      await errJson(await postCmd(fToken, 0, 'generate', {
+        name: 'Salma MG', birthDate: '2015-05-01', sex: 'female', weight: 65, height: 165,
+        goal: 'lose', targetWeight: 60, activity: 'light', dietType: 'balanced',
+        serviceTrack: 'nutrition_and_workouts', workoutLocation: 'gym_only',
+        selectedWorkoutDays: [1, 3, 5], healthConfirmed: true,
+      }), 400, 'INVALID_BIRTH_DATE');
+
       const fGen = await okJson(await postCmd(fToken, 0, 'generate', {
-        name: 'Salma MG', age: 27, sex: 'female', weight: 65, height: 165,
+        name: 'Salma MG', birthDate: '1996-05-14', sex: 'female', weight: 65, height: 165,
         goal: 'lose', targetWeight: 60, activity: 'light', dietType: 'balanced',
         serviceTrack: 'nutrition_and_workouts', workoutLocation: 'gym_only',
         selectedWorkoutDays: [new Date().getUTCDay(), (new Date().getUTCDay() + 2) % 7, (new Date().getUTCDay() + 4) % 7],
         healthConfirmed: true,
       }));
+      assert.equal(fGen.profile.birthDate, '1996-05-14');
+      assert.ok(fGen.profile.age >= 29);
+      const dobBootstrap = await okJson(await call('/v1/bootstrap', { headers: fHdr }));
+      assert.equal(dobBootstrap.profile.birthDate, '1996-05-14');
+      assert.equal(dobBootstrap.profile.age, fGen.profile.age);
       let fRev = fGen.revision;
       const todayDate = fGen.serverDate;
       const planId = fGen.plans[0].id;

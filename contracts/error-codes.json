@@ -668,6 +668,12 @@
       "params": [],
       "retryable": false
     },
+    "INVALID_BIRTH_DATE": {
+      "httpStatus": 400,
+      "message": "Date of birth must correspond to an adult aged 18 to 95 years.",
+      "params": ["minAge", "maxAge", "computedAge"],
+      "retryable": false
+    },
     "INVALID_PROFILE_METRICS": {
       "httpStatus": 400,
       "message": "Invalid sex, activity level, or goal selection.",

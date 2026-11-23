@@ -103,6 +103,66 @@ export function validDate(date) {
   return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date + 'T12:00:00Z')) && new Date(date + 'T12:00:00Z').toISOString().slice(0, 10) === date;
 }
 
+export function computeAgeFromBirthDate(birthDate, referenceDate = localDate()) {
+  if (typeof birthDate !== 'string' || !validDate(birthDate)) {
+    throw apiError('INVALID_BIRTH_DATE', 'Date of birth must be a valid YYYY-MM-DD calendar date.', {
+      status: 400,
+      params: { minAge: 18, maxAge: 95, computedAge: null },
+      fieldErrors: [{ field: 'birthDate', code: 'INVALID_BIRTH_DATE', message: 'Date of birth must be a valid YYYY-MM-DD calendar date.' }]
+    });
+  }
+  const ref = validDate(referenceDate) ? referenceDate : localDate();
+  if (birthDate > ref) {
+    throw apiError('INVALID_BIRTH_DATE', 'Date of birth cannot be in the future.', {
+      status: 400,
+      params: { minAge: 18, maxAge: 95, computedAge: null },
+      fieldErrors: [{ field: 'birthDate', code: 'INVALID_BIRTH_DATE', message: 'Date of birth cannot be in the future.' }]
+    });
+  }
+  const [bY, bM, bD] = birthDate.split('-').map(Number);
+  const [rY, rM, rD] = ref.split('-').map(Number);
+  let age = rY - bY;
+  if (rM < bM || (rM === bM && rD < bD)) age -= 1;
+  return age;
+}
+
+export function resolveProfileBirthDateAndAge(input = {}, referenceDate = localDate()) {
+  const hasRawBirthDate = input?.birthDate !== undefined && input?.birthDate !== null;
+  const trimmedBirthDate = hasRawBirthDate ? String(input.birthDate).trim() : '';
+  if (trimmedBirthDate !== '') {
+    const computedAge = computeAgeFromBirthDate(trimmedBirthDate, referenceDate);
+    if (computedAge < 18 || computedAge > 95) {
+      throw apiError('INVALID_BIRTH_DATE', 'Date of birth must correspond to an adult aged 18 to 95 years.', {
+        status: 400,
+        params: { minAge: 18, maxAge: 95, computedAge },
+        fieldErrors: [{ field: 'birthDate', code: 'INVALID_BIRTH_DATE', message: 'Date of birth must correspond to an adult aged 18 to 95 years.' }]
+      });
+    }
+    return { birthDate: trimmedBirthDate, age: computedAge };
+  }
+  if (hasRawBirthDate && input?.age == null) {
+    throw apiError('INVALID_BIRTH_DATE', 'Date of birth must correspond to an adult aged 18 to 95 years.', {
+      status: 400,
+      params: { minAge: 18, maxAge: 95, computedAge: null },
+      fieldErrors: [{ field: 'birthDate', code: 'INVALID_BIRTH_DATE', message: 'Date of birth must correspond to an adult aged 18 to 95 years.' }]
+    });
+  }
+  return {
+    birthDate: null,
+    age: integer(input?.age, 18, 95, 'age')
+  };
+}
+
+export function effectiveProfileWithLiveAge(profile, referenceDate = localDate()) {
+  if (!profile || !profile.birthDate || !validDate(profile.birthDate)) return profile;
+  const ref = validDate(referenceDate) ? referenceDate : localDate();
+  if (profile.birthDate > ref) return profile;
+  const liveAge = Math.min(95, Math.max(18, computeAgeFromBirthDate(profile.birthDate, ref)));
+  const seniorMode = liveAge >= 70 || profile.seniorMode === true;
+  if (profile.age === liveAge && Boolean(profile.seniorMode) === seniorMode) return profile;
+  return { ...profile, age: liveAge, seniorMode };
+}
+
 export function number(value, min, max, label) {
   const field = fieldKey(label);
   if (value == null || typeof value === 'boolean' || !['number', 'string'].includes(typeof value) || (typeof value === 'string' && !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) || !Number.isFinite(Number(value)) || Number(value) < min || Number(value) > max) {

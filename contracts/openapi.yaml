@@ -649,6 +649,21 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: true
+              properties:
+                birthDate:
+                  type: string
+                  format: date
+                  example: "1997-05-14"
+                  description: Canonical ISO date of birth (YYYY-MM-DD) for adults aged 18 to 95.
+                age:
+                  type: integer
+                  minimum: 18
+                  maximum: 95
+                  description: Legacy fallback integer age when birthDate is omitted.
+                weight: { type: number }
+                height: { type: number }
+                sex: { type: string, enum: [male, female] }
       responses:
         "200":
           description: Eligibility result
@@ -1015,6 +1030,22 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: true
+              properties:
+                birthDate:
+                  type: string
+                  format: date
+                  example: "1997-05-14"
+                  description: Canonical ISO date of birth (YYYY-MM-DD) for adults aged 18 to 95.
+                age:
+                  type: integer
+                  minimum: 18
+                  maximum: 95
+                  description: Legacy fallback integer age when birthDate is omitted.
+                weight: { type: number }
+                height: { type: number }
+                sex: { type: string, enum: [male, female] }
+                goal: { type: string, enum: [lose, maintain, gain, muscle_gain] }
       responses:
         "200":
           description: Preview targets, hydration targets, session density, eligibility, and forecast range
@@ -2176,6 +2207,7 @@ components:
                   type: string
                 profile:
                   type: [object, "null"]
+                  description: Hydrated user profile including canonical `birthDate` (`YYYY-MM-DD`, when set), live birthday-rollover `age` (`18..95`), `seniorMode`, `unitSystem`, and optional short-lived `avatarUrl`.
                 preferences:
                   type: [object, "null"]
                 eligibility:

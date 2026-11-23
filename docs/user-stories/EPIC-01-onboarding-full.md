@@ -247,7 +247,7 @@ As a user going through the conversational onboarding, I want a fast, natural ch
 To make onboarding feel purposeful, motivating, and grounded in science without adding visual clutter or juvenile hype:
 - **Opening Framing (`account_check` / `name`):** Open with clear purpose (*"Share a few focused details so we can engineer your exact calorie target, regional meal plan, and training schedule."*).
 - **1-Line Micro-Why Caption (`12sp`, muted text):** Directly under every question bubble, include at most 1 concise line (<= 12 words) showing *what that input unlocks* (e.g., metabolic baseline, protein floor, training split, or clinical safety filters).
-- **Instant 1-Line Coach Micro-Reactions:** Immediately after milestone answers (`age`, `current_weight`, `goal_pace`, `workout_days`, `conditions`), emit one concise, calm analytical takeaway showing the plan taking shape live (e.g., healthy BMI weight zone, projected weekly rate, or muscle recovery balance).
+- **Instant 1-Line Coach Micro-Reactions:** Immediately after milestone answers (`birth_date`, `current_weight`, `goal_pace`, `workout_days`, `conditions`), emit one concise, calm analytical takeaway showing the plan taking shape live (e.g., computed adult age + metabolic baseline, healthy BMI weight zone, projected weekly rate, or muscle recovery balance).
 - **Crisp 1-Line Card Subtitles (`5–8 words`):** Every `single-select` card displays a scannable subtitle clarifying the real-world difference between options without bloated copy or technical jargon.
 
 ---
@@ -259,9 +259,9 @@ The ordered step list is evaluated dynamically from `state`:
 
 1. `account_check`
 2. `name`
-3. `age` -> *(If *`age < 18`: route to `underage_gate` and stop until age is edited to `>= 18`)
+3. `birth_date` -> *(Client & backend derive `computedAge` from ISO `YYYY-MM-DD`; if `computedAge < 18`: route to `underage_gate` and stop until corrected to `>= 18`)*
 4. `gender`
-5. `maternal_status` *(Active ONLY if *`gender == 'female'` AND `age >= 18` AND `age <= 50`)
+5. `maternal_status` *(Active ONLY if *`gender == 'female'` AND `computedAge >= 18` AND `computedAge <= 50`)
 6. `height`
 7. `current_weight`
 8. `goal`
@@ -293,8 +293,8 @@ Never wipe all downstream answers blindly. Apply these exact rules:
 | Edited Step (`stepId`) | Downstream Keys Preserved vs. Invalidated |
 | :--- | :--- |
 | `name` | **Invalidate:** None. Update name in-place and return to current step. |
-| `age` | **If **`newValue < 18`: Route immediately to `underage_gate`.<br>**If **`newValue >= 70`: Enable `seniorMode = true`.<br>**If **`gender == 'female'` and `newValue > 50`: Clear `maternal_status`. Otherwise preserve all downstream answers and recalculate BMR/TDEE. |
-| `gender` | **If changed from **`female` -> `male`: Clear `maternal_status` and remove `'diastasis_recti'` from `injuries` if present.<br>**If changed from **`male` -> `female` (and `18 <= age <= 50`): Insert `maternal_status` as unanswered and prompt it immediately; preserve height/weight/workout/nutrition answers unless invalidated by subsequent `maternal_status` selection. |
+| `birth_date` | Recompute `computedAge = computeAgeFromBirthDate(birthDate, today)`.<br>**If **`computedAge < 18`: Route immediately to `underage_gate`.<br>**If **`computedAge >= 70`: Enable `seniorMode = true`.<br>**If **`gender == 'female'` and `computedAge > 50`: Clear `maternal_status`. Otherwise preserve all downstream answers and recalculate BMR/TDEE. |
+| `gender` | **If changed from **`female` -> `male`: Clear `maternal_status` and remove `'diastasis_recti'` from `injuries` if present.<br>**If changed from **`male` -> `female` (and `18 <= computedAge <= 50`): Insert `maternal_status` as unanswered and prompt it immediately; preserve height/weight/workout/nutrition answers unless invalidated by subsequent `maternal_status` selection. |
 | `maternal_status` | **If changed to **`pregnant_t1`/`t2`/`t3`:<br>• If `goal == 'lose'`, clear `goal`, `target_weight`, and `goal_pace` (since weight loss is blocked in pregnancy).<br>• If `diet_type` is `'keto'` or `'intermittent_fasting'`, clear `diet_type` and `if_start_hour`.<br>**If changed to **`breastfeeding`:<br>• If `goal_pace` is `'moderate'` or `'fast'` and `goal == 'lose'`, cap deficit at `-300 kcal/day` or re-prompt `goal_pace` (`slow` only).<br>• If `diet_type` is `'keto'` or `'intermittent_fasting'`, clear `diet_type` and `if_start_hour`. |
 | `height` or `current_weight` | Recalculate BMI, Ideal Weight Range (`minWeight`–`maxWeight`), and `ABW`.<br>**If **`newCurrentBmi < 18.5` and `goal == 'lose'`: Clear `goal`, `target_weight`, and `goal_pace` (weight loss is hidden/blocked when `currentBmi < 18.5`).<br>**Invalidate **`target_weight` & `goal_pace` ONLY IF:<br>• `goal == 'lose'` and `target_weight >= newCurrentWeight`, OR<br>• `goal == 'gain'` and `target_weight <= newCurrentWeight`, OR<br>• `goal == 'muscle_gain'` and `target_weight < newCurrentWeight`.<br>Otherwise keep `target_weight` and recalculate `goal_pace` timeline (`estimated_weeks_min..max`) automatically. |
 | `goal` | **If changed to **`'maintain'`: Clear `target_weight` and `goal_pace` (`target_weight = current_weight`).<br>**If changed between **`'lose'`, `'gain'`, `'muscle_gain'`: Check if existing `target_weight` violates directional rule (`lose < current`, `gain > current`, `muscle_gain >= current`). If violated (or previously `'maintain'`), clear `target_weight` and `goal_pace` and prompt `target_weight`. |
@@ -372,7 +372,7 @@ Never wipe all downstream answers blindly. Apply these exact rules:
 
 **STORY**
 
-As a user starting the onboarding questions, I want to enter my name and age quickly with support for both standard Western and Eastern Arabic digits, while the app enforces medical safety rules for minors (Under-18 blocking gate) and older adults (70+ Senior Mode).
+As a user starting the onboarding questions, I want to enter my name and date of birth quickly using a tactile 3-Wheel Date Drum Picker or numeric `DD/MM/YYYY` keypad (with Eastern Arabic digit normalization), seeing my live calculated adult age immediately while the app enforces medical safety rules for minors (Under-18 blocking gate) and older adults (70+ Senior Mode).
 
 ---
 
@@ -394,23 +394,24 @@ As a user starting the onboarding questions, I want to enter my name and age qui
   - Primary button: `[Confirm]`
   - If authenticated via Apple/Google and a profile display name exists, render a 1-tap suggestion chip above the input: `[Use "{socialName}"]`.
 
-**2. Step: `age` (User's Age in Years)**
+**2. Step: `birth_date` (Canonical Date of Birth -> Dynamic Live Age)**
 
 - **Coach Bubble:**
-  - *"Great to meet you, {name}. How old are you?"*
-  - **Micro-Why Caption:** *"Calibrates your daily energy burn and safe training load."*
-  - *(After valid adult input, concise 1-line transition: *"Baseline energy profile calibrated."*)*
-- **Input Control (**`number-with-chips`):
-  - Quick-select chips: `[18]`, `[22]`, `[25]`, `[30]`, `[35]`, `[40]`, `[50]`.
-  - Numeric input field (Compose `KeyboardType.Number` / SwiftUI `.numberPad`, placeholder `"e.g. 28"`) + `[Confirm]` button.
+  - *"Great to meet you, {name}. When is your birthday?"*
+  - **Micro-Why Caption:** *"Computes your exact metabolic baseline dynamically every year without ever asking again."*
+  - *(After valid adult input, concise 1-line transition: *"You are {computedAge} years old — baseline energy profile calibrated."*)*
+- **Input Control (`date-wheel-or-keypad`):**
+  - Default **3-Wheel Tactile Date Drum Picker (`Day / Month / Year`)** centered at year `1997` (`minYear = currentYear - 95`, `maxYear = currentYear - 10`).
+  - 1-tap segmented toggle `[Type DD/MM/YYYY]` switching to a formatted numeric field (`KeyboardType.Number` / SwiftUI `.numberPad`, placeholder `"DD / MM / YYYY"`) with automatic slash formatting and Eastern Arabic numeral conversion (`normalizeDigits`).
+  - **Live Calculated Age Readout** rendered directly below the picker (`"Calculated Age: {computedAge} years"`, plus subtle `"Senior Safety Mode (70+)"` pill when `computedAge >= 70`) + `[Confirm]` button storing canonical ISO `"YYYY-MM-DD"` (`birthDate`).
 
-**3. Conditional Blocking Step: **`underage_gate` (Triggered when `10 <= age < 18`)
+**3. Conditional Blocking Step: **`underage_gate` (Triggered when `10 <= computedAge < 18`)
 
 - **Coach Safety Card (Warning / Blocking State):**
   - **Title:** *"Important Age Safety Notice"*
-  - **Message:** *"Hi {name}, because you are under 18, your body is still growing and should not follow adult calorie-restriction equations or unsupervised diet programs without a qualified pediatric nutritionist or parental/medical supervision."*
+  - **Message:** *"Hi {name}, because you are under 18 ({computedAge} years old), your body is still growing and should not follow adult calorie-restriction equations or unsupervised diet programs without a qualified pediatric nutritionist or parental/medical supervision."*
 - **Sticky Bottom Actions:**
-  - Primary Action: `[Edit Age (if entered by mistake)]` -> Re-opens the `age` input sheet.
+  - Primary Action: `[Edit Date of Birth (if entered by mistake)]` -> Re-opens the `birth_date` input sheet.
   - Secondary Action: `[Close / Exit Onboarding]`
 
 ---
@@ -424,16 +425,17 @@ As a user starting the onboarding questions, I want to enter my name and age qui
   - Minimum length: `2` characters; Maximum length: `50` characters.
   - Allowed characters: alphabetic letters (Latin or Arabic script), spaces, and hyphens.
   - Reject digits-only, symbols-only, or emoji-only strings with friendly inline coach feedback: *"Please enter a valid name using letters (at least 2 characters)."*
-3. **Age Validation & Safety Thresholds (**`validateAge(raw)`):
-  - Parse integer after `normalizeDigits(raw)`.
-  - **Hard Bounds (**`< 10` or `> 95` or `NaN`): Reject input and show inline error: *"Please enter a valid age between 10 and 95 years."*
-  - **Under-18 Gate (**`10 <= age < 18`):
-    - Store the entered number in `state.age`, render the user bubble, and transition immediately to `underage_gate`.
-    - Do **not** allow advancing to `gender` or generating any calorie/workout plan while `age < 18`.
-  - **Adult Standard (**`18 <= age <= 69`):
+3. **Date of Birth Validation, Birthday Rollover & Safety Thresholds (**`validateBirthDate(birthDate, today)`):
+  - Parse `DD/MM/YYYY` or ISO `YYYY-MM-DD` after `normalizeDigits(raw)` and validate strict calendar date integrity (rejects impossible dates such as `"1998-02-30"` and future dates -> API returns `400 INVALID_BIRTH_DATE` with `params: { minAge: 18, maxAge: 95, computedAge }`).
+  - Derive exact integer `computedAge` from `(birthDate, userToday)` using standard calendar birthday rollover (leap-day `"2000-02-29"` increments on `03-01` in non-leap years).
+  - **Hard Bounds (**`< 10` or `> 95` or invalid calendar date): Reject input and show inline error: *"Please enter a valid date of birth (adults aged 18 to 95 are eligible)."*
+  - **Under-18 Gate (**`10 <= computedAge < 18`):
+    - Store `state.birthDate` and `state.age = computedAge`, render the user bubble, and transition immediately to `underage_gate`.
+    - Do **not** allow advancing to `gender` or calling `preview`/`generate` while `computedAge < 18`.
+  - **Adult Standard (**`18 <= computedAge <= 69`):
     - Set `state.seniorMode = false` and advance to `gender`.
-  - **Senior Mode (**`70 <= age <= 95`):
-    - Set `state.seniorMode = true`.
+  - **Senior Mode (**`70 <= computedAge <= 95`) + Dynamic Birthday Rollover:
+    - Set `state.seniorMode = true`. Backend persists `profile.birthDate` and dynamically recomputes live age across `GET /v1/bootstrap`, `present()`, `adjustCalories`, `renew_plan`, `comeback_restart`, and `maintenance`, automatically enabling `seniorMode = true` when a user turns 70 on their birthday.
     - Display a reassuring coach note bubble: *"We have enabled Senior Safety Mode for your plan (joint-friendly exercise selection and optimal protein floor to preserve lean muscle mass)."*
     - **Downstream Effects of **`seniorMode = true`:
       - Minimum daily protein floor is raised to `>= 1.2 g / kg` of reference weight (to prevent age-related sarcopenia), even on maintenance or weight loss.
@@ -446,43 +448,45 @@ As a user starting the onboarding questions, I want to enter my name and age qui
 
 1. Coach asks for `name`.
 2. User types `"Ahmed"` and taps `Confirm`.
-3. Coach greets `"Ahmed"` by name and asks `age`.
-4. User taps the `[25]` chip (or types `25` and taps `Confirm`).
-5. System validates `25`, sets `seniorMode = false`, persists state, and advances to `gender` (`US-MOB-04`).
+3. Coach greets `"Ahmed"` by name and opens `birth_date`.
+4. User selects `14 / 05 / 2001` via the Date Drum Picker (or types `14052001` in keypad), sees `"Calculated Age: 25 years"`, and taps `Confirm`.
+5. System validates `birthDate = "2001-05-14"` (`computedAge = 25`), sets `seniorMode = false`, persists state, and advances to `gender` (`US-MOB-04`).
 
 ---
 
 **EDGE CASES**
 
-- **User accidentally types `17` instead of `27` (or presses Android system Back on `underage_gate`):** Pressing Android Back or tapping `[Edit Age]` re-opens the `age` input sheet directly without exiting the app; updating age to `27` clears `underage_gate` and advances seamlessly to `gender`.
-- **User enters decimal age (e.g., `25.5`):** Round down (`Math.floor(25.5) -> 25`) or restrict keyboard to integer digits only.
-- **User enters `72`:** `seniorMode = true` is set; if user later edits `age` to `65`, `seniorMode` automatically resets to `false`.
+- **Impossible Calendar Date or Future Date (e.g., `30/02/1998`):** Rejected cleanly offline (drum picker constrains days per month/leap year; keypad rejects invalid dates and handles server `400 INVALID_BIRTH_DATE`).
+- **User accidentally enters a minor's birth year yielding `17` yrs (or presses Android system Back on `underage_gate`):** Pressing Android Back or tapping `[Edit Date of Birth]` re-opens the `birth_date` sheet directly without exiting the app; updating year to yield `27` yrs clears `underage_gate` and advances seamlessly to `gender`.
+- **Leap-Year Birth Date (`2000-02-29`):** Supported seamlessly across picker and birthday rollover without non-leap crashes.
+- **User enters DOB yielding `72` yrs, then edits to `65` yrs:** `seniorMode = true` is set for `72` and automatically resets to `false` when corrected to `65`.
 
 ---
 
 **ACCEPTANCE CRITERIA**
 
-- **Scenario 1: Valid name and age submission**
-  - **Given** the user enters `"Sara"` for `name` and `"28"` for `age`
+- **Scenario 1: Valid name and `birthDate` submission**
+  - **Given** the user enters `"Sara"` for `name` and selects `1998-05-14` for `birth_date`
   - **When** the user submits both steps
-  - **Then** `state.name` is `"Sara"`, `state.age` is integer `28`, and the chat advances to `gender`.
+  - **Then** `state.name` is `"Sara"`, `state.birthDate` is `"1998-05-14"`, `state.age` equals the derived adult integer age, and the chat advances to `gender`.
 - **Scenario 2: Under-18 safety block and recovery**
-  - **Given** the user is on the `age` step
-  - **When** the user enters `16`
-  - **Then** the chat routes to `underage_gate` and blocks progression to `gender`
-  - **And when** the user taps `[Edit Age]` and changes `age` to `19`
+  - **Given** the user is on the `birth_date` step
+  - **When** the user submits a date of birth yielding `computedAge = 16`
+  - **Then** the chat routes to `underage_gate`, blocks progression to `gender`, and backend returns `400 INVALID_BIRTH_DATE` on `preview`/`generate`
+  - **And when** the user taps `[Edit Date of Birth]` and selects `2006-05-14` (`>= 18` yrs)
   - **Then** the block is lifted and the chat advances to `gender`.
-- **Scenario 3: 70+ Senior Mode activation**
-  - **Given** the user enters `72` for `age`
+- **Scenario 3: 70+ Senior Mode activation & invalid calendar date rejection**
+  - **Given** the user selects a date of birth yielding `72` years
   - **When** the step is confirmed
-  - **Then** `state.seniorMode` is set to `true`, the senior safety coach message is displayed, and downstream protein floor (`>= 1.2 g/kg`) and low-impact exercise filters are enforced.
+  - **Then** `state.seniorMode` is set to `true`, the senior safety coach message is displayed, and downstream protein floor (`>= 1.2 g/kg`) and low-impact exercise filters are enforced
+  - **And when** an impossible calendar string such as `"1998-02-30"` is sent to `POST /v1/plans/preview`, `400 INVALID_BIRTH_DATE` is returned cleanly.
 
 ---
 
 **ANALYTICS**
 
 - `onboarding_name_submitted` (`used_social_suggestion`: `boolean`)
-- `onboarding_age_submitted` (`age_bucket`: `"under_18"` | `"18_29"` | `"30_49"` | `"50_69"` | `"70_plus"`, `senior_mode`: `boolean`)
+- `onboarding_birthdate_submitted` (`age_bucket`: `"under_18"` | `"18_29"` | `"30_49"` | `"50_69"` | `"70_plus"`, `input_method`: `"drum_picker" | "numeric_pad"`, `senior_mode`: `boolean`)
 - `onboarding_underage_blocked` (`entered_age`: `number`)
 
 ---
@@ -1345,7 +1349,7 @@ As a user who has answered all onboarding questions, I want to review a comprehe
 **3. Section-Level Quick Edit Links (`[Edit]`)**
 
 - Grouped summary rows with 1-tap `[Edit]` buttons (`Icons.Outlined.Edit`) that open the corresponding step's Edit Bottom Sheet (`US-MOB-02`):
-  - **Personal & Body Measurements** (`name`, `age`, `gender`, `maternal_status`, `height`, `current_weight`)
+  - **Personal & Body Measurements** (`name`, `birth_date`, `gender`, `maternal_status`, `height`, `current_weight`)
   - **Goal & Pace** (`goal`, `target_weight`, `goal_pace`)
   - **Workout Preferences** (`service_track`, `fitness_level`, `workout_location`, `workout_days`, `workout_split`, `session_duration`, `injuries`)
   - **Nutrition Preferences** (`activity`, `conditions`, `diet_type`, `meals_count`/`if_start_hour`, `budget`, `allergies`)
@@ -1459,15 +1463,15 @@ $$waterCups = \text{round}\left(\frac{waterLiters \times 1000}{250}\right)$$
 When the Summary Screen loads and when the user taps the primary `[Start My Plan]` button:
 
 1. **Stateless Preview on Summary Load (`POST /v1/plans/preview`):**
-   - Call `POST /v1/plans/preview` (public, IP rate-limited) with the draft onboarding answers to obtain authoritative `dailyCalories`, `macros`, `waterTarget`, `waterTargetLiters`, `restDayWaterTarget`, `workoutDayWaterTarget` (including `externalTrainingDays` boost), `estimatedExercisesPerSession`, `estimatedWeeksMin`, `estimatedWeeksMax`, `recommendedSplit`, `seniorMode`, `warnings`, `clinicalBlocks`, `workoutUiModeDefault`, and `eligibility` without requiring authentication.
+   - Call `POST /v1/plans/preview` (public, IP rate-limited) with the draft onboarding answers (sending canonical `birthDate` `YYYY-MM-DD`) to obtain authoritative `dailyCalories`, `macros`, `waterTarget`, `waterTargetLiters`, `restDayWaterTarget`, `workoutDayWaterTarget` (including `externalTrainingDays` boost), `estimatedExercisesPerSession`, `estimatedWeeksMin`, `estimatedWeeksMax`, `recommendedSplit`, `seniorMode`, `computedAge`, `birthDate`, `warnings`, `clinicalBlocks`, `workoutUiModeDefault`, and `eligibility` without requiring authentication.
    - Persist the draft onboarding answers locally (`onboardingDraft`) so zero input is ever lost.
 2. **Canonical CuraFit API v1 Commit Sequence (Mandatory Online Completion Before Today):**
    - Full sequence:
      1. `POST /v1/plans/preview` *(already called on Summary load / edit)*
      2. **OAuth (`EPIC-02`):** If `isAuthenticated == false`, navigate to **Passwordless Social Sign-In (`EPIC-02`)** (`POST /v1/auth/oauth/google` or `POST /v1/auth/oauth/apple`).
      3. **`POST /v1/account/consents`:** If `bootstrap.consents` indicates required health/terms consents are not yet accepted, present `HealthConsentModal` and record explicit acceptance in one atomic batch (`{ items: [{ consentType: "health_data_processing", ... }, { consentType: "terms_and_privacy", ... }] }`) or single request.
-     4. **`POST /v1/eligibility`:** Public clinical pre-screen validating age (`18..95`), BMI (`12.5..65`), maternal safety gates (`status: "eligible" | "needs_input" | "requires_review"`).
-     5. **`POST /v1/commands?view=full`** with `{ revision, action: "generate", payload: { ... } }` (including `unitSystem`, `workoutUiMode`, `healthConfirmed`, and `overwriteExisting: true` when replacing an existing profile; passing `overwriteExisting: false` on an existing profile returns `409 PROFILE_ALREADY_EXISTS`) and a stable `Idempotency-Key` header.
+     4. **`POST /v1/eligibility`:** Public clinical pre-screen accepting canonical `birthDate` (`YYYY-MM-DD`, validated as `18..95` adult age; legacy `age` fallback supported), BMI (`12.5..65`), and maternal safety gates (`status: "eligible" | "needs_input" | "requires_review"`, `computedAge`).
+     5. **`POST /v1/commands?view=full`** with `{ revision, action: "generate", payload: { ... } }` sending canonical `birthDate` (`YYYY-MM-DD` — persisted on `profile.birthDate` so live `age` and `seniorMode` automatically roll over on birthdays; also passing `unitSystem`, `workoutUiMode`, `healthConfirmed`, and `overwriteExisting: true` when replacing an existing profile; passing `overwriteExisting: false` returns `409 PROFILE_ALREADY_EXISTS`) and a stable `Idempotency-Key` header. Also supports stateless `POST /v1/plans/preview` with `birthDate` (`YYYY-MM-DD`, returning `computedAge` and `birthDate`).
      6. **`GET /v1/bootstrap`:** Hydrate the authoritative user workspace, smart `ETag` (`W/"boot-..."`), `revision`, `onboardingCompleted`, `consents`, `entitlements`, `todaySummary`, and `scheduledSessions`.
 3. **Path 1 — User IS Already Signed In (`isAuthenticated == true`):**
    - *(Happens when the user signed in at Step 0 `account_check` with a new account or chose `Start fresh` after sign-in).*

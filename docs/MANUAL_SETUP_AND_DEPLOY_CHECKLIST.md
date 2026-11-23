@@ -2,7 +2,7 @@
 
 This document lists **every action that requires manual operator intervention** (in Cloudflare Dashboard, Antigravity Desktop / local Wrangler CLI, Google Cloud / Play Console, Apple Developer Console, Firebase Console, or Postman) before promoting CuraFit to Cloud Dev (`dev`) and Production (`main`).
 
-> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts (`293` error codes, `97` coaching codes), bilingual exercise/muscle i18n (`868` exercises + `69` muscles), OpenAPI spec (`84` paths / `50` commands), Postman collection (`16` groups / `140` endpoints), all `13` User Story documents, and `308+` automated tests are already implemented and pushed on branch **`dev`**. The items below are strictly external infrastructure provisioning, secrets, and release operations to complete from **Antigravity Desktop (local machine)** or external developer consoles.
+> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts (`294` error codes, `97` coaching codes), bilingual exercise/muscle i18n (`868` exercises + `69` muscles), OpenAPI spec (`84` paths / `50` commands), Postman collection (`16` groups / `140` endpoints), all `13` User Story documents, and `308+` automated tests are already implemented and pushed on branch **`dev`**. The items below are strictly external infrastructure provisioning, secrets, and release operations to complete from **Antigravity Desktop (local machine)** or external developer consoles.
 
 ---
 
@@ -125,7 +125,7 @@ Set the following secrets separately for **Cloud Dev** (`--env dev`) and **Produ
      - Production: `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
 
 3. **Postman Published Documentation (`16` Groups / `140` Endpoints):**
-   - Re-import [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) (`16` groups / `140` endpoints, aligned with `84` OpenAPI paths, `50` command actions, `293` error codes, and `97` coaching codes) and environments (`CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`) into Postman Workspace and republish the public Documenter URL (`https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`).
+   - Re-import [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) (`16` groups / `140` endpoints, aligned with `84` OpenAPI paths, `50` command actions, `294` error codes, and `97` coaching codes) and environments (`CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`) into Postman Workspace and republish the public Documenter URL (`https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`).
 
 4. **Jira Backlog Sync (Optional):**
    - If you keep Jira (`KAN` project) mirrored with `docs/user-stories/`, sync the aligned production stories (`EPIC-01`..`EPIC-10`) using clean `production` and `mobile` labels.

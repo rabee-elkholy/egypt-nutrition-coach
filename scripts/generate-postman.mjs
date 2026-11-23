@@ -60,7 +60,7 @@ const COLLECTION_OVERVIEW_MD = [
   '| Field | Type | Description |',
   '| :--- | :--- | :--- |',
   '| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |',
-  '| `error.code` | `string` | Stable uppercase error code (293 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
+  '| `error.code` | `string` | Stable uppercase error code (294 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
   '| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |',
   '| `error.params` | `object` | Interpolation parameters for client-side localization |',
   '| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |',
@@ -883,9 +883,10 @@ const collection = {
           method: 'POST',
           path: '/v1/eligibility',
           noAuth: true,
-          summary: 'Public fast deterministic pre-onboarding screening checking age (18..70), BMI boundaries (12.5..65), medical conditions, injuries, and maternal status before plan generation.',
+          summary: 'Public fast deterministic pre-onboarding screening checking date of birth (`birthDate`, adults 18..95), BMI boundaries (12.5..65), medical conditions, injuries, and maternal status before plan generation.',
           fields: [
-            { name: 'age', type: 'integer', required: true, constraints: '18..70', description: 'User age in years.' },
+            { name: 'birthDate', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Valid date resulting in 18..95 yrs (canonical)', description: 'Canonical ISO date of birth (`YYYY-MM-DD`); server computes adult age dynamically.' },
+            { name: 'age', type: 'integer', required: false, constraints: '18..95 (legacy fallback)', description: 'Legacy integer age fallback when `birthDate` is omitted.' },
             { name: 'sex', type: 'string (enum)', required: true, constraints: '`male` | `female`', description: 'Biological sex for BMR/energy calculation.' },
             { name: 'height', type: 'number', required: true, constraints: '120..230 (cm)', description: 'Height in centimeters.' },
             { name: 'weight', type: 'number', required: true, constraints: '35..250 (kg)', description: 'Current body weight in kg.' },
@@ -904,7 +905,7 @@ const collection = {
             { name: 'permittedFunctions', type: 'Array<string>', description: 'Allowed client features.' }
           ],
           examples: [{ name: '200 OK — Eligible', code: 200, body: { status: 'eligible', reviewScope: 'system_generated_screening_not_medical_diagnosis', reasons: [], questions: [], supportedAdaptations: { diseases: [], injuries: [] }, permittedFunctions: ['generate_plan', 'log_execution', 'adaptive_review'], clinicalSummary: null } }],
-          body: { age: 29, sex: 'male', height: 178, weight: 82, goal: 'lose', targetWeight: 75, serviceTrack: 'nutrition_and_workouts', diseases: [], maternalStatus: 'none', injuries: [] },
+          body: { birthDate: '1997-05-14', sex: 'male', height: 178, weight: 82, goal: 'lose', targetWeight: 75, serviceTrack: 'nutrition_and_workouts', diseases: [], maternalStatus: 'none', injuries: [] },
           testScript: [
             'pm.test("Eligibility evaluated", function () {',
             '  pm.response.to.have.status(200);',
@@ -920,7 +921,8 @@ const collection = {
           summary: 'Creates the user profile, generates a personalized 7-day regional nutrition plan + adaptive workout program, and returns the full account state. Auto-captures `activePlanId`, `activeWorkoutPlanId`, `sampleMealId`, `sampleDayIndex`, and `sampleExerciseId`.',
           payloadFields: [
             { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Display name.' },
-            { name: 'age', type: 'integer', required: true, constraints: '18..70', description: 'Age in years.' },
+            { name: 'birthDate', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Valid DOB resulting in 18..95 yrs (canonical)', description: 'Canonical ISO date of birth (`YYYY-MM-DD`); server computes live age dynamically and enables birthday rollover.' },
+            { name: 'age', type: 'integer', required: false, constraints: '18..95 (legacy fallback)', description: 'Legacy integer age fallback when `birthDate` is omitted.' },
             { name: 'weight', type: 'number', required: true, constraints: '35..250 (kg)', description: 'Current weight in kg.' },
             { name: 'height', type: 'number', required: true, constraints: '120..230 (cm)', description: 'Height in cm.' },
             { name: 'sex', type: 'string (enum)', required: true, constraints: '`male` | `female`', description: 'Biological sex.' },
@@ -941,7 +943,7 @@ const collection = {
             { name: 'weekdayConvention', type: 'string (enum)', required: false, constraints: '`js_sunday_0` (recommended) | `saturday_0`', description: 'Weekday indexing convention.' }
           ],
           payload: {
-            name: 'Ahmed Mohamed', age: 29, weight: 82, height: 178, sex: 'male', goal: 'lose',
+            name: 'Ahmed Mohamed', birthDate: '1997-05-14', weight: 82, height: 178, sex: 'male', goal: 'lose',
             targetWeight: 75, goalPace: 'moderate', serviceTrack: 'nutrition_and_workouts',
             dailyActivity: 'light', dietType: 'balanced', region: 'egypt', budget: 'medium',
             mealsCount: 4, selectedWorkoutDays: [1, 3, 5], workoutLocation: 'gym_only',
@@ -2012,7 +2014,8 @@ const collection = {
           summary: 'Stateless onboarding calculation returning daily kcal/macros, safe calorie floors, `restDayWaterTarget`, `workoutDayWaterTarget`, `estimatedExercisesPerSession`, eligibility, and weekly forecast range.',
           fields: [
             { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name.' },
-            { name: 'age', type: 'integer', required: true, constraints: '18..70', description: 'Age in years.' },
+            { name: 'birthDate', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Valid DOB resulting in 18..95 yrs (canonical)', description: 'Canonical ISO date of birth (`YYYY-MM-DD`); server computes live age dynamically.' },
+            { name: 'age', type: 'integer', required: false, constraints: '18..95 (legacy fallback)', description: 'Legacy integer age fallback when `birthDate` is omitted.' },
             { name: 'sex', type: 'string (enum)', required: true, constraints: '`male` | `female`', description: 'Biological sex.' },
             { name: 'weight', type: 'number', required: true, constraints: '35..250 (kg)', description: 'Current body weight in kg.' },
             { name: 'height', type: 'number', required: true, constraints: '120..230 (cm)', description: 'Height in cm.' },
@@ -2024,7 +2027,7 @@ const collection = {
             { name: 'selectedWorkoutDays', type: 'Array<integer>', required: false, constraints: '0..6', description: 'Selected weekly workout days.' },
             { name: 'healthConfirmed', type: 'boolean', required: false, constraints: 'boolean', description: 'Health clearance confirmation.' }
           ],
-          body: { name: 'Preview User', age: 30, sex: 'male', weight: 82, height: 178, goal: 'lose', targetWeight: 75, activity: 'moderate', dietType: 'balanced', serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true }
+          body: { name: 'Preview User', birthDate: '1997-05-14', sex: 'male', weight: 82, height: 178, goal: 'lose', targetWeight: 75, activity: 'moderate', dietType: 'balanced', serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true }
         }),
         req({
           name: 'List Linked OAuth Providers',

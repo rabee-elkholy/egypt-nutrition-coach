@@ -7,7 +7,8 @@ import {workoutPlan,scheduledSessions} from '../server/workouts.mjs';
 import {saveCustomRecipe,computeCycleState} from '../server/wellness-tools.mjs';
 import {getFastingState} from '../server/nutrition-tools.mjs';
 import {computeStreakAndEngagement} from '../server/progress-analytics.mjs';
-import {dateOffset,localDate} from '../coaching-shared.mjs';
+import {dateOffset,localDate,computeAgeFromBirthDate,resolveProfileBirthDateAndAge,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
+import {present,presentBootstrap} from '../server/presentation.mjs';
 const draft={name:'Test',age:30,weight:80,height:175,sex:'male',goal:'lose',serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5]};
 const fixture=generate(empty(),draft,'audit-fixture');
 // These follow-up scenarios represent an established goal, not today's first onboarding.
@@ -306,4 +307,73 @@ test('female cycle awareness, seasonal ramadan/eid flex, auto-freeze, and weekly
  assert.deepEqual(st.streakSummary.autoAppliedFreezes,[dateOffset(today(),-1)]);
  assert.equal(st.streakSummary.currentDays,3);
  assert.equal(st.engagementState.weeklyCheckinDue,true);
+});
+
+test('birthDate canonical DOB validation, leap-day & birthday rollover, seniorMode, and legacy age compatibility work cleanly',()=>{
+ assert.equal(computeAgeFromBirthDate('1996-05-14','2026-05-13'),29);
+ assert.equal(computeAgeFromBirthDate('1996-05-14','2026-05-14'),30);
+ assert.equal(computeAgeFromBirthDate('2000-02-29','2026-02-28'),25);
+ assert.equal(computeAgeFromBirthDate('2000-02-29','2026-03-01'),26);
+ assert.throws(()=>computeAgeFromBirthDate('1998-02-30','2026-05-14'),e=>e.code==='INVALID_BIRTH_DATE');
+ assert.throws(()=>computeAgeFromBirthDate('2099-01-01','2026-05-14'),e=>e.code==='INVALID_BIRTH_DATE');
+ assert.throws(()=>resolveProfileBirthDateAndAge({birthDate:'2015-05-01'},'2026-05-14'),e=>e.code==='INVALID_BIRTH_DATE'&&e.params?.minAge===18&&e.params?.computedAge===11);
+ assert.deepEqual(resolveProfileBirthDateAndAge({age:30},'2026-05-14'),{birthDate:null,age:30});
+
+ const underElig=evaluateEligibility({birthDate:'2015-05-01',sex:'male',height:175,weight:70,goal:'maintain'});
+ assert.equal(underElig.status,'requires_review');
+ assert.ok(underElig.reasons.some(r=>r.code==='AGE_UNSUPPORTED_OR_MISSING'));
+
+ const adultElig=evaluateEligibility({birthDate:'1996-05-14',sex:'male',height:178,weight:80,goal:'lose'});
+ assert.equal(adultElig.status,'eligible');
+ assert.equal(adultElig.seniorMode,false);
+ assert.ok(adultElig.computedAge>=29);
+
+ const seniorElig=evaluateEligibility({birthDate:'1954-05-14',sex:'male',height:175,weight:76,goal:'lose'});
+ assert.equal(seniorElig.seniorMode,true);
+ assert.ok(seniorElig.notes.some(n=>n.code==='SENIOR_MODE_ACTIVE'));
+
+ assert.throws(()=>previewPlan({birthDate:'1998-02-30',sex:'male',height:175,weight:75,goal:'maintain'}),e=>e.code==='INVALID_BIRTH_DATE');
+ const prev=previewPlan({birthDate:'1996-05-14',sex:'male',height:178,weight:80,goal:'lose',serviceTrack:'nutrition_and_workouts',selectedWorkoutDays:[1,3,5],healthConfirmed:true});
+ assert.equal(prev.birthDate,'1996-05-14');
+ assert.equal(prev.computedAge,computeAgeFromBirthDate('1996-05-14',today()));
+ assert.equal(prev.seniorMode,false);
+
+ const legacyState=generate(empty(),draft,'legacy-no-dob');
+ assert.equal('birthDate' in legacyState.profile,false);
+ assert.equal(legacyState.profile.age,30);
+
+ const {age:_omitAge,...draftNoAge}=draft;
+ const dobState=generate(empty(),{...draftNoAge,birthDate:'1954-05-14'},'dob-senior');
+ assert.equal(dobState.profile.birthDate,'1954-05-14');
+ assert.equal(dobState.profile.seniorMode,true);
+ assert.ok(dobState.profile.age>=70);
+
+ // Birthday rollover: profile stored at age 69 automatically becomes 70 + seniorMode=true on birthday
+ const curr=today();
+ const turning70Dob=`${Number(curr.slice(0,4))-70}${curr.slice(4)}`;
+ const rolled=effectiveProfileWithLiveAge({...dobState.profile,birthDate:turning70Dob,age:69,seniorMode:false},curr);
+ assert.equal(rolled.age,70);
+ assert.equal(rolled.seniorMode,true);
+
+ dobState.profile={...dobState.profile,birthDate:turning70Dob,age:69,seniorMode:false};
+ assert.equal(present(dobState).profile.age,70);
+ assert.equal(present(dobState).profile.seniorMode,true);
+ assert.equal(presentBootstrap(dobState).profile.age,70);
+ assert.equal(presentBootstrap(dobState).profile.seniorMode,true);
+ const renewed=run(dobState,'renew_plan',{earlyRenew:true});
+ assert.equal(renewed.profile.age,70);
+ assert.equal(renewed.profile.seniorMode,true);
+
+ // Age 95->96 rollover clamps safely at 95 so renewals never fail estimateNeeds
+ const turning96Dob=`${Number(curr.slice(0,4))-96}${curr.slice(4)}`;
+ const rolled96=effectiveProfileWithLiveAge({...dobState.profile,birthDate:turning96Dob,age:95,seniorMode:true},curr);
+ assert.equal(rolled96.age,95);
+ assert.equal(rolled96.seniorMode,true);
+
+ // Turning 70 immediately flags senior-unsafe movements in present/bootstrap
+ const seniorUnsafeState=structuredClone(dobState);
+ seniorUnsafeState.profile={...seniorUnsafeState.profile,birthDate:turning70Dob,age:69,seniorMode:false};
+ seniorUnsafeState.workoutPlan.days[0].exercises[0]={...seniorUnsafeState.workoutPlan.days[0].exercises[0],name:'Barbell Back Squat'};
+ assert.ok(present(seniorUnsafeState).workoutSafetyIssues.length>0);
+ assert.ok(presentBootstrap(seniorUnsafeState).workoutSafetyIssues.length>0);
 });

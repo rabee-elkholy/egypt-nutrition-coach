@@ -123,16 +123,16 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 | **Backend Status** | `Implemented` (`POST /v1/eligibility`, `POST /v1/plans/preview`, `action: "generate"`) |
 
 ### STORY
-As a user whose goals, age, maternal status, or target weight evolve over time, I want to edit my body measurements, maternal status, primary fitness goal, target weight, and pace with live calorie/macro recalculation preview and clinical safety guards — while preserving 100% of my past food, weight, and workout history.
+As a user whose goals, date of birth / age, maternal status, or target weight evolve over time, I want to edit my body measurements, date of birth, maternal status, primary fitness goal, target weight, and pace with live calorie/macro recalculation preview and clinical safety guards — while preserving 100% of my past food, weight, and workout history.
 
 ### PRECONDITIONS
 - User navigates to `Profile -> Body Metrics & Goal`.
 
 ### SCREEN AND UI DETAILS
 1. **Editable Form Fields (Pre-populated from `profile`):**
-   - `Age` (`18..95`, shows `Senior Mode` toggle hint if `>= 70`; blocks `< 18`).
+   - `Date of Birth (birthDate)` (`YYYY-MM-DD` via 3-Wheel Date Drum Picker or `DD/MM/YYYY` keypad with live calculated age readout; enforces `18..95` adult bounds, auto-enables `Senior Mode` hint if computed `age >= 70`, auto-clears/hides Maternal Status if computed `age > 50`, and blocks `< 18`).
    - `Biological Sex` (`Male` / `Female`).
-   - `Maternal Status` *(Shown if Female `18..50`)*: `None` | `Pregnant T1` | `Pregnant T2` | `Pregnant T3` | `Breastfeeding`.
+   - `Maternal Status` *(Shown if Female `18..50` based on `birthDate`)*: `None` | `Pregnant T1` | `Pregnant T2` | `Pregnant T3` | `Breastfeeding`.
    - `Height (cm)` (`120..230`, supports meter auto-convert like `1.75 -> 175`).
    - `Current Reference Weight (kg)` (pre-filled from latest weight log or profile).
    - `Goal`: `Lose Fat`, `Build Muscle`, `Gain Weight`, `Maintain Weight` (hides/blocks `Lose` if pregnant OR `currentBmi < 18.5`!).
@@ -144,17 +144,17 @@ As a user whose goals, age, maternal status, or target weight evolve over time, 
    - Primary CTA: `[Recalculate & Update Plan]`.
 
 ### API & BACKEND CONTRACT
-1. **`POST /v1/eligibility`** -> Pre-screens updated demographics/goal/maternal status.
+1. **`POST /v1/eligibility`** -> Pre-screens updated `birthDate` (or legacy `age`), biometrics, goal, and maternal status.
 2. **`POST /v1/commands?view=full`** (`action: "generate"`)
-   - Sends complete merged preferences + new biometrics/goal with current server `revision`.
-   - Server automatically archives previous profile into `s.history`, archives old plans into `s.plans`/`s.workoutArchives`, generates new active plans effective `currDate`, resets `s.nutritionContextStartedOn = currDate`, and **retains all historical `foodEntries`, `waterLogs`, `weights`, `workoutLogs`, `sessions`, and `checkins`**!
+   - Sends complete merged preferences + canonical `birthDate` (`YYYY-MM-DD`) and updated biometrics/goal with current server `revision`.
+   - Server automatically persists `profile.birthDate` with dynamic live age derivation (including automatic birthday rollover into `seniorMode` at 70), archives previous profile into `s.history`, archives old plans into `s.plans`/`s.workoutArchives`, generates new active plans effective `currDate`, resets `s.nutritionContextStartedOn = currDate`, and **retains all historical `foodEntries`, `waterLogs`, `weights`, `workoutLogs`, `sessions`, and `checkins`**!
    - **Note on Existing Today Logs (`FUTURE_FOOD_ENTRIES_CONFLICT` protection):** If user already logged food today (`date == currDate`), notify clearly *"Today's logged meals stay safe in your diary; updated targets apply from this moment onward."*
-   - Error Codes: `403 HEALTH_CONSENT_REQUIRED`, `INVALID_TARGET_WEIGHT`, `WEIGHT_LOSS_UNDERWEIGHT_UNSAFE`, `CLINICAL_REVIEW_REQUIRED`, `BMI_OUT_OF_RANGE`.
+   - Error Codes: `403 HEALTH_CONSENT_REQUIRED`, `400 INVALID_BIRTH_DATE`, `INVALID_TARGET_WEIGHT`, `WEIGHT_LOSS_UNDERWEIGHT_UNSAFE`, `CLINICAL_REVIEW_REQUIRED`, `BMI_OUT_OF_RANGE`.
 
 ### RULES & BUSINESS LOGIC
-1. **Strict Maternal Safety Consistency:** If user switches `maternalStatus` to `pregnant_*` or `breastfeeding` while current `dietType` is `keto` or `intermittent_fasting`, automatically alert user inside the form *"Keto / Intermittent Fasting is blocked for your maternal status — your diet style will update to Balanced (or choose another safe style) before saving."*
+1. **Strict Maternal Safety Consistency:** If user switches `maternalStatus` to `pregnant_*` or `breastfeeding` while current `dietType` is `keto` or `intermittent_fasting`, automatically alert user inside the form *"Keto / Intermittent Fasting is blocked for your maternal status — your diet style will update to Balanced (or choose another safe style) before saving."* Similarly, if editing `birthDate` moves computed age above `50`, `maternalStatus` resets to `"none"` cleanly.
 2. **Zero Historical Erasure:** `coaching.mjs` preserves all past food, weight, and training logs when regenerating plans on an existing account.
-3. **Senior Mode Auto-Enforcement:** Changing `age` to `>= 70` enables `seniorMode = true`, hides `fast` pace, raises protein floor `>= 1.2 g/kg`, and updates workout exclusions immediately.
+3. **Senior Mode Auto-Enforcement & Birthday Rollover:** Changing `birthDate` so computed `age >= 70` (or naturally crossing age 70 on a stored `birthDate`) enables `seniorMode = true`, hides `fast` pace, raises protein floor `>= 1.2 g/kg`, and updates workout exclusions immediately.
 
 ### MAIN FLOW
 1. User reaches `75 kg` (or decides to switch from `lose` to `muscle_gain`) and opens `Profile -> Body Metrics & Goal`.
@@ -165,7 +165,7 @@ As a user whose goals, age, maternal status, or target weight evolve over time, 
 ### EDGE CASES
 - **Offline Attempt:** Plan regeneration requires deterministic backend solver (`makeWeek` & `workoutPlan`); disable `[Recalculate & Update Plan]` when offline with clear message *"Connect to the internet to generate your updated plan."*
 - **User Edits Only `Current Weight` Without Changing Goal:** Suggest logging a daily Weigh-In (`US-HOME-04`) instead unless they explicitly want to reset their baseline program targets immediately.
-- **Under-18 Age Correction or Underweight Target (`BMI < 18.5`) Without Override:** Enforces `US-MOB-03`/`05` safety gates cleanly (`age < 18` blocked, or explicit `bmiWarningOverride` confirmation modal shown before `generate`).
+- **Under-18 DOB Correction or Underweight Target (`BMI < 18.5`) Without Override:** Enforces `US-MOB-03`/`05` safety gates cleanly (`birthDate` yielding `< 18` blocked via `400 INVALID_BIRTH_DATE`, or explicit `bmiWarningOverride` confirmation modal shown before `generate`).
 - **Simultaneous Multi-Device Revision Conflict (`409` During Profile Save):** Fetches latest `revision`, preserves edited form values, and re-prompts clean save without wiping form inputs.
 
 ### ACCEPTANCE CRITERIA
@@ -177,10 +177,10 @@ As a user whose goals, age, maternal status, or target weight evolve over time, 
   - **Given** user previously had `goal = "lose"` and `dietType = "keto"`
   - **When** user selects `maternalStatus = "pregnant_t2"`
   - **Then** UI forces selecting a non-loss goal and pregnancy-safe diet before permitting submission.
-- **Scenario 3: Updating age to 70+ activates Senior Safety Mode bounds**
-  - **Given** user updates `age` from `69` to `71` and taps `[Recalculate & Update Plan]`
+- **Scenario 3: Updating `birthDate` to 70+ activates Senior Safety Mode bounds**
+  - **Given** user updates `birthDate` from a date yielding `69` yrs to one yielding `71` yrs and taps `[Recalculate & Update Plan]`
   - **When** `generate` commits
-  - **Then** `profile.seniorMode` becomes `true`, weekly pace omits `fast`, and protein target stays `>= 1.2 g/kg`.
+  - **Then** `profile.birthDate` is stored, `profile.seniorMode` becomes `true`, weekly pace omits `fast`, and protein target stays `>= 1.2 g/kg`.
 
 ### ANALYTICS
 - `profile_body_goal_updated` (`changed_fields`: `string[]`, `old_goal`: `string`, `new_goal`: `string`, `new_calories`: `number`)
@@ -376,7 +376,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 1. **Zero-Restart Live Layout Mirroring:** Switching language updates Compose `LayoutDirection` / SwiftUI `environment(\.layoutDirection)` immediately across every active screen without losing scroll state or unsaved inputs! User-typed text (`profile.name`, manual meal names) stays untouched.
 2. **Notification Re-Scheduling (`US-INT-02`):** Immediately rewrites all local scheduled notification strings into the newly chosen language.
 3. **Offline Language Switching:** All UI strings (`ar` / `en`) live in bundled KMM string resources (`Compose Resources` / `Localizable.xcstrings`), so switching works 100% offline, queuing `timezone` (`locale`) sync cleanly into outbox if online status is unavailable.
-4. **Error & Coaching Code Localization Guarantee:** All server error codes (`contracts/error-codes.json` — 293 codes) and coaching/brief/review codes (`contracts/coaching-codes.json` — 97 codes) map `(code, params)` into the active app language cleanly on KMM.
+4. **Error & Coaching Code Localization Guarantee:** All server error codes (`contracts/error-codes.json` — 294 codes) and coaching/brief/review codes (`contracts/coaching-codes.json` — 97 codes) map `(code, params)` into the active app language cleanly on KMM.
 
 ### MAIN FLOW
 1. User opens `Profile -> Language, Region & Units`.

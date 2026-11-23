@@ -11,17 +11,20 @@ import {todayCardioSummary,bootstrapCycleSummary,dailyCardioMinutes} from './wel
 import {computeStreakAndEngagement} from './progress-analytics.mjs';
 import {coachingInbox} from '../coaching-journey.mjs';
 import {FREE_FEATURES} from './subscriptions.mjs';
-import {localDate,needsHealthConfirmation,needsScheduleConfirmation,isPregnantStatus} from '../coaching-shared.mjs';
+import {localDate,needsHealthConfirmation,needsScheduleConfirmation,isPregnantStatus,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
 
 export const present=s=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
+ const liveProfile=effectiveProfileWithLiveAge(s.profile,currDate);
+ const liveState=liveProfile===s.profile?s:{...s,profile:liveProfile};
  const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=accountRecovery(s,clockNow(),tz),needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
- const safety=workoutSafetyIssues(s),dietIssues=[];
- if(plan)for(const day of plan.days){try{assertDietDay(day.meals.map(m=>m.snapshot),s.preferences.diet,day.targets||plan.targets,s.profile);}catch(e){dietIssues.push({date:day.date,message:e.message});}}
+ const safety=workoutSafetyIssues(liveState),dietIssues=[];
+ if(plan)for(const day of plan.days){try{assertDietDay(day.meals.map(m=>m.snapshot),s.preferences.diet,day.targets||plan.targets,liveProfile);}catch(e){dietIssues.push({date:day.date,message:e.message});}}
  if(safety.length){ready.progressionAllowed=false;if(ready.status!=='stop'){ready.status='hold';ready.reasonCode='WORKOUT_SAFETY_EXCLUSION_HOLD';ready.reasons=['Your current workout plan contains movements excluded for your declared injuries; swap them or regenerate your plan before progressing.'];}}
  return {
   ...s,
+  ...(liveProfile?{profile:liveProfile}:{}),
   workoutSafetyIssues:safety,
   dietVerificationIssues:dietIssues,
   serverNow:isoNow(),
@@ -58,7 +61,9 @@ export const presentBootstrap=(s,extras={})=>{
  const dayTargets=planDay?.targets||plan?.targets||null;
  const ready=accountRecovery(s,clockNow(),tz);
  const needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
- const safety=workoutSafetyIssues(s);
+ const liveProfile=effectiveProfileWithLiveAge(s.profile,currDate);
+ const liveState=liveProfile===s.profile?s:{...s,profile:liveProfile};
+ const safety=workoutSafetyIssues(liveState);
  const todayDiary=dayTotals(s,currDate);
  const wTarget=dailyWaterTarget(s,currDate);
  const todayWater=(s.waterLogs||[]).find(w=>w.date===currDate);
@@ -70,7 +75,7 @@ export const presentBootstrap=(s,extras={})=>{
  const {streakSummary,engagementState}=computeStreakAndEngagement(s,clockNow());
  const inbox=coachingInbox(s,clockNow(),{pushConfigured:Boolean(extras.pushConfigured)});
  const unreadCoachingInboxCount=inbox.items.filter(c=>c.readStatus!=='ACKNOWLEDGED').length;
- const hydratedProfile=s.profile?{...s.profile,unitSystem:s.profile.unitSystem||'metric',...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
+ const hydratedProfile=liveProfile?{...liveProfile,unitSystem:liveProfile.unitSystem||'metric',...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
  const fastingState=getFastingState(s,clockNow());
  const cardioMins=dailyCardioMinutes(s,currDate);
  const isCardioHydrationDay=!wTarget.isWorkoutDay&&cardioMins>=30;

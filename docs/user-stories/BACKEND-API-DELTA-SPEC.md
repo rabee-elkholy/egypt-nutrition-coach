@@ -1,6 +1,6 @@
 # CuraFit API v1 — Production Backend Implementation & Contract Specification
 
-> **Purpose:** Complete engineering bridge between **CuraFit API v1** (`contracts/openapi.yaml` — **84 OpenAPI paths**, **50 `POST /v1/commands` actions**; `docs/API_REFERENCE.md` & `postman/CuraFit_API.postman_collection.json` — **16 Postman groups / 140 endpoints**; `contracts/error-codes.json` — **293 error codes**; `contracts/coaching-codes.json` — **97 coaching codes**) and the **Production Mobile User Stories** (`EPIC-01` .. `EPIC-10`).
+> **Purpose:** Complete engineering bridge between **CuraFit API v1** (`contracts/openapi.yaml` — **84 OpenAPI paths**, **50 `POST /v1/commands` actions**; `docs/API_REFERENCE.md` & `postman/CuraFit_API.postman_collection.json` — **16 Postman groups / 140 endpoints**; `contracts/error-codes.json` — **294 error codes**; `contracts/coaching-codes.json` — **97 coaching codes**) and the **Production Mobile User Stories** (`EPIC-01` .. `EPIC-10`).
 > **Audience:** Cloudflare Workers / D1 Backend Team, KMM Mobile Team (`shared` networking & SQLDelight), QA Automation.
 > **Contract Rules:**
 > 1. All endpoints preserve uniform `{ ok: true, data, meta }` and `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta }` envelopes.
@@ -101,7 +101,7 @@
 ### M1. `POST /v1/eligibility`, `POST /v1/plans/preview` & `POST /v1/commands` (`action: "generate"`) — Onboarding & Safety Parity
 - **Files:** `server/coaching.mjs`, `server/workouts.mjs`, `coaching-shared.mjs`, `planner-core.mjs`
 - **Implemented Rules:**
-  1. **Age `18..95` & `seniorMode`:** Accepts integers `18..95`; when `age >= 70`, sets `profile.seniorMode = true`, caps deficit at `-400 kcal`, enforces protein `>= 1.2 g/kg`, and filters out plyometrics / heavy spinal loading (`barbell_back_squat`, `conventional_deadlift`, `heavy_overhead_press`).
+  1. **Date of Birth (`birthDate`, Adults `18..95`) & Dynamic `seniorMode`:** Canonical client input is `birthDate` (`YYYY-MM-DD`, validated as a real calendar date resulting in age `18..95`, otherwise returning `400 INVALID_BIRTH_DATE` with `{ minAge, maxAge, computedAge }`); legacy integer `age` (`18..95`) remains supported as a fallback when `birthDate` is omitted. Stored `profile.birthDate` dynamically recalculates live `age` and `seniorMode` across birthday rollovers (`present`, `presentBootstrap`, `adjustCalories`, `renew_plan`, `comeback_restart`, `maintenance`). When `age >= 70`, sets `profile.seniorMode = true`, caps deficit at `-400 kcal`, enforces protein `>= 1.2 g/kg`, and filters out plyometrics / heavy spinal loading (`barbell_back_squat`, `conventional_deadlift`, `heavy_overhead_press`).
   2. **Maternal Status (`pregnant_t1 | pregnant_t2 | pregnant_t3 | breastfeeding | none`):** Applies additive modifiers (`+0/+340/+450/+400 kcal`, `+0/+15/+25/+20g` protein or min `1.4 g/kg`, `+300/+600 ml` water), blocks `goal == "lose"` during pregnancy, caps deficit at `-300 kcal` during breastfeeding, blocks `keto` and `intermittent_fasting` in pregnancy AND breastfeeding, and filters supine/high-fall-risk exercises after T1.
   3. **Canonical Enums & Real Alias Only:**
      - Canonical `goalPace: "slow" | "moderate" | "fast"`, `budget: "low" | "medium" | "high"`, `workoutLocation: "gym_only" | "home_only" | "home_and_gym"`, `homeEquipment: "bench"`, `excludedGroups: "spicy"`, and persisted `profile.activity`.
@@ -287,12 +287,13 @@ Key production command payload contracts:
 
 ---
 
-## 4. Pure-English Error & Coaching Message Contracts (`contracts/error-codes.json` — 293 Codes & `contracts/coaching-codes.json` — 97 Codes)
+## 4. Pure-English Error & Coaching Message Contracts (`contracts/error-codes.json` — 294 Codes & `contracts/coaching-codes.json` — 97 Codes)
 
-All 293 error messages (`contracts/error-codes.json`) and 97 coaching/brief/review/eligibility messages (`contracts/coaching-codes.json`) are 100% pure English and validated automatically by `tests/error-contract.test.mjs`. Key production codes include:
+All 294 error messages (`contracts/error-codes.json`) and 97 coaching/brief/review/eligibility messages (`contracts/coaching-codes.json`) are 100% pure English and validated automatically by `tests/error-contract.test.mjs`. Key production codes include:
 
 | Error Code | HTTP | Canonical English `message` | Params | Retryable |
 | :--- | :---: | :--- | :--- | :---: |
+| `INVALID_BIRTH_DATE` | `400` | `Date of birth must correspond to an adult aged 18 to 95 years.` | `["minAge", "maxAge", "computedAge"]` | `false` |
 | `AUTH_OAUTH_TOKEN_INVALID` | `401` | `Identity provider token is invalid or expired.` | `["provider"]` | `false` |
 | `AUTH_OAUTH_EMAIL_UNVERIFIED` | `409` | `Identity provider email is not verified; link or sign in with a verified email.` | `["provider"]` | `false` |
 | `AUTH_OAUTH_ALREADY_LINKED_OTHER_USER` | `409` | `This sign-in identity is already linked to a different CuraFit account.` | `["existingProvider"]` | `false` |
