@@ -49,15 +49,23 @@ As a new or returning mobile user launching the app, I want the app to automatic
 
 **SCREEN AND UI DETAILS**
 
-**1. Auto-Region Detection & Header Switcher**
+**1. 5-Tier Auto-Region Detection Cascade & Supported-Regions Popup (`RegionSelectionModal`)**
 
-- On first launch, inspect device timezone and locale (`kotlinx.datetime.TimeZone.currentSystemDefault()` & platform `Locale`) and map silently to one of 4 supported regions:
-  - `egypt`: `Africa/Cairo` or `*-EG` -> Header Badge: `Egypt`
-  - `gulf`: `Asia/Riyadh`, `Asia/Dubai`, `Asia/Kuwait`, `Asia/Qatar`, `Asia/Bahrain`, `Asia/Muscat` -> Header Badge: `Gulf (GCC)`
-  - `levant`: `Asia/Amman`, `Asia/Beirut`, `Asia/Damascus`, `Asia/Gaza`, `Asia/Hebron` -> Header Badge: `Levant`
-  - `maghreb`: `Africa/Casablanca`, `Africa/Algiers`, `Africa/Tunis`, `Africa/Tripoli` -> Header Badge: `Maghreb`
-  - Default fallback if outside these zones: `egypt` (`Egypt`).
-- Display a compact region badge in the top header allowing the user to manually switch regions at any time via a bottom sheet.
+- On first launch (and ONLY when `onboardingDraft.region` has not been manually confirmed or saved), resolve region silently with **zero GPS / Location runtime permissions** using the deterministic priority cascade:
+  1. **Tier 1 — SIM Card Country (`sim_country`, highest signal):** Read Android `TelephonyManager.simCountryIso` (zero location permission, works offline and accurately behind VPNs/WiFi travel). *(Note: iOS 16.4+ returns null/deprecated `--` from `CTCarrier` and automatically falls through to Tier 3.)*
+  2. **Tier 2 — Active Cellular Mobile Network (`network_country`):** Read Android `TelephonyManager.networkCountryIso` (current carrier tower country, zero location permission).
+  3. **Tier 3 — WiFi / Public Edge IP Geolocation (`cloudflare_edge_ip`):** Read `GET /v1/capabilities` -> `data.detectedGeo` (`countryCode`, `region`, `source: "cloudflare_edge_ip" | "unknown"`), powered by Cloudflare Edge (`request.cf.country` / `CF-IPCountry`), covering WiFi-only devices, tablets, and iOS 16+.
+  4. **Tier 4 — Device IANA Timezone Fallback (`device_timezone`):** Offline-only fallback checking `kotlinx.datetime.TimeZone.currentSystemDefault()`:
+     - `egypt`: `Africa/Cairo` -> Header Badge: `Egypt`
+     - `gulf`: `Asia/Riyadh`, `Asia/Dubai`, `Asia/Kuwait`, `Asia/Qatar`, `Asia/Bahrain`, `Asia/Muscat`, `Asia/Aden` -> Header Badge: `Gulf (GCC)`
+     - `levant`: `Asia/Amman`, `Asia/Beirut`, `Asia/Damascus`, `Asia/Gaza`, `Asia/Hebron`, `Asia/Baghdad` -> Header Badge: `Levant`
+     - `maghreb`: `Africa/Casablanca`, `Africa/Algiers`, `Africa/Tunis`, `Africa/Tripoli`, `Africa/Nouakchott` -> Header Badge: `Maghreb`
+  5. **Tier 5 — Supported-Regions Selection Popup (`RegionSelectionModal`, strict fallback ONLY):**
+     - Displayed automatically if Tiers 1–4 fail to resolve OR return a country outside our 4 supported regions (`egypt`, `gulf`, `levant`, `maghreb`) — e.g., diaspora user in Europe/US, non-MENA VPN without SIM, or offline unknown timezone — instead of silently guessing `egypt`.
+     - Modal copy: *"Choose Your Kitchen & Plan Region"* — Subtitle: *"Select which regional cuisine & meal library fits your daily table best. You can switch anytime."*
+     - Lists the 4 supported regions (`capabilities.supportedRegions`) with concise staple cues (`Egypt — Ful, Kofta, Baladi Bread`, `Gulf (GCC) — Kabsa, Harees, Dates`, `Levant — Mujadara, Labneh, Shish Tawook`, `Maghreb — Couscous, Tagine, Harira`).
+     - Selecting an option saves `region` + `regionSource = "manual"` in `onboardingDraft` and never re-prompts on subsequent launches.
+- Display a compact region badge in the top header allowing the user to manually switch regions at any time via the same bottom sheet (`RegionSelectionModal`).
 
 **2. First Chat Question (`account_check`)**
 
@@ -121,8 +129,17 @@ As a new or returning mobile user launching the app, I want the app to automatic
 
 ---
 
+**RULES & REGION PRECEDENCE**
+
+1. **Manual Override Precedence:** Once `onboardingDraft.region` is chosen manually (via Tier 5 `RegionSelectionModal` or header switcher) OR hydrated from an existing server profile, automatic cascade Tiers 1–4 MUST NEVER overwrite it silently on later launches or SIM swaps.
+
+---
+
 **EDGE CASES**
 
+- **VPN Active on Cellular Phone (`SIM = EG`, `CF-IPCountry = NL`):** Tier 1 (`sim_country`) takes precedence over Tier 3 (`cloudflare_edge_ip`), accurately selecting `egypt` with zero popup clutter.
+- **WiFi-Only Tablet or iOS 16+ Without SIM ISO (`SIM = null`, `CF-IPCountry = SA`):** Cleanly falls through Tiers 1–2 to Tier 3 (`GET /v1/capabilities` `detectedGeo.region = "gulf"`), auto-selecting `gulf`.
+- **Non-MENA IP + Non-MENA/No SIM (`CF-IPCountry = US` or `DE`, offline unknown TZ):** Triggers Tier 5 `RegionSelectionModal` cleanly once so user picks from `["egypt", "gulf", "levant", "maghreb"]`.
 - **App Killed Mid-Onboarding:** User answers up to `current_weight`, force-closes the app, and reopens it later -> App skips `account_check` and all answered steps, renders the saved chat history, and resumes directly at `goal`.
 - **Offline Sign-In Attempt:** If the user taps *"Yes, I already have an account"* while offline, the Passwordless Social Sign-In sheet (`EPIC-02`) shows a clear offline message and a `[Continue as new user without signing in for now]` secondary button that sets `accountCheck = "no"` and continues onboarding locally until the Summary handoff (where connectivity is required to sign in and run initial `generate`).
 - **Corrupted Local Draft JSON:** If local `onboardingDraft` fails schema validation on startup, catch the error, clear the corrupted draft key, and start cleanly at `account_check` without crashing.
@@ -152,12 +169,16 @@ As a new or returning mobile user launching the app, I want the app to automatic
   - **Given** a user answered 6 onboarding questions and closed the app before completing onboarding
   - **When** the user reopens the app
   - **Then** all 6 previous answers are restored in the chat history and the active input bar opens at question 7 (`lastActiveStepId`).
+- **Scenario 6: Unsupported or indeterminate region falls back cleanly to Supported-Regions popup**
+  - **Given** a fresh device has no SIM/network MENA match, `GET /v1/capabilities` returns `detectedGeo.region = null` (e.g., IP in Germany `DE`), and device timezone is `Europe/Berlin`
+  - **When** launch region detection completes
+  - **Then** `RegionSelectionModal` prompts the user once to pick from `capabilities.supportedRegions` (`egypt`, `gulf`, `levant`, `maghreb`) and persists the selection as `regionSource = "manual"`.
 
 ---
 
 **ANALYTICS**
 
-- `onboarding_started` (`auto_detected_region`, `has_existing_draft`)
+- `onboarding_started` (`auto_detected_region`, `region_source`: `"sim_country" | "network_country" | "cloudflare_edge_ip" | "device_timezone" | "manual"`, `has_existing_draft`)
 - `onboarding_account_check_selected` (`choice`: `"yes"` | `"no"`)
 - `onboarding_login_return` (`account_state`: `"signed_in_needs_onboarding"` | `"signed_in_active"` | `"cancelled"`)
 - `onboarding_data_recovery_decision` (`decision`: `"restore_data"` | `"start_fresh"`)

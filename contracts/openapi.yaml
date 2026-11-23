@@ -2126,6 +2126,22 @@ components:
                   type: array
                   items:
                     type: string
+                supportedRegions:
+                  type: array
+                  items:
+                    type: string
+                    enum: [egypt, gulf, levant, maghreb]
+                detectedGeo:
+                  type: object
+                  properties:
+                    countryCode:
+                      type: ["string", "null"]
+                    region:
+                      type: ["string", "null"]
+                      enum: [egypt, gulf, levant, maghreb, null]
+                    source:
+                      type: string
+                      enum: [cloudflare_edge_ip, unknown]
     BootstrapResponse:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"

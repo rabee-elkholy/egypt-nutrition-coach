@@ -109,12 +109,31 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       );
     };
 
-    // 1. Capabilities, Maintenance Mode, Version Gate & Deferred AI
+    // 1. Capabilities, Edge Geo-Detection, Maintenance Mode, Version Gate & Deferred AI
     await t.test('capabilities, maintenance mode, client version gate, and deferred AI 501', async () => {
       const caps = await okJson(await call('/v1/capabilities'));
       assert.ok(caps.features.includes('social_oauth'));
       assert.ok(caps.features.includes('pantry_finder'));
       assert.deepEqual(caps.deferredFeatures, ['ai_meal_parse', 'ai_coach_qa']);
+      assert.deepEqual(caps.supportedRegions, ['egypt', 'gulf', 'levant', 'maghreb']);
+      assert.deepEqual(caps.detectedGeo, { countryCode: null, region: null, source: 'unknown' });
+
+      const geoCases = [
+        ['EG', 'egypt', 'cloudflare_edge_ip'],
+        ['SA', 'gulf', 'cloudflare_edge_ip'],
+        ['JO', 'levant', 'cloudflare_edge_ip'],
+        ['MA', 'maghreb', 'cloudflare_edge_ip'],
+        ['US', null, 'cloudflare_edge_ip'],
+        ['XX', null, 'unknown'],
+      ];
+      for (const [countryHeader, expectedRegion, expectedSource] of geoCases) {
+        const gCaps = await okJson(await call('/v1/capabilities', { headers: { 'CF-IPCountry': countryHeader } }));
+        assert.deepEqual(gCaps.detectedGeo, {
+          countryCode: countryHeader === 'XX' ? null : countryHeader,
+          region: expectedRegion,
+          source: expectedSource,
+        });
+      }
 
       // Maintenance mode returns 503 on normal endpoints but 200 on health & capabilities
       await okJson(await call('/v1/health', {}, { MAINTENANCE_MODE: 'true' }));

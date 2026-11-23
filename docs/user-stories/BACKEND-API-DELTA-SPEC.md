@@ -15,7 +15,7 @@
 | # | Group | Operation / Command Action | Method & Path | Mobile User Stories | Status |
 | :-: | :--- | :--- | :--- | :--- | :--- |
 | 1 | 01. System | Health Check | `GET /v1/health` | `US-MOB-01`, `US-PRF-07` | `Implemented` |
-| 2 | 01. System | Capabilities Manifest | `GET /v1/capabilities` | `US-MOB-01`, `US-AUTH-04`, `US-PRF-07` | `Implemented` (feature flags, `deferredFeatures`, `minSupportedVersion`, `maintenanceMode`) |
+| 2 | 01. System | Capabilities Manifest | `GET /v1/capabilities` | `US-MOB-01`, `US-AUTH-04`, `US-PRF-07` | `Implemented` (feature flags, `deferredFeatures`, `minSupportedVersion`, `maintenanceMode`, `supportedRegions`, `detectedGeo` edge IP region hint) |
 | 3 | 02. Auth | Refresh Access Token (Rotating `cfrt_...`) | `POST /v1/auth/refresh` | `US-AUTH-03` | `Implemented` |
 | 4 | 02. Auth | Inspect Current Session | `GET /v1/auth/session` | `US-AUTH-03` | `Implemented` |
 | 5 | 02. Auth | Claim Anonymous Web Session | `POST /v1/auth/claim-anonymous` | `US-AUTH-02` *(Legacy / Web-migration only)* | `Legacy / Web-Migration Only` |

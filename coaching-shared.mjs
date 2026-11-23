@@ -48,6 +48,18 @@ export const SUPPORTED_TIMEZONES = new Set([
 export const SUPPORTED_LOCALES = new Set([
   'en', 'ar', 'ar-EG', 'ar-SA', 'ar-AE', 'ar-KW', 'ar-QA', 'ar-BH', 'ar-OM', 'ar-JO', 'ar-LB', 'ar-MA', 'ar-TN', 'ar-DZ'
 ]);
+export const SUPPORTED_REGIONS = Object.freeze(['egypt', 'gulf', 'levant', 'maghreb']);
+export const COUNTRY_TO_REGION = Object.freeze({
+  EG: 'egypt',
+  SA: 'gulf', AE: 'gulf', KW: 'gulf', QA: 'gulf', BH: 'gulf', OM: 'gulf', YE: 'gulf',
+  JO: 'levant', LB: 'levant', SY: 'levant', PS: 'levant', IQ: 'levant',
+  MA: 'maghreb', DZ: 'maghreb', TN: 'maghreb', LY: 'maghreb', MR: 'maghreb'
+});
+export function countryToRegion(countryCode) {
+  const code = typeof countryCode === 'string' ? countryCode.trim().toUpperCase() : '';
+  if (!/^[A-Z]{2}$/.test(code) || code === 'XX' || code === 'T1') return null;
+  return Object.hasOwn(COUNTRY_TO_REGION, code) ? COUNTRY_TO_REGION[code] : null;
+}
 
 export function isPregnantStatus(maternalStatus) {
   return ['pregnant_t1', 'pregnant_t2', 'pregnant_t3', 'pregnant'].includes(maternalStatus);

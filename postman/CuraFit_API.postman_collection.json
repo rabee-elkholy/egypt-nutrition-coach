@@ -290,6 +290,8 @@
                   "  const d = res.data || res;",
                   "  pm.expect(d.apiVersion).to.eql(\"1\");",
                   "  pm.expect(d.features).to.include(\"native_cloudflare_auth\");",
+                  "  pm.expect(d.supportedRegions).to.include(\"egypt\");",
+                  "  pm.expect(d.detectedGeo).to.have.property(\"source\");",
                   "});"
                 ]
               }
@@ -317,7 +319,7 @@
                 "capabilities"
               ]
             },
-            "description": "Returns API/schema/catalog versions, enabled feature flags, and native Cloudflare D1 authentication status.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/capabilities`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/capabilities`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/capabilities`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/capabilities`\n- **Auth:** Public (`No Auth`)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `apiVersion` | `string` | API version (`\"1\"`). |\n| `schemaVersion` | `integer` | Account storage schema version (`3`). |\n| `engineVersion` | `string` | Coaching engine version. |\n| `catalogVersion` | `string` | Pinned OpenExerciseDB version. |\n| `foodCatalogVersion` | `string` | Pinned Egyptian/Gulf food catalog version. |\n| `serverTime` | `string (ISO-8601 UTC)` | Current edge server UTC time. |\n| `auth` | `object` | `{ provider: \"cloudflare_d1_native\", configured: boolean }`. |\n| `features` | `Array<string>` | Enabled backend feature flags. |"
+            "description": "Returns API/schema/catalog versions, enabled feature flags, and native Cloudflare D1 authentication status.\n\n### Endpoint Info\n- **Method:** `GET`\n- **URL:** `{{baseUrl}}/v1/capabilities`\n- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/capabilities`\n- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/capabilities`\n- **Local Dev URL:** `http://127.0.0.1:8787/v1/capabilities`\n- **Auth:** Public (`No Auth`)\n\n### Headers\n| Header | Type | Required | Description |\n| :--- | :--- | :---: | :--- |\n| `Accept` | `string` | Yes | JSON response format |\n\n### Response Fields\n| Field | Type | Description |\n| :--- | :--- | :--- |\n| `apiVersion` | `string` | API version (`\"1\"`). |\n| `schemaVersion` | `integer` | Account storage schema version (`3`). |\n| `engineVersion` | `string` | Coaching engine version. |\n| `catalogVersion` | `string` | Pinned OpenExerciseDB version. |\n| `foodCatalogVersion` | `string` | Pinned Egyptian/Gulf food catalog version. |\n| `serverTime` | `string (ISO-8601 UTC)` | Current edge server UTC time. |\n| `auth` | `object` | `{ provider: \"cloudflare_d1_native_and_oidc\", configured: boolean }`. |\n| `features` | `Array<string>` | Enabled backend feature flags. |\n| `supportedRegions` | `Array<string>` | Supported culinary & coaching regions (`egypt`, `gulf`, `levant`, `maghreb`). |\n| `detectedGeo` | `object` | Cloudflare Edge IP region hint `{ countryCode, region, source }` (`source: \"cloudflare_edge_ip\" | \"unknown\"`) used as Tier 3 auto-detection after SIM/Network. |"
           },
           "response": [
             {
@@ -358,7 +360,7 @@
                   "value": "no-store"
                 }
               ],
-              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"apiVersion\": \"1\",\n    \"schemaVersion\": 3,\n    \"engineVersion\": \"0.13.0\",\n    \"catalogVersion\": \"202610112340\",\n    \"foodCatalogVersion\": \"0.6.0-data.4\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\",\n    \"auth\": {\n      \"provider\": \"cloudflare_d1_native\",\n      \"configured\": true\n    },\n    \"features\": [\n      \"adaptive_nutrition\",\n      \"adaptive_workouts\",\n      \"native_cloudflare_auth\",\n      \"kmm_bootstrap\",\n      \"offline_sync\"\n    ]\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
+              "body": "{\n  \"ok\": true,\n  \"data\": {\n    \"apiVersion\": \"1\",\n    \"schemaVersion\": 3,\n    \"engineVersion\": \"0.14.0\",\n    \"catalogVersion\": \"202610112340\",\n    \"foodCatalogVersion\": \"0.6.0-data.5\",\n    \"serverTime\": \"2026-11-23T09:30:00.000Z\",\n    \"auth\": {\n      \"provider\": \"cloudflare_d1_native_and_oidc\",\n      \"configured\": true\n    },\n    \"features\": [\n      \"adaptive_nutrition\",\n      \"adaptive_workouts\",\n      \"native_cloudflare_auth\",\n      \"kmm_bootstrap\",\n      \"offline_sync\"\n    ],\n    \"supportedRegions\": [\n      \"egypt\",\n      \"gulf\",\n      \"levant\",\n      \"maghreb\"\n    ],\n    \"detectedGeo\": {\n      \"countryCode\": \"EG\",\n      \"region\": \"egypt\",\n      \"source\": \"cloudflare_edge_ip\"\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid\",\n    \"serverTime\": \"2026-11-21T12:30:00.000Z\"\n  }\n}"
             }
           ]
         }

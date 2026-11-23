@@ -674,18 +674,22 @@ const collection = {
             { name: 'catalogVersion', type: 'string', description: 'Pinned OpenExerciseDB version.' },
             { name: 'foodCatalogVersion', type: 'string', description: 'Pinned Egyptian/Gulf food catalog version.' },
             { name: 'serverTime', type: 'string (ISO-8601 UTC)', description: 'Current edge server UTC time.' },
-            { name: 'auth', type: 'object', description: '`{ provider: "cloudflare_d1_native", configured: boolean }`.' },
-            { name: 'features', type: 'Array<string>', description: 'Enabled backend feature flags.' }
+            { name: 'auth', type: 'object', description: '`{ provider: "cloudflare_d1_native_and_oidc", configured: boolean }`.' },
+            { name: 'features', type: 'Array<string>', description: 'Enabled backend feature flags.' },
+            { name: 'supportedRegions', type: 'Array<string>', description: 'Supported culinary & coaching regions (`egypt`, `gulf`, `levant`, `maghreb`).' },
+            { name: 'detectedGeo', type: 'object', description: 'Cloudflare Edge IP region hint `{ countryCode, region, source }` (`source: "cloudflare_edge_ip" | "unknown"`) used as Tier 3 auto-detection after SIM/Network.' }
           ],
           examples: [{
             name: '200 OK — Capabilities',
             code: 200,
             body: {
-              apiVersion: '1', schemaVersion: 3, engineVersion: '0.13.0',
-              catalogVersion: '202610112340', foodCatalogVersion: '0.6.0-data.4',
-              serverTime: '2026-11-21T12:30:00.000Z',
-              auth: { provider: 'cloudflare_d1_native', configured: true },
-              features: ['adaptive_nutrition', 'adaptive_workouts', 'native_cloudflare_auth', 'kmm_bootstrap', 'offline_sync']
+              apiVersion: '1', schemaVersion: 3, engineVersion: '0.14.0',
+              catalogVersion: '202610112340', foodCatalogVersion: '0.6.0-data.5',
+              serverTime: '2026-11-23T09:30:00.000Z',
+              auth: { provider: 'cloudflare_d1_native_and_oidc', configured: true },
+              features: ['adaptive_nutrition', 'adaptive_workouts', 'native_cloudflare_auth', 'kmm_bootstrap', 'offline_sync'],
+              supportedRegions: ['egypt', 'gulf', 'levant', 'maghreb'],
+              detectedGeo: { countryCode: 'EG', region: 'egypt', source: 'cloudflare_edge_ip' }
             }
           }],
           testScript: [
@@ -695,6 +699,8 @@ const collection = {
             '  const d = res.data || res;',
             '  pm.expect(d.apiVersion).to.eql("1");',
             '  pm.expect(d.features).to.include("native_cloudflare_auth");',
+            '  pm.expect(d.supportedRegions).to.include("egypt");',
+            '  pm.expect(d.detectedGeo).to.have.property("source");',
             '});'
           ]
         })

@@ -23,7 +23,7 @@ import {authenticateRequest,checkRateLimit} from './auth.mjs';
 import {refreshUserSession,logoutUserSession,revokeRefreshTokensForSession} from './native-auth.mjs';
 import {formatSuccessBody,formatErrorBody,createApiError,logEvent} from './logger.mjs';
 import {personalBrief} from '../personal-brief.mjs';
-import {localDate,dateOffset,integer,validDate} from '../coaching-shared.mjs';
+import {localDate,dateOffset,integer,validDate,SUPPORTED_REGIONS,countryToRegion} from '../coaching-shared.mjs';
 
 const hasPushConfigured=env=>Boolean(env?.FCM_SERVICE_ACCOUNT_JSON||(env?.APNS_KEY_ID&&env?.APNS_TEAM_ID&&env?.APNS_PRIVATE_KEY&&env?.APNS_BUNDLE_ID));
 const enrichWorkoutPlan=wp=>wp?{...wp,days:(wp.days||[]).map(d=>({...d,exercises:(d.exercises||[]).map(enrichExercise)}))}:wp;
@@ -112,6 +112,8 @@ export default {async fetch(request,env){
 
  if(url.pathname==='/v1/capabilities'&&request.method==='GET'){
   const maintenanceActive=env?.MAINTENANCE_MODE==='true';
+  const rawCountry=String(request.cf?.country||request.headers.get('CF-IPCountry')||'').trim().toUpperCase();
+  const detectedCountry=/^[A-Z]{2}$/.test(rawCountry)&&rawCountry!=='XX'&&rawCountry!=='T1'?rawCountry:null;
   return json({
    apiVersion:'1',
    schemaVersion:3,
@@ -133,7 +135,13 @@ export default {async fetch(request,env){
     'store_subscriptions','push_notifications','widgets_snapshot','english_canonical_coaching_codes',
     'custom_recipes','cardio_tracking','cycle_awareness','seasonal_flex'
    ],
-   deferredFeatures:['ai_meal_parse','ai_coach_qa']
+   deferredFeatures:['ai_meal_parse','ai_coach_qa'],
+   supportedRegions:[...SUPPORTED_REGIONS],
+   detectedGeo:{
+    countryCode:detectedCountry,
+    region:detectedCountry?countryToRegion(detectedCountry):null,
+    source:detectedCountry?'cloudflare_edge_ip':'unknown'
+   }
   },200,{},reqId);
  }
 

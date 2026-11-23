@@ -361,7 +361,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 2. **Unit System Selector (`unitSystem`):**
    - `Metric (kg, cm, ml / L)` (Default) vs `Imperial (lb, in, fl oz)` — synced via `action: "profile_update"` (`unitSystem: "metric" | "imperial"`) and hydrated in `bootstrap.profile.unitSystem` and `bootstrap.preferences.unitSystem` while keeping canonical SI metric values (`kg`, `cm`) on the API wire.
 3. **Digit Preference Toggle:** `Western Numerals (0–9) — Recommended` (Default) vs `Eastern Arabic Numerals (U+0660..U+0669)` *(Note: Input fields always accept both cleanly via `normalizeDigits`!)*.
-4. **Timezone Row:** Shows active `profile.timezone` (e.g. `Africa/Cairo (GMT+2)`) + `[Auto-Detect from Device]` switch + searchable MENA IANA timezone picker (`Cairo`, `Riyadh`, `Dubai`, `Kuwait`, `Doha`, `Manama`, `Muscat`, `Amman`, `Beirut`, `Casablanca`, `Tunis`, `Algiers`).
+4. **Timezone & Auto-Region Row:** Shows active `profile.timezone` (e.g. `Africa/Cairo (GMT+2)`) + `[Auto-Detect from Device]` switch + searchable MENA IANA timezone picker (`Cairo`, `Riyadh`, `Dubai`, `Kuwait`, `Doha`, `Manama`, `Muscat`, `Amman`, `Beirut`, `Casablanca`, `Tunis`, `Algiers`). Note initial region detection uses the 5-tier cascade (`SIM Country -> Mobile Network -> WiFi/Edge IP via GET /v1/capabilities detectedGeo -> Timezone -> Supported-Regions popup fallback` when unresolved) and never silently overwrites a manually selected cuisine region (`US-PRF-04`).
 
 ### API & BACKEND CONTRACT
 1. **`POST /v1/commands?view=receipt`** (`action: "timezone"`)

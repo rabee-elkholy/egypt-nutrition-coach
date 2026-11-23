@@ -171,8 +171,10 @@ Returns API/schema/catalog versions, enabled feature flags, and native Cloudflar
 | `catalogVersion` | `string` | Pinned OpenExerciseDB version. |
 | `foodCatalogVersion` | `string` | Pinned Egyptian/Gulf food catalog version. |
 | `serverTime` | `string (ISO-8601 UTC)` | Current edge server UTC time. |
-| `auth` | `object` | `{ provider: "cloudflare_d1_native", configured: boolean }`. |
+| `auth` | `object` | `{ provider: "cloudflare_d1_native_and_oidc", configured: boolean }`. |
 | `features` | `Array<string>` | Enabled backend feature flags. |
+| `supportedRegions` | `Array<string>` | Supported culinary & coaching regions (`egypt`, `gulf`, `levant`, `maghreb`). |
+| `detectedGeo` | `object` | Cloudflare Edge IP region hint `{ countryCode, region, source }` (`source: "cloudflare_edge_ip" | "unknown"`) used as Tier 3 auto-detection after SIM/Network. |
 
 #### Example Response — 200 OK — Capabilities
 ```json
@@ -181,12 +183,12 @@ Returns API/schema/catalog versions, enabled feature flags, and native Cloudflar
   "data": {
     "apiVersion": "1",
     "schemaVersion": 3,
-    "engineVersion": "0.13.0",
+    "engineVersion": "0.14.0",
     "catalogVersion": "202610112340",
-    "foodCatalogVersion": "0.6.0-data.4",
-    "serverTime": "2026-11-21T12:30:00.000Z",
+    "foodCatalogVersion": "0.6.0-data.5",
+    "serverTime": "2026-11-23T09:30:00.000Z",
     "auth": {
-      "provider": "cloudflare_d1_native",
+      "provider": "cloudflare_d1_native_and_oidc",
       "configured": true
     },
     "features": [
@@ -195,7 +197,18 @@ Returns API/schema/catalog versions, enabled feature flags, and native Cloudflar
       "native_cloudflare_auth",
       "kmm_bootstrap",
       "offline_sync"
-    ]
+    ],
+    "supportedRegions": [
+      "egypt",
+      "gulf",
+      "levant",
+      "maghreb"
+    ],
+    "detectedGeo": {
+      "countryCode": "EG",
+      "region": "egypt",
+      "source": "cloudflare_edge_ip"
+    }
   },
   "meta": {
     "requestId": "req-uuid",
