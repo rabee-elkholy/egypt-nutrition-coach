@@ -282,13 +282,15 @@ paths:
   /v1/food-diary:
     get:
       operationId: getFoodDiaryDay
-      summary: Get actual food entries, nullable nutrient totals, completion status, and target energy for a date
+      summary: Get actual food entries, nullable nutrient totals, completion status, and target energy for a date or date range
       parameters:
         - name: date
           in: query
           schema:
             type: string
             format: date
+        - $ref: "#/components/parameters/FromDateQuery"
+        - $ref: "#/components/parameters/ToDateQuery"
       responses:
         "200":
           description: Daily food diary summary
@@ -331,10 +333,14 @@ paths:
   /v1/workout-logs:
     get:
       operationId: listWorkoutLogs
-      summary: Paginated exercise set/rep/load logs ordered by date descending
+      summary: Paginated exercise set/rep/load logs ordered by date descending (filterable by date range and exerciseId)
       parameters:
         - $ref: "#/components/parameters/FromDateQuery"
         - $ref: "#/components/parameters/ToDateQuery"
+        - name: exerciseId
+          in: query
+          schema:
+            type: string
         - $ref: "#/components/parameters/OffsetQuery"
         - $ref: "#/components/parameters/LimitQuery"
       responses:
@@ -445,7 +451,7 @@ paths:
   /v1/workout-plans/{id}:
     get:
       operationId: getWorkoutPlan
-      summary: Get full owned workout plan by ID
+      summary: Get full owned workout plan by ID with enriched exercise targets (targetRepsRange, targetRir, restSeconds, weeklyMuscleSets)
       parameters:
         - name: id
           in: path
@@ -635,7 +641,8 @@ paths:
   /v1/eligibility:
     post:
       operationId: evaluateEligibility
-      summary: Pre-onboarding clinical and physiological screening
+      summary: Public pre-onboarding clinical and physiological screening
+      security: []
       requestBody:
         required: true
         content:
@@ -700,6 +707,7 @@ paths:
       summary: Revoke current device session (or all devices) and invalidate associated refresh tokens
       requestBody:
         required: false
+        description: Optional JSON body (empty body revokes the active device session).
         content:
           application/json:
             schema:
@@ -749,7 +757,7 @@ paths:
   /v1/auth/claim-anonymous:
     post:
       operationId: claimAnonymousAccount
-      summary: Explicitly migrate/claim an anonymous trial account into a verified KMM user account
+      summary: Explicitly migrate/claim a legacy Web anonymous trial account (via owning coach_uid cookie) into a verified user account
       requestBody:
         required: true
         content:
@@ -764,11 +772,6 @@ paths:
                   type: string
                 consent:
                   type: boolean
-                mergeStrategy:
-                  type: string
-                  enum:
-                    - fail_if_not_empty
-                    - overwrite_empty
       responses:
         "200":
           description: Anonymous data claimed and transferred
@@ -848,31 +851,53 @@ paths:
                 $ref: "#/components/schemas/SuccessEnvelope"
     post:
       operationId: recordAccountConsent
-      summary: Record explicit user privacy/health data consent version
+      summary: Record one or a batch of explicit user privacy/health data consent versions
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - consentType
-                - version
-                - accepted
-              properties:
-                consentType:
-                  type: string
-                version:
-                  type: string
-                accepted:
-                  type: boolean
+              oneOf:
+                - type: object
+                  required:
+                    - consentType
+                    - version
+                    - accepted
+                  properties:
+                    consentType:
+                      type: string
+                    version:
+                      type: string
+                    accepted:
+                      type: boolean
+                - type: object
+                  required:
+                    - items
+                  properties:
+                    items:
+                      type: array
+                      minItems: 1
+                      maxItems: 10
+                      items:
+                        type: object
+                        required:
+                          - consentType
+                          - version
+                          - accepted
+                        properties:
+                          consentType:
+                            type: string
+                          version:
+                            type: string
+                          accepted:
+                            type: boolean
       responses:
         "200":
           description: Consent recorded
   /v1/wearables/ingest:
     post:
       operationId: ingestWearableRecords
-      summary: Ingest deduplicated Health Connect / Apple Health weight, steps, and active energy records
+      summary: Ingest deduplicated Health Connect / Apple Health weight, steps, activity, and cardio records (returns skippedRecords[] on partial batch acceptance)
       requestBody:
         required: true
         content:
@@ -887,6 +912,17 @@ paths:
                   maxItems: 100
                   items:
                     type: object
+                    required: [type, date]
+                    properties:
+                      type: { type: string, enum: [weight, steps, activity, cardio] }
+                      date: { type: string, format: date }
+                      kg: { type: number }
+                      steps: { type: integer }
+                      activeEnergyKcal: { type: number }
+                      modality: { type: string }
+                      durationMinutes: { type: integer }
+                      intensity: { type: string, enum: [low, moderate, vigorous] }
+                      externalRecordId: { type: string }
       responses:
         "200":
           description: Wearable batch ingested
@@ -912,6 +948,18 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  dailyReminder: { type: boolean }
+                  workoutReminder: { type: boolean }
+                  waterReminder: { type: boolean }
+                  weeklyReviewReminder: { type: boolean }
+                  ramadanSuhoorReminder: { type: boolean }
+                  exemptSuhoorFromQuietHours: { type: boolean }
+                  quietHoursStart: { type: string }
+                  quietHoursEnd: { type: string }
+                  cycleReminders: { type: boolean }
+                  timezone: { type: string }
+                  locale: { type: string }
   /v1/entitlements:
     get:
       operationId: getEntitlements
@@ -959,7 +1007,7 @@ paths:
   /v1/plans/preview:
     post:
       operationId: previewPlan
-      summary: Stateless onboarding targets, diet macros, recommended split, safe floors, warnings, and weekly forecast preview
+      summary: Stateless onboarding targets, diet macros, recommended split, restDayWaterTarget, workoutDayWaterTarget, estimatedExercisesPerSession, safe floors, warnings, and weekly forecast preview
       security: []
       requestBody:
         required: true
@@ -969,7 +1017,7 @@ paths:
               type: object
       responses:
         "200":
-          description: Preview targets, eligibility, and forecast range
+          description: Preview targets, hydration targets, session density, eligibility, and forecast range
           content:
             application/json:
               schema:
@@ -1148,7 +1196,7 @@ paths:
   /v1/plans/{planId}/grocery-list:
     get:
       operationId: getPlanGroceryList
-      summary: Aggregated shopping list for a nutrition plan with checked state (Pro-gated when enforcement is enabled)
+      summary: Aggregated shopping list for a nutrition plan with checked state (Pro-gated when enforcement is enabled; preview=true returns Free 2-item preview)
       parameters:
         - name: planId
           in: path
@@ -1157,6 +1205,9 @@ paths:
         - name: days
           in: query
           schema: { type: string, enum: [all, remaining, "3", "7"], default: all }
+        - name: preview
+          in: query
+          schema: { type: boolean, default: false }
       responses:
         "200":
           description: Plan grocery list with pantry overlap and checked items
@@ -1172,6 +1223,24 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           $ref: "#/components/responses/NotFoundError"
+  /v1/foods/recent:
+    get:
+      operationId: listRecentFoods
+      summary: Returns recently logged unique foods ranked by frequency and recency for zero-query diary logging
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 90, default: 30 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 25 }
+      responses:
+        "200":
+          description: Recent logged food items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
   /v1/foods/favorites:
     get:
       operationId: listFoodFavorites
@@ -1227,6 +1296,7 @@ paths:
                 nameAr: { type: string }
                 brand: { type: string }
                 servingSizeGrams: { type: number }
+                servingLabel: { type: string }
                 valuesPer100g:
                   type: object
                   required: [energy]
@@ -1235,6 +1305,7 @@ paths:
                     protein: { type: number }
                     carbs: { type: number }
                     fat: { type: number }
+                    saturated: { type: number }
                     fiber: { type: number }
                     sodium: { type: number }
                     sugars: { type: number }
@@ -1276,6 +1347,17 @@ paths:
       responses:
         "200":
           description: Exercise personal records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/workouts/split-review:
+    get:
+      operationId: getWorkoutSplitReview
+      summary: Evaluate 8-week Full Body split review eligibility and pure-English localized split recommendation
+      responses:
+        "200":
+          description: Split review recommendation with due boolean, kind, code, params, and canonical text
           content:
             application/json:
               schema:
@@ -1390,7 +1472,7 @@ paths:
   /v1/cycle/state:
     get:
       operationId: getCycleState
-      summary: Optional female menstrual cycle awareness state, phase estimate, luteal water retention flag, and pregnancy auto-pause status (Free, opt-in)
+      summary: Optional female menstrual cycle awareness state, phase, coachingHintCode, discreetMode, adaptiveThemeEnabled, phaseAccentToken, suggestedGentleSession, isOverdue/overdueDays, luteal water retention flag, and pregnancy auto-pause status (Free, opt-in)
       responses:
         "200":
           description: Cycle awareness state (returns available=false for non-female profiles)
@@ -1401,17 +1483,22 @@ paths:
   /v1/profile/avatar:
     post:
       operationId: uploadProfileAvatar
-      summary: Issue short-lived HMAC-signed PUT URL for user profile avatar (JPEG/PNG/WebP up to 512 KB stored in R2)
+      summary: Direct Worker upload of user profile avatar (multipart/form-data or binary JPEG/PNG/WebP up to 512 KB stored in R2)
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
-              required: [contentType, byteSize]
               properties:
-                contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
-                byteSize: { type: integer, minimum: 1, maximum: 524288 }
+                image: { type: string, format: binary }
+                file: { type: string, format: binary }
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+          image/webp:
+            schema: { type: string, format: binary }
       responses:
         "200":
           description: Signed PUT upload URL and object key
@@ -1459,7 +1546,7 @@ paths:
                 byteSize: { type: integer, minimum: 1, maximum: 5242880 }
                 pose: { type: string, enum: [front, side, back] }
                 date: { type: string, format: date }
-                weightKg: { type: number }
+                weightKgSnapshot: { type: number }
       responses:
         "200":
           description: Upload URL and photo ID
@@ -1489,7 +1576,7 @@ paths:
                 objectKey: { type: string }
                 pose: { type: string, enum: [front, side, back] }
                 date: { type: string, format: date }
-                weightKg: { type: number }
+                weightKgSnapshot: { type: number }
       responses:
         "201":
           description: Confirmed progress photo record
@@ -1638,7 +1725,11 @@ paths:
                 productId: { type: string }
                 purchaseToken: { type: string }
                 signedTransactionInfo: { type: string }
+                signedTransactionJws: { type: string }
+                transactionId: { type: string }
                 originalTransactionId: { type: string }
+                orderId: { type: string }
+                isTrial: { type: boolean }
       responses:
         "200":
           description: Updated entitlements snapshot
@@ -1660,9 +1751,17 @@ paths:
               type: object
               properties:
                 platform: { type: string, enum: [android, ios] }
+                provider: { type: string, enum: [apple, google] }
                 tokens:
                   type: array
-                  items: { type: string }
+                  items:
+                    oneOf:
+                      - type: string
+                      - type: object
+                        properties:
+                          purchaseToken: { type: string }
+                          transactionId: { type: string }
+                          signedTransactionJws: { type: string }
       responses:
         "200":
           description: Restored entitlements snapshot
@@ -2237,6 +2336,7 @@ components:
             - confirm_schedule
             - renew_plan
             - food_entry
+            - food_entry_batch
             - food_entry_update
             - food_delete
             - food_complete
@@ -2250,12 +2350,14 @@ components:
             - grocery_toggle
             - fasting_log
             - ramadan_mode
+            - seasonal_flex
             - weight
             - water
             - steps
             - activity
             - cycle_settings
             - cycle_log
+            - cycle_gentle_session
             - recovery
             - workout
             - workout_delete

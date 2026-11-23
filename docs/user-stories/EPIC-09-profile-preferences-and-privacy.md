@@ -44,11 +44,11 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 ### SCREEN AND UI DETAILS
 1. **Profile Header Card:**
    - Circular Avatar (`72dp`) showing uploaded photo (hydrated via short-lived 900s signed `avatarUrl` in `GET /v1/bootstrap` and auth responses), Google/Apple avatar, or styled monogram initials + subtle camera edit badge.
-   - Display Name (`profile.name`), Linked Sign-In Email & Provider pill (`Google` / `Apple`), and Entitlement Pill (`Free Plan` -> `[Upgrade to Pro]` OR `CuraFit Pro ✓` -> `[Manage]`).
+   - Display Name (`profile.name`), Linked Sign-In Email & Provider pill (`Google` / `Apple`), and Entitlement Pill (`Free Plan` -> `[Upgrade to Pro]` OR `CuraFit Pro (Active)` -> `[Manage]`).
 2. **Active Program Summary Strip:**
    - Quick KPIs: `Weight: 81.4 kg`, `Goal: Lose Fat -> 75 kg`, `Calories: 1,850 kcal/d`, `Track: Nutrition + Workouts (4d/wk)`.
 3. **Structured Settings Menu Sections:**
-   - **My Progress & Body Tools:** `Weight & Analytics` (`US-PRG-01`), `Body Measurements` (`US-PRG-02`), `Private Photos Vault` (`US-PRG-03`), `Streaks & Badges` (`US-PRG-04`).
+   - **My Progress & Body Tools:** `Weight & Analytics` (`US-PRG-01`), `Body Measurements` (`US-PRG-02`), `Private Photos Vault` (`US-PRG-03`), `Streaks & Badges` (`US-PRG-04`), `Cycle Awareness & Discreet Mode` (`US-PRG-06`, Female profiles only).
    - **My Plan & Coaching Preferences:** `Body Metrics & Goal` (`US-PRF-02`), `Training & Dual-Mode Setup` (`US-PRF-03`), `Nutrition & Food Exclusions` (`US-PRF-04`).
    - **App & Integrations:** `Apple Health / Health Connect` (`US-INT-01`), `Notifications & Quiet Hours` (`US-INT-02`), `Language, Region & Units` (`US-PRF-05`).
    - **Account & Privacy:** `Connected Sign-In Methods (Google / Apple)`, `Subscription & Billing` (`US-MON-04`), `Privacy, Consents & Export` (`US-PRF-06`), `Help, Legal & App Info` (`US-PRF-07`).
@@ -63,7 +63,7 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 1. **`POST /v1/commands?view=receipt`** (`action: "profile_update"`)
    - Lightweight profile metadata command (`name`, optional `workoutUiMode`, optional `unitSystem: "metric" | "imperial"`) that updates `s.profile` **without** regenerating meal/workout plans!
    - Payload: `{ "name": "Ahmed Hassan", "unitSystem": "metric" }`.
-2. **`POST /v1/profile/avatar`** (JPEG/PNG/WebP up to **512 KB / `524288` bytes** stored in private Cloudflare R2; returns short-lived signed `avatarUrl` with 900s TTL via `/v1/media/signed/{token}`, also hydrated automatically on `GET /v1/bootstrap` and auth responses) & **`DELETE /v1/profile/avatar`**.
+2. **`POST /v1/profile/avatar`** (Accepts `multipart/form-data` with `image` or `file` field, OR raw `image/jpeg | image/png | image/webp` binary up to **512 KB / `524288` bytes** stored in private Cloudflare R2; automatically deletes any superseded `avatars/{userId}/*` object on re-upload and returns `{ avatarKey, avatarUrl, expiresAt }` with a short-lived 900s signed URL via `/v1/media/signed/{token}`, also hydrated automatically on `GET /v1/bootstrap` and auth responses) & **`DELETE /v1/profile/avatar`**.
    - Error Codes: `400 INVALID_PROFILE_NAME`, `400 INVALID_UNIT_SYSTEM`, `413 PHOTO_TOO_LARGE` (`> 512 KB`), `415 UNSUPPORTED_IMAGE_FORMAT`.
 3. **Connected OAuth Linking Endpoints (Google & Apple Only):**
    - **`GET /v1/auth/oauth/providers`** -> Lists linked Google/Apple identities for the signed-in account.
@@ -76,7 +76,7 @@ As a logged-in user opening the Profile tab, I want to see my name, avatar photo
 3. **Last Sign-In Method Protection:** Disable or confirm against unlinking the sole remaining OAuth provider (`409 CANNOT_UNLINK_LAST_AUTH_METHOD`) so users can never lock themselves out of their account.
 
 ### MAIN FLOW
-1. User taps Tab 5 (`Profile`), then taps the `Edit ✏️` icon on the Profile Header.
+1. User taps Tab 5 (`Profile`), then taps `[Edit]` on the Profile Header.
 2. User edits display name to `"Ahmed El-Masry"`, picks a photo from gallery, crops to square, and taps `[Save Changes]`.
 3. Client uploads compressed avatar via `POST /v1/profile/avatar` and updates name via `profile_update`; Profile & Today greeting reflect changes immediately.
 
@@ -216,8 +216,8 @@ As a user whose gym membership, free schedule, injuries, or coaching track chang
      - `Fitness Level`: `Beginner` | `Intermediate` | `Advanced`.
      - `Training Location`: `Gym Only` (`gym_only`) | `Home Only` (`home_only`) | `Mix (Home & Gym)` (`home_and_gym`).
      - `Exact Workout Weekdays` (`Saturday..Friday` pills `1..7` days) + `Per-Day Location Split` (if Mix).
-     - `Available Home Equipment` (if `Home` or `Mix` — `Bodyweight Only` [`none`], `Dumbbells` [`dumbbells`], `Resistance Bands` [`resistance_bands`], `Pull-up Bar` [`pull_up_bar`], `Kettlebell` [`kettlebell`], `Bench` [`bench`], `Barbell` [`barbell`], `Yoga Mat` [`yoga_mat`], `Jump Rope` [`jump_rope`], `Cardio Machine` [`cardio_machine`]).
-     - `Workout Split` (shown when `location != home_only` AND days `>= 2`, filtered dynamically by day count: `2–6d` `smart_auto` / `full_body` / `upper_lower`; `3–6d` `ppl` [4d balanced `push/pull/legs/full_body`, 5d `push/pull/legs/upper/lower`]; `4–6d` `bro_split` — exposing all 5 splits at `4+` days!).
+     - `Available Home Equipment` (if `Home` or `Mix` — `Bodyweight Only` [`none`], `Dumbbells` [`dumbbells`], `Resistance Bands` [`resistance_bands`], `Pull-up Bar` [`pullup_bar`], `Kettlebell` [`kettlebell`], `Bench` [`bench`], `Barbell` [`barbell`], `Yoga Mat` [`yoga_mat`], `Jump Rope` [`jump_rope`], `Cardio Machine` [`cardio_machine`]).
+     - `Workout Split` (shown when `location != home_only` AND days `>= 2`, filtered dynamically by day count: `2–7d` `auto` / `full_body` / `upper_lower`; `3–7d` `ppl` [4d balanced `push/pull/legs/full_body`, 5d `push/pull/legs/upper/lower`]; `4–7d` `bro_split` — exposing all 5 splits at `4+` days!).
      - `Session Duration`: `20` | `30` | `45` | `60` | `90 min`.
      - `Joint Pain & Injuries`: `None`, `Knee`, `Lower Back`, `Shoulder`, `Neck`, `Wrist`, `Ankle`, `Elbow`, `Hip`, `Postpartum Diastasis Recti` (if Female).
      - *(If `serviceTrack == "workouts_only"`):* Explicit `Health Readiness Confirmation` checkbox (`healthConfirmed: true`).
@@ -287,8 +287,8 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 ### SCREEN AND UI DETAILS
 1. **Form Sections (Mirroring `US-MOB-08` Medical Guardrails):**
    - `Daily Activity (`profile.activity`)`: `Sedentary (1.2x)` | `Light (1.375x)` | `Moderate (1.55x)` | `Very Active (1.725x)`.
-   - `Health & Metabolic Conditions`: Multi-select chips (`None`, `Insulin Resistance` [`insulin_resistance`], `Type 2 Diabetes` [`type2_diabetes`], `Type 1 Diabetes` [`type1_diabetes`], `PCOS` [`pcos`, Female], `Hypothyroid` [`hypothyroid`], `Hypertension` [`hypertension`], `High Cholesterol` [`high_cholesterol`], `IBS` [`ibs`], `Celiac / Gluten` [`celiac`], `Lactose Intolerance` [`lactose_intolerance`], `Favism` [`favism`], `Anemia` [`anemia`], `Vitamin D Deficiency` [`vitamin_d_deficiency`], `Fatty Liver` [`fatty_liver`], `Gout` [`gout`], `Kidney Sensitivity` [`kidney_sensitivity`]).
-   - `Diet School` *(Clinically filtered live — hides `Keto` / `IF` whenever blocked by newly checked conditions or maternal status, including conservative blocks on `keto + cholesterol` and `intermittent_fasting + breastfeeding`, highlighting `⭐ Recommended` fit!)*: `Balanced`, `Low Carb`, `High Protein`, `Intermittent Fasting (16:8)`, `Keto`, `Mediterranean`, `DASH`, `Vegetarian`, `Vegan`.
+   - `Health & Metabolic Conditions`: Multi-select chips (`None`, `Insulin Resistance` [`insulin_resistance`], `Type 2 Diabetes` [`diabetes_t2`], `Type 1 Diabetes` [`diabetes_t1`], `PCOS` [`pcos`, Female], `Hypothyroid` [`hypothyroid`], `Hypertension` [`hypertension`], `High Cholesterol` [`cholesterol`], `IBS` [`ibs`], `Celiac / Gluten` [`celiac`], `Lactose Intolerance` [`lactose_intolerance`], `Favism` [`favism`], `Anemia` [`anemia`], `Vitamin D Deficiency` [`vitamin_d_deficiency`], `Fatty Liver` [`fatty_liver`], `Gout` [`gout`], `Kidney Sensitivity` [`kidney`]).
+   - `Diet School` *(Clinically filtered live — hides `Keto` / `IF` whenever blocked by newly checked conditions or maternal status, including conservative blocks on `keto + cholesterol` and `intermittent_fasting + breastfeeding`, highlighting a `(Recommended)` fit pill!)*: `Balanced`, `Low Carb`, `High Protein`, `Intermittent Fasting (16:8)`, `Keto`, `Mediterranean`, `DASH`, `Vegetarian`, `Vegan`.
    - `IF Start Hour` (`6..16`, i.e., `6:00 AM` to `4:00 PM`) *(Only if `intermittent_fasting`)* OR `Meals & Snacks per Day` (`2 / 3 / 4 / 5`) *(Only if `balanced`)*.
    - `Grocery Budget Tier` (`budget: "low" | "medium" | "high"`): `Economic` | `Moderate` | `Premium`.
    - `Regional Cuisine`: `Egypt` | `Gulf (GCC)` | `Levant` | `Maghreb`.
@@ -301,11 +301,11 @@ As a user whose daily activity, health conditions, grocery budget, region, food 
 
 ### RULES & BUSINESS LOGIC
 1. **Constraint Integrity (`IMPLEMENTATION.md`):** Never silently clear an allergy or raise budget to make an infeasible meal plan pass (`LIBRARY_INSUFFICIENT_FOR_DIET_GOALS`); instead, display a clear helpful prompt identifying which combination (e.g., *Vegan + No Legumes + No Soy + No Nuts*) narrowed available protein templates too far.
-2. **Automatic Conflict Resolution:** If adding `diabetes_t2` or `cholesterol` conflicts with currently selected `keto`, highlight `dietType` section automatically and require picking a safe school (`Low Carb ⭐` or `Balanced` / `Mediterranean`) before saving.
+2. **Automatic Conflict Resolution:** If adding `diabetes_t2` or `cholesterol` conflicts with currently selected `keto`, highlight `dietType` section automatically and require picking a safe school (`Low Carb (Recommended)` or `Balanced` / `Mediterranean`) before saving.
 
 ### MAIN FLOW
 1. User gets diagnosed with Hypertension and opens `Profile -> Nutrition Preferences`.
-2. User toggles `High Blood Pressure (Hypertension)` -> Coach highlights `DASH Diet ⭐ (Recommended)`.
+2. User toggles `High Blood Pressure (Hypertension)` -> Coach highlights `DASH Diet (Recommended)`.
 3. User switches from `High Protein` to `DASH Diet`, keeps `medium` budget, and taps `[Generate Updated Meal Plan]`.
 4. Backend applies low-sodium (`<= 2300 mg/day`) filters and generates a fresh 7-day regional DASH meal plan immediately.
 
@@ -357,7 +357,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 1. **Language Selector:** Two native-script rows:
    - Native Arabic script label *(Arabic — Right-to-Left layout)*
    - `English` *(English — Left-to-Right layout)*
-   - Current choice marked with `✓`.
+   - Current choice marked cleanly with an active radio/check indicator.
 2. **Unit System Selector (`unitSystem`):**
    - `Metric (kg, cm, ml / L)` (Default) vs `Imperial (lb, in, fl oz)` — synced via `action: "profile_update"` (`unitSystem: "metric" | "imperial"`) and hydrated in `bootstrap.profile.unitSystem` and `bootstrap.preferences.unitSystem` while keeping canonical SI metric values (`kg`, `cm`) on the API wire.
 3. **Digit Preference Toggle:** `Western Numerals (0–9) — Recommended` (Default) vs `Eastern Arabic Numerals (U+0660..U+0669)` *(Note: Input fields always accept both cleanly via `normalizeDigits`!)*.
@@ -376,7 +376,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 1. **Zero-Restart Live Layout Mirroring:** Switching language updates Compose `LayoutDirection` / SwiftUI `environment(\.layoutDirection)` immediately across every active screen without losing scroll state or unsaved inputs! User-typed text (`profile.name`, manual meal names) stays untouched.
 2. **Notification Re-Scheduling (`US-INT-02`):** Immediately rewrites all local scheduled notification strings into the newly chosen language.
 3. **Offline Language Switching:** All UI strings (`ar` / `en`) live in bundled KMM string resources (`Compose Resources` / `Localizable.xcstrings`), so switching works 100% offline, queuing `timezone` (`locale`) sync cleanly into outbox if online status is unavailable.
-4. **Error & Coaching Code Localization Guarantee:** All server error codes (`contracts/error-codes.json` — 282 codes) and coaching/brief/review codes (`contracts/coaching-codes.json` — 83 codes) map `(code, params)` into the active app language cleanly on KMM.
+4. **Error & Coaching Code Localization Guarantee:** All server error codes (`contracts/error-codes.json` — 293 codes) and coaching/brief/review codes (`contracts/coaching-codes.json` — 97 codes) map `(code, params)` into the active app language cleanly on KMM.
 
 ### MAIN FLOW
 1. User opens `Profile -> Language, Region & Units`.
@@ -389,6 +389,7 @@ As a bilingual user in the Middle East, I want to switch the entire app between 
 - **Daylight Saving Time (Egypt DST Shifts):** Using IANA `Africa/Cairo` (not fixed `UTC+2` offsets!) guarantees midnight date rollovers stay 100% synced with `serverDate`.
 - **Offline Language Switch (`Arabic <-> English`):** Applies immediately using bundled KMM resources (`0 ms` network dependency) and queues `timezone` (`locale`) update cleanly into the offline outbox.
 - **Invalid Custom Timezone Fallback (`400 INVALID_TIMEZONE`):** Picker restricts choices strictly to canonical OS `TimeZone.availableZoneIds` (validated IANA strings) so invalid offsets cannot be submitted.
+- **Imperial Unit Display & SI Metric Wire Round-Trip:** Converting display values (`lb <-> kg`, `in <-> cm`, `fl oz <-> ml`) preserves canonical SI metric values on the API wire so toggling units back and forth never accumulates rounding drift.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Language switch applies live without app restart and preserves typed names**
@@ -433,7 +434,7 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 ### SCREEN AND UI DETAILS
 1. **Privacy & Consents Section:**
    - Displays `Health Data Processing Consent (v1.0.0 — Accepted on {recordedAt})` (hydrated from `GET /v1/bootstrap` `data.consents` and `GET /v1/account/consents`) + Optional `Product Analytics & Crash Telemetry` toggle (`POST /v1/account/consents`).
-   - Clear explanation: *"Note: Withdrawing Health Data Processing consent locks personalized plan generation, renewals, and coaching reviews (`403 HEALTH_CONSENT_REQUIRED`) until re-granted; you can also export or delete your data anytime."*
+   - Clear explanation: *"Note: Withdrawing Health Data Processing consent locks personalized plan generation, renewals, comeback restarts, coaching reviews, and cycle mutations (`403 HEALTH_CONSENT_REQUIRED`) until re-granted; you can also export or delete your data anytime."*
 2. **Data Portability (`[Download My Complete Data (JSON)]`):**
    - Calls `GET /v1/account/export` and opens the OS Share Sheet (`Files`, `Email`, `Drive`) with `curafit-export-{date}.json` containing profile, logs, archived plans, consents, `oauthIdentities`, `registeredDevices`, `aiMessages`, live `entitlements`, and short-lived signed URLs for avatar & progress photos!
 3. **Session & Security Controls:**
@@ -445,7 +446,7 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/account/consents`** (plus `consents` returned in `GET /v1/bootstrap`) -> Lists recorded consent types, versions, accepted status, and `recordedAt` timestamps.
-2. **`POST /v1/account/consents`** -> `{ "consentType": "health_data_processing" | "analytics_telemetry" | "terms_and_privacy", "version": "1.0.0", "accepted": true | false }` -> Persists `recordedAt` timestamp. Withdrawing `health_data_processing` (`accepted: false`) blocks `generate`, `review`, `adaptation`, and `renew_plan` with `403 HEALTH_CONSENT_REQUIRED` until re-granted.
+2. **`POST /v1/account/consents`** -> Accepts either a single `{ "consentType": "health_data_processing" | "analytics_telemetry" | "terms_and_privacy", "version": "1.0.0", "accepted": true | false }` OR a batch `{ "items": [{ "consentType", "version", "accepted" }, ...] }` (`1..10` items) -> Persists `recordedAt` timestamp. Withdrawing `health_data_processing` (`accepted: false`) blocks `generate`, `review`, `adaptation`, `renew_plan`, `comeback_restart`, `cycle_settings`, `cycle_log`, and `cycle_gentle_session` with `403 HEALTH_CONSENT_REQUIRED` until re-granted.
 3. **`GET /v1/account/export`** -> Full GDPR JSON archive (`schemaVersion`, `exportedAt`, `userId`, `profile`, `logs`, `archivedNutritionPlans`, `archivedWorkoutPlans`, `consents`, `oauthIdentities`, `registeredDevices`, `aiMessages`, live `entitlements`, and short-lived signed URLs for avatar & progress photos).
 4. **`POST /v1/auth/logout`** -> `{ "allDevices": false | true }` (and `POST /v1/auth/revoke` with `{ "allDevices": true }` for remote session invalidation — both automatically clear push tokens on the server).
 5. **`DELETE /v1/devices/push-token?deviceId={id}`** -> Unregisters device push notifications cleanly.
@@ -484,7 +485,7 @@ As a privacy-conscious user (and per Apple App Store & Google Play mandatory acc
   - **Then** server completes atomic D1 wipe (recording anonymized trial tombstones), purges R2 objects & revokes Apple refresh token, and client erases Keychain / EncryptedSharedPreferences tokens, SQLDelight caches, and local photos.
 - **Scenario 3: Withdrawing `health_data_processing` consent locks plan/coaching mutations**
   - **Given** user posts `POST /v1/account/consents` with `{ "consentType": "health_data_processing", "version": "1.0.0", "accepted": false }`
-  - **When** attempting `generate`, `review`, `adaptation`, or `renew_plan`
+  - **When** attempting `generate`, `review`, `adaptation`, `renew_plan`, `comeback_restart`, `cycle_settings`, `cycle_log`, or `cycle_gentle_session`
   - **Then** server returns `403 HEALTH_CONSENT_REQUIRED` until consent is re-granted.
 
 ### ANALYTICS

@@ -75,12 +75,15 @@ export function getPantryAlternatives(s, body = {}) {
   };
 }
 
-export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null) {
+export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null, { preview = false } = {}) {
   const mode = daysScope === 'remaining' ? 'remaining' : (daysScope === '3' ? '3' : 'whole');
   const rawItems = groceryList(plan, mode, s.foodEntries || [], todayDate);
   const checks = s.groceryChecks || {};
   const buckets = new Map();
+  let totalItemsCount = 0;
   for (const item of rawItems) {
+    totalItemsCount++;
+    if (preview && totalItemsCount > 2) continue;
     const aisleKey = aisleForItem(item.ingredientKey);
     if (!buckets.has(aisleKey)) buckets.set(aisleKey, { ...AISLE_META[aisleKey], items: [] });
     const totalGrams = item.grams != null ? Math.round(Number(item.grams)) : null;
@@ -113,7 +116,10 @@ export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null)
   }
   return {
     planId: plan.id,
-    daysScope: daysScope === 'remaining' || daysScope === '3' ? daysScope : 'all',
+    daysScope: daysScope === 'remaining' || daysScope === '3' || daysScope === '7' ? daysScope : 'all',
+    preview: Boolean(preview),
+    totalItemsCount,
+    lockedCount: preview ? Math.max(0, totalItemsCount - 2) : 0,
     categories: [...buckets.values()]
   };
 }
@@ -234,9 +240,13 @@ export async function submitBarcode(db, userId, body = {}) {
 
 export function getFastingState(s, now = clockNow()) {
   const tz = s.profile?.timezone || 'Africa/Cairo';
-  const ramadan = s.ramadanMode || { enabled: false, iftarTime: '18:05', suhoorCutoffTime: '04:20', workoutTiming: 'post_iftar', medicalClearanceAcknowledged: false };
+  const today = localDate(now, tz);
+  const storedRamadan = s.ramadanMode || { enabled: false, iftarTime: '18:05', suhoorCutoffTime: '04:20', workoutTiming: 'post_iftar', medicalClearanceAcknowledged: false, endDate: null };
+  const ramadanExpired = Boolean(storedRamadan.enabled && storedRamadan.endDate && today > storedRamadan.endDate);
+  const ramadan = ramadanExpired ? { ...storedRamadan, enabled: false, autoRevertedOn: storedRamadan.endDate } : storedRamadan;
   const fs = s.fastingState || { mode: 'off', phase: 'eating', windowStart: '12:00', windowEnd: '20:00', startedAt: null, targetEndAt: null, streakDays: 0 };
-  const mode = ramadan.enabled ? 'ramadan' : (fs.mode === 'if_16_8' || s.preferences?.diet === 'intermittent_fasting' ? 'if_16_8' : 'off');
+  const activeIfMode = (fs.mode && fs.mode.startsWith('if_')) ? fs.mode : (s.preferences?.diet === 'intermittent_fasting' ? 'if_16_8' : 'off');
+  const mode = ramadan.enabled ? 'ramadan' : activeIfMode;
   const windowStart = ramadan.enabled ? ramadan.iftarTime : (fs.windowStart || s.preferences?.eatingStart || '12:00');
   const windowEnd = ramadan.enabled ? ramadan.suhoorCutoffTime : (fs.windowEnd || '20:00');
   let phase = fs.phase || 'eating';
@@ -250,8 +260,29 @@ export function getFastingState(s, now = clockNow()) {
       phase = (cur >= windowStart || cur < windowEnd) ? 'eating' : 'fasting';
     }
   }
+  const flex = s.seasonalFlex || null;
+  const flexActive = Boolean(flex?.enabled && (!flex.endDate || today <= flex.endDate));
+  const eidTransitionAvailable = Boolean(
+    storedRamadan.endDate &&
+    today > storedRamadan.endDate &&
+    !flexActive &&
+    !flex?.dismissedAfterEndDate
+  );
+  const activePlanObj = activePlan(s);
+  const maintenanceTargetKcal = flexActive && activePlanObj?.targets?.tdee ? Math.round(Number(activePlanObj.targets.tdee)) : null;
+  const seasonalContext = {
+    mode: ramadan.enabled ? 'ramadan' : (flexActive ? 'eid_flex' : 'standard'),
+    themeToken: ramadan.enabled ? 'ramadan_indigo_gold' : (flexActive ? 'eid_emerald_gold' : 'standard'),
+    occasion: flexActive ? (flex.occasion || 'eid_fitr') : null,
+    endDate: ramadan.enabled ? (ramadan.endDate || null) : (flexActive ? (flex.endDate || null) : null),
+    maintenanceTargetKcal,
+    eidTransitionAvailable,
+    hydrationWindowActive: ramadan.enabled ? phase === 'eating' : false
+  };
   return {
     mode,
+    preset: fs.preset || (mode === 'ramadan' ? 'ramadan' : (mode.startsWith('if_') ? mode.slice(3) : null)),
+    windowHours: fs.windowHours || (mode === 'if_14_10' ? 10 : mode === 'if_18_6' ? 6 : mode === 'if_16_8' ? 8 : null),
     phase,
     windowStart,
     windowEnd,
@@ -259,6 +290,7 @@ export function getFastingState(s, now = clockNow()) {
     targetEndAt: fs.targetEndAt || null,
     ramadanConfig: ramadan,
     ramadanMode: ramadan,
+    seasonalContext,
     streakDays: fs.streakDays || 0
   };
 }

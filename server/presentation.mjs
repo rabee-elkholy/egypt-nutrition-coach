@@ -7,10 +7,11 @@ import {accountRecovery} from './recovery.mjs';
 import {deriveSyncDeltas} from './store.mjs';
 import {dayTotals} from './food.mjs';
 import {getFastingState} from './nutrition-tools.mjs';
-import {todayCardioSummary,bootstrapCycleSummary} from './wellness-tools.mjs';
+import {todayCardioSummary,bootstrapCycleSummary,dailyCardioMinutes} from './wellness-tools.mjs';
 import {computeStreakAndEngagement} from './progress-analytics.mjs';
 import {coachingInbox} from '../coaching-journey.mjs';
-import {localDate,needsHealthConfirmation,needsScheduleConfirmation} from '../coaching-shared.mjs';
+import {FREE_FEATURES} from './subscriptions.mjs';
+import {localDate,needsHealthConfirmation,needsScheduleConfirmation,isPregnantStatus} from '../coaching-shared.mjs';
 
 export const present=s=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
@@ -67,9 +68,21 @@ export const presentBootstrap=(s,extras={})=>{
  const todaySched=upcoming14.find(x=>x.date===currDate)||null;
  const todaySess=(s.sessions||[]).find(x=>x.date===currDate)||null;
  const {streakSummary,engagementState}=computeStreakAndEngagement(s,clockNow());
- const inbox=coachingInbox(s,clockNow());
+ const inbox=coachingInbox(s,clockNow(),{pushConfigured:Boolean(extras.pushConfigured)});
  const unreadCoachingInboxCount=inbox.items.filter(c=>c.readStatus!=='ACKNOWLEDGED').length;
  const hydratedProfile=s.profile?{...s.profile,unitSystem:s.profile.unitSystem||'metric',...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
+ const fastingState=getFastingState(s,clockNow());
+ const cardioMins=dailyCardioMinutes(s,currDate);
+ const isCardioHydrationDay=!wTarget.isWorkoutDay&&cardioMins>=30;
+ const hydrationBoostMl=(wTarget.isWorkoutDay||isCardioHydrationDay)?500:0;
+ const hydrationBoostReason=wTarget.isWorkoutDay?'workout':isCardioHydrationDay?'cardio':'none';
+ const mat=s.profile?.maternalStatus||'none';
+ const maternalContext=mat!=='none'?{
+  status:mat,
+  themeToken:'maternal_warm',
+  extraKcal:mat==='pregnant_t2'?340:mat==='pregnant_t3'?450:mat==='breastfeeding'?400:0,
+  safetyMode:true
+ }:null;
  return {
   schemaVersion:s.schemaVersion||3,
   revision:s.revision,
@@ -98,20 +111,23 @@ export const presentBootstrap=(s,extras={})=>{
     protein:todayDiary.totals.protein,
     carbs:todayDiary.totals.carbs,
     fat:todayDiary.totals.fat,
-    targetEnergy:todayDiary.planEnergy,
+    targetEnergy:fastingState.seasonalContext?.maintenanceTargetKcal??todayDiary.planEnergy,
+    basePlanEnergy:todayDiary.planEnergy,
     targetProtein:dayTargets?.protein??null,
     targetCarbs:dayTargets?.carbs??null,
     targetFat:dayTargets?.fat??null,
     complete:todayDiary.complete,
     entriesCount:todayDiary.entries.length
    },
-   hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters},
+   hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,boostMl:hydrationBoostMl,boostReason:hydrationBoostReason},
    activity:todayActivity?{steps:todayActivity.steps,activeEnergyKcal:todayActivity.activeEnergyKcal,source:todayActivity.source,updatedAt:todayActivity.at||null}:null,
    cardio:todayCardioSummary(s,currDate),
    latestWeight,
-   fastingState:getFastingState(s,clockNow()),
-   ramadanMode:s.ramadanMode||{enabled:false,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false,endDate:null},
+   fastingState,
+   ramadanMode:fastingState.ramadanMode,
+   seasonalContext:fastingState.seasonalContext,
    cycleState:bootstrapCycleSummary(s,clockNow()),
+   maternalContext,
    recovery:{status:safety.length?(ready.status==='stop'?'stop':'hold'):ready.status,reasonCode:safety.length&&ready.status!=='stop'?'WORKOUT_SAFETY_EXCLUSION_HOLD':ready.reasonCode,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule&&!safety.length},
    scheduledWorkout:todaySched?{...todaySched,status:todaySess?.status||'scheduled'}:null
   },
@@ -120,7 +136,7 @@ export const presentBootstrap=(s,extras={})=>{
   unreadCoachingInboxCount,
   pendingAdaptations:(s.adaptations||[]).filter(a=>a.status==='pending'),
   workoutSafetyIssues:safety,
-  entitlements:extras.entitlements||s.entitlements||{tier:'free',status:'none',features:['core_nutrition','core_workouts','offline_sync','arabic_food_search','pantry_finder','ramadan_fasting']},
+  entitlements:extras.entitlements||s.entitlements||{tier:'free',status:'none',features:[...FREE_FEATURES]},
   notificationPreferences:s.notificationPreferences
  };
 };

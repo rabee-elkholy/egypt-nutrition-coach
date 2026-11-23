@@ -822,7 +822,7 @@
     },
     "PLAN_STILL_ACTIVE": {
       "httpStatus": 400,
-      "message": "Current weekly nutrition plan is still active; renewal is allowed after it ends.",
+      "message": "Current weekly nutrition plan is still active; renewal is allowed after it ends or with earlyRenew: true.",
       "params": [],
       "retryable": false
     },
@@ -858,7 +858,7 @@
     },
     "INVALID_FOOD_SOURCE": {
       "httpStatus": 400,
-      "message": "Food entry source must be planned, ingredient, or manual.",
+      "message": "Food entry source must be planned, ingredient, recipe, barcode, or manual.",
       "params": [],
       "retryable": false
     },
@@ -882,7 +882,7 @@
     },
     "PLANNED_MEAL_ALREADY_LOGGED": {
       "httpStatus": 400,
-      "message": "Planned meal has already been logged; delete the entry first to adjust quantity.",
+      "message": "Planned meal has already been logged; update or delete the entry to adjust quantity.",
       "params": [],
       "retryable": false
     },
@@ -1076,7 +1076,7 @@
     },
     "MACROS_INCONSISTENT_WITH_100G": {
       "httpStatus": 400,
-      "message": "Sum of macronutrients per 100g exceeds 100g.",
+      "message": "Sum of macronutrients per 100g exceeds physiological 100g tolerance.",
       "params": [],
       "retryable": false
     },
@@ -1842,6 +1842,28 @@
     "INVALID_CYCLE_PAYLOAD": {
       "httpStatus": 400,
       "message": "Cycle settings or cycle log payload is invalid.",
+      "params": [],
+      "retryable": false
+    },
+    "AUTH_OAUTH_EMAIL_UNVERIFIED": {
+      "httpStatus": 409,
+      "message": "Identity provider email is not verified; link or sign in with a verified email.",
+      "params": [
+        "provider"
+      ],
+      "retryable": false
+    },
+    "AUTH_OAUTH_ALREADY_LINKED_OTHER_USER": {
+      "httpStatus": 409,
+      "message": "This sign-in identity is already linked to a different CuraFit account.",
+      "params": [
+        "existingProvider"
+      ],
+      "retryable": false
+    },
+    "SESSION_ALREADY_COMPLETED": {
+      "httpStatus": 409,
+      "message": "Completed sessions cannot be rescheduled.",
       "params": [],
       "retryable": false
     }

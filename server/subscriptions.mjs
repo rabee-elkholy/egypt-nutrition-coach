@@ -19,7 +19,8 @@ export const FREE_FEATURES = [
   'comeback_protocol',
   'custom_recipes',
   'cardio_tracking',
-  'cycle_awareness'
+  'cycle_awareness',
+  'seasonal_flex'
 ];
 
 export const PRO_FEATURES = [
@@ -83,13 +84,29 @@ async function fetchAppleTransaction(transactionId, env) {
     `https://api.storekit.itunes.apple.com/inApps/v1/transactions/${encodeURIComponent(transactionId)}`,
     `https://api.storekit-sandbox.itunes.apple.com/inApps/v1/transactions/${encodeURIComponent(transactionId)}`
   ];
+  let sawUpstreamFailure = false;
   for (const url of endpoints) {
-    const res = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${jwt}` } });
+    let res;
+    try {
+      res = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${jwt}` } });
+    } catch {
+      sawUpstreamFailure = true;
+      continue;
+    }
     if (res.ok) {
       const json = await res.json();
       const decoded = parseJwsPayload(json?.signedTransactionInfo);
       if (decoded) return decoded;
+    } else if (res.status >= 500 || res.status === 429) {
+      sawUpstreamFailure = true;
     }
+  }
+  if (sawUpstreamFailure) {
+    throw createApiError('Subscription verification provider is temporarily unavailable; retry shortly.', 503, {
+      code: 'BILLING_VERIFICATION_UNAVAILABLE',
+      retryable: true,
+      params: { platform: 'apple' }
+    });
   }
   throw createApiError('Store subscription receipt could not be verified.', 400, {
     code: 'INVALID_SUBSCRIPTION_RECEIPT',
@@ -104,8 +121,24 @@ async function fetchGoogleSubscriptionV2(purchaseToken, productId, env, shouldAc
     'https://www.googleapis.com/auth/androidpublisher'
   );
   const getUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(pkg)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
-  const res = await fetchWithTimeout(getUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  let res;
+  try {
+    res = await fetchWithTimeout(getUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  } catch {
+    throw createApiError('Subscription verification provider is temporarily unavailable; retry shortly.', 503, {
+      code: 'BILLING_VERIFICATION_UNAVAILABLE',
+      retryable: true,
+      params: { platform: 'google' }
+    });
+  }
   if (!res.ok) {
+    if (res.status >= 500 || res.status === 429) {
+      throw createApiError('Subscription verification provider is temporarily unavailable; retry shortly.', 503, {
+        code: 'BILLING_VERIFICATION_UNAVAILABLE',
+        retryable: true,
+        params: { platform: 'google' }
+      });
+    }
     throw createApiError('Store subscription receipt could not be verified.', 400, {
       code: 'INVALID_SUBSCRIPTION_RECEIPT',
       params: { platform: 'google' }

@@ -25,7 +25,7 @@
   * Worker: `curafit-api-dev`
   * D1 Database: `curafit-db-dev` (`database_id`: `0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`, binding: `DB`)
 * **Git Repository & Branches:** `https://github.com/rabee-elkholy/egypt-nutrition-coach.git` — Branches: **`dev`** & **`main`**
-* **Postman Documentation (Published):** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `135` endpoints; environments: `CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`)
+* **Postman Documentation (Published):** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `140` endpoints; environments: `CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`)
 * **Worker Entrypoint & Config:** `server/cloudflare-entry.mjs` (bundled into `dist/server/cloudflare.js`), `wrangler.jsonc`, `drizzle/`
 
 Full step-by-step instructions for AI agents and developers (error & coaching contract sync, OpenAPI/Postman regeneration, Drizzle D1 migrations, QA, and CI/CD) live in [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md).

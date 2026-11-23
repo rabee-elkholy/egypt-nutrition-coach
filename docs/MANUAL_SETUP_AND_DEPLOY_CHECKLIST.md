@@ -2,7 +2,7 @@
 
 This document lists **every action that requires manual operator intervention** (in Cloudflare Dashboard, Antigravity Desktop / local Wrangler CLI, Google Cloud / Play Console, Apple Developer Console, Firebase Console, or Postman) before promoting CuraFit to Cloud Dev (`dev`) and Production (`main`).
 
-> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts (`290` error codes, `88` coaching codes), bilingual exercise/muscle i18n (`868` exercises + `69` muscles), OpenAPI spec (`82` paths / `47` commands), Postman collection (`16` groups / `135` endpoints), all `13` User Story documents, and `308+` automated tests are already implemented and pushed on branch **`dev`**. The items below are strictly external infrastructure provisioning, secrets, and release operations to complete from **Antigravity Desktop (local machine)** or external developer consoles.
+> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts (`293` error codes, `97` coaching codes), bilingual exercise/muscle i18n (`868` exercises + `69` muscles), OpenAPI spec (`84` paths / `50` commands), Postman collection (`16` groups / `140` endpoints), all `13` User Story documents, and `308+` automated tests are already implemented and pushed on branch **`dev`**. The items below are strictly external infrastructure provisioning, secrets, and release operations to complete from **Antigravity Desktop (local machine)** or external developer consoles.
 
 ---
 
@@ -13,7 +13,7 @@ This document lists **every action that requires manual operator intervention** 
 | 1 | Create private R2 buckets (`curafit-media-dev`, `curafit-media-prod`) & uncomment `r2_buckets` in `wrangler.jsonc` | Local Wrangler CLI | Cloud Dev & Prod media uploads |
 | 2 | Run `npm run deploy:d1:dev` and `npm run deploy:dev` (verify `/v1/health` & `/v1/capabilities`) | Local Antigravity Desktop | Cloud Dev QA |
 | 3 | Set Worker secrets via `wrangler secret put` (Section 2 below — OAuth, Store Billing, FCM/APNs, `STRICT_STORE_VERIFICATION`, `ENFORCE_PRO_ENTITLEMENTS`) | Local Wrangler CLI / Cloudflare Dashboard | Live OAuth, Push & Subscriptions |
-| 4 | Re-import `postman/CuraFit_API.postman_collection.json` (`16` groups / `135` endpoints) & republish Postman Documenter (plus optional Jira `KAN` sync) | Postman Web / Jira | Team / Mobile QA |
+| 4 | Re-import `postman/CuraFit_API.postman_collection.json` (`16` groups / `140` endpoints) & republish Postman Documenter (plus optional Jira `KAN` sync) | Postman Web / Jira | Team / Mobile QA |
 | 5 | After Cloud Dev QA & green CI: export Prod D1 backup, fast-forward `dev` -> `main`, run `npm run deploy:d1:prod` & `npm run deploy:prod` | Local Antigravity Desktop | Production Launch |
 
 ---
@@ -124,8 +124,8 @@ Set the following secrets separately for **Cloud Dev** (`--env dev`) and **Produ
      - Sandbox: `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
      - Production: `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
 
-3. **Postman Published Documentation (`16` Groups / `135` Endpoints):**
-   - Re-import [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) (`16` groups / `135` endpoints, aligned with `82` OpenAPI paths, `47` command actions, `290` error codes, and `88` coaching codes) and environments (`CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`) into Postman Workspace and republish the public Documenter URL (`https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`).
+3. **Postman Published Documentation (`16` Groups / `140` Endpoints):**
+   - Re-import [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) (`16` groups / `140` endpoints, aligned with `84` OpenAPI paths, `50` command actions, `293` error codes, and `97` coaching codes) and environments (`CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`) into Postman Workspace and republish the public Documenter URL (`https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`).
 
 4. **Jira Backlog Sync (Optional):**
    - If you keep Jira (`KAN` project) mirrored with `docs/user-stories/`, sync the aligned production stories (`EPIC-01`..`EPIC-10`) using clean `production` and `mobile` labels.

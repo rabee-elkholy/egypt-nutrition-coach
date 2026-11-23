@@ -186,7 +186,7 @@ As a user going through the conversational onboarding, I want a fast, natural ch
 
 **1. Top Header Bar**
 
-- **Coach Identity:** Coach Avatar + Title *"Smart Nutrition & Workout Coach"* + online status indicator dot.
+- **Coach Identity:** Subtle CuraFit Coach Emblem + Title *"Smart Nutrition & Workout Coach"* *(calm, clinical-athletic aesthetic — zero fake "online" status dots)*.
 - **Dynamic Progress Bar & Counter:**
   - Displays `Step X of Y` and a smooth progress fill bar (`percentage = round((currentStepIndex / totalActiveSteps) * 100)`).
   - `Y` (`totalActiveSteps`) dynamically recalculates whenever conditional branching changes (e.g., `male` vs. `female`, `nutrition_only` vs. `nutrition_and_workouts`, `home_only` vs. `gym_only`).
@@ -194,11 +194,11 @@ As a user going through the conversational onboarding, I want a fast, natural ch
 
 **2. Chat Stream Area (Jetpack Compose `LazyColumn` / SwiftUI `LazyVStack`)**
 
-- **Coach Message Bubbles:** Coach-side aligned, rounded corners, optional subtitle/helper hint.
-- **Typing Indicator:** Animated 3-dot bubble shown for `250ms–400ms` max before rendering the next question.
+- **Coach Message Bubbles:** Coach-side aligned, rounded corners, crisp 1-line subtitle explaining why the question matters.
+- **Instant Question Rendering:** Crisp `150ms` vertical fade/slide transition immediately upon confirmation — zero artificial typing-dot delays.
 - **User Answer Bubbles (Interactive & Editable):**
   - User-side aligned with distinct brand accent background.
-  - Every user answer bubble includes a visible `Edit` (`✏️`) badge/icon and is tappable (`onClick -> openEditStep(stepId)`).
+  - Every user answer bubble includes a compact `Edit` action icon (`Icons.Outlined.Edit`) and is tappable (`onClick -> openEditStep(stepId)`).
 
 **3. Sticky Bottom Dynamic Input Dock**
 
@@ -216,17 +216,18 @@ As a user going through the conversational onboarding, I want a fast, natural ch
 - When the user taps any previous User Answer Bubble (`stepId`):
   - Open an **Edit Answer Bottom Sheet** (or inline active input dock focused on that question) displaying the question prompt and the user's current selection pre-highlighted, plus a `[Cancel]` button.
 - When the user confirms the new value:
-    - Update the answer bubble text in-place with an `"Edited ✓"` indicator.
-    - Run the **Dependency Invalidation Matrix** (see below).
-    - If any downstream answers were invalidated, show a brief coach notification bubble (*"Since you updated [Question Name], let's quickly confirm this step as well:"*) and focus the first invalidated step.
-    - If no downstream answers were invalidated, return the user directly to the step they were on before editing (including returning directly to the `summary` screen with recalculated numbers if they edited from `summary`).
+  - Update the answer bubble text in-place with an `"Edited"` badge.
+  - Run the **Dependency Invalidation Matrix** (see below).
+  - If any downstream answers were invalidated, show a brief coach notification bubble (*"Updated. Let's confirm this linked setting as well:"*) and focus the first invalidated step.
+  - If no downstream answers were invalidated, return the user directly to the step they were on before editing (including returning directly to the `summary` screen with recalculated numbers if they edited from `summary`).
 
 **5. Conversational Energy & Micro-Value Copy Standards (Compact UI Rule)**
 
-To make onboarding feel engaging and scientifically valuable without adding screen clutter or long paragraphs:
-- **1-Line Micro-Why Caption (`12sp`, muted text):** Directly under each question bubble, include at most 1 concise line (<= 12 words) explaining *why* that input personalizes their plan.
-- **Instant 1-Line Coach Micro-Reactions:** Immediately after key milestone answers (`name`, `current_weight`, `goal_pace`, `workout_days`, `conditions`), emit a crisp 1-line dynamic insight showing the plan taking shape live (e.g., healthy weight range preview, timeline confidence, or weekly split tip).
-- **Crisp 1-Line Card Subtitles (`5–8 words`):** Every `single-select` card displays a brief, scannable subtitle clarifying how options differ without expanding card height excessively.
+To make onboarding feel purposeful, motivating, and grounded in science without adding visual clutter or juvenile hype:
+- **Opening Framing (`account_check` / `name`):** Open with clear purpose (*"Share a few focused details so we can engineer your exact calorie target, regional meal plan, and training schedule."*).
+- **1-Line Micro-Why Caption (`12sp`, muted text):** Directly under every question bubble, include at most 1 concise line (<= 12 words) showing *what that input unlocks* (e.g., metabolic baseline, protein floor, training split, or clinical safety filters).
+- **Instant 1-Line Coach Micro-Reactions:** Immediately after milestone answers (`age`, `current_weight`, `goal_pace`, `workout_days`, `conditions`), emit one concise, calm analytical takeaway showing the plan taking shape live (e.g., healthy BMI weight zone, projected weekly rate, or muscle recovery balance).
+- **Crisp 1-Line Card Subtitles (`5–8 words`):** Every `single-select` card displays a scannable subtitle clarifying the real-world difference between options without bloated copy or technical jargon.
 
 ---
 
@@ -304,9 +305,9 @@ Never wipe all downstream answers blindly. Apply these exact rules:
 1. User answers questions sequentially in the chat.
 2. At each step, the progress bar updates (`Step X of Y`) and `onboardingDraft` is persisted locally.
 3. At step 12 (`diet_type`), user realizes they entered `current_weight = 95 kg` instead of `85 kg` back at step 7.
-4. User scrolls up in the chat and taps the `95 kg ✏️` answer bubble.
+4. User scrolls up in the chat and taps the `95 kg` answer bubble (`Edit` icon).
 5. An Edit Bottom Sheet opens for `current_weight`. User enters `85` and taps `Confirm`.
-6. System updates `current_weight` to `85`, recalculates BMI and ideal weight range, verifies that `target_weight = 75 kg` is still `< 85 kg` (valid for `lose`), updates the timeline automatically, updates the bubble text to `85 kg ✓`, and scrolls right back to `diet_type` without losing any intermediate workout answers.
+6. System updates `current_weight` to `85`, recalculates BMI and ideal weight range, verifies that `target_weight = 75 kg` is still `< 85 kg` (valid for `lose`), updates the timeline automatically, updates the bubble with an `"Edited"` badge (`85 kg`), and scrolls right back to `diet_type` without losing any intermediate workout answers.
 
 ---
 
@@ -365,19 +366,19 @@ As a user starting the onboarding questions, I want to enter my name and age qui
 **1. Step: **`name` (User's Preferred Name)
 
 - **Coach Bubble:**
-  - *"Welcome aboard! What name should I put on your personal coaching plan?"*
-  - **Micro-Why Caption:** *"Personalizes your daily coach brief, check-ins, and weekly recaps."*
-- **Input Control (**`text`):
+  - *"Welcome. What name should I put on your personal plan?"*
+  - **Micro-Why Caption:** *"Personalizes your daily brief and check-ins — just a few quick details left."*
+- **Input Control (`text`):**
   - Text field placeholder: `"Type your name here..."`
   - Primary button: `[Confirm]`
   - If authenticated via Apple/Google and a profile display name exists, render a 1-tap suggestion chip above the input: `[Use "{socialName}"]`.
 
-**2. Step: **`age` (User's Age in Years)
+**2. Step: `age` (User's Age in Years)**
 
 - **Coach Bubble:**
-  - *"Great to meet you, {name}! How old are you?"*
-  - **Micro-Why Caption:** *"Age fine-tunes your resting metabolic rate (BMR) and safe training intensity."*
-  - *(After valid adult input, optional 1-line transition before `gender`: *"Metabolic baseline ready — let's dial in your body profile."*) *
+  - *"Great to meet you, {name}. How old are you?"*
+  - **Micro-Why Caption:** *"Calibrates your daily energy burn and safe training load."*
+  - *(After valid adult input, concise 1-line transition: *"Baseline energy profile calibrated."*)*
 - **Input Control (**`number-with-chips`):
   - Quick-select chips: `[18]`, `[22]`, `[25]`, `[30]`, `[35]`, `[40]`, `[50]`.
   - Numeric input field (Compose `KeyboardType.Number` / SwiftUI `.numberPad`, placeholder `"e.g. 28"`) + `[Confirm]` button.
@@ -432,9 +433,9 @@ As a user starting the onboarding questions, I want to enter my name and age qui
 
 **EDGE CASES**
 
-- **User accidentally types **`17` instead of `27`: User hits the `underage_gate`, taps `[Edit Age]`, updates age to `27`, and the app clears the gate and advances seamlessly to `gender`.
-- **User enters decimal age (e.g., **`25.5`): Round down (`Math.floor(25.5) -> 25`) or restrict keyboard to integer digits only.
-- **User enters **`72`: `seniorMode = true` is set; if user later edits `age` to `65`, `seniorMode` automatically resets to `false`.
+- **User accidentally types `17` instead of `27` (or presses Android system Back on `underage_gate`):** Pressing Android Back or tapping `[Edit Age]` re-opens the `age` input sheet directly without exiting the app; updating age to `27` clears `underage_gate` and advances seamlessly to `gender`.
+- **User enters decimal age (e.g., `25.5`):** Round down (`Math.floor(25.5) -> 25`) or restrict keyboard to integer digits only.
+- **User enters `72`:** `seniorMode = true` is set; if user later edits `age` to `65`, `seniorMode` automatically resets to `false`.
 
 ---
 
@@ -483,42 +484,42 @@ As a user completing my physical profile, I want to specify my biological sex, m
 
 **SCREEN AND UI DETAILS**
 
-**1. Step: **`gender` (Biological Sex)
+**1. Step: `gender` (Biological Sex)**
 
 - **Coach Bubble:** *"What is your biological sex?"*
-  - **Micro-Why Caption:** *"Used strictly for accurate metabolic rate (Mifflin-St Jeor) and nutrient baselines."*
-- **Input Control (**`single-select` — 2 Cards):
-  - `male`: `Male` — Subtitle: `"Standard male BMR equation & calorie floor (1,500 kcal)"`
-  - `female`: `Female` — Subtitle: `"Female BMR equation, calorie floor & maternal/cycle options"`
+  - **Micro-Why Caption:** *"Used strictly for accurate metabolic math and daily nutrition floors."*
+- **Input Control (`single-select` — 2 Cards):**
+  - `male`: `Male` — Subtitle: `"Male metabolic baseline & 1,500 kcal safety floor"`
+  - `female`: `Female` — Subtitle: `"Female baseline, 1,200 kcal floor & maternal/cycle options"`
 
-**2. Conditional Step: **`maternal_status` (Shown ONLY if `gender == 'female'` AND `18 <= age <= 50`)
+**2. Conditional Step: `maternal_status` (Shown ONLY if `gender == 'female'` AND `18 <= age <= 50`)**
 
 - **Coach Bubble:** *"Are you currently pregnant or breastfeeding?"*
   - **Micro-Why Caption:** *"Safely calibrates pregnancy/lactation calories, protein, hydration & exercise filters."*
-- **Input Control (**`single-select` — 5 Cards):
+- **Input Control (`single-select` — 5 Cards):**
   - `none`: `None` — Subtitle: `"Standard adult nutrition and training targets"`
   - `pregnant_t1`: `Pregnant — 1st Trimester (Months 1–3)` — Subtitle: `"Maintenance focus; blocks calorie deficits"`
   - `pregnant_t2`: `Pregnant — 2nd Trimester (Months 4–6)` — Subtitle: `"Adds +340 kcal/day & +15g protein"`
   - `pregnant_t3`: `Pregnant — 3rd Trimester (Months 7–9)` — Subtitle: `"Adds +450 kcal/day & +25g protein"`
-  - `breastfeeding`: `Breastfeeding` — Subtitle: `"Adds +400 kcal, +20g protein & +600 ml water"`
+  - `breastfeeding`: `Breastfeeding` — Subtitle: `"Adds +400 kcal, +20g protein & +600 ml water (slow loss cap)"`
 
-**3. Step: **`height` (Height in cm — or ft/in when `unitSystem == "imperial"`)
+**3. Step: `height` (Height in cm — or ft/in when `unitSystem == "imperial"`)**
 
-- **Coach Bubble:** *"What is your height in centimeters (cm)?"* (includes a compact `[Metric (cm/kg) | Imperial (ft/lb)]` unit toggle persisting `unitSystem: "metric" | "imperial"`, converting imperial inputs deterministically to canonical metric `cm`/`kg` on wire!).
-  - **Micro-Why Caption:** *"Combines with weight to calculate your healthy BMI range and ideal weight window."*
-- **Input Control (**`number-with-chips`):
-  - Quick-select chips: `[155]`, `[160]`, `[165]`, `[170]`, `[175]`, `[180]`, `[185]`.
-  - Numeric input (`120` to `230` cm) + `[Confirm]`.
+- **Coach Bubble:** *"What is your height?"* (Compact `[Metric (cm/kg) | Imperial (ft/lb)]` unit toggle persists `unitSystem: "metric" | "imperial"` and converts imperial inputs deterministically to canonical `cm`/`kg` on wire.)
+  - **Micro-Why Caption:** *"Combines with weight to calculate your healthy BMI window."*
+- **Input Control (`number-with-chips`):**
+  - **Metric quick chips (`cm`):** `[155]`, `[160]`, `[165]`, `[170]`, `[175]`, `[180]`, `[185]`. Numeric input (`120` to `230` cm) + `[Confirm]`.
+  - **Imperial quick chips (`ft/in`):** `[5'1"]`, `[5'3"]`, `[5'5"]`, `[5'7"]`, `[5'9"]`, `[5'11"]`, `[6'1"]`. Two compact `ft` (`3..7`) + `in` (`0..11`) inputs + `[Confirm]`.
 
-**4. Step: **`current_weight` (Current Body Weight in kg — or lb when `unitSystem == "imperial"`)
+**4. Step: `current_weight` (Current Body Weight in kg — or lb when `unitSystem == "imperial"`)**
 
-- **Coach Bubble:** *"And what is your current weight in kilograms (kg)?"*
+- **Coach Bubble:** *"And what is your current weight?"*
   - **Micro-Why Caption:** *"Sets exact protein targets, daily hydration liters, and starting energy."*
-- **Input Control (**`number-with-chips`):
-  - Quick-select chips: `[55]`, `[65]`, `[75]`, `[85]`, `[95]`, `[105]`, `[120]`.
-  - Numeric input (`35` to `250` kg, supports 1 decimal place e.g. `82.5`) + `[Confirm]`.
+- **Input Control (`number-with-chips`):**
+  - **Metric quick chips (`kg`):** `[55]`, `[65]`, `[75]`, `[85]`, `[95]`, `[105]`, `[120]`. Numeric input (`35` to `250` kg, 1 decimal place) + `[Confirm]`.
+  - **Imperial quick chips (`lb`):** `[120 lb]`, `[145 lb]`, `[165 lb]`, `[185 lb]`, `[210 lb]`, `[230 lb]`, `[265 lb]`. Numeric input (`77` to `551` lb) + `[Confirm]`.
 - **Instant Coach Micro-Reaction (Rendered right after confirming weight):**
-  - *"Logged, {name}! At {height} cm, your healthy BMI weight zone is {minHealthyWeight}–{maxHealthyWeight} kg — let's pick your goal."*
+  - *"Logged, {name}. For {displayHeight}, your healthy BMI zone is {minHealthyWeightDisplay}–{maxHealthyWeightDisplay} — now let's set your goal."*
 
 ---
 
@@ -570,9 +571,11 @@ $$effectiveWeight = \begin{cases} IBW + 0.35 \times (currentWeight - IBW) & \tex
 
 **EDGE CASES**
 
-- **User enters height in meters (**`1.72`): Auto-detect values in `[1.20, 2.30]`, convert to `172 cm`, and save `172`.
+- **User enters height in meters (`1.72`):** Auto-detect values in `[1.20, 2.30]`, convert to `172 cm`, and save `172`.
+- **Imperial mode selection (`unitSystem == "imperial"`):** Displays `ft/in` and `lb` chips + inputs, converts deterministically (`round1(lb * 0.45359237)`), and persists `unitSystem: "imperial"` for Settings/Today parity.
+- **Extreme BMI (`< 12.5` or `> 65`):** Public `POST /v1/eligibility` flags clinical review (`status: "requires_review"`) with clear medical guidance before plan generation.
 - **Female aged 54:** `maternal_status` is automatically skipped and defaulted to `'none'`.
-- **User edits **`gender` from `female` (with `pregnant_t2` selected) to `male`: `maternal_status` is reset to `'none'`, pregnancy calorie/protein add-ons are removed, and weight-loss/Keto/IF options are unlocked.
+- **User edits `gender` from `female` (with `pregnant_t2` selected) to `male`:** `maternal_status` is reset to `'none'`, pregnancy calorie/protein add-ons are removed, and weight-loss/Keto/IF options are unlocked.
 
 ---
 
@@ -624,53 +627,53 @@ As a user setting my body transformation goal, I want the coach to recommend the
 
 - **Coach Bubble:**
   - Displays personalized BMI insight + question:
-  - *"Your current BMI is ****{currentBmi}**** (healthy zone for {height} cm: ****{minHealthyWeight}–{maxHealthyWeight} kg****). What is your primary goal right now?"*
+  - *"Your current BMI is **{currentBmi}** (healthy zone for {height} cm: **{minHealthyWeight}–{maxHealthyWeight} kg**). What is your primary goal right now?"*
   - **Micro-Why Caption:** *"Sets your safe calorie direction and protein ratio without guesswork."*
-- **Input Control (**`single-select` — Dynamic Options with `Recommended` Badge & 1-Line Subtitles):
-  - `lose`: `Lose Fat & Weight` — Subtitle: `"Steady calorie deficit to drop fat while protecting lean muscle"` *(Hidden/blocked if *`maternal_status` is `pregnant_t1`, `pregnant_t2`, or `pregnant_t3`, **OR if `currentBmi < 18.5`**; marked `⭐ Recommended` if `currentBmi >= 25`)
-  - `muscle_gain`: `Build Muscle & Tone` — Subtitle: `"Lean surplus (or recomp at current weight) for strength & shape"` *(Marked *`⭐ Recommended` if `18.5 <= currentBmi < 25` and not pregnant)
-  - `gain`: `Gain Weight (Healthy Mass)` — Subtitle: `"Structured calorie surplus for steady, healthy mass gain"` *(Marked *`⭐ Recommended` if `currentBmi < 18.5`)
-  - `maintain`: `Maintain Weight & General Health` — Subtitle: `"Balanced maintenance calories focused on energy, habits & fitness"` *(Marked *`⭐ Recommended` if pregnant)
+- **Input Control (`single-select` — Dynamic Options with `Recommended` Badge & 1-Line Subtitles):**
+  - `lose`: `Lose Fat & Weight` — Subtitle: `"Steady calorie deficit to drop fat while protecting lean muscle"` *(Hidden/blocked if `maternal_status` is `pregnant_t1`, `pregnant_t2`, or `pregnant_t3`, OR if `currentBmi < 18.5`; marked `(Recommended)` badge if `currentBmi >= 25`)*
+  - `muscle_gain`: `Build Muscle & Tone` — Subtitle: `"Lean surplus (or recomp at current weight) for strength & shape"` *(Marked `(Recommended)` badge if `18.5 <= currentBmi < 25` and not pregnant)*
+  - `gain`: `Gain Weight (Healthy Mass)` — Subtitle: `"Structured calorie surplus for steady, healthy mass gain"` *(Marked `(Recommended)` badge if `currentBmi < 18.5`)*
+  - `maintain`: `Maintain Weight & General Health` — Subtitle: `"Balanced maintenance calories focused on energy, habits & fitness"` *(Marked `(Recommended)` badge if pregnant)*
 
-**2. Conditional Step: **`target_weight` (Shown ONLY if `goal != 'maintain'`)
+**2. Conditional Step: `target_weight` (Shown ONLY if `goal != 'maintain'`)**
 
 - **Coach Bubble (Explicitly shows the user's Ideal Weight Range):**
-  - *"Great goal! What target weight (in kg) would you like to aim for?"*
+  - *"Strong choice. What target weight would you like to aim for?"*
   - **Micro-Why Caption:** *"Calculates your realistic weekly milestone window cleanly."*
   - **Highlighted Info Banner inside Bubble:**
-*"Healthy Ideal Weight Range for your height ({height} cm): ****{minHealthyWeight} kg – {maxHealthyWeight} kg**** (Ideal midpoint: ~****{idealMidWeight} kg****)."*
-- **Input Control (**`number-with-chips`):
+    *"Healthy Ideal Weight Range for your height ({height} cm): **{minHealthyWeight} kg – {maxHealthyWeight} kg** (Ideal midpoint: ~**{idealMidWeight} kg**)."*
+- **Input Control (`number-with-chips`):**
   - Dynamically generated smart chips (`getTargetWeightChips(state)`):
     - For `lose`: up to 4 chips below `current_weight` (e.g., `idealMidWeight`, `maxHealthyWeight`, `currentWeight - 5`, `currentWeight - 10`, filtered to `< currentWeight` and `>= 35`).
     - For `gain` / `muscle_gain`: up to 4 chips `>= current_weight` (e.g., `minHealthyWeight`, `idealMidWeight`, `currentWeight + 5`, `currentWeight + 8`).
-  - Numeric input (`35` to `250` kg, matching `current_weight`) + `[Confirm]`.
+  - Numeric input (`35` to `250` kg, or `77..551 lb` in Imperial mode) + `[Confirm]`.
 
-**3. Live BMI Boundary Warning Modal / In-Chat Confirmation (**`bmi_target_warning`)
+**3. Live BMI Boundary Warning Modal / In-Chat Confirmation (`bmi_target_warning`)**
 
 - Triggered when `target_weight` passes directional validation (`lose < current`, `gain > current`, `muscle_gain >= current`), **BUT** `targetBmi < 18.5` OR `targetBmi > 24.9`:
-  - **Case A — Underweight Target (**`targetBmi < 18.5`, i.e., `target_weight < minHealthyWeight`):
-    - **Warning Message:** *"Health Warning: A target weight of {target_weight} kg puts your BMI at ****{targetBmi}****, which is below the safe minimum healthy limit (****18.5****, or ****{minHealthyWeight} kg**** for your height) and may cause fatigue, muscle loss, and nutrient deficiencies. Would you like to set your target to the nearest healthy weight (****{minHealthyWeight} kg****) or continue with your chosen weight?"*
+  - **Case A — Underweight Target (`targetBmi < 18.5`, i.e., `target_weight < minHealthyWeight`):**
+    - **Warning Message:** *"Health Warning: A target weight of {target_weight} kg puts your BMI at **{targetBmi}**, which is below the safe minimum healthy limit (**18.5**, or **{minHealthyWeight} kg** for your height) and may cause fatigue, muscle loss, and nutrient deficiencies. Would you like to set your target to the nearest healthy weight (**{minHealthyWeight} kg**) or continue with your chosen weight?"*
     - **Button 1 (Primary Recommended):** `[Adopt Safe Healthy Weight ({minHealthyWeight} kg)]` -> Sets `target_weight = minHealthyWeight`, `bmiWarningOverride = false`, and advances to `goal_pace`.
     - **Button 2 (Secondary Override):** `[Continue with {target_weight} kg anyway]` -> Keeps `target_weight`, sets `bmiWarningOverride = true`, and advances to `goal_pace`.
-  - **Case B — Above Standard BMI Target (**`targetBmi > 24.9`, i.e., `target_weight > maxHealthyWeight`):
-    - **Warning Message:** *"Health Note: A target weight of {target_weight} kg corresponds to a BMI of ****{targetBmi}****, which is above the standard BMI range (****24.9****, or ****{maxHealthyWeight} kg**** for your height). (If this is an initial milestone goal or high muscle-mass target, that is completely fine!). Would you like to adjust your target to ****{maxHealthyWeight} kg**** or continue with ****{target_weight} kg****?"*
+  - **Case B — Above Standard BMI Target (`targetBmi > 24.9`, i.e., `target_weight > maxHealthyWeight`):**
+    - **Warning Message:** *"Health Note: A target weight of {target_weight} kg corresponds to a BMI of **{targetBmi}**, which is above the standard BMI range (**24.9**, or **{maxHealthyWeight} kg** for your height). If this is a stepping-stone milestone or higher lean-mass target, proceed intentionally — or adjust to **{maxHealthyWeight} kg**."*
     - **Button 1 (Primary):** `[Adjust Target to {maxHealthyWeight} kg]` -> Sets `target_weight = maxHealthyWeight`, `bmiWarningOverride = false`, and advances.
     - **Button 2 (Secondary Override):** `[Continue with {target_weight} kg as current target]` -> Keeps `target_weight`, sets `bmiWarningOverride = true`, and advances.
 
-**4. Conditional Step: **`goal_pace` (Shown ONLY if `goal != 'maintain'` AND `abs(current_weight - target_weight) >= 0.5`)
+**4. Conditional Step: `goal_pace` (Shown ONLY if `goal != 'maintain'` AND `abs(current_weight - target_weight) >= 0.5`)**
 
 - **Coach Bubble:**
-  - *"At what weekly pace would you like to reach ****{target_weight} kg**** ({weightDiff} kg to go)?"*
-  - **Micro-Why Caption:** *"Controls daily hunger vs. speed within safe clinical calorie floors."*
-- **Input Control (**`single-select` — Dynamic Cards with Calculated Timeline Range):
-  - **Option 1: **`slow` (`Steady & Easy`)
-    - Subtitle: `"Easiest adherence, minimal hunger — Est. {slowWeeksMin}–{slowWeeksMax} weeks"`
-  - **Option 2: **`moderate` (`Balanced & Sustainable ⭐ (Recommended)`) *(Hidden if *`maternal_status == 'breastfeeding'` and `goal == 'lose'`, where only `slow` capped at `-300 kcal` is allowed)
-    - Subtitle: `"Best speed-to-muscle balance — Est. {modWeeksMin}–{modWeeksMax} weeks"`
-  - **Option 3: **`fast` (`Fast & Intensive`) *(Hidden when *`seniorMode == true` or `maternal_status != 'none'`)
-    - Subtitle: `"Faster results, higher focus — Est. {fastWeeksMin}–{fastWeeksMax} weeks"`
+  - *"At what weekly pace would you like to reach **{target_weight} kg** ({weightDiff} kg to go)?"*
+  - **Micro-Why Caption:** *"Balances weekly progress speed against hunger and lean muscle protection."*
+- **Input Control (`single-select` — Dynamic Cards with Calculated Timeline Range):**
+  - **Option 1: `slow` (`Steady & Easy`)**
+    - Subtitle: `"Minimal hunger, highest muscle retention — Est. {slowWeeksMin}–{slowWeeksMax} weeks"`
+  - **Option 2: `moderate` (`Balanced & Sustainable` — `(Recommended)` badge)** *(Hidden if `maternal_status == 'breastfeeding'` and `goal == 'lose'`; breastfeeding weight loss auto-constrains to `slow` capped at `-300 kcal/day` to protect milk supply)*
+    - Subtitle: `"Balanced deficit/surplus & recovery — Est. {modWeeksMin}–{modWeeksMax} weeks"`
+  - **Option 3: `fast` (`Fast & Intensive`)** *(Hidden when `seniorMode == true` or `maternal_status != 'none'`)*
+    - Subtitle: `"Faster results, tighter daily adherence — Est. {fastWeeksMin}–{fastWeeksMax} weeks"`
 - **Instant Coach Micro-Reaction:**
-  - *"Locked in! At a {pace} pace, reaching {target_weight} kg fits cleanly in {estimated_weeks_min}–{estimated_weeks_max} weeks."*
+  - *"Target locked: {pace} pace puts {target_weight} kg at an estimated {estimated_weeks_min}–{estimated_weeks_max} weeks."*
 
 ---
 
@@ -722,16 +725,17 @@ $$estimated\_weeks\_min = \max(1,\ \text{floor}(centerWeeks \times 0.85)), \quad
 5. System displays the **Live BMI Boundary Warning** explaining that `52 kg` is below the safe minimum of `57 kg` (`BMI 18.5`), offering `[Adopt Safe Healthy Weight (57 kg)]` or `[Continue with 52 kg anyway]`.
 6. User taps `[Adopt Safe Healthy Weight (57 kg)]` (or chooses to proceed with `52 kg`).
 7. Coach asks `goal_pace` showing realistic timeline ranges (`estimated_weeks_min..max`) for each pace option.
-8. User selects `moderate` (`Balanced & Sustainable ⭐`) and advances to `service_track` (`US-MOB-06`).
+8. User selects `moderate` (`Balanced & Sustainable`) and advances to `service_track` (`US-MOB-06`).
 
 ---
 
 **EDGE CASES**
 
-- **Goal is **`maintain`: Both `target_weight` and `goal_pace` are skipped automatically; `target_weight` is set equal to `current_weight`.
-- **Goal is **`muscle_gain` and user enters `target_weight == current_weight` (Body Recomposition): Allowed! Since `weightDiff == 0 < 0.5`, `goal_pace` is skipped automatically and a `0 kcal` maintenance recomposition target is applied (with high protein + resistance training).
-- **Current BMI is `< 18.5`:** `lose` is hidden/blocked in `goal` selection so underweight users cannot select fat loss; `gain` is highlighted as `⭐ Recommended`.
-- **User starts above BMI 35 (**`current_weight = 125 kg`, `maxHealthyWeight = 76 kg`) and sets a staging target of `100 kg` (`targetBmi = 32.7`): The warning banner uses encouraging milestone language so the user feels supported when choosing `[Continue with 100 kg as current target]`.
+- **Goal is `maintain`:** Both `target_weight` and `goal_pace` are skipped automatically; `target_weight` is set equal to `current_weight`.
+- **Goal is `muscle_gain` and user enters `target_weight == current_weight` (Body Recomposition):** Allowed! Since `weightDiff == 0 < 0.5`, `goal_pace` is skipped automatically and a `0 kcal` maintenance recomposition target is applied (with high protein + resistance training).
+- **Current BMI is `< 18.5`:** `lose` is hidden/blocked in `goal` selection so underweight users cannot select fat loss; `gain` is highlighted as `(Recommended)`.
+- **Breastfeeding + Weight Loss (`maternal_status == 'breastfeeding' && goal == 'lose'`):** Auto-constrains `goal_pace` to `slow` (hides `moderate` and `fast`) and caps calorie deficit at `-300 kcal` before adding `+400 kcal`.
+- **User starts above BMI 35 (`current_weight = 125 kg`, `maxHealthyWeight = 76 kg`) and sets a staging target of `100 kg` (`targetBmi = 32.7`):** The warning banner uses encouraging milestone language so the user feels supported when choosing `[Continue with 100 kg as current target]`.
 
 ---
 
@@ -751,7 +755,7 @@ $$estimated\_weeks\_min = \max(1,\ \text{floor}(centerWeeks \times 0.85)), \quad
   - **Then** submission is blocked with an inline error explaining that target weight for fat loss must be less than `80 kg`.
   - **And given** `currentBmi < 18.5`
   - **When** the `goal` step renders
-  - **Then** `lose` is hidden/blocked and `gain` is marked `⭐ Recommended`.
+  - **Then** `lose` is hidden/blocked and `gain` is marked `(Recommended)`.
 
 ---
 
@@ -781,23 +785,23 @@ As a user customizing my coaching program, I want to choose whether I want Nutri
 
 **SCREEN AND UI DETAILS**
 
-**1. Step: **`service_track` (Coaching Track Selection)
+**1. Step: `service_track` (Coaching Track Selection)**
 
 - **Coach Bubble:** *"How would you like CuraFit to coach you, {name}?"*
-  - **Micro-Why Caption:** *"Skips irrelevant questions and configures your 5-tab Home dashboard."*
-- **Input Control (**`single-select` — 3 Cards):
-  - `nutrition_and_workouts`: `Nutrition + Workouts ⭐ (Recommended)` — Subtitle: `"Synced meals & training for fastest body transformation"`
+  - **Micro-Why Caption:** *"Customizes your daily steps and configures your 5-tab navigation."*
+- **Input Control (`single-select` — 3 Cards):**
+  - `nutrition_and_workouts`: `Nutrition + Workouts` `(Recommended)` — Subtitle: `"Synced meals & training for faster, balanced body recomposition"`
   - `nutrition_only`: `Nutrition Plan Only` — Subtitle: `"Personalized daily meals, calories & macros (keeps Cardio & Exercise Library)"`
   - `workouts_only`: `Workout Plan Only` — Subtitle: `"Tailored training schedule without a meal plan"`
 
-**2. Conditional Step: **`fitness_level` (Shown ONLY if `service_track != 'nutrition_only'`)
+**2. Conditional Step: `fitness_level` (Shown ONLY if `service_track != 'nutrition_only'`)**
 
 - **Coach Bubble:** *"What is your current training experience?"*
-  - **Micro-Why Caption:** *"Sets weekly working sets (2–4 sets), intensity (RIR), and Player Mode (Simple vs. Pro)."*
-- **Input Control (**`single-select` — 3 Cards):
-  - `beginner`: `Beginner` — Subtitle: `"New or returning — 2 sets/exercise, RIR 3, guided Simple Mode"`
-  - `intermediate`: `Intermediate ⭐` — Subtitle: `"Consistent 3–12 mo — 3 sets/exercise, RIR 2, balanced load"`
-  - `advanced`: `Advanced` — Subtitle: `"1+ years training — up to 4 compound sets (>=45m) & RIR 2"`
+  - **Micro-Why Caption:** *"Sets starting weekly sets (2–4 sets), intensity, and Simple vs. Pro player layout."*
+- **Input Control (`single-select` — 3 Cards):**
+  - `beginner`: `Beginner` — Subtitle: `"New or returning — 2 sets/exercise, gentle effort, guided Simple Mode"`
+  - `intermediate`: `Intermediate` `(Recommended)` — Subtitle: `"Consistent 3–12 mo — 3 sets/exercise, steady double progression"`
+  - `advanced`: `Advanced` — Subtitle: `"1+ yrs training — up to 4 compound sets (>=45m), Pro set-by-set tracking"`
 
 **3. Conditional Step: **`workout_location` (Asked BEFORE Days & Split; Shown ONLY if `service_track != 'nutrition_only'`)
 
@@ -868,13 +872,14 @@ As a user customizing my coaching program, I want to choose whether I want Nutri
 3. **Exact Weekday Indexing:**
   - Store `workout_days` as a sorted array of day indices `0..6` where `0 = Saturday`, `1 = Sunday`, ..., `6 = Friday` (sent with `weekdayConvention: "saturday_0"` so backend `normalizeWeekdayDraft` converts cleanly to `js_sunday_0`).
   - Any day index in `0..6` NOT in `workout_days` is rendered as a scheduled Rest/Recovery day (`Rest & Recovery`) in the 7-day workout schedule.
-4. **Mutual Exclusion on **`home_equipment`:
-  - Tapping `none` (`Bodyweight Only`) deselects `dumbbells`, `resistance_bands`, `pullup_bar`, `kettlebell`, `bench`.
-  - Tapping any equipment item automatically deselects `none`.
+4. **Mutual Exclusion on `home_equipment`:**
+   - Tapping `none` (`Bodyweight Only`) deselects all 9 equipment items (`dumbbells`, `resistance_bands`, `pullup_bar`, `kettlebell`, `bench`, `barbell`, `yoga_mat`, `jump_rope`, `cardio_machine`).
+   - Tapping any equipment item automatically deselects `none`.
 5. **Fitness Level Set Prescription (`server/workouts.mjs`):**
-  - `beginner`: `2` sets per exercise (`RIR 3`), beginner-difficulty movements only.
-  - `intermediate`: `3` sets per exercise (`RIR 2`), beginner + intermediate movements.
-  - `advanced`: `4` sets on compound movements (`squat`, `hinge`, `horizontal_push`, `horizontal_pull`, `vertical_push`, `vertical_pull`, `lunge`) when `sessionDuration >= 45` (gracefully falling back to `3` sets if the session time budget would be exceeded), and `3` sets on isolation movements (`RIR 2`).
+   - `beginner`: `2` sets per exercise (`RIR 3`), beginner-difficulty movements only.
+   - `intermediate`: `3` sets per exercise (`RIR 2`), beginner + intermediate movements.
+   - `advanced`: `4` sets on compound movements (`squat`, `hinge`, `horizontal_push`, `horizontal_pull`, `vertical_push`, `vertical_pull`, `lunge`) when `sessionDuration >= 45` (gracefully falling back to `3` sets if the session time budget would be exceeded), and `3` sets on isolation movements (`RIR 2`).
+6. **`workouts_only` Health Confirmation Gate:** Because `workouts_only` bypasses Nutrition conditions, `Summary` (`US-MOB-09`) captures explicit medical-readiness clearance (`healthConfirmed: true`) before calling `action: "generate"`.
 
 ---
 
@@ -945,31 +950,31 @@ As a user whose program includes workouts, I want the app to ask me for my prefe
 
 **SCREEN AND UI DETAILS**
 
-**1. Conditional Step: **`workout_split` (Shown ONLY if `workout_location != 'home_only'` AND `workout_days.length >= 3`)
+**1. Conditional Step: `workout_split` (Shown ONLY if `workout_location != 'home_only'` AND `workout_days.length >= 3`)**
 
 - **Coach Bubble:**
-  - *"For your ****{workout_days.length} training days/week****, how should we split your muscle groups?"*
-  - **Micro-Why Caption:** *"Controls recovery between sessions and weekly stimulus per muscle."*
-- **Input Control (**`single-select` — Dynamically Filtered by `daysCount = workout_days.length`, showing all **5** real backend splits at 4 days!):
-  - `auto`: `Coach's Smart Choice ⭐ (Recommended)` — *Always shown (`1..7` days). Resolves deterministically to `Full Body` (`<= 3d`), `Upper / Lower` (`4d`), or `Push / Pull / Legs` (`>= 5d`).*
+  - *"For your **{workout_days.length} training days/week**, how should we split your muscle groups?"*
+  - **Micro-Why Caption:** *"Balances recovery windows and weekly stimulus per muscle — every compatible backend split is shown below."*
+- **Input Control (`single-select` — Dynamically Filtered by `daysCount = workout_days.length`; at 4+ Gym/Mix days all 5 backend options render cleanly):**
+  - `auto`: `Coach's Smart Choice` `(Recommended)` — *Always shown (`1..7` days). Resolves deterministically to `Full Body` (`<= 3d`), `Upper / Lower` (`4d`), or `Push / Pull / Legs` (`>= 5d`).*
     - Subtitle dynamically shows the resolved split (e.g., for `4d`: `"Scientifically pairs Upper / Lower twice a week"`).
-  - `upper_lower`: `Upper / Lower Split` — *Shown when *`2 <= daysCount <= 6`
-    - Subtitle: `"Alternates upper & lower body — ideal 2x/wk frequency for 4d"`
-  - `full_body`: `Full Body Split` — *Shown when *`1 <= daysCount <= 4`
-    - Subtitle: `"Hits every major muscle group each session — great flexibility"`
-  - `ppl`: `Push / Pull / Legs (PPL)` — *Shown when *`3 <= daysCount <= 7`
-    - Subtitle: `"3d rotates Push/Pull/Legs · 4d adds Full Body · 5d adds Upper/Lower"`
-  - `bro_split`: `Body-Part Split (Bro Split)` — *Shown when *`4 <= daysCount <= 6` *(backend auto-falls back to `full_body` only when `< 4` days)*
-    - Subtitle: `"Focused muscle days (4d: Chest+Tri, Back+Bi, Shoulders+Core, Legs; 5–6d: 1 muscle/day)"`
+  - `upper_lower`: `Upper / Lower Split` — *Shown when `2 <= daysCount <= 6`*
+    - Subtitle: `"Alternates upper & lower body — optimal 2x/wk frequency at 4d"`
+  - `full_body`: `Full Body Split` — *Shown when `1 <= daysCount <= 4`*
+    - Subtitle: `"Hits every major muscle group each session — resilient if you miss a day"`
+  - `ppl`: `Push / Pull / Legs (PPL)` — *Shown when `3 <= daysCount <= 7`*
+    - Subtitle: `"Movement-pattern split (4d: Push, Pull, Legs + Full Body; 5–6d: Upper/Lower or 2x PPL)"`
+  - `bro_split`: `Body-Part Split (Focused Muscle Days)` — *Shown when `4 <= daysCount <= 6` (`server` accepts `bro_split` directly for `>= 4d`)*
+    - Subtitle: `"Dedicated focus days (4d: Chest+Tri, Back+Bi, Shoulders+Core, Legs; 5–6d: 1 muscle/day)"`
 
-**2. Conditional Step: **`session_duration` (Shown ONLY if `service_track != 'nutrition_only'`)
+**2. Conditional Step: `session_duration` (Shown ONLY if `service_track != 'nutrition_only'`)**
 
 - **Coach Bubble:** *"How long should each workout session last?"*
   - **Micro-Why Caption:** *"Keeps every workout strictly inside your clock budget including warm-up and rest."*
-- **Input Control (**`single-select` — 5 Cards):
+- **Input Control (`single-select` — 5 Cards):**
   - `20`: `20 Minutes (Express)` — Subtitle: `"Fast compound essentials when time is tight"`
   - `30`: `30 Minutes (Compact)` — Subtitle: `"Efficient strength focus with short rest periods"`
-  - `45`: `45 Minutes ⭐ (Recommended)` — Subtitle: `"Ideal balance for full compound + accessory work"`
+  - `45`: `45 Minutes` `(Recommended)` — Subtitle: `"Ideal balance for full compound + accessory work"`
   - `60`: `60 Minutes (Full Session)` — Subtitle: `"Complete main lifts plus targeted hypertrophy isolation"`
   - `90`: `90 Minutes (Extended)` — Subtitle: `"Maximum volume and longer heavy-compound recovery"`
 
@@ -1026,9 +1031,9 @@ As a user whose program includes workouts, I want the app to ask me for my prefe
 **MAIN FLOW**
 
 1. User previously selected `gym_only` and `4 days` (`[0, 1, 3, 5]`).
-2. Since `workout_location != 'home_only'` and `daysCount == 4 >= 3`, coach asks `workout_split` showing `Coach's Smart Choice ⭐`, `Full Body`, `Upper / Lower`, `Push / Pull / Legs`, and `Bro Split`.
-3. User selects `Coach's Smart Choice ⭐` (resolves to `upper_lower`).
-4. Coach asks `session_duration`; user selects `45 Minutes ⭐`.
+2. Since `workout_location != 'home_only'` and `daysCount == 4 >= 3`, coach asks `workout_split` showing all 5 real server splits: `Coach's Smart Choice (Recommended)`, `Upper / Lower Split`, `Full Body Split`, `Push / Pull / Legs (PPL)`, and `Body-Part Split (Focused Muscle Days)`.
+3. User selects `Coach's Smart Choice` (resolves to `upper_lower`).
+4. Coach asks `session_duration`; user selects `45 Minutes (Recommended)`.
 5. Coach asks `injuries`; user selects `knee` and taps `Confirm`.
 6. System stores workout configuration and advances to the Nutrition Block (`US-MOB-08`) or directly to `summary` (`US-MOB-09`) if `service_track == 'workouts_only'`.
 
@@ -1121,47 +1126,47 @@ As a user whose program includes nutrition, I want to specify my daily non-exerc
 
 - **Coach Bubble:** *"Which eating style matches your taste best?"*
   - **Micro-Why Caption:** *"Shapes your daily meal variety and macros — unsafe clinical options are already hidden."*
-- **Input Control (**`single-select` — Up to 9 Diet Schools):
-  - `balanced`: `Balanced Local Cuisine ⭐` — Subtitle: `"Flexible home-cooked variety; choose 2–5 meals/day"`
+- **Input Control (`single-select` — Up to 9 Diet Schools):**
+  - `balanced`: `Balanced Local Cuisine` `(Recommended)` — Subtitle: `"Flexible home-cooked variety; choose 2–5 meals/day"`
   - `low_carb`: `Low Carb (Moderate Reduction)` — Subtitle: `"Reduces refined carbs (<=130g) for steady energy & insulin control"`
   - `high_protein`: `High Protein Athlete` — Subtitle: `"Maximizes satiety, recovery & lean muscle retention"`
   - `intermittent_fasting`: `Intermittent Fasting (16:8)` — Subtitle: `"Eat in a structured 8h window with zero food restrictions"`
   - `keto`: `Ketogenic Diet (Strict Keto)` — Subtitle: `"High healthy fats, strict <= 50g total carbs/day"`
   - `mediterranean`: `Mediterranean Diet` — Subtitle: `"Heart-healthy olive oil, fish, legumes & whole grains"`
-  - `dash`: `DASH Diet (Blood Pressure & Heart Friendly)` — Subtitle: `"Low sodium (<1800mg), potassium-rich whole foods"`
+  - `dash`: `DASH Diet (Blood Pressure & Heart Friendly)` — Subtitle: `"Strict low sodium (<=2300 mg/day), potassium-rich whole foods"`
   - `vegetarian`: `Vegetarian (Plant-Based + Dairy & Eggs)` — Subtitle: `"Meatless meals powered by eggs, dairy & legumes"`
-  - `vegan`: `100% Vegan (Strictly Plant-Based)` — Subtitle: `"100% plant proteins, grains & nuts — zero animal products"`
+  - `vegan`: `100% Vegan (Strictly Plant-Based)` — Subtitle: `"Plant proteins, grains & nuts — zero animal products"`
 
-**4. Conditional Step: **`if_start_hour` (Shown ONLY if `diet_type == 'intermittent_fasting'`)
+**4. Conditional Step: `if_start_hour` (Shown ONLY if `diet_type == 'intermittent_fasting'`)**
 
 - **Coach Bubble:** *"When would you like to eat your first meal (break your fast)?"*
   - **Micro-Why Caption:** *"Aligns your 8-hour eating window and fasting timer with your daily routine."*
-- **Input Control (**`single-select` + custom hour picker covering full backend range `6..16` / `06:00`–`16:00`):
+- **Input Control (`single-select` + custom hour picker covering full backend range `6..16` / `06:00`–`16:00`):**
   - `8`: `8:00 AM (Eating window: 8:00 AM – 4:00 PM)`
   - `10`: `10:00 AM (Eating window: 10:00 AM – 6:00 PM)`
-  - `12`: `12:00 PM ⭐ (Eating window: 12:00 PM – 8:00 PM)`
+  - `12`: `12:00 PM` `(Recommended)` `(Eating window: 12:00 PM – 8:00 PM)`
   - `14`: `2:00 PM (Eating window: 2:00 PM – 10:00 PM)`
   - `16`: `4:00 PM (Eating window: 4:00 PM – 12:00 AM)`
   - Plus compact `[Pick Custom Start Hour (06:00–16:00)]` stepper (`integer 6..16`) matching `resolveEatingStart` in `server/coaching.mjs`.
 
-**5. Conditional Step: **`meals_count` (Shown ONLY if `diet_type == 'balanced'`)
+**5. Conditional Step: `meals_count` (Shown ONLY if `diet_type == 'balanced'`)**
 
 - **Coach Bubble:** *"How many meals and snacks fit your daily schedule?"*
   - **Micro-Why Caption:** *"Distributes the exact same daily calories across your preferred meal rhythm."*
-- **Input Control (**`single-select` — 4 Options):
+- **Input Control (`single-select` — 4 Options):**
   - `2`: `2 Main Meals per Day` — Subtitle: `"Larger portions, minimal kitchen prep"`
-  - `3`: `3 Main Meals per Day ⭐ (Recommended)` — Subtitle: `"Classic Breakfast, Lunch & Dinner"`
+  - `3`: `3 Main Meals per Day` `(Recommended)` — Subtitle: `"Classic Breakfast, Lunch & Dinner"`
   - `4`: `3 Main Meals + 1 Snack (4 Total)` — Subtitle: `"Extra afternoon satiety without shrinking main meals"`
   - `5`: `3 Main Meals + 2 Snacks (5 Total)` — Subtitle: `"Ideal for high calorie targets or muscle gain"`
   - *(Note: Specialty diets use structured meal layouts in `FIXED_DIET_MEALS` — `keto`: 3 meals, `intermittent_fasting`: 3 feeds inside 8h window, other specialty diets: 4 feeds — so users aren't asked an ineffective `meals_count` question.)*
 
-**6. Step: **`budget` (Grocery Budget Level)
+**6. Step: `budget` (Grocery Budget Level)**
 
 - **Coach Bubble:** *"What grocery budget fits your weekly shopping best?"*
   - **Micro-Why Caption:** *"Keeps every suggested meal realistic, affordable, and available nearby."*
-- **Input Control (**`single-select` — 3 Cards):
+- **Input Control (`single-select` — 3 Cards):**
   - `low`: `Economic / Budget-Friendly` — Subtitle: `"Eggs, cottage/feta cheese, legumes, oats, chicken & seasonal produce"`
-  - `medium`: `Moderate / Standard ⭐ (Recommended)` — Subtitle: `"Balanced mix of poultry, beef, fish, dairy & everyday groceries"`
+  - `medium`: `Moderate / Standard` `(Recommended)` — Subtitle: `"Balanced mix of poultry, beef, fish, dairy & everyday groceries"`
   - `high`: `Premium / Open Budget` — Subtitle: `"Adds salmon, steak, nuts, avocado, berries & specialty cuts"`
 
 **7. Step: **`allergies` (Food Exclusions & Allergies)
@@ -1200,11 +1205,11 @@ As a user whose program includes nutrition, I want to specify my daily non-exerc
     - `goal == 'gain'`
   - `high_protein` is HIDDEN/BLOCKED when:
     - `conditions` includes `kidney` (caps protein at `<= 1.1 g/kg` to avoid renal hyperfiltration).
-2. **Smart Clinical Diet Recommendations (**`⭐ Recommended` Badge):
-  - If `conditions` includes `insulin_resistance`, `diabetes_t2`, or `pcos` -> Recommend `low_carb` (`⭐`).
-  - If `conditions` includes `hypertension` -> Recommend `dash` (`⭐`).
-  - If `conditions` includes `cholesterol` -> Recommend `mediterranean` (`⭐`).
-  - Otherwise -> Recommend `balanced` (`⭐`).
+2. **Smart Clinical Diet Recommendations (`Recommended` Badge):**
+  - If `conditions` includes `insulin_resistance`, `diabetes_t2`, or `pcos` -> Recommend `low_carb` (`Recommended`).
+  - If `conditions` includes `hypertension` -> Recommend `dash` (`Recommended`).
+  - If `conditions` includes `cholesterol` -> Recommend `mediterranean` (`Recommended`).
+  - Otherwise -> Recommend `balanced` (`Recommended`).
 3. **Automatic Ingredient-Level Clinical Filters (`clinicalIngredientFilters`):**
   - `celiac` -> Auto-injects `gluten` exclusion even if user doesn't manually toggle `gluten` in `allergies`.
   - `favism` -> Auto-injects `fava` exclusion (removes fava beans & falafel automatically even if user taps `none` in `allergies`).
@@ -1212,10 +1217,11 @@ As a user whose program includes nutrition, I want to specify my daily non-exerc
   - `hypertension` -> Filters out high-sodium items (pickles, salted cheeses, processed meats).
   - `gout` -> Filters out high-purine items (organ meats, sardines/anchovies, concentrated meat gravies) and increases daily water target by `+500 ml`.
   - `ibs` -> Filters out heavy high-FODMAP triggers (fried legumes, raw onion/garlic-heavy meals).
-  - `hypothyroid` -> Applies a realistic `-5%` BMR metabolic adjustment (`0.95 * REE`) so calorie targets match slower thyroid metabolism without starvation.
-4. **Default Meal Count When **`meals_count` Step is Skipped:
-  - If `diet_type == 'intermittent_fasting'` -> Default to `2` main meals + `1` snack inside the 8-hour window (`12:00 PM`, `4:00 PM`, `7:30 PM` for `if_start_hour = 12`).
-  - If `diet_type != 'balanced'` and `diet_type != 'intermittent_fasting'` -> Default to `3` meals/day (`4` meals/day if `goal == 'gain'` or `goal == 'muscle_gain'`).
+  - `hypothyroid` -> Applies a realistic `-5%` metabolic baseline adjustment (`0.95 * REE`) so calorie targets match slower thyroid metabolism without starvation.
+4. **Default Meal Count When `meals_count` Step is Skipped (`FIXED_DIET_MEALS`):**
+  - If `diet_type == 'keto'` -> Default to `3` meals/day.
+  - If `diet_type == 'intermittent_fasting'` -> Default to `2` main meals + `1` snack (`3` feeds) inside the 8-hour window (`12:00 PM`, `4:00 PM`, `7:30 PM` for `if_start_hour = 12`).
+  - For all other specialty non-`balanced` diets (`low_carb`, `high_protein`, `mediterranean`, `dash`, `vegetarian`, `vegan`) -> Default to `4` structured feeds/day (`FIXED_DIET_MEALS`).
 
 ---
 
@@ -1223,7 +1229,7 @@ As a user whose program includes nutrition, I want to specify my daily non-exerc
 
 1. User selects `activity = "light"` (`1.375x`).
 2. User selects `conditions = ["insulin_resistance"]` and confirms.
-3. Coach asks `diet_type` with `Low Carb ⭐ (Recommended)` highlighted at the top.
+3. Coach asks `diet_type` with `Low Carb (Recommended)` highlighted at the top.
 4. User selects `balanced` (`Balanced Local Cuisine`).
 5. Since `diet_type == 'balanced'`, `if_start_hour` is skipped and coach asks `meals_count`. User selects `3`.
 6. Coach asks `budget`; user selects `medium`.
@@ -1234,10 +1240,10 @@ As a user whose program includes nutrition, I want to specify my daily non-exerc
 
 **EDGE CASES**
 
-- **User selects **`vegan` diet AND excludes `legumes`, `soy`, `tree_nuts`, `peanuts`, and `oats` in `allergies`:
-  - The meal generator still succeeds by falling back to remaining plant-based grains/seeds/vegetables (quinoa, rice, potatoes, tahini/sesame, mushrooms, spinach) without crashing or returning empty meals, and displays a gentle note about diversifying plant protein sources.
-- **User selects **`celiac` in `conditions` and taps `none` in `allergies`:
-  - The backend/engine still enforces `100% gluten-free` recipes because clinical conditions take precedence over `allergies = ["none"]`.
+- **User selects `vegan` diet AND excludes `legumes`, `soy`, `tree_nuts`, `peanuts`, and `oats` in `allergies`:**
+  - The meal generator relaxes strictly optional non-clinical dislikes gracefully or falls back to safe grain/seed/vegetable templates without crashing, or surfaces an actionable relaxation/edit prompt if clinical constraints leave zero valid combinations.
+- **User selects `celiac` in `conditions` and taps `none` in `allergies`:**
+  - The backend/engine still excludes wheat & gluten recipes/ingredients per verified catalog tags because clinical conditions always override `allergies = ["none"]` (note: regional kitchen cross-contact warnings remain advisory).
 
 ---
 
@@ -1289,37 +1295,35 @@ As a user who has answered all onboarding questions, I want to review a comprehe
 
 **SCREEN AND UI DETAILS**
 
-**1. Staged Blueprint Reveal (1.5s Entry Transition) & Summary Header**
+**1. Live Blueprint Header & `"How We Calculate Your Targets"` Info Sheet**
 
-- On first transition from the last question (`allergies` or `injuries`) to `summary`, display a crisp 1.5-second live build card while `POST /v1/plans/preview` resolves:
-  - `1. Calculating BMR, Calories & Macros ✓`
-  - `2. Applying Clinical & Regional Meal Filters ✓`
-  - `3. Structuring Your Weekly Workout Blueprint ✓`
-- **Title:** *"Your Personalized Blueprint is Ready, {name}!"*
-- **Region Selector Pill:** `[Region: Egypt / Gulf / Levant / Maghreb ▾]` — Changing the region immediately calls `POST /v1/plans/preview` (with deterministic local fallback) to refresh regional dish names and climate hydration in the preview.
+- Immediately upon transitioning from the final question (`allergies` or `injuries`) to `summary`, call `POST /v1/plans/preview` with a crisp loading skeleton while resolving (`< 300ms` typical, zero fake `1.5s` theatrical countdown!).
+- **Title:** *"Your Personalized Blueprint, {name}"* + `[How We Calculate Your Targets]` info button (opens a clean educational bottom sheet explaining **BMR / Mifflin-St Jeor**, **NEAT / Activity Multiplier**, **IBW / ABW**, and **RIR** without cluttering chat bubbles!).
+- **Region Selector Pill:** `[Region: Egypt / Gulf / Levant / Maghreb]` — Changing the region immediately calls `POST /v1/plans/preview` (with deterministic local fallback) to refresh regional dish names and climate hydration in the preview.
 
 **2. Live Numerical Preview Cards (Hero Metrics Grid)**
 
 - **Card 1 — Body & Goal Timeline:**
   - Current Weight (`{current_weight} kg`, `BMI {currentBmi}`) -> Target Weight (`{target_weight} kg`, `BMI {targetBmi}`)
-  - Healthy Ideal Weight Range Badge: `{minHealthyWeight} – {maxHealthyWeight} kg` *(If *`bmiWarningOverride == true`, show subtle amber badge: `"Custom Target Outside Standard BMI"`)
+  - Healthy Ideal Weight Range Badge: `{minHealthyWeight} – {maxHealthyWeight} kg` *(If `bmiWarningOverride == true`, show subtle amber badge: `"Custom Target Outside Standard BMI"`; if severe BMI/clinical exclusion applies, show calm review card via `/v1/plans/preview` / `/v1/eligibility`)*
   - Expected Timeline Range: `{estimated_weeks_min}–{estimated_weeks_max} Weeks` (`~{expectedMonthsMin}–{expectedMonthsMax} Months`).
-- **Card 2 — Daily Nutrition & Hydration Targets *****(Shown if ***`service_track != 'workouts_only'`):
-  - **Target Daily Calories:** `{targetCalories} kcal / day` *(with TDEE *`{tdee} kcal` & daily delta `{dailyCalorieDelta} kcal` subtitle)
+- **Card 2 — Daily Nutrition & Hydration Targets *(Shown if `service_track != 'workouts_only'`)***:
+  - **Target Daily Calories:** `{targetCalories} kcal / day` *(with TDEE `{tdee} kcal` & daily delta `{dailyCalorieDelta} kcal` subtitle)*
   - **Daily Macros:**
     - **Protein:** `{proteinGrams}g` (`{proteinPct}%`)
     - **Total Carbs:** `{carbsGrams}g` (`{carbsPct}%`)
     - **Fats:** `{fatsGrams}g` (`{fatsPct}%`)
-  - **Daily Water Intake:** `{waterLiters} L / day` (`~{waterCups} cups`) *(shows rest-day baseline and `+500 ml` training-day target when training days are scheduled)*
-- **Card 3 — Weekly Training Blueprint *****(Shown if ***`service_track != 'nutrition_only'`):
-  - **Location & Split:** `{workoutLocationLabel}` • `{resolvedSplitLabel}`
-  - **Schedule:** `{workoutDays.length} Days/Week` (`{selectedWeekdayNames}`) • `{session_duration} min/session` (`{exercisesPerSession} exercises`)
+  - **Daily Water Intake:** Displays `restDayWaterTarget` (`{restDayWaterTarget} L` / cups on rest days) AND `workoutDayWaterTarget` (`{workoutDayWaterTarget} L` on training days, `+500 ml` boost) returned by `POST /v1/plans/preview`.
+- **Card 3 — Weekly Training Blueprint *(Shown if `service_track != 'nutrition_only'`)***:
+  - **Location & Split:** `{workoutLocationLabel}` • `{recommendedSplitLabel}`
+  - **Schedule:** `{workoutDays.length} Days/Week` (`{selectedWeekdayNames}`) • `{session_duration} min/session` (`{estimatedExercisesPerSession} exercises/session` from `/v1/plans/preview`)
   - **Safety Filters Active:** Lists any active injury protections (`knee`, `lower_back`, etc.) or `Senior Safety Mode`.
-  - *(If `service_track == 'nutrition_only'` and `goal == 'muscle_gain'`, display optional `externalTrainingDays` summary or an informational coaching note that muscle growth relies on external resistance training.)*
+  - *(If `service_track == 'nutrition_only'` and `goal == 'muscle_gain'`, display optional `externalTrainingDays` selector/summary so hydration boosts calibrate properly.)*
+  - *(If `service_track == 'workouts_only'`, display mandatory 1-tap medical-readiness clearance checkbox `[Confirm Physical Readiness]` sending `healthConfirmed: true`.)*
 
-**3. Section-Level Quick Edit Links (**`[Edit ✏️]`)
+**3. Section-Level Quick Edit Links (`[Edit]`)**
 
-- Grouped summary rows with 1-tap `[Edit]` buttons that open the corresponding step's Edit Bottom Sheet (`US-MOB-02`):
+- Grouped summary rows with 1-tap `[Edit]` buttons (`Icons.Outlined.Edit`) that open the corresponding step's Edit Bottom Sheet (`US-MOB-02`):
   - **Personal & Body Measurements** (`name`, `age`, `gender`, `maternal_status`, `height`, `current_weight`)
   - **Goal & Pace** (`goal`, `target_weight`, `goal_pace`)
   - **Workout Preferences** (`service_track`, `fitness_level`, `workout_location`, `workout_days`, `workout_split`, `session_duration`, `injuries`)
@@ -1380,8 +1384,8 @@ $$TDEE = REE \times activityMultiplier$$
   - `gender == 'female'` (non-pregnant/non-breastfeeding): **$1200\text{ kcal/day}$**
   - `pregnant_t1` / `pregnant_t2` / `pregnant_t3`: **$1800\text{ kcal/day}$**
   - `breastfeeding`: **$1600\text{ kcal/day}$**
-  - Maximum Safe Calorie Ceiling: **$4200\text{ kcal/day}$** (`> 4200` throws `400 ENERGY_CHANGE_OUT_OF_RANGE`)
-$$targetCalories = \max\left(minCalorieFloor,\ \text{roundToNearest10}(TDEE + change)\right)$$
+  - **Maximum Safe Calorie Ceiling:** **$4200\text{ kcal/day}$** (initial onboarding generation exceeding `4200 kcal` safely clamps to `4200 kcal/day` in `planner-core.mjs` with a transparent ceiling note instead of failing onboarding; explicit manual review commands exceeding bounds still validate cleanly).
+$$targetCalories = \min\left(4200,\ \max\left(minCalorieFloor,\ \text{roundToNearest10}(TDEE + change)\right)\right)$$
 
 **4. Macronutrient Calculation (`proteinGrams`, `fatsGrams`, `carbsGrams` — Total Carbs):**
 
@@ -1434,15 +1438,15 @@ $$waterCups = \text{round}\left(\frac{waterLiters \times 1000}{250}\right)$$
 When the Summary Screen loads and when the user taps the primary `[Start My Plan]` button:
 
 1. **Stateless Preview on Summary Load (`POST /v1/plans/preview`):**
-   - Call `POST /v1/plans/preview` (public, IP rate-limited) with the draft onboarding answers to obtain authoritative `dailyCalories`, `macros`, `waterTarget` / `waterTargetLiters` (including `externalTrainingDays` boost), `estimatedWeeksMin`, `estimatedWeeksMax`, `recommendedSplit`, `seniorMode`, `warnings`, `clinicalBlocks`, `workoutUiModeDefault`, and `eligibility` without requiring authentication.
+   - Call `POST /v1/plans/preview` (public, IP rate-limited) with the draft onboarding answers to obtain authoritative `dailyCalories`, `macros`, `waterTarget`, `waterTargetLiters`, `restDayWaterTarget`, `workoutDayWaterTarget` (including `externalTrainingDays` boost), `estimatedExercisesPerSession`, `estimatedWeeksMin`, `estimatedWeeksMax`, `recommendedSplit`, `seniorMode`, `warnings`, `clinicalBlocks`, `workoutUiModeDefault`, and `eligibility` without requiring authentication.
    - Persist the draft onboarding answers locally (`onboardingDraft`) so zero input is ever lost.
-2. **Canonical CuraFit API v1 Commit Sequence (Mandatory Online Completion Before Home):**
+2. **Canonical CuraFit API v1 Commit Sequence (Mandatory Online Completion Before Today):**
    - Full sequence:
      1. `POST /v1/plans/preview` *(already called on Summary load / edit)*
      2. **OAuth (`EPIC-02`):** If `isAuthenticated == false`, navigate to **Passwordless Social Sign-In (`EPIC-02`)** (`POST /v1/auth/oauth/google` or `POST /v1/auth/oauth/apple`).
-     3. **`POST /v1/account/consents`:** If `bootstrap.consents` indicates required health/terms consents are not yet accepted, present `HealthConsentModal` and record explicit acceptance.
-     4. **`POST /v1/eligibility`:** Validate clinical, age (`18..95`), BMI, and maternal safety gates on the server (`status: "eligible"` or `"eligible_with_cautions"`).
-     5. **`POST /v1/commands?view=full`** with `{ revision, action: "generate", payload: { ... } }` (including `unitSystem`, `workoutUiMode`, and `overwriteExisting: true` when replacing an existing profile; passing `overwriteExisting: false` on an existing profile returns `409 PROFILE_ALREADY_EXISTS`) and a stable `Idempotency-Key` header.
+     3. **`POST /v1/account/consents`:** If `bootstrap.consents` indicates required health/terms consents are not yet accepted, present `HealthConsentModal` and record explicit acceptance in one atomic batch (`{ items: [{ consentType: "health_data_processing", ... }, { consentType: "terms_and_privacy", ... }] }`) or single request.
+     4. **`POST /v1/eligibility`:** Public clinical pre-screen validating age (`18..95`), BMI (`12.5..65`), maternal safety gates (`status: "eligible" | "needs_input" | "requires_review"`).
+     5. **`POST /v1/commands?view=full`** with `{ revision, action: "generate", payload: { ... } }` (including `unitSystem`, `workoutUiMode`, `healthConfirmed`, and `overwriteExisting: true` when replacing an existing profile; passing `overwriteExisting: false` on an existing profile returns `409 PROFILE_ALREADY_EXISTS`) and a stable `Idempotency-Key` header.
      6. **`GET /v1/bootstrap`:** Hydrate the authoritative user workspace, smart `ETag` (`W/"boot-..."`), `revision`, `onboardingCompleted`, `consents`, `entitlements`, `todaySummary`, and `scheduledSessions`.
 3. **Path 1 — User IS Already Signed In (`isAuthenticated == true`):**
    - *(Happens when the user signed in at Step 0 `account_check` with a new account or chose `Start fresh` after sign-in).*
@@ -1486,8 +1490,12 @@ When the Summary Screen loads and when the user taps the primary `[Start My Plan
   - Because `pendingOnboardingPayload` and `onboardingDraft` (`lastActiveStepId = "summary"`) are persisted locally, reopening the app lands the user right back on the `summary` screen with all numbers ready—zero questions need to be re-answered.
 - **User is offline when tapping `[Start My Plan]`:**
   - The app remains on the Summary Screen with all answers preserved locally and shows a retryable offline banner; it never enters Home with an un-generated placeholder plan.
-- **User edits an answer from the Summary Screen (e.g., changes **`goal_pace` from `moderate` to `slow`):
-  - The Edit Bottom Sheet updates `goal_pace = "slow"`, immediately recalculates via `POST /v1/plans/preview` (and local mirror), and refreshes `targetCalories`, `macros`, and `estimated_weeks_min..max` in place.
+- **User edits an answer from the Summary Screen (e.g., changes `goal_pace` from `moderate` to `slow`):**
+  - The Edit Bottom Sheet updates `goal_pace = "slow"`, immediately recalculates via `POST /v1/plans/preview` (and local mirror), and refreshes `targetCalories`, `macros`, `restDayWaterTarget`, `workoutDayWaterTarget`, and `estimated_weeks_min..max` in place.
+- **Infeasible Combination Recovery Sheet (e.g., `diet_type` + `conditions` conflict or severe `eligibility.status == "requires_review"`):**
+  - Presents a calm `"Adjust Preferences"` bottom sheet listing exact conflicting inputs with 1-tap `[Edit Conflicting Answer]` chips instead of an opaque error dialog.
+- **High Calorie Onboarding Athlete (`> 4200 kcal/day` computed TDEE + surplus):**
+  - Backend clamps safely to `4200 kcal/day` and Summary shows a calm note *"Capped at our 4,200 kcal initial safety ceiling — adjustable week-by-week via Adaptive Check-In."*
 
 ---
 
@@ -1496,7 +1504,7 @@ When the Summary Screen loads and when the user taps the primary `[Start My Plan
 - **Scenario 1: Live numerical preview matches exact unified backend equations**
   - **Given** a 30-year-old male, `175 cm`, `85 kg`, `goal = "lose"`, `target_weight = 75 kg`, `goal_pace = "moderate"`, `activity = "light"` (`1.375x`), `diet_type = "balanced"`, `region = "egypt"`, `4 workout days`
   - **When** the Summary Screen renders (`POST /v1/plans/preview`)
-  - **Then** `REE = 1,798.8 kcal`, `TDEE = 2,473.3 kcal` (no separate workout TDEE bonus), `targetCalories = 2,100 kcal` (`energy_change = -373.3 kcal`), `protein = 136g` (`1.6 g/kg`), `carbs = 231.5g`, `fat = 70g`, hydration (`3.2 L` base / `3.7 L` workout day, `15 cups` in Egypt), `recommendedSplit = "upper_lower"`, and timeline range (`25–38 weeks` via `7700 kcal/kg`) are displayed identically to the backend.
+  - **Then** `REE = 1,798.8 kcal`, `TDEE = 2,473.3 kcal` (no separate workout TDEE bonus), `targetCalories = 2,100 kcal` (`energy_change = -373.3 kcal`), `protein = 136g` (`1.6 g/kg`), `carbs = 231.5g`, `fat = 70g`, hydration (`restDayWaterTarget = 3.2 L`, `workoutDayWaterTarget = 3.7 L`, `15 cups` in Egypt), `estimatedExercisesPerSession` (computed by duration + equipment), `recommendedSplit = "upper_lower"`, and timeline range (`25–38 weeks` via `7700 kcal/kg`) are displayed identically to the backend.
 - **Scenario 2: Signed-in user clicking "Start Plan" runs canonical API v1 sequence and goes to Home**
   - **Given** `isAuthenticated == true` and network connectivity is available
   - **When** the user taps `[Start My Plan & Sync to Account]`

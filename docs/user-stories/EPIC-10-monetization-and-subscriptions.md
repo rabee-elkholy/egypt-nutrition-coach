@@ -45,14 +45,14 @@ As a Free-tier user exploring CuraFit, I want complete clarity on which core tra
 | :--- | :--- | :--- |
 | Conversational Onboarding & Initial 7-Day Meal & Workout Plans | Unlimited (`Free`) | Unlimited |
 | Daily Today Hub, Full Logging, Hydration, Weight, Steps & Gentle Streaks (1 Streak Freeze / 7 days) | Unlimited (`Free`) | Unlimited |
-| Planned Meal Logging, Manual Entry, Search (3,291 foods/beverages + 2,437 regional models), Recipe Calc, `pantry_finder` | Unlimited (`Free`) | Unlimited |
-| Ramadan Mode & 16:8 Fasting Live Timer (`ramadan_fasting`) | Unlimited (`Free`) | Unlimited |
+| Planned Meal Logging, Manual Entry, Search (3,291 foods/beverages + 2,437 regional models), `custom_recipes`, `pantry_finder`, `cardio_tracking`, `cycle_awareness` | Unlimited (`Free`) | Unlimited |
+| Ramadan Mode, 16:8 Fasting Live Timer (`ramadan_fasting`) & Eid Flex Mode (`seasonal_flex`) | Unlimited (`Free`) | Unlimited |
 | Workouts (`Simple` & `Pro` Modes), Rest Timer, Plate Calc, 868 Exercise Library, `workout_reschedule` | Unlimited (`Free`) | Unlimited |
 | Daily Recovery Check-In, `safety_recovery_deload`, `injury_safety_swaps`, `comeback_protocol`, & Urgent Safety Stops (`RED_FLAGS_STOP`) | **Always `Free` (Safety Rule!)** | Unlimited |
 | **Voluntary Meal & Exercise Swaps** | Free quota (`dailyMealSwapsLimit: 2/day` + `weeklyExerciseSwapsLimit: 2/week`) | **Unlimited** (`unlimited_meal_swaps`, `unlimited_exercise_swaps`) |
 | **MENA Supermarket Barcode Scanner** (`US-NUT-06`) | Preview teaser | **Unlimited** (`barcode_scanner`) |
-| **Smart Weekly Grocery / Shopping List** (`US-NUT-09`) | Previews top 2 items | **Full Interactive List & Share** (`grocery_list`) |
-| **Weekly Meal Plan Renewal (`renew_plan`)** (`US-NUT-01`) | Week 1 Included + 1 Free Bonus Renewal | **Unlimited Early/Automated Renewals** (`unlimited_plan_renewals`) |
+| **Smart Weekly Grocery / Shopping List** (`US-NUT-09`) | Free preview teaser (`?preview=true`, top preview rows) | **Full Interactive List & Share** (`grocery_list`) |
+| **Weekly Meal Plan Renewal (`renew_plan`)** (`US-NUT-01`) | Week 1 Included + 1 Free Bonus Renewal (after plan ends) | **Unlimited + Early Mid-Week Renewal (`earlyRenew: true`)** (`unlimited_plan_renewals`) |
 | **Adaptive Proposals (`calories`, `weekly_volume`, `maintenance`)** (`US-CCH-03`) | Readiness & Evidence Checklist visible | **Full Adaptive Proposals & Approvals** (`adaptive_calorie_volume`) |
 | **Multi-Horizon Analytics (`90D`/`All`) & Progress Photos Cloud Upload** (`US-PRG-01`/`03`) | `14D/30D` + Local Vault + Viewing/Deleting Existing Cloud Photos | **Full `90D`/`All` History (`advanced_analytics`) + Cloud Upload (`progress_photos_cloud`)** |
 | **AI Meal Photo/Voice/Text Quick Log** (`US-NUT-05` — *Final AI Phase, Deferred `501`*) | 1 Free Sample Preview *(once AI enabled)* | **Unlimited** (fair-use cap) |
@@ -99,7 +99,11 @@ As a Free-tier user exploring CuraFit, I want complete clarity on which core tra
            "safety_recovery_deload",
            "workout_reschedule",
            "injury_safety_swaps",
-           "comeback_protocol"
+           "comeback_protocol",
+           "custom_recipes",
+           "cardio_tracking",
+           "cycle_awareness",
+           "seasonal_flex"
          ]
        }
      }
@@ -164,14 +168,14 @@ As a user considering upgrading to CuraFit Pro, I want a clean, trustworthy Payw
 ### SCREEN AND UI DETAILS
 1. **Top Close Button (`X`) & Header:** Always visibly dismissible (`Soft Paywall` — never trap the user!).
 2. **Hero Value Stack:**
-   - Personalized headline: *"Unlock Your Full Smart Coach, {name}"*
-   - Scannable 4-bullet visual checklist (Barcode Scanner & Grocery List, Unlimited Meal/Exercise Swaps & Weekly Renewals, Adaptive Calorie/Volume Reviews, Advanced `90D`/`All` Analytics & Cloud Vault — plus AI Photo/Voice Log & AI Coach Q&A in Final AI Phase).
+   - Personalized calm athletic headline: *"CuraFit Pro — Adaptive Coaching & Complete Automation"*
+   - Scannable 4-bullet visual checklist (Barcode Scanner & Grocery List, Unlimited Meal/Exercise Swaps & Early Renewals, Adaptive Calorie/Volume Reviews, Advanced `90D`/`All` Analytics & Cloud Vault — plus AI Photo/Voice Log & AI Coach Q&A in Final AI Phase).
 3. **Trial Timeline Explainer (If `trialEligible == true` — Proven High-Trust Pattern):**
    - `Day 1 (Today):` Instant full Pro access — **0.00 charged today**.
    - `Day 5:` Friendly reminder before trial ends *(via Cron `trial_ending_day5` push alert if enabled)*.
    - `Day 7:` Subscription begins — cancel anytime in 1 tap via App Store / Google Play.
 4. **Plan Selector Cards (Fetched from StoreKit 2 / Play Billing + Backend Offerings):**
-   - **Annual Plan (Pre-Selected, `Best Value • Save 42%` badge):** Shows equivalent monthly price + billed yearly total in local currency (e.g., `EGP 999 / year` or `SAR 189 / year`).
+   - **Annual Plan (Pre-Selected, `Best Value • Save {calculatedSavingsPct}%` badge):** Computes exact savings dynamically from live StoreKit 2 / Google Play `Product` / `ProductDetails` localized annual vs `12 x monthly` prices (falling back to `offerings.bestValuePct` before live store prices finish resolving), showing equivalent monthly price + billed yearly total in local currency (e.g., `EGP 999 / year` or `SAR 189 / year`).
    - **Monthly Plan:** Standard monthly billing (e.g., `EGP 149 / month` or `SAR 29 / month`).
 5. **Primary CTA & Mandatory Legal Footer:**
    - Dynamic CTA Label:
@@ -191,7 +195,7 @@ As a user considering upgrading to CuraFit Pro, I want a clean, trustworthy Payw
 
 ### MAIN FLOW
 1. User taps `[Start 7-Day Free Trial]` on Soft Paywall.
-2. `PaywallScreen` renders `GET /v1/subscriptions/offerings` + StoreKit 2 / Play localized prices with Annual (`Save 42%`) pre-selected.
+2. `PaywallScreen` renders `GET /v1/subscriptions/offerings` + live StoreKit 2 / Play localized prices with Annual (`Save {calculatedSavingsPct}%`) pre-selected.
 3. User inspects the 7-day timeline and taps `[Start 7-Day Free Trial]` -> Launches native OS payment sheet (`US-MON-03`).
 
 ### EDGE CASES
@@ -243,8 +247,8 @@ As a user tapping Subscribe or Restore Purchases, I want my Apple App Store or G
 
 ### SCREEN AND UI DETAILS
 1. **Processing State:** Non-blocking spinner overlay *"Confirming your CuraFit Pro membership..."* while verifying receipt with Cloudflare Worker.
-2. **Success Celebration Modal (`ProUnlockedModal`):**
-   - *"Welcome to CuraFit Pro! 🎉"*
+2. **Success Confirmation Modal (`ProUnlockedModal`):**
+   - *"Welcome to CuraFit Pro"*
    - Direct button returning right back into the gated action the user originally tried (e.g., `[Scan Barcode Now]` or `[Open Grocery List]`).
 3. **Pending / Interrupted State (e.g., Store Pending Payment / Ask-to-Buy):**
    - *"Purchase pending store approval — Pro will activate automatically once confirmed."*
@@ -255,18 +259,18 @@ As a user tapping Subscribe or Restore Purchases, I want my Apple App Store or G
 1. **`POST /v1/subscriptions/verify`**
    - **Auth:** Required (`Authorization: Bearer <accessToken>`)
    - **Request Body:**
-     - **iOS (StoreKit 2):** `{ "platform": "ios", "productId": "com.curafit.pro.annual", "signedTransactionJws": "<storekit2-jws>", "transactionId": "200000..." }`
-     - **Android (Google Play Billing):** `{ "platform": "android", "productId": "curafit_pro.annual", "purchaseToken": "<play-purchase-token>", "orderId": "GPA...." }`
+     - **iOS (StoreKit 2):** `{ "platform": "ios", "productId": "com.curafit.pro.annual", "signedTransactionJws": "<storekit2-jws>", "transactionId": "200000...", "isTrial": true }` *(accepts `signedTransactionJws` or `signedTransactionInfo`)*.
+     - **Android (Google Play Billing):** `{ "platform": "android", "productId": "curafit_pro.annual", "purchaseToken": "<play-purchase-token>", "orderId": "GPA....", "isTrial": true }`.
    - **Production Server Verification (`STRICT_STORE_VERIFICATION=true` in Production; dev/test fallback when unset):**
      - **Apple:** Verifies transaction via **Apple App Store Server API** (`/inApps/v1/transactions/{transactionId}` production + sandbox fallback, signed with ES256 JWT using `APPLE_ISSUER_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`) and validates JWS / `bundleId`.
      - **Google Play:** Verifies via **Google Play Developer API** (`purchases.subscriptionsv2.get`) using `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` and **acknowledges** unacknowledged purchases server-side via `:acknowledge`.
      - **Cross-Store Double-Billing Guard:** Rejects with `409 ACTIVE_SUBSCRIPTION_ON_OTHER_PLATFORM` if the user already holds an active Pro subscription on the other store (`apple` vs `google`).
      - Writes `coaching_subscriptions` in D1, records anonymized SHA-256 `coaching_trial_tombstones` if a trial started, updates `coaching_users.entitlement = "pro"`, and returns `{ verified: true, entitlements }` (`tier: "pro"`).
-2. **`POST /v1/subscriptions/restore`** -> Accepts array of active StoreKit 2 `currentEntitlements` / Play `queryPurchasesAsync` tokens (or receipt objects). Rejects tokens owned by another user with `409 SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT`, restores active Pro subscriptions on the same account, and supports re-verifying a valid paid receipt onto a fresh account (e.g., after GDPR account deletion).
+2. **`POST /v1/subscriptions/restore`** -> Accepts `{ platform: "ios" | "android", tokens: [string | { purchaseToken?, transactionId?, signedTransactionJws?, productId?, orderId?, isTrial? }] }` (up to 10 active StoreKit 2 `currentEntitlements` / Play `queryPurchasesAsync` string tokens or structured receipt objects). Rejects tokens owned by another user with `409 SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT`, restores active Pro subscriptions on the same account, and supports re-verifying a valid paid receipt onto a fresh account (e.g., after GDPR account deletion).
 3. **`POST /v1/webhooks/apple` & `POST /v1/webhooks/google-play`** -> Production real-time webhook handlers:
    - **Apple App Store Server Notifications v2:** Decodes `signedPayload` JWS + nested `signedTransactionInfo` and `signedRenewalInfo`, handling `SUBSCRIBED`, `DID_RENEW`, `DID_CHANGE_RENEWAL_STATUS` (`AUTO_RENEW_ENABLED` -> `active`, otherwise `cancelled_active`), `DID_CHANGE_RENEWAL_PREF` (mid-cycle upgrade/downgrade), `DID_FAIL_TO_RENEW` (`GRACE_PERIOD` -> `grace_period`, otherwise `billing_retry`), and `EXPIRED` / `GRACE_PERIOD_EXPIRED` / `REVOKE` / `REFUND` -> `expired`.
    - **Google Play RTDN (Cloud Pub/Sub):** Decodes base64 Pub/Sub `message.data`, maps notification types (`1, 2, 4, 7` -> `active`, `3` -> `cancelled_active`, `5` -> `account_hold`, `6` -> `grace_period`, `10` -> `paused`, `12, 13` -> `expired`), and refreshes authoritative `expiryTime` & `productId` (including mid-cycle plan switches) via `purchases.subscriptionsv2.get`.
-   - Error Codes: `400 INVALID_SUBSCRIPTION_RECEIPT`, `401 WEBHOOK_SIGNATURE_INVALID`, `409 ACTIVE_SUBSCRIPTION_ON_OTHER_PLATFORM`, `409 SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT`, `503 SERVICE_UNAVAILABLE` / `503 BILLING_VERIFICATION_UNAVAILABLE` (`retryable: true`).
+   - Error Codes: `400 INVALID_SUBSCRIPTION_RECEIPT`, `401 WEBHOOK_SIGNATURE_INVALID`, `409 ACTIVE_SUBSCRIPTION_ON_OTHER_PLATFORM`, `409 SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT`, `503 BILLING_VERIFICATION_UNAVAILABLE` (`retryable: true` on Store API outage), `503 SERVICE_UNAVAILABLE` (`retryable: true` when strict store credentials unconfigured).
 
 ### RULES & BUSINESS LOGIC
 1. **Finish Transaction ONLY After Server Verification:** Never call `transaction.finish()` (iOS) or `acknowledgePurchase` (Android) until `POST /v1/subscriptions/verify` commits `200 OK` (or duplicate already verified for this user), ensuring failed network transactions automatically retry on next launch!
@@ -284,6 +288,7 @@ As a user tapping Subscribe or Restore Purchases, I want my Apple App Store or G
 - **User Cancels Native OS Payment Dialog:** Return cleanly to `PaywallScreen` with zero error alerts.
 - **Ask-to-Buy / Deferred Pending Payment (`PURCHASE_STATE_PENDING`):** Displays non-blocking status banner *"Waiting for family/bank approval — Pro activates automatically once Store confirms"* and never calls `verify` until Store transitions to purchased!
 - **Same Apple ID / Google Account Restored on Wrong CuraFit Account (`409 SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT`):** Clearly informs user which sign-in account currently holds the subscription without overwriting ownership silently.
+- **Upstream Store Verification Outage (`503 BILLING_VERIFICATION_UNAVAILABLE`):** Leaves the OS store transaction unfinished (`transaction.finish()` / `acknowledgePurchase` deferred) and prompts calm retry on next launch without double-charging.
 - **User Deleted Account (GDPR) Then Re-Signed In and Tapped `[Restore Purchases]`:** Because GDPR deletion cleared old `coaching_subscriptions` rows, `POST /v1/subscriptions/restore` re-verifies the active store receipt cleanly onto the new account while preserving anonymized trial tombstones.
 
 ### ACCEPTANCE CRITERIA

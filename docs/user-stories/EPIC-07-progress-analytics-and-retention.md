@@ -15,8 +15,9 @@
 - `US-PRG-01`: Weight Trend & Multi-Horizon Analytics Dashboard (7-Day Moving Average & Strength Curves)
 - `US-PRG-02`: Body Measurements Tracker (Waist, Chest, Hips, Arms, Thighs & Body Fat %)
 - `US-PRG-03`: Private Progress Photos Vault (Local vs. Encrypted Cloud & Before/After Split-Slider)
-- `US-PRG-04`: Gentle Streaks (Streak Freeze Day), Milestone Badges & Visual "Weekly Wrapped" Report
-- `US-PRG-05`: Home Screen Widgets (Android Glance & iOS WidgetKit for Calories, Water, Workout & Fasting)
+- `US-PRG-04`: Gentle Streaks (Manual + Weekly Auto-Freeze Shield), Milestone Badges & Visual "Weekly Wrapped" Report
+- `US-PRG-05`: Home Screen Widgets (Android Glance & iOS WidgetKit for Calories, Water, Workout, Cycle & Fasting)
+- `US-PRG-06`: Female Cycle & Maternal Wellness Companion (Opt-In Phase Awareness, Discreet Mode & 1-Tap Gentle Sessions)
 
 ---
 
@@ -30,7 +31,7 @@
 | **Priority** | `High` |
 | **Labels** | `production`, `mobile`, `progress`, `analytics`, `charts` |
 | **Target Screens** | `ProgressAnalyticsScreen` (Accessible from Coach Hub, Today Weight Card & Profile) |
-| **Entitlement** | `Freemium` (`Free`: `14D` & `30D` weight/adherence charts; `Pro`: `90D` / `All-Time` trends, strength 1RM curve & trajectory overlay) |
+| **Entitlement** | `Freemium` (`Free`: `14D` & `30D` weight, adherence, strength 1RM curve & ETA trajectory; `Pro`: `90D` & `All-Time` multi-horizon history) |
 | **Backend Status** | `Implemented` (`GET /v1/progress/summary`, `GET /v1/weight-logs`, `GET /v1/workout-logs`, `GET /v1/progress/analytics`) |
 
 ### STORY
@@ -131,7 +132,7 @@ As a user undergoing body recomposition or fat loss where the scale sometimes st
    - Returns paginated `{ id, date, waistCm, hipsCm, chestCm, neckCm, leftArmCm, rightArmCm, leftThighCm, rightThighCm, bodyFatPct, notes }`.
 2. **`POST /v1/commands?view=receipt`** (`action: "body_measurement"`)
    - Payload: `{ "date": "2026-11-21", "waistCm": 84.5, "chestCm": 101.0, "hipsCm": 96.0, "rightArmCm": 35.5, "bodyFatPct": 18.2, "notes": "Morning fasted" }`.
-   - Error Codes: `NUMBER_OUT_OF_RANGE` (`20..250 cm`, `bodyFatPct` `3..65%`), `EMPTY_MEASUREMENT_RECORD`.
+   - Error Codes: `NUMBER_OUT_OF_RANGE` (`15..250 cm`, `bodyFatPct` `3..65%`), `EMPTY_MEASUREMENT_RECORD`.
 
 ### RULES & BUSINESS LOGIC
 1. **Partial Measurement Support:** Allow logging just `Waist (cm)` in 5 seconds without forcing the user to measure all 9 body parts every time (`null` omitted sites remain unknown).
@@ -270,13 +271,13 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
 - User has `onboardingCompleted == true` and at least 1 logged action (`food_entry`, `water`, `workout`, `recovery`, or `weight`).
 
 ### SCREEN AND UI DETAILS
-1. **Streak & Milestones Sheet (`StreaksAndBadgesSheet` — Tapped from Today Header `🔥` Pill):**
-   - **Current Streak Counter:** `"🔥 12-Day Active Streak • Best: 21 Days"`
-   - **Qualifying Daily Activities Explained Clearly:** *"Any of: Logging >= 1 meal, finishing a workout (or active Rest day check-in), reaching 80% water, or submitting a recovery check-in keeps your streak alive!"*
-   - **Streak Freeze Shield (`❄️ 1 Freeze Available This Week`):**
-     - Allows manually pausing a scheduled missed day OR auto-protects 1 inactive day per 7-day rolling window without breaking the streak (`coaching_streak_freezes.auto_applied` in consolidated `drizzle/0006_production_features.sql`).
-   - **Milestone Badges Grid (Up to 8 Unlockable Badges):**
-     - `First Step (Day 1)`, `7-Day Rhythm`, `30-Day Warrior`, `Hydration Master (7d 80%+)`, `First Double Progression PR`, `10-Day Food Evidence Unlock`, `Consistency Hero (4 Weeks)`, `Goal Milestone Reached`.
+1. **Streak & Milestones Sheet (`StreaksAndBadgesSheet` — Tapped from Today Header Streak Pill):**
+   - **Current Streak Counter:** `"12-Day Active Streak • Best: 21 Days"`
+   - **Qualifying Daily Activities Explained Clearly:** *"Any of: Logging >= 1 meal, finishing a workout (or active Rest / Eid Flex day), reaching 80% water, or submitting a recovery check-in keeps your streak alive."*
+   - **Streak Freeze Shield (`1 Freeze Available This Week` + `Auto-Protected Days`):**
+     - Supports manually pausing a scheduled missed day (`streak_freeze`) AND automatic server-side weekly auto-freeze protection (`autoAppliedFreezes`, 1 inactive day per 7-day rolling window), plus Eid / holiday `flexDates` (`seasonal_flex`) excluded from streak breaks and adherence penalties (`coaching_streak_freezes.auto_applied`).
+   - **Milestone Badges Grid (8 Canonical Server Badge IDs):**
+     - `STREAK_7D` (`7-Day Streak`), `STREAK_14D` (`14-Day Streak`), `STREAK_30D` (`30-Day Streak`), `HYDRATION_HERO_5D` (`5-Day Hydration Hero`), `CONSISTENT_LOGGER_5D` (`5-Day Consistent Logger`), `WORKOUT_WARRIOR_3X` (`3+ Weekly Workouts`), `NEW_PERSONAL_RECORD` (`New Personal Record`), `NUTRITION_PRECISION_85` (`85%+ Weekly Nutrition Precision`).
 2. **Weekly Wrapped Card (`WeeklyWrappedModal` — Triggered Every Friday/Saturday Morning or Accessible Anytime):**
    - Story-style clean summary cards for the past 7 days:
       - Card 1: `Weekly Adherence Score: 88%` (multi-track `adherenceScorePct` accurately computed for `nutrition_only`, `workouts_only`, and `nutrition_and_workouts`)
@@ -296,7 +297,7 @@ As a user building sustainable healthy habits, I want a motivating but forgiving
 3. **Privacy-Safe Sharing:** Shared Weekly Wrapped cards & WhatsApp recaps omit exact body weight (`kg`), medical conditions, injuries, and any menstrual cycle details — sharing only consistency percentage, workouts/cardio counts, streak, unlocked badges, and CuraFit branding.
 
 ### MAIN FLOW
-1. User reaches Friday morning and sees a subtle celebration banner on Today: `"Your Weekly Wrapped is Ready! ✨"`.
+1. User reaches Friday morning and sees a subtle recap banner on Today: `"Your Weekly Wrapped is Ready"`.
 2. User taps to swipe through 3 colorful recap cards showing `89% Adherence`, `4/4 Workouts + 95m Cardio`, and `-0.5 kg` trend.
 3. User taps `[Share to WhatsApp / Stories]` to share a privacy-safe branded recap card, then closes modal feeling motivated for the weekend.
 
@@ -357,7 +358,7 @@ As a busy phone user checking my home screen dozens of times a day, I want light
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/widgets/snapshot`**
-   - Ultra-compact `< 1.5 KB` endpoint returning strictly `{ date, timezone, serviceTrack, caloriesRemaining, caloriesTarget, proteinGrams, carbsGrams, fatGrams, waterCups, waterTargetCups, streakDays, readinessStatus, fastingPhase, fastingEndsAt, nextWorkoutFocus, workoutStatus }` with short ETag caching for background widget refreshes.
+   - Ultra-compact `< 1.5 KB` endpoint returning strictly `{ date, timezone, serviceTrack, caloriesRemaining, caloriesTarget, proteinGrams, carbsGrams, fatGrams, waterCups, waterTargetCups, streakDays, readinessStatus, fastingPhase, fastingEndsAt, seasonalMode, nextWorkoutFocus, workoutStatus }` (`seasonalMode: "standard" | "ramadan" | "eid_flex"`) with short ETag caching for background widget refreshes.
 2. **`POST /v1/commands?view=receipt`** (`action: "water"`, `date: "YYYY-MM-DD"`, `addCups: 1`) -> Invoked directly by iOS AppIntent / Android BroadcastReceiver when user taps `+1 Cup` on the home screen (always includes explicit local `date` so midnight rollover never mutates the next day!).
 
 ### RULES & BUSINESS LOGIC
@@ -420,58 +421,64 @@ As a female user (especially when managing weight fluctuations, bloating, PCOS, 
 ### SCREEN AND UI DETAILS
 1. **Opt-In Settings (`CycleSettingsSheet` — Accessible from Profile -> Health Preferences or Progress Tab for Female Users Only):**
    - Master toggle: `[Enable Cycle Awareness]` (`enabled: false` by default so users who do not want it experience zero visual clutter).
-   - Inputs (when enabled): `Last Period Start Date` (`YYYY-MM-DD`), `Average Cycle Length` (`21..45` days, default `28`), `Average Period Length` (`2..10` days, default `5`).
+   - **Experience Personalization Toggles:**
+     - `[Adaptive Soft Phase Accent]` (`adaptiveThemeEnabled: true` default — subtly shifts card accents across menstrual, follicular, ovulatory, and luteal days without overwhelming dark/light contrast).
+     - `[Discreet Mode]` (`discreetMode: false` default — switches accent tokens to `"neutral"` and rewords labels to neutral `"Wellness Rhythm"` copy for shoulder-surfing privacy).
+   - Inputs (when enabled): `Last Period Start Date` (`YYYY-MM-DD`, within last 180 days), `Average Cycle Length` (`21..45` days, default `28`), `Average Period Length` (`2..10` days, `averagePeriodLengthDays < averageCycleLengthDays`, default `5`).
    - Clear non-medical disclaimer footer: *"Wellness coaching guidance only — not for contraception, fertility prediction, or medical diagnosis."*
 2. **Cycle Awareness Card (`CycleAwarenessScreen` & Compact Optional Strip on Today/Progress):**
-   - Displays current cycle day (`"Cycle Day 26 of 28 • Luteal Phase"`) and estimated next period date.
-   - **Scale Reassurance Pill (When `waterRetentionLikely == true`):** *"Temporary scale increases (+0.5 to 2 kg) are common water retention during this phase — focus on your 7-day trend!"* (`code: "CYCLE_LUTEAL_WATER_RETENTION"`).
-   - **Pregnancy Auto-Pause State (`maternalStatus in ["pregnant_t1", "pregnant_t2", "pregnant_t3"]`):** Displays calm `"Cycle tracking paused during pregnancy"` notice (`code: "CYCLE_PAUSED_PREGNANCY"`) and hides all period projections.
+   - Displays current cycle day (`"Cycle Day 26 of 28 • Luteal Phase"`) or overdue state (`"Day 31 (3d overdue) • Luteal"`) and estimated next period date (or `null` when overdue, never wrapping backward).
+   - **Scale Reassurance Pill (When `waterRetentionLikely == true`):** *"Temporary scale increases (+0.5 to 2 kg) are common water retention during this phase — focus on your 7-day trend."* (`coachingHintCode: "CYCLE_LUTEAL_WATER_RETENTION"`).
+   - **1-Tap Gentle Training Card (When `suggestedGentleSession == true`):** Calm pill offering `[Activate Gentle Session (0.8x sets • 24h)]` (`action: "cycle_gentle_session"`, `enabled: true`) whenever in early menstrual days (`<= 3`), heavy flow, fatigue, or `crampSeverity >= 3`.
+   - **Pregnancy Auto-Pause State (`maternalStatus in ["pregnant_t1", "pregnant_t2", "pregnant_t3"]`):** Displays calm `"Cycle tracking paused during pregnancy"` notice (`phase: "paused_pregnancy"`, `coachingHintCode: "CYCLE_PAUSED_PREGNANCY"`) and hides all period projections.
 3. **Quick Cycle Check-In Sheet (`CycleLogSheet`):**
    - Toggle `[Period Started Today]` (`periodStart: true`), Flow Level (`none | spotting | light | medium | heavy`), Symptom Chips (all 9 backend `CYCLE_SYMPTOMS`: `cramps`, `bloating`, `fatigue`, `headache`, `mood_changes`, `cravings`, `back_pain`, `tender_breasts`, `insomnia`), Cramp Severity (`0..5`), and optional Notes (`<= 200` chars).
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/cycle/state`**
-   - Returns `{ available, enabled, pausedReason, disclaimer: "wellness_tracking_not_contraception_or_medical_diagnosis", settings: { averageCycleLengthDays, averagePeriodLengthDays, lastPeriodStartDate }, currentCycleDay, estimatedPhase: "menstrual" | "follicular" | "ovulatory" | "luteal" | "unknown", nextPeriodEstimateDate, waterRetentionLikely, coachingGuidance: { code, message, trainingIntensityHint }, recentLogs[] }`.
+   - Returns `{ available, enabled, pausedReason, disclaimer: "wellness_tracking_not_contraception_or_medical_diagnosis", settings: { enabled, averageCycleLengthDays, averagePeriodLengthDays, lastPeriodStartDate, discreetMode, adaptiveThemeEnabled }, currentCycleDay, phase: "menstrual" | "follicular" | "ovulatory" | "luteal" | "paused_pregnancy" | "unknown" | null, waterRetentionLikely, nextPeriodEstimateDate, coachingHintCode, discreetMode, adaptiveThemeEnabled, phaseAccentToken, suggestedGentleSession, isOverdue, overdueDays, recentLogs[] }`.
    - Also surfaced as a compact optional `todaySummary.cycleState` inside `GET /v1/bootstrap` (`null` when not female or not enabled!).
 2. **`POST /v1/commands?view=receipt`** (`action: "cycle_settings"`)
-   - Payload: `{ "enabled": true, "averageCycleLengthDays": 28, "averagePeriodLengthDays": 5, "lastPeriodStartDate": "2026-11-01" }`.
+   - Payload: `{ "enabled": true, "averageCycleLengthDays": 28, "averagePeriodLengthDays": 5, "lastPeriodStartDate": "2026-11-01", "discreetMode": false, "adaptiveThemeEnabled": true }`.
 3. **`POST /v1/commands?view=receipt`** (`action: "cycle_log"`)
    - Payload: `{ "date": "2026-11-21", "periodStart": false, "flowLevel": "medium", "symptoms": ["cramps", "bloating"], "crampSeverity": 3, "notes": "Lower energy today" }`.
    - When `periodStart: true` on a date `>= lastPeriodStartDate`, server automatically advances `lastPeriodStartDate` cleanly.
+4. **`POST /v1/commands?view=receipt`** (`action: "cycle_gentle_session"`)
+   - Payload: `{ "enabled": true | false }` -> Female-only command that sets/clears a `24h` `0.8x` working-set `sessionAdjustment` (`source: "cycle_gentle_session"`) on the active workout plan (`COACHING_CODES`: `CYCLE_GENTLE_SESSION_ACTIVE`).
    - Error Codes: `403 CYCLE_TRACKING_UNAVAILABLE`, `403 HEALTH_CONSENT_REQUIRED`, `400 INVALID_CYCLE_PAYLOAD`, `DATE_IN_FUTURE`, `DATE_TOO_OLD`.
 
 ### RULES & BUSINESS LOGIC
-1. **Strict Female Eligibility & Pregnancy Auto-Pause:** Non-female profiles receive `403 CYCLE_TRACKING_UNAVAILABLE` on `cycle_settings`/`cycle_log` and `{ available: false, enabled: false }` on `GET /v1/cycle/state`. Active pregnancy (`pregnant_t1|t2|t3`) automatically returns `pausedReason: "pregnancy"`, `estimatedPhase: "unknown"`, `nextPeriodEstimateDate: null`, and `coachingGuidance.code: "CYCLE_PAUSED_PREGNANCY"`.
+1. **Strict Female Eligibility & Pregnancy Auto-Pause:** Non-female profiles receive `403 CYCLE_TRACKING_UNAVAILABLE` on `cycle_settings`/`cycle_log`/`cycle_gentle_session` and `{ available: false, enabled: false }` on `GET /v1/cycle/state`. Active pregnancy (`pregnant_t1|t2|t3`) automatically returns `pausedReason: "pregnancy"`, `phase: "paused_pregnancy"`, `nextPeriodEstimateDate: null`, and `coachingHintCode: "CYCLE_PAUSED_PREGNANCY"`.
 2. **Coaching Brief & Scale Reassurance Integration (`personal-brief.mjs`):** When enabled and not paused:
-   - Late luteal (`cycleDay >= cycleLength - 4`) or menstrual (`cycleDay <= periodLength`) sets `waterRetentionLikely: true` and emits `CYCLE_LUTEAL_WATER_RETENTION` in Coaching Brief so temporary scale fluctuations never discourage the user.
-   - High cramps (`crampSeverity >= 3`) or menstrual fatigue emits `CYCLE_MENSTRUAL_GENTLE_TRAINING` suggesting optional `-10..15%` working load reduction or low-impact movement.
-3. **Strict Privacy & GDPR Protection:** Cycle data is NEVER shown on Lock Screen widgets, NEVER included in shared Weekly Wrapped / Workout cards, requires active `health_data_processing` consent, is exported in `GET /v1/account/export`, and is permanently erased in `DELETE /v1/account/delete`.
+   - Late luteal (`currentCycleDay >= averageCycleLengthDays - 5`) or overdue (`isOverdue == true`) or early menstrual (`<= 2`) sets `waterRetentionLikely: true` and emits `CYCLE_LUTEAL_WATER_RETENTION` in Coaching Brief so temporary scale fluctuations never discourage the user.
+   - Early menstrual / high cramps (`crampSeverity >= 3`) / heavy flow / fatigue sets `suggestedGentleSession: true` and emits `CYCLE_MENSTRUAL_GENTLE_TRAINING`, pairing with optional `cycle_gentle_session` (`CYCLE_GENTLE_SESSION_ACTIVE`).
+3. **Strict Privacy & GDPR Protection:** Cycle data is NEVER shown on Lock Screen widgets, NEVER included in shared Weekly Wrapped / Workout cards, supports `discreetMode: true`, requires active `health_data_processing` consent on `cycle_settings`, `cycle_log`, and `cycle_gentle_session`, is exported in `GET /v1/account/export`, and is permanently erased in `DELETE /v1/account/delete`.
 
 ### MAIN FLOW
-1. Female user opens `Profile` -> `Cycle Awareness` and enables tracking with `lastPeriodStartDate = "2026-11-01"`, `cycleLength = 28`.
-2. `cycle_settings` commits; `GET /v1/cycle/state` computes Day `21` (`luteal`).
+1. Female user opens `Profile` -> `Cycle Awareness`, enables tracking (`lastPeriodStartDate = "2026-11-01"`, `cycleLength = 28`, `adaptiveThemeEnabled = true`), and keeps `discreetMode = false`.
+2. `cycle_settings` commits; `GET /v1/cycle/state` computes Day `21` (`phase: "luteal"`).
 3. On Day `26`, scale jumps `+1.1 kg`; Today & Coach Brief show reassuring `CYCLE_LUTEAL_WATER_RETENTION` note explaining temporary water retention.
-4. On Day `29`, user taps `[Period Started Today]` -> `cycle_log` (`periodStart: true`, `flowLevel: "medium"`, `crampSeverity: 3`) updates `lastPeriodStartDate` cleanly and surfaces `CYCLE_MENSTRUAL_GENTLE_TRAINING`.
+4. On Day `29`, user taps `[Period Started Today]` -> `cycle_log` (`periodStart: true`, `flowLevel: "medium"`, `crampSeverity: 3`) updates `lastPeriodStartDate`, sets `suggestedGentleSession: true`, and user activates 1-tap `cycle_gentle_session` (`0.8x` sets for 24h).
 
 ### EDGE CASES
-- **Male Profile Calls `cycle_settings` or `cycle_log`:** Rejected immediately with `403 CYCLE_TRACKING_UNAVAILABLE`.
-- **User Switches Profile `maternalStatus` to `pregnant_t1`:** Cycle tracking pauses automatically (`pausedReason: "pregnancy"`) without deleting historical logs, and resumes cleanly only if `maternalStatus` later changes back to `none` or `breastfeeding`.
-- **User Withdraws `health_data_processing` Consent:** `cycle_settings` and `cycle_log` return `403 HEALTH_CONSENT_REQUIRED` until consent is re-granted.
-- **Irregular Cycle (e.g., PCOS) Exceeding `averageCycleLengthDays`:** When elapsed days exceed `averageCycleLengthDays`, phase returns `"luteal"` calmly without displaying negative countdowns or diagnostic alarms.
+- **Male Profile Calls `cycle_settings`, `cycle_log`, or `cycle_gentle_session`:** Rejected immediately with `403 CYCLE_TRACKING_UNAVAILABLE`.
+- **User Switches Profile `maternalStatus` to `pregnant_t1`:** Cycle tracking pauses automatically (`pausedReason: "pregnancy"`, `phase: "paused_pregnancy"`) without deleting historical logs, and resumes cleanly only if `maternalStatus` later changes back to `none` or `breastfeeding`.
+- **User Withdraws `health_data_processing` Consent:** `cycle_settings`, `cycle_log`, and `cycle_gentle_session` return `403 HEALTH_CONSENT_REQUIRED` until consent is re-granted.
+- **Irregular Cycle (e.g., PCOS) Exceeding `averageCycleLengthDays`:** When elapsed days `>= averageCycleLengthDays`, `isOverdue: true`, `overdueDays: elapsed - cycleLen`, `nextPeriodEstimateDate: null`, and `phase` remains `"luteal"` calmly without modulo wrap-around or diagnostic alarms.
 
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: Male profile is strictly blocked from cycle tracking mutations**
   - **Given** `profile.sex == "male"`
-  - **When** submitting `cycle_settings` or `cycle_log`
+  - **When** submitting `cycle_settings`, `cycle_log`, or `cycle_gentle_session`
   - **Then** server returns `403 CYCLE_TRACKING_UNAVAILABLE` and `GET /v1/cycle/state` returns `available: false`.
 - **Scenario 2: Pregnancy automatically pauses cycle projections**
   - **Given** an opted-in female user switches `maternalStatus` to `"pregnant_t2"`
   - **When** `GET /v1/cycle/state` is called
-  - **Then** `pausedReason == "pregnancy"`, `nextPeriodEstimateDate == null`, and `coachingGuidance.code == "CYCLE_PAUSED_PREGNANCY"`.
-- **Scenario 3: Luteal phase surfaces scale water-retention reassurance**
-  - **Given** an opted-in non-pregnant female user on Day `26` of a `28`-day cycle
-  - **When** fetching `GET /v1/cycle/state` and `GET /v1/coaching/brief`
-  - **Then** `waterRetentionLikely == true` and `CYCLE_LUTEAL_WATER_RETENTION` is returned with zero Arabic in server text.
+  - **Then** `pausedReason == "pregnancy"`, `phase == "paused_pregnancy"`, `nextPeriodEstimateDate == null`, and `coachingHintCode == "CYCLE_PAUSED_PREGNANCY"`.
+- **Scenario 3: Overdue irregular cycle and gentle session behave calmly without modulo wrap**
+  - **Given** an opted-in non-pregnant female user on Day `31` of a `28`-day cycle (or heavy-cramp menstrual day)
+  - **When** fetching `GET /v1/cycle/state` or activating `cycle_gentle_session`
+  - **Then** `isOverdue == true`, `overdueDays == 3`, `nextPeriodEstimateDate == null`, `phase == "luteal"`, and `cycle_gentle_session` applies a `24h` `0.8x` working-set reduction without mutating the underlying template.
 
 ### ANALYTICS
 - `cycle_awareness_toggled` (`enabled`: `boolean`, `cycle_length_days`: `integer`)

@@ -37,8 +37,8 @@ As a mobile user who wants to sign in or save my personalized coaching plan with
 
 ### PRECONDITIONS
 - The user reaches `SocialLoginScreen` from one of four `entrySource` paths:
-  1. `onboarding_account_check`: User tapped *"Yes, I already have an account — Log In"* at Step 0 (`US-MOB-01`).
-  2. `onboarding_summary_start_plan`: Unauthenticated user completed onboarding and tapped `[Continue to Log In & Start My Plan]` (`US-MOB-09`).
+  1. `onboarding_account_check`: User tapped *"Yes, I already have an account — Sign In"* at Step 0 (`US-MOB-01`).
+  2. `onboarding_summary_start_plan`: Unauthenticated user completed onboarding and tapped `[Continue to Sign In & Start My Plan]` (`US-MOB-09`).
   3. `session_expired`: An authenticated user's 30-day refresh token expired, was revoked remotely, or triggered `AUTH_REFRESH_TOKEN_REUSED`.
   4. `settings_reauth`: User explicitly signed out (`US-PRF-06`) and taps Sign In again.
 - Google Sign-In SDK (Credential Manager on Android / GoogleSignIn SDK on iOS) and Apple `ASAuthorizationController` (on iOS) are configured with client IDs matching server `AUTH_OAUTH_*` verification settings.
@@ -64,7 +64,7 @@ As a mobile user who wants to sign in or save my personalized coaching plan with
 4. **Offline Banner / Fallback State:**
    - If device connectivity is offline before tapping or a network timeout occurs:
      - Inline alert card: *"No internet connection. Check your connection and try again."* + `[Retry]`.
-     - **Special Fallback ONLY when `entrySource == "onboarding_account_check"`:** Secondary button `[Continue as new user without logging in for now]` -> sets `onboardingDraft.accountCheck = "no"` and navigates straight to `name` (`US-MOB-03`).
+     - **Special Fallback ONLY when `entrySource == "onboarding_account_check"`:** Secondary button `[Continue as new user without signing in for now]` -> sets `onboardingDraft.accountCheck = "no"` and navigates straight to `name` (`US-MOB-03`).
      - **Special Fallback ONLY when `entrySource == "onboarding_summary_start_plan"`:** Secondary informational banner noting local `pendingSyncPlan` is safely stored on the phone until online.
 5. **Legal Footer:**
    - *"By continuing, you agree to CuraFit's [Terms of Service] and [Privacy Policy]."* (Opens in-app legal sheet without losing auth state).
@@ -130,13 +130,15 @@ As a mobile user who wants to sign in or save my personalized coaching plan with
      - Apple only sends `fullName` on the user's very first sign-in; mobile MUST capture `fullName` if non-null and send it so the backend persists `user.name`. Subsequent Apple sign-ins match by verified `sub` claim (`oauth_subject`).
      - Apple `authorizationCode` is exchanged server-side for a real Apple refresh token and stored encrypted in D1 (`apple_refresh_token_enc`), so GDPR permanent deletion (`DELETE /v1/account/delete`) revokes Sign in with Apple automatically per Apple Guideline 5.1.1(v).
 3. **Authenticated OAuth Provider Management Endpoints (Account Security / Profile):**
-   - **`GET /v1/auth/oauth/providers`**: Lists linked OAuth providers (`{ items: [{ provider, email, linkedAt }] }`).
-   - **`POST /v1/auth/oauth/link`**: Links an additional provider (`{ provider: "google" | "apple", idToken? | identityToken?, authorizationCode? }`) to the currently signed-in account.
-   - **`DELETE /v1/auth/oauth/{provider}`**: Unlinks a secondary provider; blocks unlinking the user's only remaining sign-in method with **`409 CANNOT_UNLINK_LAST_AUTH_METHOD`** (and returns `404 OAUTH_PROVIDER_NOT_LINKED` if not linked).
+   - **`GET /v1/auth/oauth/providers`**: Lists linked OAuth providers (`{ items: [{ provider, subject, email, linkedAt }] }`).
+   - **`POST /v1/auth/oauth/link`**: Links an additional provider (`{ provider: "google" | "apple", idToken? | identityToken?, authorizationCode? }`) to the currently signed-in account, returning `{ linked: true, provider, providers }` (and backfills `avatarUrl` from Google `picture` if empty without overwriting user-uploaded/existing avatars).
+   - **`DELETE /v1/auth/oauth/{provider}`**: Unlinks a secondary provider returning `{ unlinked: true, provider, providers }`; blocks unlinking the user's only remaining sign-in method with **`409 CANNOT_UNLINK_LAST_AUTH_METHOD`** (and returns `404 OAUTH_PROVIDER_NOT_LINKED` if not linked).
    - **Error Codes Handled:**
      - `401 AUTH_OAUTH_TOKEN_INVALID`: Expired, malformed, or wrong-audience Google/Apple ID token -> Show *"Sign-in verification failed. Please try again."*
      - *(Note on previously deleted accounts: Because GDPR deletion in `US-PRF-06` unlinks `coaching_oauth_identities`, a previously deleted Google/Apple user signing in fresh creates a brand-new empty account (`isNewUser: true`, `profile: null`), whereas stale tokens from the deleted account fail with `401 ACCOUNT_DELETED`.)*
      - `409 AUTH_PROVIDER_EMAIL_CONFLICT`: Account email already exists under a different sign-in provider (`params.existingProvider`) -> Prompt the user to confirm linking this provider to their existing account, then retry `POST /v1/auth/oauth/google` or `/apple` with **`linkExisting: true`**.
+     - `409 AUTH_OAUTH_EMAIL_UNVERIFIED`: Provider identity token reports `emailVerified == false` (`params.provider`) -> Refuse silent email matching and ask the user to verify their provider email first.
+     - `409 AUTH_OAUTH_ALREADY_LINKED_OTHER_USER`: Attempted to link an OAuth identity (`params.existingProvider`) already owned by a different CuraFit account -> Surface clear conflict explanation without leaking the other account's email.
      - `409 CANNOT_UNLINK_LAST_AUTH_METHOD`: Attempted to unlink the sole remaining sign-in method -> Inform user to link another provider before unlinking.
      - `429 RATE_LIMITED`: Auth rate limit (`30 req/min/IP`) -> Show cooldown retry message using `error.params.retryAfterSeconds`.
      - `503 AUTH_JWKS_UNAVAILABLE`: Upstream Google/Apple JWKS unreachable -> Show retryable error button.
@@ -158,7 +160,10 @@ As a mobile user who wants to sign in or save my personalized coaching plan with
 6. Mobile stores tokens securely in Keychain/Keystore and immediately transitions to `US-AUTH-02` (Post-Auth Account Resolution).
 
 ### EDGE CASES
-- **Apple Hide My Email (`privaterelay.appleid.com`):** Accepted seamlessly as a valid email; `sub` (`apple:<subject>`) is the immutable primary identity key in `coaching_oauth_identities`.
+- **Apple Hide My Email (`privaterelay.appleid.com`) & Empty Second-Login `fullName`:** Accepted seamlessly as a valid email; `sub` (`apple:<subject>`) is the immutable primary identity key in `coaching_oauth_identities`, and subsequent sign-ins when Apple returns `fullName == null` preserve the stored profile/display name without overwriting it.
+- **Unverified Provider Email / Cross-Account Link Conflict:** `409 AUTH_OAUTH_EMAIL_UNVERIFIED` or `409 AUTH_OAUTH_ALREADY_LINKED_OTHER_USER` never merges accounts silently; shows calm diagnostic copy and keeps local state untouched.
+- **Post-Auth `GET /v1/bootstrap` Timeout After OAuth Success:** Tokens remain securely stored in Keychain/Keystore; displays an inline `[Retry Setup]` overlay rather than forcing the user through OAuth again.
+- **Keychain / EncryptedSharedPreferences Keystore Read Failure:** Catch Keystore decryption corruption cleanly, clear unreadable local session keys safely without crashing, and route to `SocialLoginScreen`.
 - **User Kills App While OAuth Request Is In-Flight:** On cold relaunch, since `onboardingCompleted == false` and tokens were not persisted yet, app opens right back at `pendingSyncPlan` / `summary` (`US-MOB-01`) with zero lost onboarding answers.
 - **Same Email on Google & Apple (Explicit Linking):** If the verified email already belongs to an existing account under another provider, the backend returns `409 AUTH_PROVIDER_EMAIL_CONFLICT` to prevent silent takeover; the app prompts the user to confirm linking and retries with `linkExisting: true` (or lets authenticated users manage providers via `GET/POST/DELETE /v1/auth/oauth/*`).
 - **Double-Tap on Sign-In Button:** Disabled immediately after first tap until OAuth flow returns success, cancellation, or error.
@@ -228,16 +233,15 @@ As a newly authenticated user, I want the app to automatically determine whether
 ### API & BACKEND CONTRACT
 1. **`GET /v1/bootstrap`**
    - **Headers:** `Authorization: Bearer <accessToken>`, `Accept: application/json`
-   - **Key Fields Inspected:** `data.revision`, `data.onboardingCompleted`, `data.onboarding` (`object | null`), `data.profile`, `data.consents` (deterministic `HealthConsentModal` gate), `data.preferences`, `data.activeNutritionPlanRef`, `data.activeWorkoutPlanRef`, `data.eligibility`, `data.todaySummary`, `data.unreadCoachingInboxCount`, `data.streakSummary`, `data.engagementState`, `data.pendingAdaptations`, `data.entitlements`, `data.notificationPreferences`.
+   - **Key Fields Inspected:** `data.revision`, `data.onboardingCompleted`, `data.onboarding` (`object | null`), `data.profile`, `data.consents` (deterministic `HealthConsentModal` gate), `data.preferences`, `data.activeNutritionPlanRef`, `data.activeWorkoutPlanRef`, `data.eligibility`, `data.todaySummary` (`nutrition`, `hydration`, `activity`, `latestWeight`, `fastingState`, `ramadanMode`, `recovery`, `scheduledWorkout`, `cycleState`), `data.seasonalContext`, `data.maternalContext`, `data.weeklyCheckinDue`, `data.unreadCoachingInboxCount`, `data.streakSummary`, `data.engagementState`, `data.pendingAdaptations`, `data.entitlements`, `data.notificationPreferences`.
 2. **`POST /v1/account/consents`** (plus **`GET /v1/account/consents`** for standalone consent audit)
-   - **Request Body:** `{ "consentType": "health_data_processing", "version": "1.0.0", "accepted": true }`
+   - **Request Body:** Single `{ "consentType": "health_data_processing", "version": "1.0.0", "accepted": true }` OR atomic batch `{ "items": [{ "consentType": "health_data_processing", "version": "1.0.0", "accepted": true }, { "consentType": "terms_and_privacy", "version": "1.0.0", "accepted": true }] }` (returning `{ items, consents }`).
 3. **`POST /v1/commands?view=full` (`action: "generate"`)**
    - Used when uploading `pendingSyncPlan` to either a new account (`revision: 0`) or overwriting an existing account (`revision: <serverRevision>`, `payload.overwriteExisting: true`; omitting overwrite with `overwriteExisting: false` returns `409 PROFILE_ALREADY_EXISTS`).
 4. **`GET /v1/plans/{planId}` & `GET /v1/workout-plans/{id}`**
-   - Used when restoring an existing server plan so Today/Nutrition/Workouts load complete 7-day schedules into SQLDelight immediately.
-5. **`POST /v1/auth/claim-anonymous`** *(Legacy / web-migration only — not used by native mobile fresh auth)*:
-   - Request Body: `{ "anonymousUserId": "anon:...", "consent": true }`
-   - Error Codes: `403 ANONYMOUS_OWNERSHIP_REQUIRED`, `409 ANONYMOUS_ALREADY_CLAIMED`, `409 TARGET_ACCOUNT_NOT_EMPTY`.
+   - Used when restoring an existing server plan so Today/Nutrition/Workouts load complete 7-day schedules (plus enriched target reps/RIR/rest/weekly set totals) into SQLDelight immediately.
+5. **`POST /v1/auth/claim-anonymous`** *(Strict Legacy Web-only cookie migration — NOT used or exposed in native KMM mobile flows)*:
+   - Requires browser `coach_uid` cookie + `{ "anonymousUserId": "anon:...", "consent": true }`. Mobile apps authenticate purely via Google/Apple OIDC without anonymous cookies.
 
 ### RULES & BUSINESS LOGIC
 1. **Routing Matrix After `GET /v1/bootstrap` (Canonical Auth States: `signed_in_needs_onboarding` & `signed_in_active`):**
@@ -270,7 +274,7 @@ As a newly authenticated user, I want the app to automatically determine whether
 ### EDGE CASES
 - **Upload Fails Mid-Way (`503 DATABASE_UNAVAILABLE` or Timeout):** Keep user signed in, preserve `pendingSyncPlan`, show *"Could not save your plan right now. Please try again."* with `[Retry]` reusing the exact same `Idempotency-Key`.
 - **Legacy `workouts_only` Account Restored Without `healthConfirmed` or With `saturday_0` Schedule:** `data.eligibility.needsHealthConfirmation` or `needsScheduleConfirmation` is `true` -> `US-WRK-01` immediately surfaces the confirmation sheet on arrival.
-- **Consent Declined:** User tapping `"Decline"` on `HealthConsentModal` cannot proceed to `Today`; offers `"Review Terms Again"` or `"Sign Out"` (`POST /v1/auth/logout`).
+- **Consent Declined:** User tapping `"Decline"` on `HealthConsentModal` cannot proceed to `Today`; offers `"Review Terms Again"` or `"Sign Out"` (`POST /v1/auth/logout` — supports empty body `{}` or omitted body to revoke the current device session cleanly).
 - **`409 REVISION_CONFLICT` During `generate` Overwrite (Another Device Simultaneously Updated Account):** Re-fetch `GET /v1/bootstrap` to obtain latest `revision` and confirm conflict choice cleanly.
 
 ### ACCEPTANCE CRITERIA
@@ -328,7 +332,7 @@ As a daily CuraFit user, I want to stay signed in seamlessly across app restarts
    - **Auth:** Public (`No Auth`, uses `refreshToken` in body)
    - **Headers:** `Content-Type: application/json`, `Accept: application/json`
    - **Request Body:** `{ "refreshToken": "cfrt_...", "deviceId": "<device-uuid>" }`
-   - **Success Response (`200 OK`):** Returns new `accessToken`, `expiresIn` (`900`), `expiresAt`, **newly rotated `refreshToken` (`cfrt_...`)**, `refreshExpiresIn` (`2592000`), `sessionId`, `user`.
+   - **Success Response (`200 OK`):** Returns `tokenType: "Bearer"`, new `accessToken`, `expiresIn` (`900`), `expiresAt`, **newly rotated `refreshToken` (`cfrt_...`)**, `refreshExpiresIn` (`2592000`), `refreshExpiresAt`, `sessionId`, `user` (with hydrated short-lived `avatarUrl`).
    - **Error Codes:**
      - `401 AUTH_REFRESH_TOKEN_INVALID`: Unrecognized token -> Clear tokens, route to `SocialLoginScreen`.
      - `401 AUTH_REFRESH_TOKEN_REUSED` / `AUTH_REFRESH_TOKEN_CONCURRENT_REUSE`: Already-rotated token replayed (or concurrent double-refresh race); server revokes entire session -> Clear tokens, prompt re-auth.
@@ -394,7 +398,7 @@ As a daily CuraFit user, I want to stay signed in seamlessly across app restarts
 | **Epic** | `EPIC-02` |
 | **Priority** | `Highest` |
 | **Labels** | `production`, `mobile`, `sync`, `offline` |
-| **Target Screens** | Global Sync Engine + Top Subtle Sync Status Pill (`Synced ✓` / `Offline — N Pending` / `Syncing...`) |
+| **Target Screens** | Global Sync Engine + Top Subtle Sync Status Pill (`Synced` / `Offline — N Pending` / `Syncing...`) |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Implemented` |
 
@@ -452,7 +456,8 @@ As a user who logs meals and workouts inside gyms with poor Wi-Fi or across mult
      }
      ```
 4. **`GET /v1/state`** *(Fallback Full Resync ONLY when `resyncRequired == true`)*
-5. **`GET /v1/capabilities`** *(Version & maintenance gating: `minSupportedVersion`, `maintenanceMode`, `426 CLIENT_UPDATE_REQUIRED`, `503 MAINTENANCE_MODE`, `features`, `deferredFeatures`)*
+5. **`GET /v1/capabilities`** *(Version, auth & maintenance gating)*:
+   - Returns nested structures `minSupportedVersion: { android: string, ios: string }`, `maintenanceMode: { active: boolean, message: string | null }`, `auth: { provider: string, configured: boolean }`, plus `features: string[]` and `deferredFeatures: string[]`.
    - **Error Codes Handled:**
      - `409 REVISION_CONFLICT`: Expected revision < `serverRevision` -> Triggers automatic delta fetch & rebase loop.
      - `409 IDEMPOTENCY_KEY_REUSED_MISMATCH`: Bug safeguard (different `action`/`payload` reused under same key); mark item failed, generate fresh key if user retries manually.
@@ -491,7 +496,7 @@ As a user who logs meals and workouts inside gyms with poor Wi-Fi or across mult
 4. User leaves the gym and regains 5G connectivity.
 5. Sync worker drains item #1 (`revision: 12`) -> server returns `409 REVISION_CONFLICT` (`currentRevision: 13`).
 6. Sync worker automatically calls `GET /v1/sync/changes?after=12` (with `&afterSeq=...` if `> 0`), fetches the updated plan (`GET /v1/plans/{id}`), commits `localRevision = 13`, and retries item #1 with `revision: 13` and the same `Idempotency-Key`.
-7. All 7 items commit (`rev 13 -> 20`), the top sync pill flashes *"Synced ✓"* and fades out cleanly.
+7. All 7 items commit (`rev 13 -> 20`), the top sync pill shows *"Synced"* briefly and fades out cleanly.
 
 ### EDGE CASES
 - **Network Drops After Server Committed Command #1 (`200 OK` Lost in Transit):** Sync worker retries with the exact same `Idempotency-Key` and `action`/`payload` (even if `revision` rebased); server returns `200 OK` with header `Idempotency-Replayed: true` and zero duplicate entries are created!

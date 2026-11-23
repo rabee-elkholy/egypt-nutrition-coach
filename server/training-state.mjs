@@ -62,5 +62,11 @@ export function forkWorkout(s,next,{oldDayIndexByNew={},carryCalendar=true}={}){
  const moved=carryCalendar?(s.scheduleOverrides||[]).filter(o=>o.planId===previous.id&&(o.fromDate>=clockDate()||o.toDate>=clockDate())):[];
  s.scheduleOverrides=[...(s.scheduleOverrides||[]),...moved.map(o=>({...o,planId:next.id}))];
  s.workoutArchives||=[];s.workoutArchives.push(previous);
- s.workoutPlan=next;s.sessionAdjustment=null;return s;
+ s.workoutPlan=next;
+ if(s.sessionAdjustment&&(!s.sessionAdjustment.expiresAt||Date.parse(s.sessionAdjustment.expiresAt)>clockNow())){
+  s.sessionAdjustment={...s.sessionAdjustment,planId:next.id};
+ }else{
+  s.sessionAdjustment=null;
+ }
+ return s;
 }

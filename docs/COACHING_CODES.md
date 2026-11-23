@@ -84,9 +84,9 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `COACHING_BARRIER_QUESTION` | `coaching` | `normal` | `domain` | Tell us the main barrier affecting your recent {domain} consistency so we can choose a realistic next step. |
 | `COACHING_REVIEW_DUE` | `coaching` | `attention` | `caseId` | Your agreed coaching step is due for review. Report whether it helped, did not help, or was not tried. |
 | `COMEBACK_DELOAD_ACTIVE` | `training` | `normal` | `tier`, `setFactor`, `expiresAt` | Gentle comeback ramp-in is active ({setFactor}x sets) to help you rebuild momentum safely. |
-| `BRIEF_TRAINING_PERFORMANCE` | `brief` | `attention` | — | Recent workout performance shows a drop; prioritizing recovery before pushing load or deeper calorie cuts. |
+| `BRIEF_TRAINING_PERFORMANCE` | `brief` | `attention` | `exerciseId`, `fromKg`, `toKg` | Average load for {exerciseId} moved from {fromKg} to {toKg} kg; prioritizing recovery before pushing load or deeper calorie cuts. |
 | `BRIEF_FOLLOWUP_TIRED` | `brief` | `attention` | — | You reported low energy or fatigue during follow-up; training load and calorie cuts are held conservatively. |
-| `BRIEF_FOLLOWUP_SLEEP` | `brief` | `attention` | — | Short sleep was recorded recently; improving sleep duration will help stabilize appetite and recovery. |
+| `BRIEF_FOLLOWUP_SLEEP` | `brief` | `normal` | `sleepHours`, `date` | Last logged sleep was {sleepHours} hours on {date}. Consistent logging helps spot trends early. |
 | `BRIEF_FOLLOWUP_ACTIVITY` | `brief` | `normal` | — | Recent daily step or movement feedback was logged and factored into your weekly coaching context. |
 | `VOLUME_HOLD` | `training` | `normal` | `muscle`, `currentSets` | Weekly volume for {muscle} is held at {currentSets} sets while monitoring recovery and progression. |
 | `CARDIO_HIGH_IMPACT_CAUTION` | `training` | `attention` | `modality`, `reasons` | High-impact cardio ({modality}) logged alongside joint, pregnancy, or senior safety considerations ({reasons}); consider low-impact alternatives like walking, cycling, or swimming if discomfort arises. |
@@ -94,3 +94,12 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `CYCLE_MENSTRUAL_GENTLE_TRAINING` | `brief` | `normal` | `cycleDay` | Cycle day {cycleDay} (menstrual phase): listen to energy and cramp levels; lighter loads, walking, or extra rest are completely normal today. |
 | `CYCLE_FOLLICULAR_PEAK_READINESS` | `brief` | `normal` | `cycleDay` | Cycle day {cycleDay} (follicular phase): energy and recovery readiness are often higher during this window; a good time for quality resistance sessions. |
 | `CYCLE_PAUSED_PREGNANCY` | `brief` | `normal` | `maternalStatus` | Menstrual cycle predictions are automatically paused during pregnancy ({maternalStatus}); maternal safety guidance remains active. |
+| `BRIEF_TRAINING_PERFORMANCE_UP` | `brief` | `normal` | `exerciseId`, `fromKg`, `toKg` | Average load for {exerciseId} progressed from {fromKg} to {toKg} kg. |
+| `BRIEF_TRAINING_PERFORMANCE_REPS` | `brief` | `normal` | `exerciseId`, `fromReps`, `toReps` | Reps for {exerciseId} progressed from {fromReps} to {toReps}. |
+| `SPLIT_REVIEW_SUGGEST_UPPER_LOWER` | `training` | `normal` | `days` | Because you train {days}+ days consistently with ready recovery, Upper/Lower or Push/Pull/Legs is available in Preferences if sessions feel long or you prefer dedicated focus days. |
+| `SPLIT_REVIEW_KEEP_FULL_BODY` | `training` | `normal` | `days` | At {days} training days per week, continuing with Full Body remains practical and time-efficient. |
+| `SPLIT_REVIEW_RECOVERY_FIRST` | `training` | `attention` | `days` | Submit a fresh ready recovery check-in first; when managing pain or fatigue, recovery takes priority over changing splits. |
+| `SPLIT_REVIEW_BUILD_CONSISTENCY` | `training` | `normal` | `days`, `completedCount` | Focus on session consistency first; build at least 16 completed sessions ({completedCount} logged) and steady recent adherence before switching splits. |
+| `SPLIT_REVIEW_NOT_DUE` | `training` | `normal` | — | 8-week Full Body split review is available after 8 weeks and 16+ completed workouts on a 4+ day Full Body program. |
+| `SEASONAL_EID_FLEX_ACTIVE` | `nutrition` | `normal` | `occasion`, `endDate` | Seasonal Flex Mode ({occasion}) is active through {endDate} at maintenance calories without streak penalty. |
+| `CYCLE_GENTLE_SESSION_ACTIVE` | `training` | `normal` | — | Cycle comfort adjustment is active with 0.8x working sets for 24 hours. |

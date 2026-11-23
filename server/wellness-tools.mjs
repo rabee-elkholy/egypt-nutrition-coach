@@ -106,25 +106,38 @@ export function saveCustomRecipe(s, p = {}) {
   }
 
   const calcIngredients = [];
+  const calcAdditions = [];
   const storedIngredients = [];
-  let totalGrams = 0;
+  let rawSumGrams = 0;
 
   for (const raw of rawItems) {
     if (!raw || typeof raw !== 'object') {
-      throw apiError('INVALID_RECIPE_PAYLOAD', 'Each recipe ingredient must be an object with foodId and grams.', { status: 400 });
+      throw apiError('INVALID_RECIPE_PAYLOAD', 'Each recipe ingredient must be an object with foodId and grams or ml.', { status: 400 });
     }
     const foodId = typeof raw.foodId === 'string' ? raw.foodId.trim() : (typeof raw.key === 'string' ? raw.key.trim() : (typeof raw.id === 'string' ? raw.id.trim() : ''));
-    const gramsNum = Number(raw.grams);
-    if (!foodId || !Number.isFinite(gramsNum) || gramsNum < 1 || gramsNum > 5000) {
-      throw apiError('INVALID_RECIPE_PAYLOAD', 'Each recipe ingredient requires a valid foodId and grams between 1 and 5000.', { status: 400 });
+    const hasMl = raw.ml != null && raw.ml !== '';
+    const amountNum = Number(hasMl ? raw.ml : raw.grams);
+    if (!foodId || !Number.isFinite(amountNum) || amountNum < 1 || amountNum > 5000) {
+      throw apiError('INVALID_RECIPE_PAYLOAD', 'Each recipe ingredient requires a valid foodId and grams or ml between 1 and 5000.', { status: 400 });
     }
     const catItem = getFoodCatalogItem(foodId);
     if (!catItem) {
       throw apiError('INVALID_RECIPE_PAYLOAD', `Recipe ingredient not found in food catalog: ${foodId}.`, { status: 400 });
     }
-    const grams = round1(gramsNum);
-    totalGrams += grams;
-    calcIngredients.push({ id: catItem.id, grams });
+    let grams = round1(amountNum);
+    if (hasMl) {
+      if (catItem.volume_evidence) {
+        const refG = Number(catItem.volume_evidence.reference_grams || catItem.volume_evidence.grams || 0);
+        const refMl = Number(catItem.volume_evidence.reference_ml || catItem.volume_evidence.ml || 0);
+        grams = refG > 0 && refMl > 0 ? round1(amountNum * (refG / refMl)) : round1(amountNum);
+      } else if (raw.densityGPerMl != null && Number(raw.densityGPerMl) > 0) {
+        grams = round1(amountNum * Number(raw.densityGPerMl));
+      }
+      calcIngredients.push({ id: catItem.id, ml: amountNum, ...(raw.densityGPerMl != null ? { densityGPerMl: Number(raw.densityGPerMl) } : {}) });
+    } else {
+      calcIngredients.push({ id: catItem.id, grams });
+    }
+    rawSumGrams += grams;
     storedIngredients.push({
       foodId: catItem.id,
       key: catItem.planningKey || catItem.id,
@@ -132,6 +145,7 @@ export function saveCustomRecipe(s, p = {}) {
       nameEn: catItem.name_en || catItem.name,
       nameAr: catItem.name_ar || null,
       grams,
+      ...(hasMl ? { ml: round1(amountNum) } : {}),
       state: catItem.state || 'as_sold',
       source: catItem.source || 'catalog',
       isApproximate: Boolean(catItem.isApproximate),
@@ -139,14 +153,66 @@ export function saveCustomRecipe(s, p = {}) {
     });
   }
 
-  totalGrams = round1(totalGrams);
-  const calc = calculatePreparedBeverageOrRecipe({
+  const rawAdditions = Array.isArray(p?.additions) ? p.additions : [];
+  if (rawAdditions.length > 15) {
+    throw apiError('INVALID_RECIPE_PAYLOAD', 'Recipe can include at most 15 additions.', { status: 400 });
+  }
+  for (const raw of rawAdditions) {
+    const foodId = typeof raw?.foodId === 'string' ? raw.foodId.trim() : (typeof raw?.key === 'string' ? raw.key.trim() : (typeof raw?.id === 'string' ? raw.id.trim() : ''));
+    const hasMl = raw?.ml != null && raw?.ml !== '';
+    const amountNum = Number(hasMl ? raw.ml : raw?.grams);
+    if (!foodId || !Number.isFinite(amountNum) || amountNum < 1 || amountNum > 5000) {
+      throw apiError('INVALID_RECIPE_PAYLOAD', 'Each recipe addition requires a valid foodId and grams or ml between 1 and 5000.', { status: 400 });
+    }
+    const catItem = getFoodCatalogItem(foodId);
+    if (!catItem) {
+      throw apiError('INVALID_RECIPE_PAYLOAD', `Recipe ingredient not found in food catalog: ${foodId}.`, { status: 400 });
+    }
+    let grams = round1(amountNum);
+    if (hasMl) {
+      if (raw.densityGPerMl != null && Number(raw.densityGPerMl) > 0) grams = round1(amountNum * Number(raw.densityGPerMl));
+      calcAdditions.push({ id: catItem.id, ml: amountNum, ...(raw.densityGPerMl != null ? { densityGPerMl: Number(raw.densityGPerMl) } : {}) });
+    } else {
+      calcAdditions.push({ id: catItem.id, grams });
+    }
+    rawSumGrams += grams;
+    storedIngredients.push({
+      foodId: catItem.id,
+      key: catItem.planningKey || catItem.id,
+      name: catItem.name,
+      nameEn: catItem.name_en || catItem.name,
+      nameAr: catItem.name_ar || null,
+      grams,
+      ...(hasMl ? { ml: round1(amountNum) } : {}),
+      isAddition: true,
+      state: catItem.state || 'as_sold',
+      source: catItem.source || 'catalog',
+      isApproximate: Boolean(catItem.isApproximate),
+      values_per_100g: catItem.values
+    });
+  }
+
+  let customFinalWeight = null;
+  if (p?.finalWeightGrams !== undefined && p.finalWeightGrams !== null && p.finalWeightGrams !== '') {
+    const fw = Number(p.finalWeightGrams);
+    if (!Number.isFinite(fw) || fw < 1 || fw > 25000) {
+      throw apiError('INVALID_RECIPE_PAYLOAD', 'finalWeightGrams must be a number between 1 and 25000.', { status: 400 });
+    }
+    customFinalWeight = round1(fw);
+  }
+
+  const calcPreview = calculatePreparedBeverageOrRecipe({
     ingredients: calcIngredients,
-    finalWeightGrams: totalGrams,
+    additions: calcAdditions,
+    finalWeightGrams: customFinalWeight || Math.max(1, round1(rawSumGrams)),
     requireApproved: false
   });
 
-  const totalEnergy = Number(calc.nutrients?.energy?.total);
+  const inputWeightGrams = round1(Number(calcPreview.inputWeightGrams || rawSumGrams));
+  const totalGrams = customFinalWeight || inputWeightGrams;
+  const yieldRatio = customFinalWeight && inputWeightGrams > 0 ? round2(customFinalWeight / inputWeightGrams) : null;
+
+  const totalEnergy = Number(calcPreview.nutrients?.energy?.total);
   if (!Number.isFinite(totalEnergy) || totalEnergy <= 0) {
     throw apiError('INVALID_RECIPE_PAYLOAD', 'Custom recipe payload is invalid or contains zero-energy ingredients.', { status: 400 });
   }
@@ -155,8 +221,8 @@ export function saveCustomRecipe(s, p = {}) {
   const perServing = {};
   const per100g = {};
   for (const k of RECIPE_METRICS) {
-    const tVal = calc.nutrients?.[k]?.total != null ? Number(calc.nutrients[k].total) : null;
-    const p100Val = calc.nutrients?.[k]?.per100g != null ? Number(calc.nutrients[k].per100g) : null;
+    const tVal = calcPreview.nutrients?.[k]?.total != null ? Number(calcPreview.nutrients[k].total) : null;
+    const p100Val = calcPreview.nutrients?.[k]?.per100g != null ? Number(calcPreview.nutrients[k].per100g) : null;
     totals[k] = round2(tVal);
     perServing[k] = tVal == null ? null : round2(tVal / servings);
     per100g[k] = round2(p100Val);
@@ -168,8 +234,12 @@ export function saveCustomRecipe(s, p = {}) {
     id: existing?.id || requestedId || crypto.randomUUID(),
     name,
     servings,
+    inputWeightGrams,
+    finalWeightGrams: customFinalWeight,
+    yieldRatio,
     totalGrams,
     gramsPerServing: round1(totalGrams / servings),
+    qualityTier: calcPreview.qualityTier,
     totals,
     perServing,
     per100g,
@@ -404,7 +474,13 @@ export function updateCycleSettings(s, p = {}) {
   if (typeof p?.enabled !== 'boolean') {
     throw apiError('INVALID_CYCLE_PAYLOAD', 'Boolean enabled field is required for cycle_settings.', { status: 400 });
   }
-  const prev = s.cycleSettings || { enabled: false, averageCycleLengthDays: 28, averagePeriodLengthDays: 5, lastPeriodStartDate: null };
+  if (p?.discreetMode !== undefined && typeof p.discreetMode !== 'boolean') {
+    throw apiError('INVALID_CYCLE_PAYLOAD', 'discreetMode must be a boolean.', { status: 400 });
+  }
+  if (p?.adaptiveThemeEnabled !== undefined && typeof p.adaptiveThemeEnabled !== 'boolean') {
+    throw apiError('INVALID_CYCLE_PAYLOAD', 'adaptiveThemeEnabled must be a boolean.', { status: 400 });
+  }
+  const prev = s.cycleSettings || { enabled: false, averageCycleLengthDays: 28, averagePeriodLengthDays: 5, lastPeriodStartDate: null, discreetMode: false, adaptiveThemeEnabled: true };
   const avgCycle = p.averageCycleLengthDays !== undefined ? Number(p.averageCycleLengthDays) : prev.averageCycleLengthDays;
   const avgPeriod = p.averagePeriodLengthDays !== undefined ? Number(p.averagePeriodLengthDays) : prev.averagePeriodLengthDays;
   if (!Number.isInteger(avgCycle) || avgCycle < 21 || avgCycle > 45) {
@@ -426,11 +502,15 @@ export function updateCycleSettings(s, p = {}) {
       lastPeriodStartDate = d;
     }
   }
+  const discreetMode = p?.discreetMode !== undefined ? p.discreetMode : Boolean(prev.discreetMode);
+  const adaptiveThemeEnabled = p?.adaptiveThemeEnabled !== undefined ? p.adaptiveThemeEnabled : (prev.adaptiveThemeEnabled !== undefined ? Boolean(prev.adaptiveThemeEnabled) : true);
   s.cycleSettings = {
     enabled: p.enabled,
     averageCycleLengthDays: avgCycle,
     averagePeriodLengthDays: avgPeriod,
     lastPeriodStartDate,
+    discreetMode,
+    adaptiveThemeEnabled,
     updatedAt: isoNow()
   };
   return s.cycleSettings;
@@ -487,6 +567,16 @@ export function logCycleEntry(s, p = {}) {
   return entry;
 }
 
+function resolveCycleAccentToken(phase, discreetMode, adaptiveThemeEnabled) {
+  if (discreetMode || !adaptiveThemeEnabled) return 'neutral';
+  if (phase === 'paused_pregnancy') return 'maternal_warm';
+  if (phase === 'menstrual') return 'menstrual_clay';
+  if (phase === 'follicular') return 'follicular_sage';
+  if (phase === 'ovulatory') return 'ovulatory_gold';
+  if (phase === 'luteal') return 'luteal_plum';
+  return 'neutral';
+}
+
 export function computeCycleState(s, now = clockNow()) {
   if (s?.profile?.sex !== 'female') {
     return {
@@ -500,15 +590,25 @@ export function computeCycleState(s, now = clockNow()) {
       waterRetentionLikely: false,
       nextPeriodEstimateDate: null,
       coachingHintCode: null,
+      discreetMode: false,
+      adaptiveThemeEnabled: true,
+      phaseAccentToken: 'neutral',
+      suggestedGentleSession: false,
+      isOverdue: false,
+      overdueDays: 0,
       recentLogs: []
     };
   }
 
+  const discreetMode = Boolean(s.cycleSettings?.discreetMode);
+  const adaptiveThemeEnabled = s.cycleSettings?.adaptiveThemeEnabled !== false;
   const settings = {
     enabled: Boolean(s.cycleSettings?.enabled),
     averageCycleLengthDays: s.cycleSettings?.averageCycleLengthDays ?? 28,
     averagePeriodLengthDays: s.cycleSettings?.averagePeriodLengthDays ?? 5,
-    lastPeriodStartDate: s.cycleSettings?.lastPeriodStartDate ?? null
+    lastPeriodStartDate: s.cycleSettings?.lastPeriodStartDate ?? null,
+    discreetMode,
+    adaptiveThemeEnabled
   };
   const recentLogs = [...(s.cycleLogs || [])]
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -526,6 +626,12 @@ export function computeCycleState(s, now = clockNow()) {
       waterRetentionLikely: false,
       nextPeriodEstimateDate: null,
       coachingHintCode: null,
+      discreetMode,
+      adaptiveThemeEnabled,
+      phaseAccentToken: 'neutral',
+      suggestedGentleSession: false,
+      isOverdue: false,
+      overdueDays: 0,
       recentLogs
     };
   }
@@ -542,6 +648,12 @@ export function computeCycleState(s, now = clockNow()) {
       waterRetentionLikely: false,
       nextPeriodEstimateDate: null,
       coachingHintCode: 'CYCLE_PAUSED_PREGNANCY',
+      discreetMode,
+      adaptiveThemeEnabled,
+      phaseAccentToken: resolveCycleAccentToken('paused_pregnancy', discreetMode, adaptiveThemeEnabled),
+      suggestedGentleSession: false,
+      isOverdue: false,
+      overdueDays: 0,
       recentLogs
     };
   }
@@ -567,6 +679,12 @@ export function computeCycleState(s, now = clockNow()) {
       waterRetentionLikely: false,
       nextPeriodEstimateDate: null,
       coachingHintCode: null,
+      discreetMode,
+      adaptiveThemeEnabled,
+      phaseAccentToken: 'neutral',
+      suggestedGentleSession: false,
+      isOverdue: false,
+      overdueDays: 0,
       recentLogs
     };
   }
@@ -574,31 +692,42 @@ export function computeCycleState(s, now = clockNow()) {
   const elapsedDays = Math.max(0, Math.floor((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${anchorDate}T12:00:00Z`)) / 86400000));
   const cycleLen = settings.averageCycleLengthDays;
   const periodLen = settings.averagePeriodLengthDays;
-  const offsetInCycle = elapsedDays % cycleLen;
-  const currentCycleDay = offsetInCycle + 1;
-  const nextPeriodEstimateDate = dateOffset(today, cycleLen - offsetInCycle);
+  const isOverdue = elapsedDays >= cycleLen;
+  const overdueDays = isOverdue ? elapsedDays - cycleLen : 0;
+  const currentCycleDay = elapsedDays + 1;
+  const nextPeriodEstimateDate = isOverdue ? null : dateOffset(today, cycleLen - elapsedDays);
   const ovulationDay = Math.max(periodLen + 2, cycleLen - 14);
 
   let phase = 'luteal';
   let coachingHintCode = null;
   let waterRetentionLikely = false;
 
-  if (currentCycleDay <= periodLen) {
+  if (!isOverdue && currentCycleDay <= periodLen) {
     phase = 'menstrual';
+    waterRetentionLikely = currentCycleDay <= 2;
     coachingHintCode = 'CYCLE_MENSTRUAL_GENTLE_TRAINING';
-  } else if (currentCycleDay < ovulationDay - 1) {
+  } else if (!isOverdue && currentCycleDay < ovulationDay - 1) {
     phase = 'follicular';
     coachingHintCode = 'CYCLE_FOLLICULAR_PEAK_READINESS';
-  } else if (currentCycleDay <= ovulationDay + 1) {
+  } else if (!isOverdue && currentCycleDay <= ovulationDay + 1) {
     phase = 'ovulatory';
     coachingHintCode = null;
   } else {
     phase = 'luteal';
-    if (currentCycleDay >= cycleLen - 5) {
+    if (isOverdue || currentCycleDay >= cycleLen - 5) {
       waterRetentionLikely = true;
       coachingHintCode = 'CYCLE_LUTEAL_WATER_RETENTION';
     }
   }
+
+  const yesterday = dateOffset(today, -1);
+  const recentSymLog = (s.cycleLogs || []).find(l => l.date === today || l.date === yesterday);
+  const suggestedGentleSession = phase === 'menstrual' && (
+    currentCycleDay <= 3 ||
+    Number(recentSymLog?.crampSeverity || 0) >= 3 ||
+    recentSymLog?.flowLevel === 'heavy' ||
+    (Array.isArray(recentSymLog?.symptoms) && recentSymLog.symptoms.includes('fatigue'))
+  );
 
   return {
     available: true,
@@ -611,6 +740,12 @@ export function computeCycleState(s, now = clockNow()) {
     waterRetentionLikely,
     nextPeriodEstimateDate,
     coachingHintCode,
+    discreetMode,
+    adaptiveThemeEnabled,
+    phaseAccentToken: resolveCycleAccentToken(phase, discreetMode, adaptiveThemeEnabled),
+    suggestedGentleSession,
+    isOverdue,
+    overdueDays,
     recentLogs
   };
 }
@@ -625,6 +760,12 @@ export function bootstrapCycleSummary(s, now = clockNow()) {
     waterRetentionLikely: state.waterRetentionLikely,
     pausedReason: state.pausedReason,
     nextPeriodEstimateDate: state.nextPeriodEstimateDate,
-    coachingHintCode: state.coachingHintCode
+    coachingHintCode: state.coachingHintCode,
+    discreetMode: state.discreetMode,
+    adaptiveThemeEnabled: state.adaptiveThemeEnabled,
+    phaseAccentToken: state.phaseAccentToken,
+    suggestedGentleSession: state.suggestedGentleSession,
+    isOverdue: state.isOverdue,
+    overdueDays: state.overdueDays
   };
 }

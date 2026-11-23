@@ -100,9 +100,9 @@ export function reconcileCoaching(s,now){
  return s;
 }
 
-export function coachingInbox(s,now){
+export function coachingInbox(s,now,{pushConfigured=false}={}){
  const today=localDate(now,s.profile?.timezone||'Africa/Cairo');
  const items=(s.coachingCases||[]).filter(c=>active(c)&&c.context===coachingContext(s,c.domain)).map(c=>({...c,code:c.code||(c.status==='question'?'COACHING_BARRIER_QUESTION':'COACHING_BARRIER_AGREEMENT'),reviewDue:c.status==='accepted'&&c.reviewOn<=today,expired:expired(c,now),deliveryStatus:'NOT_SENT',readStatus:c.acknowledgedAt?'ACKNOWLEDGED':'UNKNOWN'}));
  items.sort((a,b)=>Number(b.barrier==='pain')-Number(a.barrier==='pain')||Number(b.reviewDue)-Number(a.reviewDue)||b.createdAt.localeCompare(a.createdAt));
- return {date:today,revision:s.revision,channel:'in_app',pushConfigured:false,items};
+ return {date:today,revision:s.revision,channel:'in_app',pushConfigured:Boolean(pushConfigured),items};
 }

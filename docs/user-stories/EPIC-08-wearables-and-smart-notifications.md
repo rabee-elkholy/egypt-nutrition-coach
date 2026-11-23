@@ -71,11 +71,21 @@ As a user with an Apple Watch, Garmin, Xiaomi Band, or smartphone step counter, 
            "activeEnergyKcal": 415,
            "source": "apple_health",
            "externalRecordId": "hk-act-2026-11-21"
+         },
+         {
+           "type": "cardio",
+           "date": "2026-11-21",
+           "modality": "running",
+           "durationMinutes": 35,
+           "distanceKm": 5.2,
+           "caloriesKcal": 340,
+           "source": "apple_health",
+           "externalRecordId": "hk-cardio-uuid-456"
          }
        ]
      }
      ```
-   - **Response (`200 OK`):** `{ ok: true, data: { revision, ingested }, meta: { requestId, serverTime, revision } }`.
+   - **Response (`200 OK`):** `{ ok: true, data: { revision, ingested, skippedCount, skippedRecords: [{ index, type, code?, reason }] }, meta: { requestId, serverTime, revision } }` (partial-success reporting when individual records are deduplicated or skipped without rolling back valid items).
    - **Error Codes:** `400 INVALID_WEARABLES_BATCH` (`> 100` records), `400 DATE_TOO_OLD` (`> 90` days), `409 IDEMPOTENCY_KEY_REUSED_MISMATCH`.
 2. **`GET /v1/activity-logs?offset=0&limit=30`** & **`GET /v1/weight-logs?offset=0&limit=30`**
 
@@ -241,14 +251,15 @@ As a user relying on timely nudges to stay consistent — including during Inter
 
 ### API & BACKEND CONTRACT
 1. **Production Server Push Dispatch Queue (`server/push.mjs` + Cloudflare Workers Hourly Cron `0 * * * *`):**
+   - Paginates across large D1 device cohorts using `LIMIT 200` with `rowid` cursor pagination (`_rid > lastRowId`) so cron runs never exceed Worker time/memory budgets.
    - Evaluates all **6 production Cron triggers** per user timezone:
-     1. `ramadan_suhoor_reminder` (honors `exemptSuhoorFromQuietHours: true`)
+     1. `ramadan_suhoor_reminder` (honors `exemptSuhoorFromQuietHours: true` and stops automatically once `today > ramadanMode.endDate`)
      2. `daily_checkin_reminder` (`09:00` local)
      3. `coaching_case_review` (`10:00` local)
      4. `weekly_checkin_due` (`10:00` local)
-     5. `plan_renewal_due` (`11:00` local)
-     6. `trial_ending_day5` (`12:00` local)
-   - Dispatches directly via **FCM HTTP v1** (Android, RS256 OAuth2) and **APNs HTTP/2** (iOS, ES256 JWT) using registered `/v1/devices/push-token` rows, respecting `quietHoursStart..quietHoursEnd` and automatically pruning stale/unregistered tokens on `404`/`410` responses.
+     5. `plan_renewal_due` (`11:00` local — deduplicated via `coaching_usage_quotas` key `push_notice_plan_renewal` per `(planId, endDate)`)
+     6. `trial_ending_day5` (`12:00` local — deduplicated via `coaching_usage_quotas` key `push_notice_trial_day5` per `trial_expires_at`)
+   - Dispatches directly via **FCM HTTP v1** (Android, RS256 OAuth2) and **APNs HTTP/2** (iOS, ES256 JWT) using registered `/v1/devices/push-token` rows, including `{ trigger, code, params }` (`data.params` JSON on FCM / top-level `params` on APNs) for on-device localization, while respecting `quietHoursStart..quietHoursEnd` and automatically pruning stale/unregistered tokens on `404`/`410` responses.
 2. **Ramadan Mode & Intermittent Fasting State Contract (`Free` — `ramadan_fasting` in `FREE_FEATURES`):**
    - **`GET /v1/bootstrap`** surfaces `todaySummary.fastingState` and `todaySummary.ramadanMode` (and **`GET /v1/nutrition/fasting-state`** returns the standalone fasting state DTO).
    - **`POST /v1/commands?view=receipt` (`action: "ramadan_mode"`):**

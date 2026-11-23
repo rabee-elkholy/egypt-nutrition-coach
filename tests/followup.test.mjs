@@ -1,9 +1,12 @@
 import {healthyCheckin,completedTraining} from './helpers.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
-import {empty,generate,command,today} from '../server/coaching.mjs';
+import {empty,generate,command,today,previewPlan,evaluateEligibility} from '../server/coaching.mjs';
 import {dayTotals,mealAlternatives,plannedEnergyForDate} from '../server/food.mjs';
 import {recovery,calorieReview,progression} from '../server/recovery.mjs';
-import {workoutPlan} from '../server/workouts.mjs';
+import {workoutPlan,scheduledSessions} from '../server/workouts.mjs';
+import {saveCustomRecipe,computeCycleState} from '../server/wellness-tools.mjs';
+import {getFastingState} from '../server/nutrition-tools.mjs';
+import {computeStreakAndEngagement} from '../server/progress-analytics.mjs';
 import {dateOffset,localDate} from '../coaching-shared.mjs';
 const draft={name:'Test',age:30,weight:80,height:175,sex:'male',goal:'lose',serviceTrack:'nutrition_and_workouts',dietType:'balanced',selectedWorkoutDays:[1,3,5]};
 const fixture=generate(empty(),draft,'audit-fixture');
@@ -140,4 +143,167 @@ test('calorie acceptance rejects an infeasible future protein prescription witho
  for(const meal of s.plans[0].days[1].meals)meal.snapshot.values.protein='1';
  s.adaptations=[{id:'invalid-quality',kind:'calories',delta:-100,reason:'test',status:'pending',baseRevision:s.revision}];
  const before=JSON.stringify(s);assert.throws(()=>run(s,'adaptation',{id:'invalid-quality',accept:true}),e=>e.code==='ENERGY_CHANGE_TARGETS_UNMET'&&/protein or nutrition targets/i.test(e.message));assert.equal(JSON.stringify(s),before);
+});
+
+test('food_entry_batch commits atomically in 1 revision, reopens day completion, and rolls back on failure',()=>{
+ let s=run(fixture,'food_entry',{date:today(),source:'manual',slot:'breakfast',name:'Starter Coffee',energy:50});
+ s=run(s,'food_complete',{date:today(),complete:true});
+ assert.equal(s.foodLogs.find(d=>d.date===today()).complete,true);
+ const revBefore=s.revision;
+ s=run(s,'food_entry_batch',{date:today(),items:[
+  {slot:'lunch',source:'ingredient',key:'fava',grams:150},
+  {slot:'snack',source:'manual',energy:120}
+ ]});
+ assert.equal(s.revision,revBefore+1);
+ assert.equal(s.foodEntries.length,3);
+ assert.equal(s.foodEntries.at(-1).snapshot.name,'Quick Add');
+ assert.equal(s.foodLogs.find(d=>d.date===today()).complete,false);
+ const snapshotBeforeErr=JSON.stringify(s);
+ assert.throws(()=>run(s,'food_entry_batch',{date:today(),items:[
+  {slot:'dinner',source:'manual',name:'Valid Dish',energy:300},
+  {slot:'dinner',source:'manual',name:'Invalid Zero',energy:0}
+ ]}),e=>e.code==='MANUAL_MEAL_ENERGY_REQUIRED');
+ assert.equal(JSON.stringify(s),snapshotBeforeErr);
+});
+
+test('food_entry_update supports unclamped planned scaling, displaySlot, barcode scaling, and deleted-recipe unit conversion',()=>{
+ const meal=fixture.plans[0].days[0].meals[0],baseE=Number(meal.snapshot.values.energy);
+ let s=run(fixture,'food_entry',{date:today(),source:'planned',mealId:meal.id,slot:meal.slot,quantity:1});
+ const plannedId=s.foodEntries[0].id;
+ s=run(s,'food_entry_update',{id:plannedId,quantity:3.5,displaySlot:'iftar'});
+ assert.equal(s.foodEntries[0].quantity,3.5);
+ assert.equal(s.foodEntries[0].displaySlot,'iftar');
+ assert.ok(Math.abs(Number(s.foodEntries[0].snapshot.values.energy)-baseE*3.5)<1);
+
+ s=run(s,'food_entry',{date:today(),source:'barcode',slot:'snack',barcode:'6221007001234',nameEn:'Greek Yogurt',servingSizeGrams:150,servings:1,valuesPer100g:{energy:80,protein:10,carbs:4,fat:2,saturated:1.2}});
+ const barcodeEntry=s.foodEntries.find(e=>e.source==='barcode');
+ assert.equal(barcodeEntry.quantity,150);
+ s=run(s,'food_entry_update',{id:barcodeEntry.id,grams:300});
+ const updatedBarcode=s.foodEntries.find(e=>e.id===barcodeEntry.id);
+ assert.equal(updatedBarcode.quantity,300);
+ assert.equal(Number(updatedBarcode.snapshot.values.energy),240);
+
+ const rec=saveCustomRecipe(s,{
+  name:'Milk Chicken Pot',servings:4,
+  items:[{foodId:'chicken',grams:400},{foodId:'milk',ml:200,densityGPerMl:1.03}],
+  additions:[{foodId:'olive',ml:15,densityGPerMl:0.91}],
+  finalWeightGrams:500
+ });
+ assert.equal(rec.totalGrams,500);
+ assert.ok(rec.yieldRatio>0);
+ assert.equal(rec.qualityTier,'Calculated from Verified Ingredients');
+ s=run(s,'food_entry',{date:today(),source:'recipe',slot:'dinner',recipeId:rec.id,servings:1});
+ const recEntryId=s.foodEntries.at(-1).id;
+ const singleServingEnergy=Number(s.foodEntries.at(-1).snapshot.values.energy);
+ s=run(s,'recipe_delete',{id:rec.id});
+ s=run(s,'food_entry_update',{id:recEntryId,grams:250});
+ let edited=s.foodEntries.find(e=>e.id===recEntryId);
+ assert.equal(edited.recipeUnit,'grams');
+ assert.ok(Math.abs(Number(edited.snapshot.values.energy)-singleServingEnergy*2)<2);
+ s=run(s,'food_entry_update',{id:recEntryId,servings:1.5});
+ edited=s.foodEntries.find(e=>e.id===recEntryId);
+ assert.equal(edited.recipeUnit,'servings');
+ assert.ok(Math.abs(Number(edited.snapshot.values.energy)-singleServingEnergy*1.5)<2);
+});
+
+test('copy_meal filters entryIds/toSlot, replace_meal migrates groceryChecks, and earlyRenew preserves today',()=>{
+ const yesterday=dateOffset(today(),-1);
+ let s=run(fixture,'food_entry',{date:yesterday,source:'manual',slot:'breakfast',displaySlot:'suhoor',name:'Foul Bowl',energy:320});
+ s=run(s,'food_entry',{date:yesterday,source:'manual',slot:'breakfast',name:'Boiled Egg',energy:140});
+ const targetEntryId=s.foodEntries[0].id;
+ s=run(s,'copy_meal',{fromDate:yesterday,toDate:today(),slot:'breakfast',toSlot:'dinner',entryIds:[targetEntryId]});
+ const copied=s.foodEntries.filter(e=>e.date===today());
+ assert.equal(copied.length,1);
+ assert.equal(copied[0].slot,'dinner');
+ assert.equal(copied[0].displaySlot,undefined);
+ assert.equal(copied[0].snapshot.name,'Foul Bowl');
+
+ const oldPlanId=s.active_plan_id;
+ s=run(s,'grocery_toggle',{planId:oldPlanId,ingredientKey:'fava',checked:true});
+ const meal=s.plans[0].days[0].meals[0];
+ const alts=mealAlternatives(s,meal.id);
+ assert.ok(alts.length>0);
+ s=run(s,'replace_meal',{mealId:meal.id,templateId:alts[0].snapshot.template_id});
+ assert.notEqual(s.active_plan_id,oldPlanId);
+ assert.equal(s.groceryChecks[`${s.active_plan_id}:fava`]?.checked,true);
+
+ const prevTodayDay=structuredClone(s.plans.find(p=>p.id===s.active_plan_id).days.find(d=>d.date===today()));
+ s=run(s,'renew_plan',{earlyRenew:true});
+ const earlyPlan=s.plans.at(-1);
+ assert.equal(earlyPlan.days[0].date,today());
+ assert.equal(JSON.stringify(earlyPlan.days[0]),JSON.stringify(prevTodayDay));
+ assert.equal(earlyPlan.effective_from,dateOffset(today(),1));
+});
+
+test('previewPlan and evaluateEligibility compute 4200 clamp, rest/workout water targets, and exercise estimate',()=>{
+ const highCalDraft={name:'Max Preview',age:22,sex:'male',weight:150,height:205,goal:'gain',goalPace:'fast',activity:'active',serviceTrack:'nutrition_and_workouts',workoutLocation:'gym_only',selectedWorkoutDays:[0,1,2,3,4,5,6],dietType:'balanced',healthConfirmed:true};
+ const elig=evaluateEligibility(highCalDraft);
+ assert.equal(elig.status,'eligible');
+ const preview=previewPlan(highCalDraft);
+ assert.equal(preview.dailyCalories,4200);
+ assert.ok(preview.waterTarget.liters>0);
+ assert.ok(preview.workoutDayWaterTarget.liters>=preview.restDayWaterTarget.liters);
+ assert.ok(Number.isInteger(preview.estimatedExercisesPerSession)&&preview.estimatedExercisesPerSession>=4);
+ const midPreview=previewPlan({name:'Mid Preview',age:28,sex:'male',weight:80,height:178,goal:'maintain',activity:'moderate',serviceTrack:'nutrition_and_workouts',workoutLocation:'gym_only',selectedWorkoutDays:[1,3,5],dietType:'balanced',healthConfirmed:true});
+ assert.ok(midPreview.workoutDayWaterTarget.liters>midPreview.restDayWaterTarget.liters);
+});
+
+test('workouts support explicit weightedBodyweight/addedKg, workout/session notes, and reject completed reschedule',()=>{
+ let s=generate(empty(),{...draft,workoutLocation:'home_only',homeEquipment:['pullup_bar'],healthConfirmed:true},'bw-fixture');
+ const before=scheduledSessions(s);
+ const first=before[0];
+ const day=s.workoutPlan.days.find(d=>d.dayIndex===first.dayIndex);
+ const bwEx=day.exercises.find(e=>e.supportsAddedWeight===true)||day.exercises[0];
+ for(const ex of day.exercises){
+  const isBw=ex.id===bwEx.id;
+  s=run(s,'workout',{
+   date:first.date,dayIndex:first.dayIndex,exerciseId:ex.id,
+   ...(isBw?{weightedBodyweight:true,notes:'Belt +dip chain'}:{}),
+   sets:Array.from({length:ex.sets},(_,idx)=>isBw?{reps:8,addedKg:idx===0?10:12.5,rir:2-Math.min(idx,1)}:{reps:8,kg:20,rir:2})
+  });
+ }
+ const bwLog=s.workoutLogs.find(l=>l.exerciseId===bwEx.id);
+ assert.equal(bwLog.notes,'Belt +dip chain');
+ assert.equal(bwLog.sets[0].kg,10);
+ assert.equal(bwLog.sets[1].kg,12.5);
+ s=run(s,'session',{date:first.date,dayIndex:first.dayIndex,status:'completed',notes:'Strong session'});
+ assert.equal(s.sessions.at(-1).status,'completed');
+ assert.equal(s.sessions.at(-1).notes,'Strong session');
+ const rest=Array.from({length:7},(_,i)=>dateOffset(today(),i)).find(date=>!before.some(x=>x.date===date));
+ assert.throws(()=>run(s,'reschedule',{dayIndex:first.dayIndex,toDate:rest}),e=>e.code==='SESSION_ALREADY_COMPLETED');
+});
+
+test('female cycle awareness, seasonal ramadan/eid flex, auto-freeze, and weeklyCheckinDue separation work accurately',()=>{
+ assert.throws(()=>run(fixture,'cycle_settings',{enabled:true}),e=>e.code==='CYCLE_TRACKING_UNAVAILABLE');
+ assert.throws(()=>run(fixture,'cycle_gentle_session',{enabled:true}),e=>e.code==='CYCLE_TRACKING_UNAVAILABLE');
+ let f=generate(empty(),{...draft,sex:'female',healthConfirmed:true},'female-fixture');
+ f=run(f,'cycle_settings',{enabled:true,averageCycleLengthDays:28,averagePeriodLengthDays:5,lastPeriodStartDate:dateOffset(today(),-30),discreetMode:true,adaptiveThemeEnabled:true});
+ const ovCycle=computeCycleState(f);
+ assert.equal(ovCycle.isOverdue,true);
+ assert.equal(ovCycle.overdueDays,2);
+ assert.equal(ovCycle.nextPeriodEstimateDate,null);
+ assert.equal(ovCycle.phase,'luteal');
+ assert.equal(ovCycle.discreetMode,true);
+ assert.equal(ovCycle.phaseAccentToken,'neutral');
+ f=run(f,'cycle_gentle_session',{enabled:true});
+ assert.equal(f.sessionAdjustment.source,'cycle_gentle_session');
+ assert.equal(f.sessionAdjustment.setFactor,0.8);
+
+ f.ramadanMode={enabled:true,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false,endDate:dateOffset(today(),-1)};
+ const expiredRamadan=getFastingState(f);
+ assert.equal(expiredRamadan.ramadanMode.enabled,false);
+ assert.equal(expiredRamadan.ramadanMode.autoRevertedOn,dateOffset(today(),-1));
+ assert.equal(expiredRamadan.seasonalContext.eidTransitionAvailable,true);
+
+ f=run(f,'seasonal_flex',{enabled:true,occasion:'eid_fitr',endDate:dateOffset(today(),2)});
+ assert.equal(getFastingState(f).seasonalContext.mode,'eid_flex');
+ assert.ok(f.flexDates.includes(today()));
+
+ f.onboarding.journeyStartedOn=dateOffset(today(),-10);
+ f.lastReview={at:new Date().toISOString(),auto:true};
+ f.weights=[{date:dateOffset(today(),-2),kg:65},{date:today(),kg:64.8}];
+ const st=computeStreakAndEngagement(f);
+ assert.deepEqual(st.streakSummary.autoAppliedFreezes,[dateOffset(today(),-1)]);
+ assert.equal(st.streakSummary.currentDays,3);
+ assert.equal(st.engagementState.weeklyCheckinDue,true);
 });

@@ -17,7 +17,7 @@ CuraFit uses **strictly two Git branches (`dev` and `main`)** mapped 1:1 to **tw
 - **Repository Root:** `e:\Egypt_Nutrition_Local\website\dist`
 - **Remote Repository:** `https://github.com/rabee-elkholy/egypt-nutrition-coach.git`
 - **Worker Entrypoint:** `server/cloudflare-entry.mjs` (built into `dist/server/cloudflare.js` by `npm.cmd run build`)
-- **Postman Public Docs:** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `135` endpoints)
+- **Postman Public Docs:** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `140` endpoints)
 
 ---
 

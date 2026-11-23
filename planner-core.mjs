@@ -180,12 +180,12 @@ export function estimateNeeds(input) {
       `Daily energy raised to the safe automated planning floor (${minEnergyFloor} kcal).`,
     );
   }
-  if (energy > 4200)
-    throw apiError(
-      'ENERGY_CHANGE_OUT_OF_RANGE',
-      'Adjusted daily calories exceed safe automated bounds (1200/1500/1600/1800..4200 kcal).',
-      { status: 400 },
+  if (energy > 4200) {
+    energy = 4200;
+    notes.push(
+      'Daily energy capped at the safe automated planning ceiling (4200 kcal).',
     );
+  }
 
   if (bmi < 18.5) {
     notes.push("BMI is below 18.5 (underweight): focus on nutrient-dense meals and gradual intake progression.");

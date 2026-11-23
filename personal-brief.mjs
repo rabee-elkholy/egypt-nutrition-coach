@@ -92,7 +92,11 @@ export function personalBrief(state,today){
    const changes=[...(insight?.loadIncreases||[]).map(x=>({...x,type:'up'})),...(insight?.loadDecreases||[]).map(x=>({...x,type:'down'})),...(insight?.repIncreases||[]).map(x=>({...x,type:'reps'}))].filter(x=>x.date===today);
    const change=seedPick(changes,seed+':exercise');
    const changedExercise=p.days?.flatMap(d=>d.exercises||[]).find(e=>e.id===change?.exerciseId);
-   if(change)add('training','performance',change.type==='reps'?`${change.name} reps progressed from ${change.fromReps} to ${change.toReps} (${changedExercise&&!usesKg(changedExercise)?'bodyweight':`${change.kg} kg`}).`:`${change.name} average load moved from ${change.fromKg} to ${change.toKg} kg.`,'train','normal','BRIEF_TRAINING_PERFORMANCE',{exerciseId:change.exerciseId,type:change.type},'workout');
+   if(change){
+    const perfCode=change.type==='up'?'BRIEF_TRAINING_PERFORMANCE_UP':change.type==='reps'?'BRIEF_TRAINING_PERFORMANCE_REPS':'BRIEF_TRAINING_PERFORMANCE';
+    const perfParams=change.type==='reps'?{exerciseId:change.exerciseId,fromReps:change.fromReps,toReps:change.toReps}:{exerciseId:change.exerciseId,fromKg:change.fromKg,toKg:change.toKg};
+    add('training','performance',change.type==='reps'?`${change.name} reps progressed from ${change.fromReps} to ${change.toReps} (${changedExercise&&!usesKg(changedExercise)?'bodyweight':`${change.kg} kg`}).`:`${change.name} average load moved from ${change.fromKg} to ${change.toKg} kg.`,'train','normal',perfCode,perfParams,'workout');
+   }
    else if(scheduled)add('training','scheduled',`Today's scheduled workout is ${FOCUS_LABELS[scheduled.focus]||scheduled.focus}. ${ready.domains?.length?'Minor recovery notes exist; monitor effort closely.':'Current readiness supports your planned session.'}`,'train','normal','BRIEF_TRAINING_SCHEDULED',{focus:scheduled.focus},'workout');
    else add('training','rest',`Rest day today${next?`; next scheduled session is ${next.date} (${FOCUS_LABELS[next.focus]||next.focus})`:''}.`,'rest','normal','BRIEF_TRAINING_REST',{nextDate:next?.date||null,nextFocus:next?.focus||null},'workout');
   }
@@ -135,14 +139,15 @@ export function personalBrief(state,today){
     const elapsed=Math.max(0,Math.floor((Date.parse(`${today}T12:00:00Z`)-Date.parse(`${anchor}T12:00:00Z`))/86400000));
     const cycleLen=Number(state.cycleSettings.averageCycleLengthDays)||28;
     const periodLen=Number(state.cycleSettings.averagePeriodLengthDays)||5;
-    const cycleDay=(elapsed%cycleLen)+1;
-    if(cycleDay<=periodLen){
+    const isOverdue=elapsed>=cycleLen;
+    const cycleDay=elapsed+1;
+    if(!isOverdue&&cycleDay<=periodLen){
      notes.push({
       role:'followup',key:'cycle-menstrual',code:'CYCLE_MENSTRUAL_GENTLE_TRAINING',params:{cycleDay},priority:'normal',
       text:`Cycle day ${cycleDay} (menstrual phase): listen to energy and cramp levels; lighter loads, walking, or extra rest are completely normal today.`,
       action:'Adjust session intensity to your energy and log symptoms if helpful.',actionTarget:'recovery'
      });
-    }else if(cycleDay>=cycleLen-5){
+    }else if(isOverdue||cycleDay>=cycleLen-5){
      notes.push({
       role:'followup',key:'cycle-luteal-retention',code:'CYCLE_LUTEAL_WATER_RETENTION',params:{cycleDay},priority:'normal',
       text:`Cycle day ${cycleDay} (late luteal phase): temporary 0.5-2.0 kg water retention is normal; stay steady on your calorie target and avoid reacting to short-term scale jumps.`,

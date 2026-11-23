@@ -262,7 +262,13 @@ export async function authenticateSocialOAuth(db, env, provider, body, request) 
       const otherOauth = await db.prepare(
         'SELECT provider FROM coaching_oauth_identities WHERE user_id=? AND provider!=? LIMIT 1'
       ).bind(byEmail.user_id, provider).first();
-      if (!claims.emailVerified || (otherOauth && body?.linkExisting !== true)) {
+      if (!claims.emailVerified) {
+        throw createApiError('Identity provider email is not verified; link or sign in with a verified email.', 409, {
+          code: 'AUTH_OAUTH_EMAIL_UNVERIFIED',
+          params: { provider }
+        });
+      }
+      if (otherOauth && body?.linkExisting !== true) {
         throw createApiError('An account with this email is already linked to another sign-in method.', 409, {
           code: 'AUTH_PROVIDER_EMAIL_CONFLICT',
           params: { existingProvider: otherOauth?.provider || 'other' }
@@ -355,8 +361,8 @@ export async function linkOAuthProvider(db, env, userId, provider, body = {}) {
     'SELECT user_id FROM coaching_oauth_identities WHERE provider=? AND subject=?'
   ).bind(provider, claims.subject).first();
   if (existing && existing.user_id !== userId) {
-    throw createApiError('An account with this email is already linked to another sign-in method.', 409, {
-      code: 'AUTH_PROVIDER_EMAIL_CONFLICT',
+    throw createApiError('This sign-in identity is already linked to a different CuraFit account.', 409, {
+      code: 'AUTH_OAUTH_ALREADY_LINKED_OTHER_USER',
       params: { existingProvider: provider }
     });
   }

@@ -52,9 +52,13 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
    - **Tab 4 — `Coach`:** Sparkle/Coach Avatar icon (with unread red/amber dot if `pendingAdaptations.length > 0` or `unreadCoachingInboxCount > 0`) -> `CoachHubScreen` (`EPIC-06`).
    - **Tab 5 — `Profile`:** User Avatar / Person icon -> `ProfileOverviewScreen` (`EPIC-09`).
 2. **Today Top Header Bar:**
-   - Personalized greeting in user's language (`"Good morning, {name}"` / localized greeting by `timezone`), current date selector strip (`Today` + quick swipe across last 7 days), subtle **Gentle Streak Pill** (`🔥 6 Days`, taps to `US-PRG-04`), and **Notification Bell / Sync Pill** (`US-AUTH-04`).
+   - Personalized greeting in user's language (`"Good morning, {name}"` / localized greeting by `timezone`), current date selector strip (`Today` + quick swipe across last 7 days), subtle **Gentle Streak Pill** (`6d Streak` — taps to `US-PRG-04`), and **Notification Bell / Sync Pill** (`US-AUTH-04`).
    - If `seniorMode == true`, display subtle `"Senior Safety Mode"` pill and ensure minimum `16sp` body font scaling.
-   - If `maternalStatus != "none"`, display reassuring maternal badge (e.g., `"2nd Trimester Plan"` or `"Breastfeeding Plan"`).
+   - If `maternalContext != null` (`maternalStatus != "none"`), display a clean **Maternal Support Card** below the header showing active trimester/breastfeeding calorie floor (`1800 / 1600 kcal`), `+300 ml / +600 ml` hydration add-on, joint-safe exercise filtering, and paused cycle prediction status.
+   - **Female Cycle Adaptive Phase Accent (`profile.sex == "female"` & `cycleState.enabled == true`):** Applies a subtle editorial accent bar (`cycleState.phaseAccentToken`: `"sage_menstrual" | "teal_follicular" | "amber_ovulatory" | "lavender_luteal" | "neutral"`) matching follicular vs. luteal/menstrual phases, immediately muted to `"neutral"` whenever `cycleState.discreetMode == true` OR `cycleState.adaptiveThemeEnabled == false`. If `cycleState.waterRetentionLikely == true`, renders a calm scale-fluctuation reassurance chip (`CYCLE_LUTEAL_WATER_RETENTION`).
+   - **Seasonal Theme Adaptation (`seasonalContext.mode`):**
+     - `ramadan`: Shifts header/Hero accent to **Midnight Indigo & Subtle Gold** (`themeToken: "ramadan_indigo_gold"`), displays **Hydration Window** status (`hydrationWindowActive`), and auto-reverts cleanly after `ramadanMode.endDate` expires (surfacing a dismissible 1-tap `[Activate Eid Flex Mode]` banner when `seasonalContext.eidTransitionAvailable == true`).
+     - `eid_flex`: Shifts surface accent to **Eid Emerald & Gold** (`themeToken: "eid_emerald_gold"`), swaps `todaySummary.nutrition.targetEnergy` to maintenance calories (`seasonalContext.maintenanceTargetKcal`), and shields streaks/adherence via `flexDates`.
 3. **Interactive States:**
    - **First Render / Skeleton:** Render immediately from SQLDelight (`< 100ms` cold start) with subtle background refresh; show skeleton cards ONLY on brand-new restore prior to hydration.
    - **Pending Confirmation Banner (Top Priority Slot):**
@@ -66,9 +70,10 @@ As an active CuraFit user opening the app each day, I want a fast, clean 5-tab n
 ### API & BACKEND CONTRACT
 1. **`GET /v1/bootstrap`**
    - **Headers:** `Authorization: Bearer <accessToken>`, `If-None-Match: <bootstrapEtag>` (smart state-fingerprint `ETag` `W/"boot-..."` that changes automatically on `revision`, local date, `entitlements`, `consents`, `avatar`, or `recovery.status` changes).
-   - **Response Fields Consumed:** `revision`, `serverDate`, `timezone`, `onboardingCompleted` (`boolean`), `onboarding` (`object | null` with `serviceTrack`, `journeyStartedOn`, `workoutUiMode`, `workoutPrefs`), `consents`, `profile` (incl. `activity`, `unitSystem`, `seniorMode`, `maternalStatus`, `workoutUiMode`), `eligibility`, `scheduledSessions` (14d), `todaySummary` (`nutrition` incl. `carbs`/`fat`/`targets`, `activity` incl. `updatedAt`, `cardio` incl. `sessionsCount`/`totalMinutes`/`totalKcal`, `hydration`, `latestWeight`, `recovery`, `scheduledWorkout` incl. `fromDate`, `fastingState`, `ramadanMode`, `cycleState` nullable when not female or disabled), `unreadCoachingInboxCount` (`integer`), `pendingAdaptations`, `workoutSafetyIssues`, `entitlements`, `streakSummary`, `engagementState`, `notificationPreferences`.
+   - **Response Fields Consumed:** `revision`, `serverDate`, `timezone`, `onboardingCompleted` (`boolean`), `onboarding` (`object | null` with `serviceTrack`, `journeyStartedOn`, `workoutUiMode`, `workoutPrefs`), `consents`, `profile` (incl. `activity`, `unitSystem`, `seniorMode`, `maternalStatus`, `workoutUiMode`), `eligibility`, `scheduledSessions` (14d), `todaySummary` (`nutrition` incl. `energy`, `protein`, `carbs`, `fat`, `targetEnergy`, `basePlanEnergy`, `targetProtein`, `targetCarbs`, `targetFat`, `complete`, `entriesCount`; `hydration` incl. `cups`, `liters`, `targetCups`, `targetLiters`, `boostMl`, `boostReason`; `activity` incl. `updatedAt`; `cardio` incl. `sessionsCount`/`totalMinutes`/`totalKcal`; `latestWeight`; `recovery`; `scheduledWorkout` incl. `fromDate`; `fastingState`; `ramadanMode`; `seasonalContext`; `cycleState`; `maternalContext`), `weeklyCheckinDue` (`boolean`, independent of `auto` reviews), `unreadCoachingInboxCount` (`integer`), `pendingAdaptations`, `workoutSafetyIssues`, `entitlements`, `streakSummary`, `engagementState`, `notificationPreferences`.
 2. **`GET /v1/coaching/brief`** (Cached via `If-None-Match` `W/"brief-..."` ETag; pure-English + `code`/`params`/`actionTarget`)
-3. **`GET /v1/widgets/snapshot`** (For OS Home Screen Widgets — includes `streakDays`, `readinessStatus`, `caloriesRemaining`, `waterCups`, `waterTargetCups`, `fastingState`, `nextWorkout`)
+3. **`GET /v1/widgets/snapshot`** (For OS Home Screen Widgets — NEVER exposes sensitive cycle data; includes `date`, `timezone`, `serviceTrack`, `caloriesRemaining`, `caloriesTarget`, `proteinGrams`, `carbsGrams`, `fatGrams`, `waterCups`, `waterTargetCups`, `streakDays`, `readinessStatus`, `seasonalMode`, `fastingPhase`, `fastingEndsAt`, `nextWorkoutFocus`, `workoutStatus`)
+4. **`POST /v1/commands?view=receipt`** (`action: "seasonal_flex"` `{ enabled, occasion, endDate?, dismissEidPrompt? }` and `action: "cycle_gentle_session"` `{ enabled }`)
 
 ### RULES & BUSINESS LOGIC
 1. **Cache-First Instant Render:** Never block Today UI behind a network spinner if SQLDelight holds a valid local profile. Run `GET /v1/bootstrap` asynchronously and animate state updates only on `200 OK` diffs.
@@ -133,26 +138,28 @@ As a user tracking my daily nutrition, I want a prominent visual summary of my r
 - `serviceTrack != "workouts_only"` and an active nutrition plan exists (or user is browsing historical date).
 
 ### SCREEN AND UI DETAILS
-1. **Calorie Ring (Primary Visual Anchor):**
-   - Smooth animated circular arc showing **Remaining kcal** in bold center typography (`"1,120 kcal left"` or `"140 kcal over"` in gentle amber, never punishing red), flanked by **Consumed** (`730`) and **Target** (`1,850`).
-   - Displays **Energy Source Sub-Badge** when active energy burn from wearables is recorded (`"Includes planned targets"` — never silently inflates calorie targets beyond deterministic engine plan).
-2. **Macro Mini-Bars (3 Horizontal Progress Bars below Ring):**
+1. **Calorie Ring (Primary Visual Anchor — Tap-to-Toggle):**
+   - Tap anywhere inside the ring center to toggle smoothly between **Remaining kcal** (`"1,120 kcal left"` or `"140 kcal over"` in calm amber) and **Consumed kcal** (`"730 / 1,850 kcal"`), flanked by **Consumed** and **Target**.
+   - During **Seasonal / Eid Flex Mode (`seasonalContext.mode == "eid_flex"`)**, **Target** updates transparently to `maintenanceTargetKcal` with an `"Eid Flex — Maintenance"` pill (preserving `basePlanEnergy` safely for return).
+   - Displays **Energy Source Sub-Badge** (`"Planned target"` — never silently inflates calorie targets beyond deterministic engine plan).
+2. **Macro Mini-Bars (4 Horizontal Progress Bars below Ring):**
    - **Protein:** `{consumed}g / {target}g`
    - **Carbs:** `{consumed}g / {target}g`
    - **Fats:** `{consumed}g / {target}g`
+   - **Fiber:** `{fiber}g / {targetFiber}g` *(compact secondary row matching high-satiety nutrition tracking)*
    - **Null-Nutrient Safety Rule (`KMM_BACKEND_INTEGRATION.md`):** `GET /v1/food-diary` returns `null` for all 8 nutrients (`energy, protein, fat, carbs, fiber, saturated, sodium, sugars`) when `entries.length === 0` — the client renders `0` (`0 kcal`, `0g / {target}g`) when `entries.length === 0`. Only when **`entries.length > 0 && totals[metric] == null`** (because one or more logged foods lack macro provenance in the reference source) does the client render `"{knownSum}g + --"` or `"Partial (source N/A)"` with an info tooltip explaining *"One logged item does not report this nutrient in its reference source"* — **never display `0g` as if consumed were zero when entries exist!**
-3. **Diary Completion Pill (`food_complete`):**
-   - Subtle pill at bottom-right of Hero Card:
-     - `Open`: `"Logging in progress"` -> `[Mark Day Complete ✓]` (enabled once `entries.length >= 1`, calls `food_complete`).
-     - `Completed`: `"Day Confirmed ✓"` (tappable to view summary or reopen).
+3. **Inline `[Confirm Day]` Pill (`food_complete`):**
+   - Prominent compact action chip anchored at bottom-right of Hero Card:
+     - `Open`: `[Confirm Day]` (enabled once `entries.length >= 1`, calls `food_complete`).
+     - `Completed`: `"Day Confirmed"` badge (tappable to view summary or reopen).
 4. **Live Fasting / Ramadan Strip (Conditional — Shown inside Hero Card if `dietType == "intermittent_fasting"` OR `todaySummary.ramadanMode.enabled == true`):**
-   - Shows current phase pill (`"Fasting Window — 03h 18m left"` or `"Eating Window — Closes at 20:00"` / `"Ramadan Mode: Iftar in 02h 10m"`), progress bar along the fasting arc, and quick `[Start/End Fast]` or `[View Ramadan Schedule]` tap action routing to `US-NUT-10`.
+   - Shows current phase pill (`"Fasting Window — 03h 18m left"` or `"Eating Window — Closes at 20:00"` / `"Ramadan Mode: Iftar in 02h 10m"` + `"Hydration Window Active"` between Maghrib & Fajr), progress bar along the fasting arc, and quick `[Start/End Fast]` or `[View Ramadan Schedule]` tap action routing to `US-NUT-10`.
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/food-diary?date={YYYY-MM-DD}`**
-   - Returns `{ date, entries, totals: { energy, protein, fat, carbs, fiber, saturated, sodium, sugars }, complete, planEnergy }` (all 8 `totals` fields are `null` when `entries.length === 0`).
-2. **`GET /v1/nutrition/fasting-state`** (Also embedded inside `GET /v1/bootstrap` -> `todaySummary.fastingState` & `todaySummary.ramadanMode`)
-   - Returns `{ mode: "if_16_8" | "ramadan" | "off", phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, streakDays }`.
+   - Returns `{ date, entries, totals: { energy, protein, fat, carbs, fiber, saturated, sodium, sugars }, complete, planEnergy }`.
+2. **`GET /v1/nutrition/fasting-state`** (Also embedded inside `GET /v1/bootstrap` -> `todaySummary.fastingState`, `ramadanMode`, & `seasonalContext`)
+   - Returns `{ mode: "if_16_8" | "ramadan" | "off", preset, windowHours, phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, seasonalContext, streakDays }`.
 3. **`POST /v1/commands?view=receipt`** (`action: "food_complete"`)
 
 ### RULES & BUSINESS LOGIC
@@ -164,7 +171,7 @@ As a user tracking my daily nutrition, I want a prominent visual summary of my r
 ### MAIN FLOW
 1. User opens Today tab after logging breakfast (`480 kcal`, `32g P`).
 2. Hero card displays `1,370 kcal left` (`480 / 1,850`), Protein bar `32g / 145g`, and active 16:8 Eating Window badge (`12:00 PM – 8:00 PM`).
-3. After dinner, user taps `[Mark Day Complete ✓]` right from the Hero Card -> `food_complete` command commits and badge updates to `"Day Confirmed ✓"`.
+3. After dinner, user taps `[Confirm Day]` right from the Hero Card -> `food_complete` command commits and badge updates to `"Day Confirmed"`.
 
 ### EDGE CASES
 - **Zero Meals Logged Today (`entries.length === 0`):** Server returns `null` for all 8 nutrient totals; client renders `0%` (`"1,850 kcal left"`, `0g / {target}g`, NOT `"Partial (source N/A)"`); `[Mark Day Complete]` is disabled with hint *"Log at least one meal first"* (enforcing `FOOD_LOG_REQUIRED_BEFORE_COMPLETE`).
@@ -215,7 +222,7 @@ As a user checking Today to see what to do right now, I want actionable cards sh
 1. **Daily Coach Priority Banner (Top Card in Stream):**
    - Displays highest-priority note from `GET /v1/coaching/brief` (`priority: "urgent" | "attention" | "normal"`) with a **Specialist Attribution Badge** mapped from `note.role: "nutrition" | "training" | "followup"` (`Nutrition Specialist`, `Strength Coach`, `Recovery & Follow-Up Specialist`).
    - All server notes return pure-English `title`/`body`/`action` paired with deterministic `code`, `params` (`contracts/coaching-codes.json`), and `actionTarget` for deep-link navigation; KMM localizes copy on-device by `(code, params)`.
-   - Also elevates `Comeback Protocol` (`engagementState.comebackTier != "none"`, `US-CCH-06`) if user returns after `>= 3` days away, OR `Weekly Team Check-In Ready` (`engagementState.weeklyCheckinDue == true`).
+   - Also elevates `Comeback Protocol` (`engagementState.comebackTier != "none"`, `US-CCH-06`) if user returns after `>= 3` days away, OR `Weekly Team Check-In Ready` (`bootstrap.weeklyCheckinDue == true` — cleanly separated from automated maintenance/deload reviews!).
    - Examples:
      - *Recovery Check-in Missing:* `"Recovery & Follow-Up Specialist: Check in on your sleep & soreness before today's workout"` -> CTA: `[30-Sec Check-In]` (`US-CCH-02`).
      - *Pending Adaptation Proposal:* `"Strength Coach suggests a 20% deload today"` -> CTA: `[Review Proposal]` (`US-CCH-03`).
@@ -223,17 +230,18 @@ As a user checking Today to see what to do right now, I want actionable cards sh
 2. **Next Meal Card (`serviceTrack != "workouts_only"`):**
    - Automatically selects the next unlogged meal slot for today (`breakfast -> lunch -> dinner -> snack`) based on current local hour and existing `foodEntries`.
    - Shows dish title (localized), calories + `P/C/F` pill, portion summary, and 2 quick actions:
-     - Primary: `[Log Meal ✓]` (1-tap logs `quantity = 1.0` via `food_entry`).
+     - Primary: `[Log Meal]` (1-tap logs `quantity = 1.0` via `food_entry`).
      - Secondary: `[Swap]` (opens `US-NUT-03` alternatives sheet) or tap card -> full Meal Detail (`US-NUT-02`).
-   - *All Planned Meals Logged State:* Shows celebratory green check card `"All planned meals logged today!"` with `[Log Extra Snack]`.
+   - *All Planned Meals Logged State:* Shows clean check card `"All planned meals logged today"` with `[Log Extra Snack]`.
 3. **Today's Workout / Rest Card (`serviceTrack != "nutrition_only"`):**
    - **On Scheduled Training Day (`scheduledWorkout != null`):**
      - Displays Focus badge (e.g., `"Upper Body"`, `"Push"`), Location badge (`Gym` or `Home`), Exercise Count & Est. Duration (`"6 exercises • ~42 min"`), and active UI Mode chip (`Simple Mode` / `Pro Mode` `US-WRK-02`).
+     - *Female Cycle 1-Tap Comfort Option (`todaySummary.cycleState?.suggestedGentleSession == true`):* Displays a non-intrusive pill `[Switch Today to Gentle Session (-20% Sets)]` calling `action: "cycle_gentle_session"` (`{ enabled: true }`) for a 24h `0.8x` set comfort reduction without changing baseline progression.
      - *If `recovery.status == "stop"` (`RED_FLAGS_STOP`):* Card turns urgent warning red, disables `[Start Workout]`, and prompts medical check (`US-CCH-02`).
      - *If `recovery.status == "hold"` (`JOINT_PAIN_HOLD`):* Shows amber safety chip `"Progression Hold Active (Joint Pain Guard)"` — keeps planned sets at maintenance load without progression increases.
      - *If `recovery.status == "caution" | "high"` with active deload:* Renders dynamic `setFactor` percentage (`setFactor = 0.8` -> `"Deload active: -20% sets"` for `caution`; `setFactor = 0.6` -> `"Deload active: -40% sets"` for `high`) alongside `[Start Workout]`.
      - Primary CTA: `[Start Workout]` (launches Live Workout Player `US-WRK-03` or `US-WRK-04`), Secondary menu: `[Reschedule]` (`US-WRK-09`) or `[Mark Missed]`.
-     - *If Session Completed Today:* Displays green `"Workout Completed ✓"` card with Volume & Duration summary (`US-WRK-10`).
+     - *If Session Completed Today:* Displays green `"Workout Completed"` card with Volume & Duration summary (`US-WRK-10`).
    - **On Rest Day:**
      - Displays `"Rest & Recovery Day"`, muscle recovery hint, optional gentle step target (`7,500+ steps`), and `[Reschedule Another Day Here]` option (`US-WRK-09`).
 
@@ -251,7 +259,7 @@ As a user checking Today to see what to do right now, I want actionable cards sh
 ### MAIN FLOW
 1. User opens Today tab at `1:30 PM` on a Gym Upper-Body day.
 2. Top banner shows *"Daily Readiness: Tap to complete your 30-sec check-in"*.
-3. Next Meal card shows `Lunch: Grilled Chicken & Basmati Rice (560 kcal)` because Breakfast was already logged; user taps `[Log Meal ✓]` -> Optimistically logs lunch, updates Hero Calorie Ring, and shifts Next Meal card to `Snack`.
+3. Next Meal card shows `Lunch: Grilled Chicken & Basmati Rice (560 kcal)` because Breakfast was already logged; user taps `[Log Meal]` -> Optimistically logs lunch, updates Hero Calorie Ring, and shifts Next Meal card to `Snack`.
 4. User taps `[Start Workout]` -> Opens Warm-Up (`US-WRK-06`) -> Live Workout Player (`US-WRK-03` / `US-WRK-04`).
 
 ### EDGE CASES
@@ -263,7 +271,7 @@ As a user checking Today to see what to do right now, I want actionable cards sh
 ### ACCEPTANCE CRITERIA
 - **Scenario 1: 1-Tap Next Meal logging advances schedule stream**
   - **Given** Breakfast is unlogged and Lunch is planned for today
-  - **When** the user taps `[Log Meal ✓]` on the Next Meal card
+  - **When** the user taps `[Log Meal]` on the Next Meal card
   - **Then** `food_entry` (`source: "planned"`) executes, calories increase, and the card updates to show Lunch.
 - **Scenario 2: Red-flag recovery blocks workout start CTA**
   - **Given** today's `recovery` check-in reported `redFlags: true` (`status == "stop"`)
@@ -302,16 +310,16 @@ As a user monitoring hydration and body weight, I want one-tap water logging (`+
 
 ### SCREEN AND UI DETAILS
 1. **Hydration Tracker Card:**
-   - Displays animated water wave/cup row: `{cups} / {targetCups} cups ({liters} L / {targetLiters} L)`.
-   - Shows dynamic boost hint on scheduled or external training days (`"+500 ml training day boost"`).
+   - Displays animated water wave/cup row: `{cups} / {targetCups} cups ({liters} L / {targetLiters} L)` — or `fl oz` when `profile.unitSystem == "imperial"`.
+   - When `todaySummary.hydration.boostMl > 0`, displays the exact server boost banner from `todaySummary.hydration.boostReason` (`"+500 ml training day boost"` / `"Includes +300 ml cardio boost"`).
    - Interactive controls:
      - `[-]` button (`addCups: -1`, disabled at `0`).
      - `[+ 1 Cup (250 ml)]` prominent primary tap (`addCups: 1`) with subtle haptic tick.
      - `[+ 500 ml Bottle]` quick chip (`addCups: 2`).
      - Long-press or `"Custom"` link opens exact cup/ml selector (`0..30` cups).
 2. **Quick Body Weight Card:**
-   - Displays latest logged weight (`"81.4 kg"`), delta vs. 7-day average (`"-0.6 kg vs last week"`), and source badge (`Manual` / `Apple Health` / `Health Connect`).
-   - Action button `[Log Weight]` opens a clean numeric keypad bottom sheet pre-filled with last weight, `+/- 0.1 kg` stepper buttons, quick chips, and Eastern Arabic digit normalization (`normalizeDigits`).
+   - Displays latest logged weight (`"81.4 kg"` or `"179.5 lb"` when `profile.unitSystem == "imperial"`), delta vs. 7-day average (`"-0.6 kg vs last week"`), and source badge (`Manual` / `Apple Health` / `Health Connect`).
+   - Action button `[Log Weight]` opens a clean numeric keypad bottom sheet pre-filled with last weight, `+/- 0.1 kg` (`+/- 0.2 lb`) stepper buttons, quick chips, and Eastern Arabic digit normalization (`normalizeDigits`).
 
 ### API & BACKEND CONTRACT
 1. **`POST /v1/commands?view=receipt`** (`action: "water"`)
@@ -382,10 +390,11 @@ As a busy user anywhere inside the app, I want a single floating `+` button that
 ### SCREEN AND UI DETAILS
 1. **Bottom Sheet Layout (Grid of Tactile Action Tiles — Max 2 Rows, Scannable Icons):**
    - **Nutrition Actions** *(Hidden/Disabled if `serviceTrack == "workouts_only"`)*:
-     - **AI Photo / Voice Meal Log** *(Final AI Phase — Deferred: `POST /v1/nutrition/ai-parse` returns `501 FEATURE_DEFERRED_TO_AI_PHASE` until AI rollout; hidden/coming-soon while `ai_meal_parse` is in `capabilities.deferredFeatures`)* -> Opens `AIMealLoggerScreen` (`US-NUT-05`).
-     - **Scan Barcode** *(Pro badge if Free)* -> Opens `BarcodeScannerScreen` (`US-NUT-06`).
+     - **Recent & Frequent Foods (`GET /v1/foods/recent`)** + **Multi-Select Tray (`food_entry_batch`)** -> Zero-query 1–2 tap repeat logging.
      - **Search Food & My Recipes** -> Opens `FoodSearchScreen` / `MyRecipesTab` (`US-NUT-04`, `US-NUT-12`).
-     - **Manual Calories / Quick Repeat** -> Opens `QuickRepeatAndManualSheet` (`US-NUT-07`).
+     - **Scan Barcode** *(Pro badge if Free)* -> Opens `BarcodeScannerScreen` (`US-NUT-06`).
+     - **Quick-Add Macros / Favorites & Copy Yesterday** -> Opens `QuickRepeatAndManualSheet` (`US-NUT-07`).
+     - **AI Photo / Voice Meal Log** *(Final AI Phase — Deferred: shows `"Final AI Phase"` disabled/coming-soon tag while `ai_meal_parse` is in `capabilities.deferredFeatures`; calls `POST /v1/nutrition/ai-parse` returning `501` until AI rollout)* -> `US-NUT-05`.
    - **Health & Biometrics Actions:**
      - **Log Water (`+1 Cup` shortcut right on tile + tap to open)** -> `US-HOME-04`.
      - **Log Weight** -> `WeightLogBottomSheet` (`US-HOME-04`).
@@ -483,7 +492,7 @@ As a user trying to stay active outside formal gym workouts, I want to see my da
 ### MAIN FLOW
 1. User walks throughout the day with Apple Watch / Android phone.
 2. On app foreground, `US-INT-01` ingests `9,200` steps & `410 kcal` via `/v1/wearables/ingest`.
-3. Today Activity card fills green (`9,200 / 7,500 steps ✓`) with `"Synced from Apple Health"` badge.
+3. Today Activity card fills green (`9,200 / 7,500 steps`) with `"Synced from Apple Health"` badge.
 
 ### EDGE CASES
 - **User Revoked Health Permissions in OS Settings:** Card detects missing permission, degrades cleanly to `"Sync Paused — Tap to Reconnect"`, and retains `[+ Add Steps]` manual entry.

@@ -38,30 +38,54 @@ export function computeStreakAndEngagement(s, now = clockNow()) {
   const tz = s.profile?.timezone || 'Africa/Cairo';
   const today = localDate(now, tz);
   const activeDates = activityDatesSet(s);
+  const flexSet = new Set((s.flexDates || []).filter(d => validDate(d) && d <= today));
+  if (s.seasonalFlex?.enabled && validDate(s.seasonalFlex.startDate)) {
+    const endBound = s.seasonalFlex.endDate && s.seasonalFlex.endDate < today ? s.seasonalFlex.endDate : today;
+    for (let d = s.seasonalFlex.startDate; d <= endBound && flexSet.size < 365; d = dateOffset(d, 1)) flexSet.add(d);
+  }
   const freezeDates = (s.streakFreezes || []).map(entry => (typeof entry === 'string' ? entry : entry?.date)).filter(Boolean);
   const freezes = new Set(freezeDates);
-  const qualified = new Set([...activeDates, ...freezes]);
+  const qualified = new Set([...activeDates, ...flexSet, ...freezes]);
+
+  const autoAppliedFreezes = [];
+  const usedFreezeMs = [...freezeDates].filter(d => validDate(d) && d <= today).map(d => Date.parse(`${d}T12:00:00Z`));
+  const hasFreezeNearby = d => {
+    const ms = Date.parse(`${d}T12:00:00Z`);
+    return usedFreezeMs.some(fMs => Math.abs(fMs - ms) < 7 * 86400000);
+  };
 
   const todayQualified = qualified.has(today);
   let currentDays = 0;
   let cursor = todayQualified ? today : dateOffset(today, -1);
-  while (qualified.has(cursor) && currentDays < 3650) {
-    currentDays++;
-    cursor = dateOffset(cursor, -1);
+  while (currentDays < 3650) {
+    if (qualified.has(cursor)) {
+      currentDays++;
+      cursor = dateOffset(cursor, -1);
+    } else if (cursor < today && activeDates.size > 0 && qualified.has(dateOffset(cursor, -1)) && !hasFreezeNearby(cursor)) {
+      autoAppliedFreezes.push(cursor);
+      usedFreezeMs.push(Date.parse(`${cursor}T12:00:00Z`));
+      currentDays++;
+      cursor = dateOffset(cursor, -1);
+    } else {
+      break;
+    }
   }
 
   // Longest streak
-  const sorted = [...qualified].filter(d => validDate(d) && d <= today).sort();
+  const sorted = [...qualified, ...autoAppliedFreezes].filter(d => validDate(d) && d <= today);
+  const uniqueSorted = [...new Set(sorted)].sort();
   let longestDays = 0;
   let run = 0;
-  for (let i = 0; i < sorted.length; i++) {
-    if (i === 0 || dateOffset(sorted[i - 1], 1) === sorted[i]) run++;
+  for (let i = 0; i < uniqueSorted.length; i++) {
+    if (i === 0 || dateOffset(uniqueSorted[i - 1], 1) === uniqueSorted[i]) run++;
     else run = 1;
     if (run > longestDays) longestDays = run;
   }
 
   const freezeUsedDates = freezeDates.filter(d => d <= today).sort();
-  const freezeAvailable = !freezeUsedDates.some(d => d >= dateOffset(today, -6) && d <= today);
+  const autoSorted = [...autoAppliedFreezes].sort();
+  const allFreezeDates = [...freezeUsedDates, ...autoSorted];
+  const freezeAvailable = !allFreezeDates.some(d => d >= dateOffset(today, -6) && d <= today);
 
   // Engagement & Comeback Tier
   const sortedActivity = [...activeDates].filter(d => validDate(d) && d <= today).sort();
@@ -76,14 +100,15 @@ export function computeStreakAndEngagement(s, now = clockNow()) {
     : daysSinceLastLog >= 3 ? 'short_3_6d'
     : 'none';
 
-  // Weekly check-in cadence based on journey start & last weekly review/feedback (not daily recovery check-ins)
+  // Weekly check-in cadence based on journey start & explicit weekly check-ins/feedback (never suppressed by auto-review)
   const journeyStart = s.onboarding?.journeyStartedOn || s.nutritionContextStartedOn || null;
   const daysSinceStart = journeyStart && validDate(journeyStart)
     ? Math.floor((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${journeyStart}T12:00:00Z`)) / 86400000)
     : 0;
-  const lastReviewDate = s.lastReview?.at ? localDate(Date.parse(s.lastReview.at), tz) : null;
+  const lastManualReviewDate = (s.lastReview?.at && s.lastReview?.auto !== true) ? localDate(Date.parse(s.lastReview.at), tz) : null;
+  const lastExplicitCheckinDate = s.lastWeeklyCheckinAt ? localDate(Date.parse(s.lastWeeklyCheckinAt), tz) : null;
   const lastFeedbackDate = (s.coachingFeedback || []).map(f => f.date).filter(Boolean).sort().at(-1) || null;
-  const lastWeeklyTouch = [lastReviewDate, lastFeedbackDate].filter(Boolean).sort().at(-1) || null;
+  const lastWeeklyTouch = [lastExplicitCheckinDate, lastManualReviewDate, lastFeedbackDate].filter(Boolean).sort().at(-1) || null;
   const weeklyCheckinDue = Boolean(
     s.profile &&
     daysSinceStart >= 6 &&
@@ -96,6 +121,8 @@ export function computeStreakAndEngagement(s, now = clockNow()) {
       longestDays: Math.max(longestDays, currentDays),
       freezeAvailable,
       freezeUsedDates,
+      autoAppliedFreezes: autoSorted,
+      autoApplied: autoSorted.length > 0,
       todayQualified
     },
     engagementState: {
@@ -292,6 +319,7 @@ export function buildWidgetSnapshot(s, now = clockNow()) {
     waterTargetCups: waterTarget.targetCups,
     fastingPhase: fasting.mode === 'off' ? 'off' : fasting.phase,
     fastingEndsAt: fasting.targetEndAt,
+    seasonalMode: fasting.seasonalContext?.mode || 'standard',
     nextWorkoutFocus: nextScheduled?.focus || null,
     workoutStatus: todaySession?.status || (nextScheduled?.date === date ? 'scheduled' : 'rest'),
     streakDays: streakSummary.currentDays,

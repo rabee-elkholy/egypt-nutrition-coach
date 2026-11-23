@@ -45,6 +45,7 @@ export function enrichMuscleCatalog() {
 }
 
 export function computeWorkoutPrs(s, { since = null, exerciseId = null } = {}) {
+  const sinceDate = since ? String(since).slice(0, 10) : null;
   const logs = (s.workoutLogs || [])
     .filter(l => !exerciseId || l.exerciseId === exerciseId)
     .slice()
@@ -106,7 +107,7 @@ export function computeWorkoutPrs(s, { since = null, exerciseId = null } = {}) {
     }
 
     const pushEvent = (prType, value, previousValue, repsVal = null) => {
-      if (!since || l.date >= since) {
+      if (!sinceDate || l.date >= sinceDate) {
         events.push({
           exerciseId: l.exerciseId,
           name: rec.name,
@@ -138,7 +139,7 @@ export function computeWorkoutPrs(s, { since = null, exerciseId = null } = {}) {
       rec.bestRepsAtWeight = maxReps;
     }
 
-    if (sessionVolume > 0 && sessionVolume > rec.highestVolumeKg) {
+    if (!isAssisted && sessionVolume > 0 && sessionVolume > rec.highestVolumeKg) {
       if (rec.highestVolumeKg > 0) pushEvent('volume', Math.round(sessionVolume * 10) / 10, Math.round(rec.highestVolumeKg * 10) / 10, maxReps);
       rec.highestVolumeKg = Math.round(sessionVolume * 10) / 10;
     }

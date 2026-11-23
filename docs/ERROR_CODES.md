@@ -160,17 +160,17 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `PLAN_DAY_NOT_FOUND` | `404` | No | — | Specified calendar day not found in nutrition plan. |
 | `PLAN_LOAD_FAILED` | `503` | Yes | — | Unable to load saved nutrition plan. |
 | `PLAN_NOT_ACTIVE_FOR_TRACK` | `400` | No | — | No active nutrition plan exists for a workouts-only track. |
-| `PLAN_STILL_ACTIVE` | `400` | No | — | Current weekly nutrition plan is still active; renewal is allowed after it ends. |
+| `PLAN_STILL_ACTIVE` | `400` | No | — | Current weekly nutrition plan is still active; renewal is allowed after it ends or with earlyRenew: true. |
 | `PLANNED_MEAL_NOT_FOUND` | `404` | No | — | Planned meal not found in the active nutrition plan. |
 | `FUTURE_FOOD_ENTRIES_CONFLICT` | `400` | No | — | Food logs already exist on or after the effective adjustment date. |
 | `DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION` | `400` | No | — | This day already has a daily total log; switch to detailed entries before adding individual meals. |
 | `FOOD_DAY_REQUIRES_CLOSURE` | `400` | No | — | This day already uses detailed meal entries; confirm day completion with food_complete instead. |
 | `INVALID_FOOD_ACTION` | `400` | No | — | Unknown food command action. |
-| `INVALID_FOOD_SOURCE` | `400` | No | — | Food entry source must be planned, ingredient, or manual. |
+| `INVALID_FOOD_SOURCE` | `400` | No | — | Food entry source must be planned, ingredient, recipe, barcode, or manual. |
 | `INVALID_MEAL_SLOT` | `400` | No | — | slot must be one of breakfast, lunch, dinner, or snack. |
 | `MEAL_DATE_MISMATCH` | `400` | No | — | Logged date does not match the planned meal's scheduled date. |
 | `MEAL_SLOT_MISMATCH` | `400` | No | — | Logged slot does not match the planned meal's slot. |
-| `PLANNED_MEAL_ALREADY_LOGGED` | `400` | No | — | Planned meal has already been logged; delete the entry first to adjust quantity. |
+| `PLANNED_MEAL_ALREADY_LOGGED` | `400` | No | — | Planned meal has already been logged; update or delete the entry to adjust quantity. |
 | `FOOD_NOT_FOUND` | `404` | No | — | Food item not found or lacks gram-based portion reference. |
 | `INVALID_MEAL_NAME` | `400` | No | — | Manual meal name must be non-empty and at most 120 characters. |
 | `MANUAL_MEAL_ENERGY_REQUIRED` | `400` | No | — | Positive actual energy (kcal > 0) is required for manual food entries. |
@@ -202,7 +202,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `QUANTITY_OUT_OF_RANGE` | `400` | No | — | Calculated food weight must be between 0 and 100000 grams. |
 | `INVALID_CUSTOM_FOOD_NAME` | `400` | No | — | Custom food name must be non-empty and at most 120 characters. |
 | `INVALID_NUTRITION_BASIS` | `400` | No | — | Invalid nutrition declaration basis. |
-| `MACROS_INCONSISTENT_WITH_100G` | `400` | No | — | Sum of macronutrients per 100g exceeds 100g. |
+| `MACROS_INCONSISTENT_WITH_100G` | `400` | No | — | Sum of macronutrients per 100g exceeds physiological 100g tolerance. |
 | `INVALID_CARB_DEFINITION` | `400` | No | — | Specify a valid carbohydrate definition. |
 | `MEAL_COMPONENTS_REQUIRED` | `400` | No | — | Provide a custom meal name and at least one ingredient. |
 | `MAX_INGREDIENTS_EXCEEDED` | `400` | No | — | A custom meal cannot exceed 100 ingredients. |
@@ -321,3 +321,6 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `CARDIO_DAILY_LIMIT_EXCEEDED` | `400` | No | `max` | Maximum number of cardio sessions ({max}) logged for this date has been reached. |
 | `CYCLE_TRACKING_UNAVAILABLE` | `403` | No | — | Menstrual cycle awareness is only available for female profiles. |
 | `INVALID_CYCLE_PAYLOAD` | `400` | No | — | Cycle settings or cycle log payload is invalid. |
+| `AUTH_OAUTH_EMAIL_UNVERIFIED` | `409` | No | `provider` | Identity provider email is not verified; link or sign in with a verified email. |
+| `AUTH_OAUTH_ALREADY_LINKED_OTHER_USER` | `409` | No | `existingProvider` | This sign-in identity is already linked to a different CuraFit account. |
+| `SESSION_ALREADY_COMPLETED` | `409` | No | — | Completed sessions cannot be rescheduled. |

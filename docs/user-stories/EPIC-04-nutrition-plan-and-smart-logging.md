@@ -9,20 +9,21 @@
 
 ## Epic Overview
 
-`EPIC-04` powers the entire **Nutrition Tab** and **Multi-Modal Food Logging** ecosystem. It unites CuraFit's clinically validated, 100% regional 7-day meal plan engine (`Egypt`, `Gulf`, `Levant`, `Maghreb`) and 3,291 reference/estimated foods & beverages + 2,437 regional serving models (`5,728` total indexed) Arabic/English catalog with market-leading consumer conveniences: **MENA Supermarket Barcode Scanner**, **"What's in My Fridge?" Pantry Finder** (powered by existing `pantry.mjs`), **Smart Weekly Grocery List**, **Quick Repeat / Favorites / Copy Yesterday**, **Intermittent Fasting (16:8) + Ramadan Mode**, and (in Final AI Phase) **AI Meal Photo & Dialect Voice/Text Quick Log**.
+`EPIC-04` powers the entire **Nutrition Tab** and **Multi-Modal Food Logging** ecosystem. It unites CuraFit's clinically validated, 100% regional 7-day meal plan engine (`Egypt`, `Gulf`, `Levant`, `Maghreb`) and 3,291 reference/estimated foods & beverages + 2,437 regional serving models (`5,728` total indexed) Arabic/English catalog with market-leading conveniences: **MENA Supermarket Barcode Scanner**, **Zero-Query Recent & Frequent Foods + Multi-Select Batch Tray (`food_entry_batch`)**, **MFP-Style Quick-Add Macros**, **Saved Custom Home Recipes ("My Recipes")**, **"What's in My Fridge?" Pantry Finder**, **Smart Weekly Grocery List**, **Intermittent Fasting (6..16h Start) + Indigo/Gold Ramadan Mode + Eid/Holiday Flex Mode**, and (in Final AI Phase) **AI Meal Photo & Voice/Text Quick Log**.
 
 ### Child User Stories
 - `US-NUT-01`: 7-Day Regional Meal Plan Viewer, Calendar Switcher & Smart Plan Renewal
-- `US-NUT-02`: 1-Tap Planned Meal Logging, Portion Multiplier, Ingredient Breakdown & Entry Deletion
+- `US-NUT-02`: 1-Tap Planned Meal Logging, Portion Multiplier, Atomic In-Place Edit & Entry Deletion
 - `US-NUT-03`: Smart Meal Swap & Constraint-Validated Alternatives
 - `US-NUT-04`: Bilingual Arabic/English Food & Beverage Search (3,291 Foods/Beverages + 2,437 Regional Serving Models) & Custom Recipe Calculator
 - `US-NUT-05`: AI Meal Photo & Egyptian/Arabic Dialect Voice/Text Quick Log *(Final AI Phase)*
 - `US-NUT-06`: MENA Supermarket Barcode Scanner & Community Product Submission
-- `US-NUT-07`: Quick Repeat — Favorites, Recent Foods, Manual Macro Entry & 1-Tap Copy Yesterday
+- `US-NUT-07`: Zero-Query Quick Repeat — Recent/Frequent Foods (`GET /v1/foods/recent`), Batch Tray (`food_entry_batch`), Favorites, Manual Quick-Add Macros & Copy Slots
 - `US-NUT-08`: Pantry / "What's in My Fridge?" Smart Meal Finder
-- `US-NUT-09`: Smart Weekly Grocery / Shopping List (Aisle-Grouped, Budget-Aware & Shareable)
-- `US-NUT-10`: Intermittent Fasting (16:8) Live Timer & Automatic Ramadan Mode
+- `US-NUT-09`: Smart Weekly Grocery / Shopping List (Aisle-Grouped, Free 2-Item Preview & WhatsApp Share)
+- `US-NUT-10`: Intermittent Fasting Timer, Time-Aware Ramadan Mode (Auto-Revert) & Seasonal Eid Flex Mode
 - `US-NUT-11`: Daily Food Diary Completion Confirmation & Adaptive Evidence Readiness Indicator
+- `US-NUT-12`: Saved Custom Home Recipes ("My Recipes", Yield, `ml` Liquids & Additions) & 1-Tap Portion Logging
 
 ---
 
@@ -40,20 +41,20 @@
 | **Backend Status** | `Implemented` |
 
 ### STORY
-As a user following a weekly nutrition plan, I want to browse each day of my 7-day regional meal plan, switch cleanly between my Planned Menu and Actual Food Diary, view past archived weeks, and renew my plan (either after the 7 days finish or early starting tomorrow) so I always have fresh, balanced meals aligned with my latest targets.
+As a user following a weekly nutrition plan, I want to browse each day of my 7-day regional meal plan, switch cleanly between my Planned Menu and Actual Food Diary, view past archived weeks, and renew my plan (either after the 7 days finish or early with `earlyRenew: true` while preserving today's meals) so I always have fresh, balanced meals aligned with my latest targets.
 
 ### PRECONDITIONS
 - `serviceTrack != "workouts_only"` and `activeNutritionPlanRef != null`.
 
 ### SCREEN AND UI DETAILS
 1. **Top Sticky Nutrition Header:**
-   - Horizontal 7-Day Calendar Strip (`start_date`..`end_date`) highlighting Today, plus `[Past Plans History]` icon button (`GET /v1/plans`) and `[Refresh Plan Starting Tomorrow]` overflow option (`earlyRenew: true`).
-   - Compact **Daily Target Bar**: Shows `Plan Target` (`1,850 kcal • 145g P / 170g C / 65g F`) vs `Logged Today` progress.
+   - Horizontal 7-Day Calendar Strip (`start_date`..`end_date`) highlighting Today, plus `[Past Plans History]` icon button (`GET /v1/plans`) and `[Refresh Week Now (Keep Today)]` overflow option (`earlyRenew: true`, Pro feature).
+   - Compact **Daily Target Bar**: Shows `Plan Target` (`1,850 kcal • 145g P / 170g C / 65g F` — or `maintenanceTargetKcal` when Eid Flex Mode is active) vs `Logged Today` progress.
    - Sub-tab toggle or unified view: **`Today's Meals`** (shows planned slots + any extra ad-hoc logged foods inline) | **`Grocery List`** shortcut (`US-NUT-09`) | **`Pantry Finder`** shortcut (`US-NUT-08`).
 2. **Meal Slot Cards (Breakfast, Lunch, Dinner, Snacks — or Suhoor/Iftar in Ramadan Mode):**
-   - Each card displays: Slot badge + scheduled time window (e.g., `12:00 PM` when IF active), Dish Name (localized Arabic/English), Estimated Prep Tag, Calories + Macros pills (`520 kcal • 42g P • 54g C • 14g F`), Status indicator (`Planned` vs `Logged ✓ 1.0x`), `[Log ✓]` button, and `[Swap ⇄]` button.
+   - Each card displays: Slot badge + scheduled time window (e.g., `12:00 PM` when IF active), Dish Name (localized Arabic/English), Estimated Prep Tag, Calories + Macros pills (`520 kcal • 42g P • 54g C • 14g F`), Status indicator (`Planned` vs `Logged 1.0x`), `[Log]` button, and `[Swap]` button.
 3. **Plan Expiry & Renewal Banner (Shown when `today > activePlan.end_date`):**
-   - Prominent card: *"Your 7-day meal plan ended on {end_date}! Generate a fresh week tailored to your current calorie target ({latestEnergy} kcal) and preferences."*
+   - Prominent card: *"Your 7-day meal plan ended on {end_date}. Generate a fresh week tailored to your current calorie target ({latestEnergy} kcal) and preferences."*
    - CTA: `[Generate Next 7-Day Plan]` (Uses `entitlements.quotas.freePlanRenewalsRemaining`: Week 1 included + `1` bonus Free renewal; once Free renewal bonus is used, displays Soft Paywall `US-MON-01` for unlimited renewals).
 4. **Empty / Plan Warnings State:**
    - If `plan.warnings` contains day warnings from `planner-core.mjs`, show a calm inline info pill rather than hiding the plan.
@@ -64,24 +65,24 @@ As a user following a weekly nutrition plan, I want to browse each day of my 7-d
 3. **`GET /v1/plans/{activePlanId}/days/{YYYY-MM-DD}`** -> Lazy-loads any single day (`{ planId, targets, day }`).
 4. **`POST /v1/commands?view=receipt`** (`action: "renew_plan"`, `payload: {}` or `{ "earlyRenew": true }`)
    - **Standard Renewal (`payload: {}`):** Allowed when `end_date < currDate`; generates a new 7-day plan starting today (`currDate`).
-   - **Early Plan Renewal (`payload: { "earlyRenew": true }`):** Regenerates remaining days starting **tomorrow** (`dateOffset(currDate, 1)`) while preserving today's plan day and all of today's logged meals cleanly (`todayPlanDay` preserved).
-   - Enforces Pro entitlement once `entitlements.quotas.freePlanRenewalsRemaining == 0` when entitlement enforcement is enabled (`402 PRO_ENTITLEMENT_REQUIRED`).
+   - **Early Plan Renewal (`payload: { "earlyRenew": true }`):** Pro-gated under `ENFORCE_PRO_ENTITLEMENTS=true`; regenerates a full 7-day plan starting **today** (`currDate`) while preserving today's meal slots (`days[0]`) and all logged meals untouched.
+   - Enforces Pro entitlement for standard renewals once `entitlements.quotas.freePlanRenewalsRemaining == 0` when entitlement enforcement is enabled (`402 PRO_ENTITLEMENT_REQUIRED`).
    - Error Codes:
      - `400 PLAN_STILL_ACTIVE`: Active plan hasn't ended yet (`end_date >= currDate`) and `earlyRenew: true` was not passed.
      - `400 PLAN_NOT_ACTIVE_FOR_TRACK`: Account is `workouts_only`.
      - `400 PLAN_CONSTRAINTS_UNMET` / `LIBRARY_INSUFFICIENT_FOR_DIET_GOALS`: Show actionable prompt to review exclusions/diet in `US-PRF-04`.
-     - `402 PRO_ENTITLEMENT_REQUIRED`: Free renewal bonus already consumed (`US-MON-01`).
+     - `402 PRO_ENTITLEMENT_REQUIRED`: Free renewal bonus already consumed or Pro required for `earlyRenew` (`US-MON-01`).
 
 ### RULES & BUSINESS LOGIC
 1. **Immutable Historical Targets:** When viewing a past plan date (`date < today`), always read `day.targets || plan.targets` from that historical plan version — never rewrite past day targets with today's adjusted calories (`IMPLEMENTATION.md`).
-2. **Renewal Eligibility & Quota:** Standard `renew_plan` succeeds when `current.days.at(-1).date < currDate`, while `{ earlyRenew: true }` allows refreshing upcoming days starting tomorrow without disturbing today's logged meals. Free users get 1 bonus weekly renewal (`freePlanRenewalsRemaining == 1 -> 0`) before Pro gating activates cleanly (`US-MON-01`), ensuring Week 2 habit formation before any Paywall on renewals. It always uses the latest `profile`, `preferences`, and any accepted `nutritionAdjustment.energy`.
+2. **Renewal Eligibility & Quota:** Standard `renew_plan` succeeds when `current.days.at(-1).date < currDate`, while `{ earlyRenew: true }` (Pro) refreshes the 7-day window starting today while keeping today's meals intact (`days[0]` swap). Free users get 1 bonus weekly renewal (`freePlanRenewalsRemaining == 1 -> 0`) before Pro gating activates cleanly (`US-MON-01`), ensuring Week 2 habit formation before any Paywall on renewals. It always uses the latest `profile`, `preferences`, and any accepted `nutritionAdjustment.energy`.
 3. **Cache Strategy & 5-Meal / Ramadan Slot Display:** Fetch `GET /v1/plans/{activePlanId}` upon onboarding completion, plan replacement (`replace_meal`), adaptation acceptance (`calories` / `maintenance`), or `renew_plan`, keeping all 7 days available 100% offline. 4- or 5-meal Balanced schedules display sub-slots (`Snack 1`, `Snack 2`) visually while mapping every log wire call cleanly onto the 4 canonical server slots (`breakfast | lunch | dinner | snack`) + `displaySlot`.
 
 ### MAIN FLOW
 1. User taps `Nutrition` tab.
-2. App renders today's planned meals from SQLDelight immediately while verifying `GET /v1/food-diary?date={today}`.
+2. App renders today's planned meals from SQLDelight immediately while verifying `GET /v1/food-diary?date={today}` (or `GET /v1/food-diary?from={7dAgo}&to={today}` for multi-day diary sync).
 3. User taps `Tomorrow` on the 7-day strip -> Switches smoothly to tomorrow's meals (`[Swap]` allowed, `[Log]` disabled for future dates).
-4. On Day 8 (`end_date < today`), user taps `[Generate Next 7-Day Plan]` -> Calls `renew_plan` -> Fetches new plan and displays the next 7 days immediately (or taps `[Refresh Plan Starting Tomorrow]` mid-week to call `renew_plan` with `{ earlyRenew: true }`).
+4. On Day 8 (`end_date < today`), user taps `[Generate Next 7-Day Plan]` -> Calls `renew_plan` -> Fetches new plan and displays the next 7 days immediately (or Pro user taps `[Refresh Week Now (Keep Today)]` mid-week to call `renew_plan` with `{ earlyRenew: true }`).
 
 ### EDGE CASES
 - **User Views a Future Plan Day and Taps `[Log Meal]`:** Disabled with subtle tooltip *"You can log meals on today or past days; you can still swap future meals now."* (`DATE_IN_FUTURE`).
@@ -93,7 +94,7 @@ As a user following a weekly nutrition plan, I want to browse each day of my 7-d
 - **Scenario 1: Plan renewal succeeds after 7-day cycle ends (and early renewal preserves today)**
   - **Given** the active plan's `end_date` is `2026-11-20` and `serverDate` is `2026-11-21`
   - **When** the user taps `[Generate Next 7-Day Plan]`
-  - **Then** `POST /v1/commands` (`action: "renew_plan"`) creates a new 7-day plan starting `2026-11-21` and sets it active; when `earlyRenew: true` is used mid-week, today's plan day and logged meals remain untouched while upcoming days regenerate from tomorrow.
+  - **Then** `POST /v1/commands` (`action: "renew_plan"`) creates a new 7-day plan starting `2026-11-21` and sets it active; when a Pro user triggers `earlyRenew: true` mid-week, a fresh 7-day plan generates from `today` with `days[0]` preserving today's meal slots and logged meals untouched.
 - **Scenario 2: Past plan days preserve historical calorie targets**
   - **Given** a calorie adaptation reduced targets from `2,000` to `1,850 kcal` starting tomorrow
   - **When** the user navigates back to yesterday in the diary/plan strip
@@ -131,23 +132,23 @@ As a user eating from my daily plan, I want to inspect the exact gram weights an
 ### SCREEN AND UI DETAILS
 1. **Meal Detail Bottom Sheet (Opens when tapping any planned meal card):**
    - Dish header + `Verified Source` / `Approximate` provenance badge + Calories & Macro pills (`kcal`, `P`, `C`, `F`, `Fiber`, `Sodium`).
-   - **Portion Multiplier Selector:** Interactive horizontal chips `[0.5x]`, `[0.75x]`, `[1.0x (Planned)]`, `[1.25x]`, `[1.5x]`, `[2.0x]` + slider (`0.1x .. 4.0x` on initial log; `0.25x .. 3.0x` on in-place edit). Scaling updates all ingredient grams and nutrition totals live!
+   - **Portion Multiplier Selector:** Interactive horizontal chips `[0.5x]`, `[0.75x]`, `[1.0x (Planned)]`, `[1.25x]`, `[1.5x]`, `[2.0x]` + slider (`0.1x .. 10.0x` on planned log & in-place edits). Scaling updates all ingredient grams and nutrition totals live!
    - **Ingredients List:** Each row shows ingredient name, scaled grams (`"150g Chicken Breast"`), an explicit **`Raw (Dry)` vs `Cooked` state badge** (prevents 2–3x rice/pasta/meat weighing errors!), and household measure hint (e.g., `"~1 medium fillet"` / `"~6 cooked tbsp"`).
    - **Simple Preparation Steps** (when present in regional recipe metadata).
    - **Primary CTA:** `[Log This Meal ({scaledCalories} kcal)]` -> Commits `food_entry` (`source: "planned"`).
-   - **Secondary CTA:** `[Swap for Another Meal]` (`US-NUT-03`) or `[Copy to Favorites ☆]` (`US-NUT-07`).
+   - **Secondary CTA:** `[Swap for Another Meal]` (`US-NUT-03`) or `[Save to Favorites]` (`US-NUT-07`).
 2. **Logged Food Diary Entry Row (Shown once logged):**
-   - Displays green check, actual logged name, multiplier/grams, exact frozen calories & macros, timestamp, `[Edit Portion]` button, and **Swipe-to-Delete** or `Trash` button -> Confirmation toast with quick `[Undo]` (`food_delete`).
-   - Editing quantity, grams, slot, or manual nutrients of ANY already-logged entry (`planned`, `ingredient`, or `manual`) executes atomically via a single **`food_entry_update`** command (preserving the entry `id`, recomputing scaled macros for `planned`/`ingredient` or updating `manual` fields in place, and reopening `complete = false`) — eliminating fragile multi-step delete+create chains!
+   - Displays subtle checkmark icon, actual logged name, multiplier/grams, exact frozen calories & macros, timestamp, `[Edit Portion]` button, and **Swipe-to-Delete** or `Trash` button -> Confirmation toast with quick `[Undo]` (`food_delete`).
+   - Editing quantity, grams, servings, `slot`, `displaySlot`, or manual nutrients of ANY already-logged entry (`planned`, `ingredient`, `recipe`, `barcode`, or `manual`) executes atomically via a single **`food_entry_update`** command (preserving the entry `id`, scaling without the legacy `0.1..4.0` clamp, converting cleanly between `grams` <-> `servings` on recipes, and reopening `complete = false`).
 
 ### API & BACKEND CONTRACT
-1. **`GET /v1/food-diary?date={YYYY-MM-DD}`** -> Returns `entries`, `totals`, `complete`, `planEnergy`.
+1. **`GET /v1/food-diary?date={YYYY-MM-DD}`** (or **`?from={YYYY-MM-DD}&to={YYYY-MM-DD}`** up to 62 days for multi-day diary prefetch/sync) -> Returns `entries`, `totals`, `complete`, `planEnergy`.
 2. **`POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "planned"`)
-   - Payload: `{ "date": "2026-11-21", "source": "planned", "mealId": "<uuid>", "slot": "<meal.slot>", "displaySlot": "suhoor", "quantity": 1.0 }` (`quantity` valid `0.1..4.0`; `slot` MUST strictly be one of `"breakfast" | "lunch" | "dinner" | "snack"` for `food.mjs`, while optional `displaySlot` stores `"snack_1" | "snack_2" | "suhoor" | "iftar" | "night_snack"`).
+   - Payload: `{ "date": "2026-11-21", "source": "planned", "mealId": "<uuid>", "slot": "<meal.slot>", "displaySlot": "suhoor", "quantity": 1.0 }` (`quantity` valid `0.1..10.0`; `slot` MUST strictly be `"breakfast" | "lunch" | "dinner" | "snack"` for `food.mjs`, while optional `displaySlot` stores `"snack_1" | "snack_2" | "suhoor" | "iftar" | "ramadan_snack" | "night_snack"`).
 3. **`POST /v1/commands?view=receipt`** (`action: "food_entry_update"`) — **Atomic In-Place Edit:**
-   - Preserves `id` and `date`, recomputes scaled macros from the existing snapshot for `planned` (`quantity` `0.25..3.0`) and `ingredient` (`grams` `1..2000` or `quantity` `0.25..10` for `unit: "reference"`), or updates `manual` `name`/`slot`/nutrient fields cleanly in 1 atomic revision!
+   - Preserves `id` and `date`, recomputes scaled macros cleanly via unit-basis math without artificial `0.1..4.0` clamps: `planned` (`quantity` `0.1..10.0`), `ingredient` (`grams` `1..5000` or `quantity` `0.1..20`), `recipe` (`servings` `0.1..20` <-> `grams` `1..5000`), `barcode`, or `manual` (`name`, `slot`, `displaySlot`, nutrient fields) in 1 atomic revision!
    - Payload examples:
-     - Planned: `{ "id": "<entry-uuid>", "quantity": 0.75, "slot": "lunch" }`
+     - Planned: `{ "id": "<entry-uuid>", "quantity": 0.75, "slot": "lunch", "displaySlot": null }`
      - Ingredient: `{ "id": "<entry-uuid>", "grams": 180 }`
      - Manual: `{ "id": "<entry-uuid>", "name": "Grilled Chicken Wrap", "energy": 480, "protein": 38, "carbs": 42, "fat": 16 }`
 4. **`POST /v1/commands?view=receipt`** (`action: "food_delete"`)
@@ -156,8 +157,8 @@ As a user eating from my daily plan, I want to inspect the exact gram weights an
 
 ### RULES & BUSINESS LOGIC
 1. **Frozen Snapshot Guarantee:** Once logged, the food entry stores a frozen nutrient `snapshot`. Subsequent calorie adjustments or meal swaps on future days never alter past logged consumption.
-2. **Auto-Reopening Day Completion:** Any `food_entry`, `food_entry_update`, or `food_delete` sets `complete = false` on the server (`food.mjs`). The mobile UI reflects this immediately (`"Changes logged — confirm day complete when done"`).
-3. **Quantity Bounds:** Enforce exact backend bounds (`0.1..4.0` on initial `food_entry`, `0.25..3.0` on `food_entry_update` for planned meals).
+2. **Auto-Reopening Day Completion:** Any `food_entry`, `food_entry_batch`, `food_entry_update`, or `food_delete` sets `complete = false` on the server (`food.mjs`). The mobile UI reflects this immediately (`"Changes logged — confirm day complete when done"`).
+3. **Unclamped Unit Scaling:** Enforce server bounds (`0.1..10.0` planned quantity, `1..5000g` grams, `0.1..20` servings) with smooth bidirectional `grams <-> servings` conversion for custom recipes (`recipeTotalGrams`, `recipeServings`).
 4. **Canonical Wire Slot Mapping Rule (Planned vs. Ad-Hoc):**
    - **For `source: "planned"` (including during Ramadan Mode or 5-meal Balanced plans):** ALWAYS send the planned meal's actual `meal.slot` as wire `slot` (preventing `MEAL_SLOT_MISMATCH`), and pass the Ramadan or multi-snack presentation label (`"suhoor" | "iftar" | "night_snack" | "snack_1" | "snack_2"`) in `displaySlot`!
    - **For ad-hoc logs (`source: "ingredient" | "manual"`):** Map Ramadan presentation slots to canonical wire slots: `Suhoor` -> `slot: "breakfast"` (`displaySlot: "suhoor"`), `Iftar` -> `slot: "dinner"` (`displaySlot: "iftar"`), `Night Snack` / `Snack 1` / `Snack 2` -> `slot: "snack"` (`displaySlot: "night_snack" | "snack_1" | "snack_2"`).
@@ -230,16 +231,16 @@ As a user who doesn't feel like eating a specific planned dish, I want to swap t
 2. **`POST /v1/commands?view=receipt`** (`action: "replace_meal"`)
    - Payload: `{ "mealId": "<uuid>", "templateId": "<snapshot.template_id>" }`.
    - Enforces Free daily swap quota (`2/day` via `coaching_usage_quotas` when entitlement enforcement is enabled; unlimited on Pro), returning `402 PRO_ENTITLEMENT_REQUIRED` when exceeded.
-   - After `200 OK`, fetch the newly created plan version (`GET /v1/plans/{newPlanId}`) using `affected` delta or `GET /v1/bootstrap` so local SQLDelight holds the new immutable plan version.
+   - **After `200 OK`, fetch the newly created plan version (`GET /v1/plans/{newPlanId}`) using `affected` delta or `GET /v1/bootstrap` so local SQLDelight holds the new immutable plan version.** Checked grocery list items (`coaching_grocery_checks`) from the prior `planId` are migrated cleanly on the server to the new `planId`.
    - Error Codes: `PAST_DAY_PLAN_IMMUTABLE`, `MEAL_ALREADY_CONSUMED`, `MEAL_ALTERNATIVE_UNAVAILABLE`, `PLANNED_MEAL_NOT_FOUND`, `402 PRO_ENTITLEMENT_REQUIRED`.
 
 ### RULES & BUSINESS LOGIC
 1. **Immutable Plan Versioning:** `replace_meal` creates a new `planId` (`parent_id = oldPlanId`) on the server so history and previously logged days remain untampered.
 2. **Swap Guardrails:** Client disables `[Swap]` on past days (`date < serverDate`) and shows `"Delete logged entry first to swap"` if the meal was already logged today (`MEAL_ALREADY_CONSUMED`).
-3. **Full-Day Diet Revalidation:** Alternatives returned are already pre-verified against `assertDietDay` (e.g., DASH `<= 2300 mg` sodium, Keto carb limit, Celiac gluten-free, Favism fava-free).
+3. **Full-Day Diet Revalidation:** Alternatives returned are already pre-verified against `assertDietDay` (e.g., DASH `<= 2300 mg` sodium, Keto carb limit, Celiac gluten-excluded, Favism fava-free).
 
 ### MAIN FLOW
-1. User doesn't have chicken today and taps `[Swap ⇄]` on Dinner.
+1. User doesn't have chicken today and taps `[Swap]` on Dinner.
 2. Sheet loads `GET /v1/meal-alternatives?mealId=...` and displays 5 valid substitutes (e.g., *Tuna & Bean Salad*, *Grilled Tilapia & Brown Rice*, *Cottage Cheese & Baked Potato*).
 3. User taps `[Select Replacement]` on *Tuna & Bean Salad*.
 4. `replace_meal` commits, local plan updates seamlessly to the new version, and Dinner updates in place.
@@ -383,8 +384,8 @@ As a user eating home-cooked Arabic meals or dining out, I want to snap a photo 
 
 ### SCREEN AND UI DETAILS
 1. **Capture Screen (`AIMealLoggerScreen`):**
-   - **3 Mode Switcher Pills:** `[📷 Photo]` | `[🎙️ Voice]` | `[⌨️ Quick Text]`.
-   - **Photo Mode:** Clean camera viewfinder with plate-framing guide, flash toggle, gallery picker icon, and helpful tip *"Works great on Koshary, Mahshi, Grilled Meats & Mixed Plates!"*.
+   - **3 Mode Switcher Pills:** `[Photo]` | `[Voice]` | `[Quick Text]`.
+   - **Photo Mode:** Clean camera viewfinder with plate-framing guide, flash toggle, gallery picker icon, and helpful tip *"Works accurately on Koshary, Mahshi, Grilled Meats & Mixed Plates."*
    - **Voice Mode:** Large pulsing microphone button with live Arabic/English waveform, language auto-detect (`ar-EG` / `ar-SA` / `en`), and example prompts carousel.
    - **Quick Text Mode:** Multi-line field with one-tap example chips (`"2 boiled eggs + 1 baladi bread"`, `"Chicken shawarma wrap + small fries"`).
 2. **Processing State:**
@@ -392,10 +393,10 @@ As a user eating home-cooked Arabic meals or dining out, I want to snap a photo 
 3. **Editable Review Sheet (`AIParsedMealReviewSheet` — Mandatory Before Saving):**
    - Shows uploaded thumbnail/transcript at top + total parsed summary (`545 kcal • 28g P • 62g C • 18g F`).
    - **Itemized Detected Foods List:** Each row shows:
-     - Matched food name + provenance badge (`Catalog Match ✓` in green if linked to `food_catalog` ID, or `AI Estimate ⚠️` with confidence `%`).
+     - Matched food name + provenance badge (`Catalog Match` in green if linked to `food_catalog` ID, or `AI Estimate` with confidence `%`).
      - Editable portion quantity / gram weight (`+ / -` buttons or tap to adjust) + `[Replace Match]` (opens quick search) + `[Remove Item]`.
    - **Slot & Date Picker:** Pre-filled from context (`Breakfast` / `Lunch` / `Dinner` / `Snack`).
-   - **Primary CTA:** `[Confirm & Log All ({N} Items)]` -> Commits clean `food_entry` commands (or batch).
+   - **Primary CTA:** `[Confirm & Log All ({N} Items)]` -> Commits atomically via **`food_entry_batch`** (`1..15` items).
 
 ### API & BACKEND CONTRACT
 1. **`POST /v1/nutrition/ai-parse`** *(Final AI Phase — Deferred: returns `501 FEATURE_DEFERRED_TO_AI_PHASE` until AI rollout)*
@@ -552,6 +553,7 @@ As a user buying packaged dairy, snacks, protein bars, or drinks in Egyptian and
          "protein": 9.5,
          "carbs": 4.2,
          "fat": 2.5,
+         "saturated": 1.6,
          "fiber": 0,
          "sodium": 45,
          "sugars": 3.8
@@ -559,7 +561,7 @@ As a user buying packaged dairy, snacks, protein bars, or drinks in Egyptian and
      }
      ```
    - Validates `MACROS_INCONSISTENT_WITH_100G` (server rejects `protein + carbs + fat > 110g` per `100g` physiological tolerance; client validates `<= 100g` inline).
-3. **`POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "manual"` or catalog-backed `"ingredient"`).
+3. **`POST /v1/commands?view=receipt`** (`action: "food_entry"`, supporting `source: "barcode"` with `{ barcode, name, brand, servingSizeGrams, servings|grams, valuesPer100g, provenance, isApproximate }`, plus `"manual"` or `"ingredient"`).
 
 ### RULES & BUSINESS LOGIC
 1. **Local Cache on Recent Scans:** Cache scanned barcodes in SQLDelight so re-scanning a favorite Greek yogurt or milk works instantaneously even inside a basement supermarket with weak signal.
@@ -597,7 +599,7 @@ As a user buying packaged dairy, snacks, protein bars, or drinks in Egyptian and
 
 ---
 
-## US-NUT-07: Quick Repeat — Favorites, Recent Foods, Manual Macro Entry & 1-Tap Copy Yesterday
+## US-NUT-07: Zero-Query Quick Repeat — Recent/Frequent Foods (`GET /v1/foods/recent`), Batch Tray (`food_entry_batch`), Favorites, Quick-Add Macros & Copy Slots
 
 ### METADATA
 | Field | Value |
@@ -606,69 +608,76 @@ As a user buying packaged dairy, snacks, protein bars, or drinks in Egyptian and
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
 | **Labels** | `production`, `mobile`, `nutrition`, `quick-repeat` |
-| **Target Screens** | `QuickRepeatSheet` (Tabs: `Favorites`, `Recent`, `Copy Yesterday`, `Manual Entry`) |
+| **Target Screens** | `QuickRepeatSheet` (Tabs: `Recent`, `Favorites`, `Copy Day/Slot`, `Quick-Add Macros`) |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Implemented` |
 
 ### STORY
-As a creature of habit who often eats the same breakfast or snacks on multiple days, I want 1-tap access to my Favorite foods, Recently logged foods, a `"Copy Yesterday's {Slot}"` shortcut, and a fast Manual Calories/Macros entry form so repeat logging takes one tap.
+As a busy user tracking food multiple times a day, I want zero-query access to my Recent & Frequent foods (`GET /v1/foods/recent`), Multi-Select Batch Logging (`food_entry_batch`) across up to 15 items at once, Favorite items (`planned`, `ingredient`, `recipe`, `barcode`, `manual`), flexible slot-to-slot Copy (`toSlot`, `entryIds[]`), and MFP-style Quick-Add Macros so repeat logging takes one or two taps.
 
 ### PRECONDITIONS
 - User is on `NutritionHubScreen` or `QuickLogBottomSheet`.
 
 ### SCREEN AND UI DETAILS
 1. **Segmented Tabs inside `QuickRepeatSheet`:**
-   - **Tab 1 — `Recent`:** Automatically compiled from the last 14 days of `foodEntries` (deduplicated, sorted by frequency + recency) with a `[+ 1-Tap Log]` button on every row.
-   - **Tab 2 — `Favorites ☆`:** Starred meals, catalog foods, or custom recipes (`GET /v1/foods/favorites`) with star toggle and `[+ 1-Tap Log]`.
-   - **Tab 3 — `Copy Yesterday`:** Groups yesterday's logged entries by slot (`Breakfast`, `Lunch`, `Dinner`, `Snack`). Each slot header has a single `[Copy All to Today's {Slot}]` button!
-   - **Tab 4 — `Manual Entry`:**
-     - Clean quick form: `Food/Meal Name` (`1..120 chars`), `Calories (kcal)` (`1..5000`, required), optional `Protein (g)`, `Carbs (g)`, `Fat (g)` (`leave blank if unknown` -> sends `null`, preserving null-nutrient integrity!), and `[Save to {Slot}]`.
+   - **Tab 1 — `Recent & Frequent`:** Populated directly from `GET /v1/foods/recent?days=30&limit=25` (plus local SQLDelight cache offline) sorted by frequency + recency. Includes **Multi-Select Tray Checkboxes** (`"3 items selected • 540 kcal"`) + single `[Log Selected ({N})]` button dispatching `food_entry_batch` atomically!
+   - **Tab 2 — `Favorites`:** Starred meals, catalog foods, barcodes, or custom recipes (`GET /v1/foods/favorites`) with star icon toggle and 1-tap log or add-to-batch-tray.
+   - **Tab 3 — `Copy Day / Slot`:** Groups previous days' logged entries by slot (`Breakfast`, `Lunch`, `Dinner`, `Snack`). Supports `[Copy All Slot]`, checking specific items (`entryIds[]`), or choosing a different destination slot (`toSlot`, e.g., copy Yesterday's Dinner into Today's Lunch!).
+   - **Tab 4 — `Quick-Add Macros` (Manual Entry):**
+     - Ultra-fast numeric form: Optional label (defaults server-side to `"Quick Add"` if omitted!), `Calories (kcal)` (`0..5000`), optional `Protein (g)`, `Carbs (g)`, `Fat (g)` (`leave blank if unknown` -> sends `null`, preserving null-nutrient integrity!), and `[Save to {Slot}]`.
 
 ### API & BACKEND CONTRACT
-1. **`GET /v1/foods/favorites`** -> Returns user's starred food templates & custom shortcuts (`{ total, offset, limit, nextOffset, items }`).
-2. **`POST /v1/commands?view=receipt`** (`action: "food_favorite"`)
-   - Add payload: `{ "op": "add", "item": { "source", "key?", "name", "grams?", "snapshot?" } }`.
+1. **`GET /v1/foods/recent?days=30&limit=25`** -> Returns unique `{ items: [{ name, source, key?, grams?, servings?, recipeId?, barcode?, macroSnapshot, logCount, lastLoggedAt }] }`.
+2. **`GET /v1/foods/favorites`** -> Returns user's starred food templates & custom shortcuts (`{ total, offset, limit, nextOffset, items }`).
+3. **`POST /v1/commands?view=receipt`** (`action: "food_favorite"`)
+   - Add payload: `{ "op": "add", "item": { "source": "planned"|"ingredient"|"recipe"|"barcode"|"manual", "key?", "name", "grams?", "snapshot?" } }`.
    - Remove payload: supports `{ "op": "remove", "id": "<favId>" }`, `{ "op": "remove", "foodId": "<foodId>" }`, OR `{ "op": "remove", "item": { "id" | "key" | "name" } }` (also accepts legacy boolean `favorite: true | false`).
-3. **`POST /v1/commands?view=receipt`** (`action: "copy_meal"`)
-   - Payload: `{ "fromDate": "YYYY-MM-DD", "toDate": "YYYY-MM-DD", "slot": "breakfast" | "lunch" | "dinner" | "snack" | "all", "replaceDailyTotal"?: true }` (Server copies frozen snapshots into `toDate` cleanly in 1 atomic revision!).
-   - Returns **`409 FOOD_DAY_MODE_CONFLICT`** if `toDate` is in legacy `daily_total` mode unless `replaceDailyTotal: true` is passed (or the day is converted via `food_switch_to_entries`).
-4. **`POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "manual"`) and **`action: "food_entry_update"`** (for atomic in-place edits).
+4. **`POST /v1/commands?view=receipt`** (`action: "food_entry_batch"`)
+   - Payload: `{ "date"?: "YYYY-MM-DD", "slot"?: "breakfast"|"lunch"|"dinner"|"snack", "displaySlot"?: string | null, "items": [ /* 1..15 validated food_entry items */ ] }`.
+   - Validates all `1..15` items atomically (all commit in 1 revision, or zero entries are written on any validation error).
+5. **`POST /v1/commands?view=receipt`** (`action: "copy_meal"`)
+   - Payload: `{ "fromDate": "YYYY-MM-DD", "toDate": "YYYY-MM-DD", "slot"?: "breakfast" | "lunch" | "dinner" | "snack" | "all", "toSlot"?: "breakfast" | "lunch" | "dinner" | "snack", "entryIds"?: string[], "replaceDailyTotal"?: true }`.
+   - Returns **`409 FOOD_DAY_MODE_CONFLICT`** if `toDate` is in legacy `daily_total` mode unless `replaceDailyTotal: true` is passed.
+6. **`POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "manual"`) and **`action: "food_entry_update"`** (for atomic in-place edits).
    - Error Codes: `INVALID_MEAL_NAME`, `MANUAL_MEAL_ENERGY_REQUIRED`, `DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION`, `409 FOOD_DAY_MODE_CONFLICT`, `INVALID_FAVORITE_PAYLOAD`, `INVALID_COPY_MEAL_PAYLOAD`.
 
 ### RULES & BUSINESS LOGIC
-1. **Manual Null Macros:** When `protein`, `carbs`, or `fat` inputs are left blank in Manual Entry, send `null` (NOT `0`) so `food.mjs` preserves honest null macro metadata.
-2. **Copy Yesterday Reopens Completion:** Executing `copy_meal` reopens `complete = false` on `toDate` identically to `food_entry`.
-3. **Offline Recent & Favorites:** `Recent` tab renders purely from SQLDelight `foodEntries` even offline; `Favorites` caches locally and syncs via outbox.
-4. **Editing Existing Manual/Favorite Logs (`food_entry_update`):** Tapping `[Edit]` on any saved `manual`, `ingredient`, or `planned` entry lets the user adjust name, slot, calories, macros, or gram weights cleanly in a single atomic `food_entry_update` command preserving the entry ID.
+1. **Manual Quick-Add & Null Macros:** If the user omits a label in Quick-Add Macros, backend cleanly stores `"Quick Add"`; if `protein`, `carbs`, or `fat` inputs are left blank, send `null` (NOT `0`) so `food.mjs` preserves honest null macro metadata.
+2. **Atomic Batch Consistency:** `food_entry_batch` (`1..15` items) opens `complete = false` and guarantees zero partial writes if any item fails validation.
+3. **Copy Yesterday Reopens Completion:** Executing `copy_meal` reopens `complete = false` on `toDate` identically to `food_entry`.
+4. **Offline Recent & Favorites:** `Recent` tab hydrates from `GET /v1/foods/recent` and merges unsynced SQLDelight `foodEntries` seamlessly offline; `Favorites` caches locally and syncs via outbox.
+5. **Editing Existing Manual/Favorite Logs (`food_entry_update`):** Tapping `[Edit]` on any saved entry adjusts name, slot, `displaySlot`, calories, macros, servings, or gram weights cleanly in a single atomic command preserving the entry ID.
 
 ### MAIN FLOW
-1. User taps `+` -> `Manual / Quick Repeat` -> Switches to `Copy Yesterday`.
-2. Yesterday's Breakfast shows *3 Boiled Eggs + 50g Oats + Banana (460 kcal)*.
-3. User taps `[Copy All to Today's Breakfast]` -> Commits `copy_meal` (`fromDate: yesterday`, `toDate: today`, `slot: "breakfast"`) in 1 atomic tap.
+1. User taps `+` -> `Recent & Quick Repeat`.
+2. User checks 3 morning staples (*3 Boiled Eggs*, *50g Oats*, *Espresso*) from `GET /v1/foods/recent` into the Multi-Select Tray and taps `[Log 3 Items to Breakfast]`.
+3. App submits a single `POST /v1/commands?view=receipt` (`action: "food_entry_batch"`) -> All 3 entries commit atomically in 1 revision and Hero Calorie Ring updates immediately.
 
 ### EDGE CASES
 - **Yesterday Had No Entries for That Slot:** Show empty state *"Nothing logged for yesterday's {Slot}"* and suggest `Recent` or `Meal Plan`.
-- **Today Used Legacy Daily-Total Mode (`food`):** Backend returns `409 FOOD_DAY_MODE_CONFLICT`; UI prompts inline confirmation to convert to detailed entries (`food_switch_to_entries` or `copy_meal` with `replaceDailyTotal: true`) cleanly (`US-NUT-11`).
+- **Today Used Legacy Daily-Total Mode (`food`):** Backend returns `409 FOOD_DAY_MODE_CONFLICT`; UI prompts inline confirmation (`food_switch_to_entries` or `copy_meal` with `replaceDailyTotal: true`).
 - **Starring a Planned Meal Whose Ingredients Contain User's Newly Added Allergen Later:** Client flags the saved Favorite clearly before logging if preferences were updated to exclude that allergen group.
-- **Eastern Arabic Digits in Manual Calorie/Macro Fields (`U+0660..U+0669`):** Automatically normalized (`normalizeDigits`) before validation (`1..5000 kcal`) and API dispatch.
+- **Batch Exceeds 15 Items:** UI caps selection tray at `15` items with inline badge `"Max 15 items per batch"` before dispatching.
+- **Eastern Arabic Digits in Quick-Add Macros (`U+0660..U+0669`):** Automatically normalized (`normalizeDigits`) before validation (`0..5000 kcal`).
 
 ### ACCEPTANCE CRITERIA
-- **Scenario 1: Copy Yesterday duplicates slot entries in 1 tap (and handles `daily_total` conflict)**
-  - **Given** yesterday (`2026-11-20`) has 2 entries in `breakfast`
-  - **When** user taps `[Copy All to Today's Breakfast]`
-  - **Then** `copy_meal` adds both entries to `2026-11-21` `breakfast` and updates Today's Hero Ring (or surfaces `409 FOOD_DAY_MODE_CONFLICT` confirmation if Today is in legacy `daily_total` mode).
-- **Scenario 2: Manual entry with blank optional macros preserves `null`**
-  - **Given** user enters `"Wedding Cake Slice"` and `350 kcal` with empty P/C/F fields
+- **Scenario 1: Multi-select recent items batch-log atomically (`food_entry_batch`)**
+  - **Given** user checks 3 recent items in `QuickRepeatSheet` and selects `Breakfast`
+  - **When** user taps `[Log 3 Items]`
+  - **Then** `food_entry_batch` commits all 3 entries in 1 revision (`all-or-nothing`) and updates Today totals.
+- **Scenario 2: Copy specific items across different slots (`toSlot` + `entryIds[]`)**
+  - **Given** yesterday (`2026-11-20`) has Dinner entries `e1`, `e2`
+  - **When** user checks `e1` and selects destination `Lunch`
+  - **Then** `copy_meal` sends `toSlot: "lunch"` and `entryIds: ["e1"]` and copies only `e1` into Today's `lunch`.
+- **Scenario 3: Quick-Add Macros with blank label/optional macros preserves `null` and defaults name safely**
+  - **Given** user enters `350 kcal` with blank label and empty P/C/F fields
   - **When** submitted via `food_entry` (`source: "manual"`)
-  - **Then** `protein`, `carbs`, and `fat` are sent as `null`, never coerced to `0`.
-- **Scenario 3: Offline Favorite toggle and Recent logging succeed via outbox**
-  - **Given** the device is offline
-  - **When** the user stars or removes a frequent item (`food_favorite` with `{ id }` / `{ foodId }` / `{ item }`) and logs a Recent item
-  - **Then** local SQLDelight updates immediately and queues `food_favorite` + `food_entry` cleanly in `outbox_commands`.
+  - **Then** server defaults name cleanly to `"Quick Add"` and preserves `protein = null`, `carbs = null`, `fat = null`.
 
 ### ANALYTICS
-- `quick_repeat_logged` (`tab`: `"recent" | "favorites" | "copy_yesterday" | "manual"`, `entries_count`: `integer`)
-- `food_favorite_toggled` (`op`: `"add" | "remove"`)
+- `quick_repeat_logged` (`tab`: `"recent" | "favorites" | "copy_yesterday" | "quick_add"`, `entries_count`: `integer`)
+- `food_entry_batch_committed` (`items_count`: `integer`, `slot`: `string`)
+- `food_favorite_toggled` (`op`: `"add" | "remove"`, `source`: `string`)
 
 ---
 
@@ -754,7 +763,7 @@ As a user looking into my fridge or kitchen before deciding what to cook, I want
 | **Priority** | `High` |
 | **Labels** | `production`, `mobile`, `nutrition`, `grocery`, `pro-feature` |
 | **Target Screens** | `GroceryListScreen` |
-| **Entitlement** | `Pro` (`402 PRO_ENTITLEMENT_REQUIRED` for Free users when enforcement is enabled; Free users preview teaser + Pro upgrade card) |
+| **Entitlement** | `Pro` (`?preview=true` returns a Free 2-item preview + lock count; full list returns `402 PRO_ENTITLEMENT_REQUIRED` for Free users when enforcement is enabled) |
 | **Backend Status** | `Implemented` |
 
 ### STORY
@@ -765,8 +774,8 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
 
 ### SCREEN AND UI DETAILS
 1. **Top Scope & Budget Bar:**
-   - Scope pill: `[Full Week (7 Days)]` vs `[Next 3 Days]` vs `[Remaining Unlogged Days]`.
-   - Active Grocery Budget badge (`Economic` / `Moderate` / `Open Budget` — from `preferences.budget: "low" | "medium" | "high"`) and progress counter (`"9 of 24 items checked ✓"`).
+   - Scope pill: `[Full Week (7 Days)]` (`days=all` / `days=7`) vs `[Next 3 Days]` (`days=3`) vs `[Remaining Unlogged Days]` (`days=remaining`).
+   - Active Grocery Budget badge (`Economic` / `Moderate` / `Open Budget` — from `preferences.budget: "low" | "medium" | "high"`) and progress counter (`"9 of 24 items checked"`).
    - `[Share List]` button (exports clean RTL/LTR formatted text for WhatsApp/Notes) & `[Uncheck All]` overflow option.
 2. **Aisle-Grouped Collapsible Sections:**
    - *Meat, Poultry, Fish & Eggs* (e.g., `Chicken Breast (Cooked) — 1,050 g`, `Eggs (Raw / As-sold) — 14 pcs`)
@@ -775,11 +784,11 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
    - *Produce & Vegetables* (e.g., `Tomatoes (Raw / As-sold) — 900g`, `Cucumber — 700g`)
    - *Oils, Nuts & Pantry* (e.g., `Olive Oil — 140 ml`)
 3. **Interactive Row:**
-   - Checkbox toggle (moves checked items to a collapsed `"In Pantry / Cart ✓"` section at bottom), explicit **`Cooked` vs `Raw / As-sold` state badge** honoring `preparationState` (and `state`) from `planner-core.mjs`, and tap row to see *Which days/meals need this ingredient*.
+   - Checkbox toggle (moves checked items to a collapsed `"In Pantry / Cart"` section at bottom), explicit **`Cooked` vs `Raw / As-sold` state badge** honoring `preparationState` (and `state`) from `planner-core.mjs`, and tap row to view `mealRefs[]` (*Which days/meals need this ingredient*).
 
 ### API & BACKEND CONTRACT
-1. **`GET /v1/plans/{planId}/grocery-list?days=remaining|all|3`**
-   - **Auth:** Required (`Authorization: Bearer <accessToken>`, Pro feature `grocery_list` gated -> `402 PRO_ENTITLEMENT_REQUIRED` for Free users when enforcement is enabled)
+1. **`GET /v1/plans/{planId}/grocery-list?days=all|remaining|3|7&preview=false`**
+   - **Auth:** Required (`Authorization: Bearer <accessToken>`). Appending **`?preview=true`** returns a Free 2-item preview (`previewMode: true`, `lockedCount: N`) without triggering `402`. Full non-preview list is Pro-gated (`402 PRO_ENTITLEMENT_REQUIRED` when enforcement is enabled).
    - **Success Response (`200 OK`):**
      ```json
      {
@@ -787,6 +796,8 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
        "data": {
          "planId": "plan-uuid",
          "daysScope": "all",
+         "previewMode": false,
+         "lockedCount": 0,
          "categories": [
            {
              "categoryId": "proteins",
@@ -817,7 +828,7 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
 
 ### RULES & BUSINESS LOGIC
 1. **Honest `Cooked` vs `Raw / As-sold` Integrity (`planner-core.mjs`):** Aggregate ingredients by exact `ingredientKey` across selected plan days without applying fabricated cooked-to-raw yield conversion ratios. Each row returns both `preparationState` and `state` so the UI displays an explicit **`Cooked`** or **`Raw / As-sold`** badge matching its canonical `planner-core.mjs` ingredient state.
-2. **Auto-Refresh on Plan Swap (`replace_meal`):** When a meal is swapped (`US-NUT-03`), grocery totals automatically recompute for the new `planId` while preserving checked state for matching `ingredientKey`s.
+2. **Auto-Refresh & Check Preservation on Plan Swap (`replace_meal`):** When a meal is swapped (`US-NUT-03`), grocery totals automatically recompute for the new `planId` while server-migrating checked state (`coaching_grocery_checks`) for matching `ingredientKey`s onto the new `planId`.
 3. **Offline Check-Off:** Toggling checkboxes works smoothly offline via outbox queue while shopping in a supermarket with poor indoor signal.
 
 ### MAIN FLOW
@@ -826,9 +837,9 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
 3. User checks off `Eggs` and `Olive Oil` (already in kitchen), then taps `[Share List]` to send remaining items to family on WhatsApp.
 
 ### EDGE CASES
-- **Plan Changed Mid-Week After Meal Swap or Calorie Adaptation:** List cleanly updates remaining days' totals and clears stale `mealRefs`.
+- **Plan Changed Mid-Week After Meal Swap or Calorie Adaptation:** List cleanly updates remaining days' totals, clears stale `mealRefs`, and preserves matching checked `ingredientKey`s.
 - **Single-Ingredient Custom Recipe Not in Plan:** Only planned meals aggregate into the plan's grocery list (with option to `+ Add Custom Grocery Item` locally).
-- **Free User Opens Grocery List (`US-MON-01`):** Displays clean preview teaser alongside a contextual Soft Paywall upgrade card (`[Unlock Full Week Grocery List & WhatsApp Share]`); server enforces `402 PRO_ENTITLEMENT_REQUIRED` when entitlement enforcement is enabled.
+- **Free User Opens Grocery List (`US-MON-01`):** Fetches `?preview=true` to show 2 real items from their week alongside `lockedCount` and a contextual Soft Paywall card (`[Unlock Full Week Grocery List & WhatsApp Share]`); direct non-preview API fetch returns `402 PRO_ENTITLEMENT_REQUIRED` when entitlement enforcement is enabled.
 - **Offline Supermarket Shopping:** Toggling checkboxes works cleanly inside low-signal supermarkets using SQLDelight + `grocery_toggle` outbox sync.
 
 ### ACCEPTANCE CRITERIA
@@ -852,7 +863,7 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
 
 ---
 
-## US-NUT-10: Intermittent Fasting (16:8) Live Timer & Automatic Ramadan Mode
+## US-NUT-10: Intermittent Fasting Timer, Time-Aware Ramadan Mode (Auto-Revert) & Seasonal Eid Flex Mode
 
 ### METADATA
 | Field | Value |
@@ -860,17 +871,17 @@ As a user preparing meals for the week, I want CuraFit to automatically aggregat
 | **Story ID** | `US-NUT-10` |
 | **Epic** | `EPIC-04` |
 | **Priority** | `High` |
-| **Labels** | `production`, `mobile`, `nutrition`, `fasting`, `ramadan`, `differentiator` |
-| **Target Screens** | `FastingAndRamadanScreen`, `RamadanSettingsSheet` |
-| **Entitlement** | `Free` (`ramadan_fasting` in `FREE_FEATURES` — core cultural & fasting differentiator for MENA market) |
+| **Labels** | `production`, `mobile`, `nutrition`, `fasting`, `ramadan`, `seasonal`, `differentiator` |
+| **Target Screens** | `FastingAndRamadanScreen`, `RamadanSettingsSheet`, `SeasonalFlexSheet` |
+| **Entitlement** | `Free` (`ramadan_fasting` and `seasonal_flex` in `FREE_FEATURES` — core MENA & seasonal retention differentiator) |
 | **Backend Status** | `Implemented` |
 
 ### STORY
-As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I want an interactive fasting timer aligned with my configured eating window, plus a 1-tap Ramadan Mode that shifts my daily meals into Suhoor, Iftar, and Night Snack, adds smart hydration reminders between Maghrib and Fajr, and recommends safe workout timing (before Iftar or 2 hours after Iftar).
+As a user practicing Intermittent Fasting or observing Ramadan and seasonal holidays like Eid al-Fitr / Eid al-Adha, I want an interactive fasting timer aligned with my configured window (`06:00–16:00`), a Time-Aware **Ramadan Mode** (Indigo/Gold palette, Maghrib/Fajr hydration window, automatic expiration after `endDate`), and a one-tap **Seasonal / Eid Flex Mode** (`seasonal_flex`) that switches targets smoothly to maintenance calories and shields my streak during family feasts so cultural moments fit naturally without guilt.
 
 ### PRECONDITIONS
-- `serviceTrack != "workouts_only"`.
-- For Ramadan Mode: available globally for any user (`pregnant_t1|t2|t3`, `breastfeeding`, `diabetes_t1`, and `diabetes_t2` display an explicit medical consultation banner before enabling Ramadan fasting!).
+- `serviceTrack != "workouts_only"` (note `ramadan_mode` and `seasonal_flex` also work cleanly for `workouts_only` users).
+- For Ramadan Mode: clinical consultation guard triggers before activating if `pregnant_t1|t2|t3`, `breastfeeding`, `diabetes_t1`, `diabetes_t2`, or `kidney` is present.
 
 ### SCREEN AND UI DETAILS
 1. **Fasting Timer Screen (`FastingAndRamadanScreen`):**
@@ -878,11 +889,12 @@ As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I wa
      - Phase Label (`"Fasting Phase — Hydration & Black Coffee/Tea Only"` vs `"Eating Window Open"`).
      - Live `HH:MM:SS` countdown + Start Time & Target Break-Fast Time.
      - Metabolic stage badges along the arc (`0–4h Digestion`, `4–12h Blood Sugar Balance`, `12–16h Fat Oxidation`).
-     - Fasting Protocol Presets: `14:10 (14h)` (`14_10`), `16:8 (16h ⭐)` (`16_8`), `18:6 (18h)` (`18_6`), `Ramadan` (`ramadan`), or custom `targetHours` (`8..24h`).
-     - Primary button: `[Start Fast Now]` / `[End Fast Early]` / `[Adjust Window Start Hour (8 AM – 4 PM / 8..16)]`.
+     - Fasting Protocol Presets: `12:12 (12h)` (`12_12`), `14:10 (14h)` (`14_10`), `16:8 (16h Recommended)` (`16_8`), `18:6 (18h)` (`18_6`), `Ramadan` (`ramadan`), or custom `targetHours` (`8..24h`).
+     - Primary button: `[Start Fast Now]` / `[End Fast Early]` / `[Adjust Window Start Hour (06:00–16:00 / 6..16)]`.
 2. **Ramadan Mode Banner & Settings (`RamadanSettingsSheet`):**
-   - Prominent toggle `[Ramadan Mode 🌙]`:
-     - Auto-detects Maghrib / Fajr prayer window by user's region/city (`Cairo`, `Riyadh`, `Dubai`, `Amman`, `Casablanca`, etc., with manual time override).
+   - Toggle `[Ramadan Mode]` (`crescent icon`):
+     - Shifts Today & Fasting UI to a calm **Midnight Indigo & Gold** surface (`seasonalContext.themeToken: "ramadan_indigo_gold"`), shows **Hydration Window** indicator (`hydrationWindowActive` between Maghrib & Fajr), and honors optional **`endDate`** so Ramadan Mode **auto-reverts cleanly** after the last day!
+     - Auto-detects Maghrib / Fajr prayer window by region/city (`Cairo`, `Riyadh`, `Dubai`, `Amman`, `Casablanca`, etc., with manual time override).
      - **Clinical Safety Guard:** If `conditions` includes `diabetes_t1` / `diabetes_t2` / `kidney` OR `maternalStatus != "none"` (pregnancy/breastfeeding), display a clear warning modal *"Fasting with your declared medical or maternal status requires direct approval from your physician before activating Ramadan fasting mode."* requiring explicit acknowledgment (`medicalClearanceAcknowledged: true`).
      - **Workout Timing Shift Selector (When `serviceTrack != "nutrition_only"`):**
        - `Pre-Iftar (30–45 min before Maghrib — light/moderate intensity recommended)`
@@ -890,33 +902,41 @@ As a user practicing Intermittent Fasting (16:8) or fasting during Ramadan, I wa
        - `Post-Taraweeh (Night session)`
    - **Automatic Meal Slot Remapping:**
      - `Iftar` (at Maghrib time — light dates/soup opener + balanced protein main)
-     - `Night Snack / Post-Workout`
+     - `Evening Snack / Post-Workout`
      - `Suhoor` (45 min before Fajr — slow-digesting protein, complex carbs, potassium & water emphasis)
+3. **Seasonal / Eid & Holiday Flex Mode (`SeasonalFlexSheet`):**
+   - Surfaces automatically via dismissible banner after Ramadan `endDate` (`seasonalContext.eidTransitionAvailable == true`) OR manually anytime under `Nutrition` / `Profile`:
+   - Select Occasion (`Eid al-Fitr`, `Eid al-Adha`, `Travel`, `Custom`) and End Date (`today`..`today + 7 days`, default 3-day Eid break):
+     - Temporarily shifts surface palette to **Eid Emerald & Gold** (`"eid_emerald_gold"`) and `targetEnergy` to **Maintenance (`tdee`, `seasonalContext.maintenanceTargetKcal`)** while keeping macro awareness intact and automatically protecting streaks & 14d review adherence via `flexDates[]`.
 
 ### API & BACKEND CONTRACT
-1. **`GET /v1/nutrition/fasting-state`** -> Returns standardized DTO `{ mode: "off" | "if_16_8" | "ramadan", phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, streakDays }` (also embedded inside `GET /v1/bootstrap` -> `todaySummary.fastingState` & `todaySummary.ramadanMode`).
+1. **`GET /v1/nutrition/fasting-state`** -> Returns `{ mode: "off" | "if_16_8" | "ramadan", preset, windowHours, phase: "fasting" | "eating", windowStart, windowEnd, startedAt, targetEndAt, ramadanConfig, seasonalContext: { mode, themeToken, occasion, endDate, eidTransitionAvailable, hydrationWindowActive, maintenanceTargetKcal }, streakDays }`.
 2. **`POST /v1/commands?view=receipt`** (`action: "fasting_log"`)
-   - Payload: `{ "op": "start" | "end" | "adjust_window", "preset": "14_10" | "16_8" | "18_6" | "ramadan", "targetHours": 16, "at": "<iso8601>", "ifStartHour": 12 }` (`targetHours` supports `8..24`; `adjust_window` accepts `ifStartHour` `8..16`, including `8` for `8:00 AM`).
+   - Payload: `{ "op": "start" | "end" | "adjust_window", "preset": "12_12" | "14_10" | "16_8" | "18_6" | "ramadan", "targetHours": 16, "at": "<iso8601>", "ifStartHour": 12 }` (`targetHours` `8..24`; `ifStartHour` `6..16`).
 3. **`POST /v1/commands?view=receipt`** (`action: "ramadan_mode"`)
-   - Payload: `{ "enabled": true, "iftarTime": "18:05", "suhoorCutoffTime": "04:20", "workoutTiming": "post_iftar", "medicalClearanceAcknowledged": true }`.
+   - Payload: `{ "enabled": true, "iftarTime": "18:05", "suhoorCutoffTime": "04:20", "workoutTiming": "post_iftar", "endDate": "2027-03-30", "medicalClearanceAcknowledged": true }`.
+4. **`POST /v1/commands?view=receipt`** (`action: "seasonal_flex"`)
+   - Activate payload: `{ "enabled": true, "occasion": "eid_fitr" | "eid_adha" | "travel" | "custom", "endDate": "YYYY-MM-DD" }` (writes inclusive `flexDates[]` up to +7d and sets maintenance kcal).
+   - Disable / Dismiss prompt payload: `{ "enabled": false, "dismissEidPrompt"?: true }`.
 
 ### RULES & BUSINESS LOGIC
-1. **Pregnancy, Breastfeeding & Diabetes Guard:** In `US-MOB-08`, `intermittent_fasting` is conservatively blocked for `pregnant_*`, `breastfeeding`, and `diabetes_*`. If a pregnant, breastfeeding, or diabetic user manually toggles `Ramadan Mode`, present the clinical safety advisory and do NOT allow silent activation without explicit confirmation (`medicalClearanceAcknowledged: true`); never drop below `minCalorieFloor` (`1800` pregnancy / `1600` breastfeeding / `1500` M / `1200` F) regardless of Ramadan meal compression.
-2. **Hydration Night-Window Scheduling (`US-INT-03`):** When Ramadan Mode is enabled, water notifications (`waterReminder`) automatically reschedule solely between `iftarTime` and `suhoorCutoffTime` (`~250 ml/hour`) — zero daytime water reminders while fasting!
-3. **16:8 Window Alignment:** Matches `ifStartHour` (`10`, `12`, `14`, `16`) from `US-MOB-08` (`eatingStart`).
+1. **Pregnancy, Breastfeeding & Diabetes Guard:** `intermittent_fasting` is conservatively blocked for `pregnant_*`, `breastfeeding`, and `diabetes_*` (plus `kidney`). Manual toggling of `Ramadan Mode` or `fasting_log` enforces explicit clinical advisory clearance (`medicalClearanceAcknowledged: true`) and never drops below `minCalorieFloor`.
+2. **Hydration Night-Window Scheduling (`US-INT-03`):** When Ramadan Mode is enabled, water notifications (`waterReminder`) automatically reschedule solely between `iftarTime` and `suhoorCutoffTime` (`~250 ml/hour`) — zero daytime water reminders while fasting! `exemptSuhoorFromQuietHours` ensures Suhoor alerts deliver even inside overnight Quiet Hours.
+3. **Automatic End-Date Reversion:** Once `currDate > ramadanMode.endDate`, `ramadanMode.enabled` and `seasonalContext.mode` automatically revert out of Ramadan without requiring user cleanup, while exposing `eidTransitionAvailable: true` for 1-tap Eid Flex activation!
 4. **Canonical Wire Slot Mapping (`US-NUT-02`):**
-   - **For `source: "planned"` meals during Ramadan:** ALWAYS send the planned meal's actual `meal.slot` as wire `slot` (avoiding `MEAL_SLOT_MISMATCH`), and set `displaySlot` to `"suhoor" | "iftar" | "night_snack" | "snack_1" | "snack_2"`.
-   - **For ad-hoc logs (`source: "ingredient" | "manual"`):** Map Ramadan slots cleanly onto the 4 canonical server slots: `Suhoor` -> `slot: "breakfast"` (`displaySlot: "suhoor"`), `Iftar` -> `slot: "dinner"` (`displaySlot: "iftar"`), `Night Snack` -> `slot: "snack"` (`displaySlot: "night_snack"`), preventing `400 INVALID_MEAL_SLOT`.
+   - **For `source: "planned"` meals during Ramadan:** ALWAYS send the planned meal's actual `meal.slot` as wire `slot`, and set `displaySlot` (`"suhoor" | "iftar" | "ramadan_snack" | "night_snack"`).
+   - **For ad-hoc logs (`source: "ingredient" | "recipe" | "barcode" | "manual"`):** Map Ramadan slots cleanly onto the 4 canonical server slots (`breakfast`/`dinner`/`snack`) + `displaySlot`.
 
 ### MAIN FLOW
-1. User toggles **Ramadan Mode 🌙** inside `Nutrition` -> `Fasting`.
+1. User toggles **Ramadan Mode** inside `Nutrition` -> `Fasting` with `endDate` set to the end of Ramadan.
 2. City (`Cairo`) auto-fills `Iftar 18:05` and `Suhoor 04:20`; user picks `Post-Iftar (2h after Maghrib)` for gym sessions.
-3. App submits `ramadan_mode`, immediately relabels meal cards to `Iftar`, `Evening Snack`, and `Suhoor`, updates the Today Hero timer, and shifts hydration/meal push notifications to nighttime hours.
+3. App submits `ramadan_mode`, switches to the Indigo/Gold palette (`ramadan_indigo_gold`), relabels meal cards to `Iftar`, `Evening Snack`, and `Suhoor`, and shifts Suhoor/hydration alerts.
+4. When Ramadan `endDate` passes, app auto-reverts to standard schedule and offers a calm 1-tap `[Activate 3-Day Eid Flex Mode]` card (`seasonal_flex`) for maintenance calories and streak protection.
 
 ### EDGE CASES
 - **User Breaks Fast Early (Illness / Fatigue):** Tapping `[End Fast Early]` records partial fast duration cleanly with encouraging neutral feedback (*"Listening to your body always comes first."*).
-- **Ramadan Ends / User Disables Ramadan Mode:** Reverts slots cleanly back to `Breakfast / Lunch / Dinner / Snack` (or standard `16:8` schedule) without losing any historical food logs.
-- **Diabetic / Pregnant / Breastfeeding User Refuses Medical Clearance Prompt:** Keeps `ramadanMode.enabled = false` without mutating profile or sending unsafe fasting reminders.
+- **Same-Day Re-Log After Ending a Fast:** Streak deduplicates fasting days cleanly by date so restarting on the same day never double-counts `streakDays`.
+- **Eid Flex Date Window Boundary (`> today + 7d`):** Server enforces `1..7` days (`400 INVALID_DATE_RANGE`) and reverts automatically back to normal deficit/surplus once `endDate < currDate`.
 - **Midnight Crossing Between `Iftar` (`18:05`) and `Suhoor` (`04:20`):** Eating window timer computes next day `04:20` cutoff accurately across midnight without negative duration display.
 
 ### ACCEPTANCE CRITERIA
@@ -963,10 +983,10 @@ As a user aiming to unlock accurate 14-day adaptive calorie reviews from my Coac
    - Displays current adherence indicator (`"Today logged: 1,780 / 1,850 kcal (96% adherence)"`).
    - Primary Toggle Button:
      - When `complete == false`: `[Confirm Day Complete — I Logged Everything]`
-     - When `complete == true`: `[Day Confirmed ✓ — Tap to Reopen]`
+     - When `complete == true`: `[Day Confirmed — Tap to Reopen]`
 2. **Evidence Readiness Card (14-Day Progress Mini-Strip):**
    - Reads `foodCompleteness` from `GET /v1/progress/summary`:
-     - *"Adaptive Review Evidence: {completeDays14d} / 10 complete days (within 80–120% target) • Weigh-ins: {prev7}/3 + {curr7}/3"*
+     - *"Adaptive Review Evidence: {completeDays14d} / 10 complete days (within 80–120% target, excluding flexDates) • Weigh-ins: {prev7}/3 + {curr7}/3"*
 3. **Legacy Daily-Total Conversion Dialog (Only for old web accounts with `source == "daily_total"`):**
    - If user taps `[Add Individual Meal]` on a day that only had a legacy `food` daily-total calorie number:
    - Modal: *"This day currently has a quick daily total ({legacyEnergy} kcal). Switch to detailed meal logging so you can add individual foods? (Your previous total will be archived)."* -> `[Switch to Detailed Meals]` (`food_switch_to_entries`).
@@ -1031,36 +1051,36 @@ As a user aiming to unlock accurate 14-day adaptive calorie reviews from my Coac
 | **Backend Status** | `Implemented` (`GET /v1/recipes`, `recipe_save`, `recipe_delete`, `food_entry` `source: "recipe"`) |
 
 ### STORY
-As a user who cooks recurring Egyptian or Gulf family dishes at home (e.g., baked oats tray, homemade grilled chicken kabsa, lentil soup pot), I want to build a recipe once from verified ingredients, save it under **"My Recipes"** with exact serving count and cooked yield weight, and log any fraction (`0.25..10` servings) or gram portion (`1..3000g`) into my daily food diary in one tap without recalculating every time.
+As a user who cooks recurring Egyptian or Gulf family dishes at home (e.g., baked oats tray, homemade grilled chicken kabsa, lentil soup pot), I want to build a recipe once from verified ingredients (in grams or `ml` with automatic density conversion), custom spices/oils/additions, and exact cooked batch yield weight (`finalWeightGrams`), save it under **"My Recipes"**, and log any fraction (`0.1..10` servings or `1..3000g`) into my daily food diary in one tap without recalculating every time.
 
 ### PRECONDITIONS
 - User is authenticated (`serviceTrack != "workouts_only"` or browsing nutrition tools).
 
 ### SCREEN AND UI DETAILS
 1. **My Recipes List (`MyRecipesTab`):**
-   - Displays saved user recipes ordered by most recently updated, each showing Recipe Name (Arabic or English), Total Servings (e.g., `4 servings`), Per-Serving Macros (`385 kcal • 34g P • 42g C • 9g F`), Quality Tier badge (`Verified Ingredients` vs `Contains Estimated`), and quick `[Log 1 Serving]` / `[Edit]` / `[Delete]` actions.
+   - Displays saved user recipes ordered by most recently updated, each showing Recipe Name (Arabic or English), Total Servings (e.g., `4 servings`), Per-Serving Macros (`385 kcal • 34g P • 42g C • 9g F`), `yieldRatio` & `qualityTier` badge (`Verified Ingredients` vs `Contains Estimated`), and quick `[Log 1 Serving]` / `[Edit]` / `[Delete]` actions.
    - Search filter bar + `[+ New Recipe]` primary CTA.
    - Empty state: *"Save your favorite home-cooked trays and smoothies once, then log a portion in 1 tap."*
 2. **Create / Edit Recipe Builder (`CreateEditRecipeScreen`):**
-   - Inputs: Recipe Name (`2..120` chars), Number of Servings (`1..50`, integer or `0.5` step), optional Final Cooked Weight (`finalWeightGrams`, for accurate per-100g gram logging), optional Notes (`<= 240` chars).
-   - Ingredient picker (`1..30` verified catalog/planning ingredients with `grams` or `ml` + optional additions).
+   - Inputs: Recipe Name (`2..80` chars), Number of Servings (`0.5..30`, integer or `0.5` step), optional Final Cooked Weight (`finalWeightGrams`: `1..25000`, computing `yieldRatio`), optional Notes (`<= 300` chars).
+   - Ingredient picker (`1..25` verified catalog/planning items `{ foodId, grams?, ml?, densityGPerMl? }` supporting `ml` density auto-conversion + `0..15` additions `{ foodId, grams?, ml?, densityGPerMl? }`).
    - Live macro preview card computing total pot macros, per-serving macros, and per-100g cooked macros before saving.
 3. **Log Recipe Portion Sheet (`LogRecipePortionSheet`):**
-   - Mode toggle: `[By Servings (0.25x, 0.5x, 1x, 1.5x, 2x)]` OR `[By Cooked Grams (1..3000g)]` (enabled when `finalWeightGrams` or `inputWeightGrams > 0`).
+   - Mode toggle: `[By Servings (0.25x, 0.5x, 1x, 1.5x, 2x)]` OR `[By Cooked Grams (1..3000g)]` (enabled via stored `recipeTotalGrams` & `recipeServings`).
    - Slot selector (`breakfast | lunch | dinner | snack`, plus Ramadan `displaySlot` mapping).
    - CTA: `[Log Portion ({kcal} kcal)]`.
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/recipes?q={optional}&offset=0&limit=30`**
-   - Returns paginated `{ total, offset, limit, nextOffset, items: [{ id, name, servings, totalGrams, finalWeightGrams, yieldRatio, qualityTier, ingredients[], additions[], notes, perServing, per100g, totals, createdAt, updatedAt }] }`.
+   - Returns paginated `{ total, offset, limit, nextOffset, items: [{ id, name, servings, totalGrams, finalWeightGrams, yieldRatio, qualityTier, ingredients[], notes, perServing, per100g, totals, createdAt, updatedAt }] }`.
 2. **`POST /v1/commands?view=receipt`** (`action: "recipe_save"`)
-   - Payload: `{ "id": "<optional-existing-uuid>", "name": "Homemade Chicken Rice Tray", "servings": 4, "ingredients": [{ "key": "chicken", "grams": 600 }, { "key": "rice", "grams": 300 }], "additions": [{ "key": "olive_oil", "grams": 20 }], "finalWeightGrams": 1100, "notes": "Oven baked" }`.
+   - Payload: `{ "id": "<optional-existing-uuid>", "name": "Homemade Chicken Rice Tray", "servings": 4, "items": [{ "foodId": "chicken", "grams": 600 }, { "foodId": "rice", "grams": 300 }], "additions": [{ "foodId": "olive_oil", "ml": 20 }], "finalWeightGrams": 1100, "notes": "Oven baked" }`.
    - Server computes exact verified nutrients using `calculatePreparedBeverageOrRecipe`, persists in `coaching_custom_recipes`, and rejects > 100 saved recipes with `409 RECIPE_LIMIT_REACHED`.
 3. **`POST /v1/commands?view=receipt`** (`action: "recipe_delete"`)
    - Payload: `{ "id": "<recipeId>" }` (`404 RECIPE_NOT_FOUND`).
 4. **`POST /v1/commands?view=receipt`** (`action: "food_entry"`, `source: "recipe"`)
    - Payload: `{ "date": "2026-11-21", "slot": "lunch", "displaySlot": "iftar", "source": "recipe", "recipeId": "<recipeId>", "servings": 1.5 }` (OR `"grams": 275`).
-   - Server freezes the recipe snapshot onto the food entry at log time; `food_entry_update` also supports scaling `servings` or `grams` atomically in place.
+   - Server freezes the recipe snapshot (plus `recipeTotalGrams` and `recipeServings`) onto the food entry at log time; `food_entry_update` converts cleanly between `servings` (`0.1..10`) and `grams` (`1..3000`) atomically in place!
    - Error Codes: `INVALID_RECIPE_PAYLOAD`, `RECIPE_NOT_FOUND`, `RECIPE_LIMIT_REACHED`, `INGREDIENT_NOT_IN_CATALOG`, `LIQUID_DENSITY_MISSING`.
 
 ### RULES & BUSINESS LOGIC

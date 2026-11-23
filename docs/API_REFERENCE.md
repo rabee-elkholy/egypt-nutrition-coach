@@ -18,7 +18,7 @@ Switch between environments from the top-right **Environment selector** in Postm
 
 ## 2. Authentication (Google & Apple OIDC Only + First-Party JWT/D1 Sessions)
 
-- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/auth/refresh`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.
+- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/eligibility`, `POST /v1/plans/preview`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/auth/refresh`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.
 - **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).
 - **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).
 - **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).
@@ -44,7 +44,7 @@ Every JSON endpoint returns the canonical envelope:
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |
-| `error.code` | `string` | Stable uppercase error code (290 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
+| `error.code` | `string` | Stable uppercase error code (293 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
 | `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |
 | `error.params` | `object` | Interpolation parameters for client-side localization |
 | `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |
@@ -95,7 +95,7 @@ Every JSON endpoint returns the canonical envelope:
 
 ---
 
-## 6. Complete Endpoint Reference (16 Groups / 135 Endpoints)
+## 6. Complete Endpoint Reference (16 Groups / 140 Endpoints)
 
 ## 01. System & Health
 
@@ -583,7 +583,7 @@ Returns authenticated caller identity, session ID, auth method, scopes, entitlem
 
 ### Claim Anonymous Web Session
 
-Atomically migrates an anonymous Web MVP trial account (`anon:...`) into the logged-in verified account. Requires owning `coach_uid` cookie + explicit `consent: true`.
+Atomically migrates a legacy Web anonymous trial account (`anon:...`) into the logged-in verified account. Requires owning `coach_uid` Web cookie + explicit `consent: true` (Web-only).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -768,7 +768,7 @@ Deterministic clinical/physiological pre-screening, initial 7-day nutrition & wo
 
 ### Pre-Screening Eligibility Check
 
-Fast deterministic pre-onboarding screening checking age (18..70), BMI boundaries (12.5..65), medical conditions, injuries, and maternal status before plan generation.
+Public fast deterministic pre-onboarding screening checking age (18..70), BMI boundaries (12.5..65), medical conditions, injuries, and maternal status before plan generation.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -776,7 +776,7 @@ Fast deterministic pre-onboarding screening checking age (18..70), BMI boundarie
 - **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/eligibility`
 - **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/eligibility`
 - **Local Dev URL:** `http://127.0.0.1:8787/v1/eligibility`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+- **Auth:** Public (`No Auth`)
 
 ### Headers
 | Header | Type | Required | Description |
@@ -1283,7 +1283,7 @@ Maps legacy workout day indexes to canonical `js_sunday_0` (`0=Sun .. 6=Sat`).
 
 ### Renew Weekly Nutrition Plan
 
-Generates the next 7-day nutrition plan after the active plan's end date has elapsed, or early when `earlyRenew: true` (preserving today's meals).
+Generates the next 7-day nutrition plan after the active plan's end date has elapsed, or early when `earlyRenew: true` (starting today while keeping today's meals; Pro-gated when enforcement is enabled).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -1313,7 +1313,7 @@ Generates the next 7-day nutrition plan after the active plan's end date has ela
 | `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
 | `action` | `string (const)` | Yes | "renew_plan" | Domain command action identifier. |
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `renew_plan`. |
-| `payload.earlyRenew` | `boolean` | No | default: false | When `true`, regenerates remaining days starting tomorrow while preserving today. |
+| `payload.earlyRenew` | `boolean` | No | default: false (Pro when true) | When `true`, regenerates a full 7-day plan starting today while preserving today's meals. |
 
 ### Request Body Example
 ```json
@@ -1543,7 +1543,7 @@ Daily food diary summary, planned/ingredient/manual food logging, explicit compl
 
 ### Get Food Diary for Date
 
-Returns actual food entries, nullable nutrient totals, completion status, and planned energy target for a specific user-local date.
+Returns actual food entries, nullable nutrient totals, completion status, and planned energy target for a specific user-local date or `from..to` range (up to 62 days).
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -1562,6 +1562,8 @@ Returns actual food entries, nullable nutrient totals, completion status, and pl
 | Parameter | Type | Required | Constraints / Default | Description |
 | :--- | :--- | :---: | :--- | :--- |
 | `date` | `string (YYYY-MM-DD)` | No | Defaults to today | User-local calendar date. |
+| `from` | `string (YYYY-MM-DD)` | No | Optional range start (with `to`) | Range start date (inclusive). |
+| `to` | `string (YYYY-MM-DD)` | No | Optional range end (max 62 days) | Range end date (inclusive). |
 
 ### Response Fields
 | Field | Type | Description |
@@ -1985,9 +1987,152 @@ Logs a custom manual food item with calories and optional protein/carbs/fat.
 
 ---
 
+### Log Food Entries Batch (food_entry_batch)
+
+Atomically logs 1..15 food entries (multi-select quick-log tray across recent, planned, ingredient, recipe, barcode, or manual items) in a single request.
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "food_entry_batch" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `food_entry_batch`. |
+| `payload.date` | `string (YYYY-MM-DD)` | No | Optional batch default date | Default date applied when omitted per item. |
+| `payload.slot` | `string (enum)` | No | Optional batch default slot | Default slot applied when omitted per item. |
+| `payload.displaySlot` | `string (enum)` | No | `suhoor` | `iftar` | `ramadan_snack` | null | Optional batch default Ramadan display slot. |
+| `payload.items` | `Array<object>` | Yes | 1..15 food_entry objects | Array of food entries to validate and commit atomically. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "food_entry_batch",
+  "payload": {
+    "date": "{{todayDate}}",
+    "slot": "breakfast",
+    "items": [
+      {
+        "source": "ingredient",
+        "key": "egg",
+        "grams": 120
+      },
+      {
+        "source": "manual",
+        "name": "Espresso Without Sugar",
+        "energy": 5
+      }
+    ]
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — food_entry_batch Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "food_entry_batch",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "food_entry_batch",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
 ### Update Food Entry Atomically (food_entry_update)
 
-Atomically edits an existing food entry in place (preserving its ID and recomputing scaled macros for planned/ingredient entries, or updating manual fields).
+Atomically edits an existing food entry in place (preserving ID, scaling without 0.1..4.0 clamp, converting grams/servings, and updating displaySlot).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -2019,8 +2164,10 @@ Atomically edits an existing food entry in place (preserving its ID and recomput
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `food_entry_update`. |
 | `payload.id` | `string (UUID)` | Yes | Existing food entry ID | Food entry ID to update. |
 | `payload.slot` | `string (enum)` | No | `breakfast` | `lunch` | `dinner` | `snack` | Updated meal slot. |
-| `payload.quantity` | `number` | No | 0.1..5 (planned entries) | Updated portion multiplier. |
-| `payload.grams` | `number` | No | 1..3000 (ingredient entries) | Updated weight in grams. |
+| `payload.displaySlot` | `string (enum) | null` | No | `suhoor` | `iftar` | `ramadan_snack` | null | Updated Ramadan display slot. |
+| `payload.quantity` | `number` | No | 0.1..10 (planned entries) | Updated portion multiplier. |
+| `payload.grams` | `number` | No | 1..5000 (ingredient/recipe entries) | Updated weight in grams. |
+| `payload.servings` | `number` | No | 0.1..20 (recipe entries) | Updated recipe servings. |
 | `payload.name` | `string` | No | 1..120 chars (manual entries) | Updated label. |
 | `payload.energy` | `number` | No | 0..5000 (manual entries) | Updated calories. |
 
@@ -3563,7 +3710,7 @@ Paginated activity and step logs.
 
 ### Ingest Wearables Batch (Health Connect / Apple Health)
 
-Idempotent batch ingestion of up to 100 weight/steps/activity records from Android Health Connect or Apple HealthKit.
+Idempotent batch ingestion of up to 100 weight/steps/activity/cardio records from Android Health Connect or Apple HealthKit with partial skippedRecords[] reporting.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -3584,11 +3731,13 @@ Idempotent batch ingestion of up to 100 weight/steps/activity records from Andro
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
 | `records` | `Array<object>` | Yes | 1..100 records | Array of wearable records. |
-| `records[].type` | `string (enum)` | Yes | `weight` | `steps` | `activity` | Record type. |
+| `records[].type` | `string (enum)` | Yes | `weight` | `steps` | `activity` | `cardio` | Record type. |
 | `records[].date` | `string (YYYY-MM-DD)` | Yes | Past 90 days..today | Record date. |
 | `records[].kg` | `number` | No | Required for `weight` (35..250) | Weight in kg. |
 | `records[].steps` | `integer` | No | 0..100000 | Steps count. |
 | `records[].activeEnergyKcal` | `number` | No | 0..5000 | Active calories. |
+| `records[].modality` | `string` | No | For `cardio` (walking, running, cycling, swimming, etc.) | Cardio modality. |
+| `records[].durationMinutes` | `integer` | No | For `cardio` (5..360) | Cardio duration in minutes. |
 | `records[].externalRecordId` | `string` | No | max 120 chars | Deduplication ID. |
 
 ### Request Body Example
@@ -3619,6 +3768,7 @@ Idempotent batch ingestion of up to 100 weight/steps/activity records from Andro
 | `ok` | `boolean` | `true`. |
 | `revision` | `integer` | Updated account revision. |
 | `ingested` | `integer` | Count of processed records. |
+| `skippedRecords` | `Array<object>` | Validation-skipped records without blocking valid rows. |
 
 #### Example Response — 200 OK — Ingested
 ```json
@@ -3669,7 +3819,7 @@ Lists active and archived workout plan version references owned by the user.
 
 ### Get Workout Plan by ID
 
-Fetches full owned workout plan with days, exercises, target reps/RIR, rest seconds, and weekly set totals.
+Fetches full owned workout plan enriched with days, exercises, targetRepsRange, targetRir, restSeconds, and weeklyMuscleSets.
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -3693,7 +3843,7 @@ Fetches full owned workout plan with days, exercises, target reps/RIR, rest seco
 
 ### Log Exercise Sets (workout)
 
-Logs performed sets (`kg`, `reps`, `rir`, `pain`) for a scheduled exercise and computes progression suggestions.
+Logs performed sets (`kg`/`addedKg`, `reps`, `rir`, `pain`, `setType`) plus optional session notes and computes progression suggestions.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -3726,9 +3876,11 @@ Logs performed sets (`kg`, `reps`, `rir`, `pain`) for a scheduled exercise and c
 | `payload.date` | `string (YYYY-MM-DD)` | No | Defaults to today | Exposure date. |
 | `payload.dayIndex` | `integer` | Yes | 0..6 (`0=Sun .. 6=Sat`) | Workout day index in active plan. |
 | `payload.exerciseId` | `string` | Yes | Must exist in day's exercises | Exercise ID. |
-| `payload.sets` | `Array<object>` | Yes | 1..10 sets: `{ kg: 0..500, reps: int 1..100, rir?: 0..10, pain?: boolean }` | Performed sets. |
-| `payload.bothSides` | `boolean` | No | Required `true` for unilateral exercises to progress | Confirms both sides completed. |
+| `payload.weightedBodyweight` | `boolean` | No | Opt-in loaded bodyweight | Enables addedKg/kg tracking for supported bodyweight movements. |
+| `payload.sets` | `Array<object>` | Yes | 1..10 sets: `{ kg?: 0..500, addedKg?: 0..500, reps: int 1..100, rir?: 0..10, pain?: boolean, setType?: string }` | Performed sets. |
+| `payload.bothSides` | `boolean` | No | default: true (`false` pauses unilateral progression) | Confirms both sides completed. |
 | `payload.increment` | `number | null` | No | 0.1..20 (kg) | Optional preferred load step. |
+| `payload.notes` | `string` | No | max 300 chars | Optional exercise performance notes. |
 | `payload.autoSession` | `boolean` | No | default: false | Automatically creates/updates session coverage record. |
 
 ### Request Body Example
@@ -3850,7 +4002,7 @@ Logs performed sets (`kg`, `reps`, `rir`, `pain`) for a scheduled exercise and c
 
 ### List Workout Logs
 
-Paginated exercise set/rep/load logs.
+Paginated exercise set/rep/load logs ordered by date descending, optionally filtered by `exerciseId`.
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -3872,6 +4024,7 @@ Paginated exercise set/rep/load logs.
 | `to` | `string (YYYY-MM-DD)` | No | Optional end date | Filter logs with `date <= to`. |
 | `offset` | `integer` | No | >= 0, default 0 | Zero-based pagination offset. |
 | `limit` | `integer` | No | 1..100, default 30 | Maximum records returned per page. |
+| `exerciseId` | `string` | No | Optional exercise ID filter | Filter history to one exercise. |
 
 ### Response Fields
 | Field | Type | Description |
@@ -4053,6 +4206,7 @@ Marks a workout session as `completed`, `partial`, or `missed`. Completion ratio
 | `payload.status` | `string (enum)` | Yes | `completed` | `partial` | `missed` | Session completion status. |
 | `payload.duration` | `number | null` | No | 1..240 (minutes) | Total workout duration. |
 | `payload.rpe` | `number | null` | No | 0..10 | Session perceived exertion. |
+| `payload.notes` | `string | null` | No | max 300 chars | Optional workout session notes. |
 
 ### Request Body Example
 ```json
@@ -4482,7 +4636,7 @@ Forks the workout plan replacing `exerciseId` with a validated `alternativeId` w
 
 ### Propose Workout Reschedule (reschedule)
 
-Creates a pending schedule adaptation proposal moving a workout day to a rest day within the next 13 days.
+Creates a pending schedule adaptation proposal moving a workout day to a rest day within the next 13 days (returns `409 SESSION_ALREADY_COMPLETED` if completed).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -4606,6 +4760,25 @@ Creates a pending schedule adaptation proposal moving a workout day to a rest da
   }
 }
 ```
+
+---
+
+### Get 8-Week Split Review
+
+Evaluates 8-week Full Body split progression readiness returning `{ due, kind, code, params, text }` in canonical pure English.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/workouts/split-review`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/workouts/split-review`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/workouts/split-review`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/workouts/split-review`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
 
 ---
 
@@ -6224,6 +6397,8 @@ Updates reminder toggles and HH:mm quiet-hours window.
 | `payload.workoutReminder` | `boolean` | No | boolean | Workout day reminder. |
 | `payload.waterReminder` | `boolean` | No | boolean | Hydration reminder. |
 | `payload.weeklyReviewReminder` | `boolean` | No | boolean | Weekly review reminder. |
+| `payload.ramadanSuhoorReminder` | `boolean` | No | boolean | Ramadan pre-dawn Suhoor reminder. |
+| `payload.exemptSuhoorFromQuietHours` | `boolean` | No | boolean | Allow Suhoor alert even during quiet hours. |
 | `payload.quietHoursStart` | `string (HH:mm)` | No | `00:00`..`23:59` | Quiet hours start. |
 | `payload.quietHoursEnd` | `string (HH:mm)` | No | `00:00`..`23:59` | Quiet hours end. |
 
@@ -6350,7 +6525,7 @@ Versioned health/privacy consent recording, normalized table backfill, full mach
 
 ### Record Privacy / Health Consent
 
-Records versioned explicit user consent in Cloudflare D1 (`coaching_account_consents`).
+Records one or a batch (`items[]`) of versioned explicit user consents in Cloudflare D1 (`coaching_account_consents`).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -6369,9 +6544,10 @@ Records versioned explicit user consent in Cloudflare D1 (`coaching_account_cons
 ### Request Body Fields
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
-| `consentType` | `string` | Yes | max 60 chars | Consent category (e.g. `health_data_processing`). |
-| `version` | `string` | Yes | max 30 chars | Policy/terms version string. |
-| `accepted` | `boolean` | Yes | boolean | Whether accepted or withdrawn. |
+| `consentType` | `string` | No | max 60 chars (single mode) | Consent category (e.g. `health_data_processing`). |
+| `version` | `string` | No | max 30 chars (single mode) | Policy/terms version string. |
+| `accepted` | `boolean` | No | boolean (single mode) | Whether accepted or withdrawn. |
+| `items` | `Array<object>` | No | 1..10 items `{ consentType, version, accepted }` | Atomic batch consent payload alternative to single fields. |
 
 ### Request Body Example
 ```json
@@ -6629,7 +6805,7 @@ Linked OAuth provider management (Google/Apple), stateless onboarding plan previ
 
 ### Preview Onboarding Plan (Public)
 
-Stateless onboarding calculation returning daily kcal/macros, safe calorie floors, water target, eligibility, and weekly forecast range.
+Stateless onboarding calculation returning daily kcal/macros, safe calorie floors, `restDayWaterTarget`, `workoutDayWaterTarget`, `estimatedExercisesPerSession`, eligibility, and weekly forecast range.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -7095,7 +7271,7 @@ Matches user pantry ingredients against safe meal templates (Free feature).
 
 ### Get Plan Grocery List
 
-Aggregated shopping list for the active nutrition plan with checked item state (Pro feature when enforcement is enabled).
+Aggregated shopping list (`days=all|remaining|3|7`) with checked item state (Pro feature; append `?preview=true` for Free 2-item teaser).
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -7109,6 +7285,12 @@ Aggregated shopping list for the active nutrition plan with checked item state (
 | Header | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `days` | `string (enum)` | No | `all` | `remaining` | `3` | `7` | Day window filter. |
+| `preview` | `boolean` | No | default: false (`true` = Free teaser) | Returns 2 sample items + lock count for Free tier. |
 
 ---
 
@@ -7243,6 +7425,31 @@ Persists checked/unchecked state for a grocery list item.
 
 ---
 
+### List Recent Logged Foods
+
+Returns recently logged unique foods ranked by frequency and recency for zero-query rapid logging.
+
+### Endpoint Info
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/v1/foods/recent?days=30&limit=25`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/foods/recent?days=30&limit=25`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/foods/recent?days=30&limit=25`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/foods/recent?days=30&limit=25`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `days` | `integer` | No | 1..90 (default 30) | Lookback window in days. |
+| `limit` | `integer` | No | 1..50 (default 25) | Max unique items returned. |
+
+---
+
 ### List Food Favorites
 
 Returns pinned/favorite foods for quick logging.
@@ -7264,7 +7471,7 @@ Returns pinned/favorite foods for quick logging.
 
 ### Toggle Food Favorite (food_favorite)
 
-Pins or unpins a food item as a user favorite.
+Pins or unpins a food item (`planned`, `ingredient`, `recipe`, `barcode`, or `manual`) as a user favorite.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -7398,7 +7605,7 @@ Pins or unpins a food item as a user favorite.
 
 ### Copy Meals from Previous Day (copy_meal)
 
-Copies logged food entries from a source date/slot into a target date/slot.
+Copies logged food entries (all, by slot, or specific `entryIds[]`) into `toDate` and optional target `toSlot`.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -7430,7 +7637,9 @@ Copies logged food entries from a source date/slot into a target date/slot.
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `copy_meal`. |
 | `payload.fromDate` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Source log date. |
 | `payload.toDate` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Destination log date. |
-| `payload.slot` | `string (enum)` | No | `breakfast` | `lunch` | `dinner` | `snack` | Optional meal slot filter. |
+| `payload.slot` | `string (enum)` | No | `breakfast` | `lunch` | `dinner` | `snack` | Optional source meal slot filter. |
+| `payload.toSlot` | `string (enum)` | No | `breakfast` | `lunch` | `dinner` | `snack` | Optional destination slot override. |
+| `payload.entryIds` | `Array<string>` | No | 1..30 entry IDs | Specific entry IDs from `fromDate` to copy. |
 
 ### Request Body Example
 ```json
@@ -7571,7 +7780,8 @@ Contributes a packaged food barcode item to D1 (Pro feature when enforcement is 
 | `nameEn` | `string` | Yes | 2..120 chars | English product name. |
 | `brand` | `string` | No | max 80 chars | Brand name. |
 | `servingSizeGrams` | `number` | No | 1..2000 | Default serving size in grams. |
-| `valuesPer100g` | `object` | Yes | `{ energy, protein, carbs, fat }` | Nutrition facts per 100g. |
+| `servingLabel` | `string` | No | max 40 chars | Optional human-friendly serving label (e.g. `1 cup`, `1 bar`). |
+| `valuesPer100g` | `object` | Yes | `{ energy, protein, carbs, fat, saturated?, fiber?, sodium?, sugars? }` | Nutrition facts per 100g. |
 
 ### Request Body Example
 ```json
@@ -7743,7 +7953,7 @@ Starts or completes a fasting session log.
 
 ### Toggle Ramadan Mode (ramadan_mode)
 
-Enables or disables Ramadan Iftar/Suhoor meal slot remapping (Free feature; works for both nutrition and workouts-only users).
+Enables or disables Ramadan Iftar/Suhoor meal slot remapping with automatic post-Ramadan reversion (Free feature; works for both nutrition and workouts-only users).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -7873,6 +8083,137 @@ Enables or disables Ramadan Iftar/Suhoor meal slot remapping (Free feature; work
 
 ---
 
+### Toggle Seasonal / Eid Flex Mode (seasonal_flex)
+
+Activates temporary maintenance calories (`tdee`) and automatic `flexDates` streak protection for Eid, travel, or seasonal breaks (1..7 days, Free feature).
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "seasonal_flex" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `seasonal_flex`. |
+| `payload.enabled` | `boolean` | Yes | boolean | Enable or disable Seasonal Flex Mode. |
+| `payload.occasion` | `string (enum)` | No | `eid_fitr` | `eid_adha` | `travel` | `custom` | Seasonal occasion tag. |
+| `payload.endDate` | `string (YYYY-MM-DD)` | No | `today`..`today+7d` (default `+2d`) | Last inclusive date for maintenance/flex protection. |
+| `payload.dismissEidPrompt` | `boolean` | No | Optional when `enabled: false` | Dismisses the post-Ramadan Eid prompt cleanly. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "seasonal_flex",
+  "payload": {
+    "enabled": true,
+    "occasion": "eid_fitr"
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — seasonal_flex Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "seasonal_flex",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "seasonal_flex",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
 ### List Saved Custom Recipes
 
 Lists the user's saved multi-ingredient home recipes ("My Recipes") with optional text search `q` (Free feature).
@@ -7894,7 +8235,7 @@ Lists the user's saved multi-ingredient home recipes ("My Recipes") with optiona
 
 ### Save Custom Home Recipe (recipe_save)
 
-Creates or updates a saved multi-ingredient home recipe (max 100 recipes) with verified per-serving and per-100g macros (Free feature).
+Creates or updates a saved multi-ingredient home recipe (max 100 recipes) with cooked yield (`finalWeightGrams`), custom additions, `ml` liquid conversions, and quality tier (Free feature).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -7927,7 +8268,9 @@ Creates or updates a saved multi-ingredient home recipe (max 100 recipes) with v
 | `payload.id` | `string` | No | Optional UUID for update | Existing recipe ID to update in place. |
 | `payload.name` | `string` | Yes | 2..80 chars | Recipe display name. |
 | `payload.servings` | `number` | Yes | 0.5..30 | Total servings produced by the recipe batch. |
-| `payload.items` | `Array<object>` | Yes | 1..25 items `{ foodId, grams }` | Catalog ingredient IDs and gram weights. |
+| `payload.finalWeightGrams` | `number` | No | 20..15000 (cooked batch yield) | Optional final cooked batch weight for accurate yield ratio. |
+| `payload.items` | `Array<object>` | Yes | 1..25 items `{ foodId, grams? , ml? }` | Catalog ingredient IDs with grams or ml (auto-converted by density). |
+| `payload.additions` | `Array<object>` | No | 0..10 items `{ name, energy, protein?, carbs?, fat?, grams? }` | Optional non-catalog additions (spices, sauces, oils). |
 | `payload.notes` | `string` | No | max 300 chars | Optional preparation notes. |
 
 ### Request Body Example
@@ -8713,7 +9056,7 @@ Deletes a logged cardio session by ID.
 
 ### Get Female Cycle Awareness State
 
-Returns optional female menstrual cycle awareness state, phase estimate, luteal water-retention flag, and pregnancy auto-pause status (`available: false` for non-female profiles; Free opt-in feature).
+Returns optional female menstrual cycle awareness state (`phase`, `coachingHintCode`, `discreetMode`, `adaptiveThemeEnabled`, `phaseAccentToken`, `suggestedGentleSession`, `isOverdue`/`overdueDays`, luteal water-retention flag, and pregnancy auto-pause; Free opt-in feature).
 
 ### Endpoint Info
 - **Method:** `GET`
@@ -8732,7 +9075,7 @@ Returns optional female menstrual cycle awareness state, phase estimate, luteal 
 
 ### Update Cycle Awareness Settings (cycle_settings)
 
-Enables/disables optional female cycle awareness and configures average cycle/period lengths (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).
+Enables/disables optional female cycle awareness, discreet mode, adaptive phase accent, and cycle lengths (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -8763,6 +9106,8 @@ Enables/disables optional female cycle awareness and configures average cycle/pe
 | `action` | `string (const)` | Yes | "cycle_settings" | Domain command action identifier. |
 | `payload` | `object` | Yes | JSON object | Action-specific payload for `cycle_settings`. |
 | `payload.enabled` | `boolean` | Yes | boolean | Opt-in toggle for cycle awareness. |
+| `payload.discreetMode` | `boolean` | No | default: false | Masks sensitive cycle labels and disables tinted cycle accent. |
+| `payload.adaptiveThemeEnabled` | `boolean` | No | default: true | Allows subtle cycle-phase accent tokens when Discreet Mode is off. |
 | `payload.averageCycleLengthDays` | `integer` | No | 21..45 (default 28) | Average menstrual cycle length in days. |
 | `payload.averagePeriodLengthDays` | `integer` | No | 2..10 (default 5) | Average period duration in days. |
 | `payload.lastPeriodStartDate` | `string (YYYY-MM-DD)` | No | Within last 180 days or null | Start date of last menstrual period. |
@@ -8955,6 +9300,133 @@ Logs period start, flow level, cramp severity, and wellness symptoms for a calen
     "affected": [
       {
         "entityType": "cycle_log",
+        "entityId": "example-id",
+        "op": "upsert",
+        "payload": {}
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z",
+    "revision": 2
+  }
+}
+```
+
+#### Example Response — 409 Conflict — Stale Revision
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Account was updated; refresh and try again.",
+    "params": {
+      "expectedRevision": 4,
+      "serverRevision": 5
+    },
+    "fieldErrors": [],
+    "retryable": false,
+    "details": {
+      "currentRevision": 5,
+      "mergeHints": {
+        "expectedRevision": 4,
+        "serverRevision": 5,
+        "syncChangesEndpoint": "/v1/sync/changes?after=4",
+        "resolutionPolicy": "fetch_sync_deltas_then_rebase_or_retry"
+      }
+    }
+  },
+  "meta": {
+    "requestId": "req-uuid",
+    "serverTime": "2026-11-21T12:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Toggle Cycle Comfort Session (cycle_gentle_session)
+
+One-tap female cycle comfort adjustment scaling working workout sets by 0.8x for 24 hours without mutating base plan progression (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).
+
+### Endpoint Info
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/v1/commands?view=receipt`
+- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/commands?view=receipt`
+- **Local Dev URL:** `http://127.0.0.1:8787/v1/commands?view=receipt`
+- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
+
+### Headers
+| Header | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `Content-Type` | `string` | Yes | Must be application/json |
+| `Idempotency-Key` | `string` | Yes | Unique UUID per logical action (max 100 chars). Auto-generated by pre-request script. |
+| `X-Client-Platform` | `string` | No | Client platform: android | ios | web. |
+| `X-Client-Version` | `string` | No | Client app semantic version (e.g. 1.0.0). |
+| `Accept` | `string` | Yes | JSON response format |
+
+### Query Parameters
+| Parameter | Type | Required | Constraints / Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `view` | `string (enum)` | No | receipt | minimal | delta | full | Response verbosity; receipt returns compact <2KB delta. |
+
+### Request Body Fields
+| Field | Type | Required | Constraints / Allowed Values | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `revision` | `integer` | Yes | >= 0 (must match server revision) | Current optimistic-concurrency account revision. |
+| `action` | `string (const)` | Yes | "cycle_gentle_session" | Domain command action identifier. |
+| `payload` | `object` | Yes | JSON object | Action-specific payload for `cycle_gentle_session`. |
+| `payload.enabled` | `boolean` | Yes | boolean | Activate or clear the 24h gentle comfort adjustment. |
+
+### Request Body Example
+```json
+{
+  "revision": {{revision}},
+  "action": "cycle_gentle_session",
+  "payload": {
+    "enabled": true
+  }
+}
+```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ok` | `boolean` | `true` when committed or idempotently replayed. |
+| `revision` | `integer` | New monotonic account revision. |
+| `serverNow` | `string (ISO-8601 UTC)` | Current server timestamp. |
+| `serverDate` | `string (YYYY-MM-DD)` | User-local calendar date. |
+| `commandReceipt` | `object` | `{ revision, action, replayed, at }` receipt metadata. |
+| `affected` | `Array<object>` | Entity deltas `{ entityType, entityId, op, payload }`. |
+
+### Possible Error Responses
+| HTTP Status | Error Code | When |
+| :---: | :--- | :--- |
+| `400` | `VALIDATION_ERROR` | Invalid payload values, business rule violation, or missing Idempotency-Key. |
+| `401` | `UNAUTHENTICATED` | Missing, expired, or revoked Bearer JWT. |
+| `409` | `REVISION_CONFLICT` | Client revision is stale; rebase via `/v1/sync/changes` or `/v1/state`. |
+| `409` | `IDEMPOTENCY_KEY_REUSED_MISMATCH` | Same Idempotency-Key sent with different JSON body. |
+
+#### Example Response — 200 OK — cycle_gentle_session Receipt
+```json
+{
+  "ok": true,
+  "data": {
+    "revision": 2,
+    "serverNow": "2026-11-21T12:30:00.000Z",
+    "serverDate": "2026-11-21",
+    "timezone": "Africa/Cairo",
+    "commandReceipt": {
+      "revision": 2,
+      "action": "cycle_gentle_session",
+      "replayed": false,
+      "at": "2026-11-21T12:30:00.000Z"
+    },
+    "affected": [
+      {
+        "entityType": "cycle_gentle_session",
         "entityId": "example-id",
         "op": "upsert",
         "payload": {}
@@ -9229,7 +9701,7 @@ Logs or merges daily body circumference measurements for a date.
 
 ### Use Streak Freeze (streak_freeze)
 
-Consumes one streak freeze token (max 1 per 7 days) to protect the nutrition streak.
+Consumes one manual streak freeze token (max 1 per 7 days) alongside automatic Weekly Auto-Freeze protection (`autoAppliedFreezes`) for missed logging days.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -9358,9 +9830,9 @@ Consumes one streak freeze token (max 1 per 7 days) to protect the nutrition str
 
 Worker-proxied HMAC-signed R2 avatars & progress photos, FCM/APNs push tokens, StoreKit/Play Billing verification & webhooks, and deferred AI phase 501 placeholders.
 
-### Create Profile Avatar Upload URL
+### Upload Profile Avatar (Multipart / Binary)
 
-Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PNG/WebP, max 512 KB) into Cloudflare R2.
+Uploads a profile avatar directly via `multipart/form-data` (`image`/`file`) or raw binary (`image/jpeg`, `image/png`, `image/webp`, max 512 KB) into private Cloudflare R2 with old-avatar cleanup and returns a short-lived signed GET URL.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -9379,15 +9851,11 @@ Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PN
 ### Request Body Fields
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
-| `contentType` | `string (enum)` | Yes | `image/jpeg` | `image/png` | `image/webp` | Avatar MIME type. |
-| `byteSize` | `integer` | Yes | 1..524288 | Declared file size in bytes (max 512 KB). |
+| `image` | `file (binary)` | Yes | JPEG/PNG/WebP, max 512 KB (multipart/form-data or raw image body) | Avatar binary file. |
 
 ### Request Body Example
 ```json
-{
-  "contentType": "image/jpeg",
-  "byteSize": 180000
-}
+{}
 ```
 
 ---
@@ -9455,7 +9923,7 @@ Issues a short-lived HMAC-signed PUT URL for private R2 upload.
 | `byteSize` | `integer` | Yes | 1..5242880 | Declared file size in bytes (max 5 MB). |
 | `pose` | `string (enum)` | Yes | `front` | `side` | `back` | Progress photo pose. |
 | `date` | `string (YYYY-MM-DD)` | Yes | Valid ISO date | Photo date. |
-| `weightKg` | `number` | No | 35..250 | Optional weight snapshot. |
+| `weightKgSnapshot` | `number` | No | 35..250 | Optional weight snapshot. |
 
 ### Request Body Example
 ```json
@@ -9464,7 +9932,7 @@ Issues a short-lived HMAC-signed PUT URL for private R2 upload.
   "byteSize": 250000,
   "pose": "front",
   "date": "{{todayDate}}",
-  "weightKg": 79.5
+  "weightKgSnapshot": 79.5
 }
 ```
 
@@ -9644,7 +10112,7 @@ Returns StoreKit/Play Billing product offerings and trial eligibility.
 
 ### Verify Store Subscription
 
-Verifies an Apple StoreKit or Google Play purchase and activates Pro entitlements.
+Verifies an Apple StoreKit 2 or Google Play purchase and activates Pro entitlements (fails closed with `503 BILLING_VERIFICATION_UNAVAILABLE` if store upstream fails).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -9664,9 +10132,15 @@ Verifies an Apple StoreKit or Google Play purchase and activates Pro entitlement
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
 | `platform` | `string (enum)` | Yes | `android` | `ios` | Store platform. |
-| `productId` | `string` | Yes | Configured SKU ID | Store subscription product ID. |
+| `provider` | `string (enum)` | No | `apple` | `google` | Optional explicit billing provider. |
+| `productId` | `string` | No | Configured SKU ID | Store subscription product ID. |
 | `purchaseToken` | `string` | No | Required for `android` | Google Play purchase token. |
-| `signedTransactionInfo` | `string` | No | Required for `ios` | Apple StoreKit 2 JWS transaction. |
+| `orderId` | `string` | No | Optional for `android` | Google Play order ID. |
+| `signedTransactionInfo` | `string` | No | For `ios` StoreKit 2 | Apple StoreKit 2 JWS transaction. |
+| `signedTransactionJws` | `string` | No | Alias for `signedTransactionInfo` | Apple StoreKit 2 JWS transaction alias. |
+| `transactionId` | `string` | No | Optional for `ios` | Apple transaction identifier. |
+| `originalTransactionId` | `string` | No | Optional for `ios` | Apple original transaction identifier. |
+| `isTrial` | `boolean` | No | boolean | Marks introductory trial transaction. |
 
 ### Request Body Example
 ```json
@@ -9681,7 +10155,7 @@ Verifies an Apple StoreKit or Google Play purchase and activates Pro entitlement
 
 ### Restore Store Subscriptions
 
-Reconciles prior store purchases and restores active entitlements.
+Reconciles prior store purchases (`string` tokens or receipt objects) and restores active entitlements.
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -9701,7 +10175,8 @@ Reconciles prior store purchases and restores active entitlements.
 | Field | Type | Required | Constraints / Allowed Values | Description |
 | :--- | :--- | :---: | :--- | :--- |
 | `platform` | `string (enum)` | Yes | `android` | `ios` | Store platform. |
-| `tokens` | `Array<string>` | No | Optional purchase tokens/transactions | Active store purchase tokens to reconcile. |
+| `provider` | `string (enum)` | No | `apple` | `google` | Optional explicit billing provider. |
+| `tokens` | `Array<string | object>` | No | Optional purchase tokens or `{ purchaseToken, transactionId, signedTransactionJws }` objects | Active store purchase tokens/receipts to reconcile. |
 
 ### Request Body Example
 ```json

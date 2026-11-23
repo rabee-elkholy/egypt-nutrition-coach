@@ -10,13 +10,13 @@
 ## Epic Overview
 
 `EPIC-06` defines the **Coach Tab** using a **Hybrid 3-Specialist Scientific Care Team Architecture**:
-1. **Deterministic Clinical & Scientific Core (100% Backend-Verified):** Every user experiences structured guidance from three coordinated domains — **Clinical Nutritionist (`nutrition`)**, **Strength & Conditioning Coach (`training`)**, and **Recovery & Habit Specialist (`followup`)**. Every nutrition calorie adjustment (`<= 5% / <= 150 kcal`, minimum 14-day cooldown), temporary 24-hour workout deload (`-20%` or `-40%` sets), muscle-gain weekly volume progression (`+1 set`), goal-reached maintenance transition, urgent medical Red-Flag Stop alert, and structured Coaching Agreements run strictly through CuraFit's audited deterministic backend engine (`recovery.mjs`, `coaching.mjs`, `coaching-journey.mjs`, `personal-brief.mjs`), returning pure-English copy paired with canonical codes & params (`contracts/coaching-codes.json` — 83 codes) for on-device KMM localization.
-2. **Guarded AI Coach Q&A ("Ask the Coach" — Final AI Phase, Deferred):** An interactive bilingual Arabic/English conversational assistant grounded in the user's actual logged profile, meals, workouts, and active coaching holds — **strictly non-prescriptive**, prohibited from inventing medical diagnoses, overriding safety holds, or bypassing explicit proposal acceptance *(Deferred to Final AI Phase; `POST /v1/coaching/chat` and `GET /v1/coaching/chat/history` currently return `501 FEATURE_DEFERRED_TO_AI_PHASE`, and `capabilities.ai_coach_qa` stays disabled until AI rollout)*.
+1. **Deterministic Clinical & Scientific Core (100% Backend-Verified):** Every user experiences structured guidance from three coordinated domains — **Clinical Nutritionist (`nutrition`)**, **Strength & Conditioning Coach (`training`)**, and **Recovery & Habit Specialist (`followup`)**. Every nutrition calorie adjustment (`<= 5% / <= 150 kcal`, minimum 14-day cooldown), temporary 24-hour workout deload (`-20%` or `-40%` sets), muscle-gain weekly volume progression (`+1 set`), goal-reached maintenance transition, urgent medical Red-Flag Stop alert, and structured Coaching Agreements run strictly through CuraFit's audited deterministic backend engine (`recovery.mjs`, `coaching.mjs`, `coaching-journey.mjs`, `personal-brief.mjs`), returning pure-English copy paired with canonical codes & params (`contracts/coaching-codes.json` — 97 codes) for on-device KMM localization.
+2. **Guarded AI Coach Q&A ("Ask the Coach" — Final AI Phase, Deferred):** An interactive bilingual Arabic/English conversational assistant grounded in the user's actual logged profile, meals, workouts, and active coaching holds — **strictly non-prescriptive**, prohibited from inventing medical diagnoses, overriding safety holds, or bypassing explicit proposal acceptance *(Deferred to Final AI Phase; `POST /v1/coaching/chat` and `GET /v1/coaching/chat/history` currently return `501 FEATURE_DEFERRED_TO_AI_PHASE`, and `ai_coach_qa` stays in `capabilities.deferredFeatures` until AI rollout)*.
 
 ### Child User Stories
 - `US-CCH-01`: Coach Hub Home — 3-Specialist Care Team Strip, Daily Brief, Readiness Pill & Priority Action Queue
 - `US-CCH-02`: Daily Recovery & Readiness Check-In (Body-Map Soreness, Pain Regions & Urgent Red-Flag Safety Stop)
-- `US-CCH-03`: Adaptive Review Engine & Explicit Proposal Cards ("See the Science & Your Data", Calories, 24h Deload, Volume & Maintenance)
+## US-CCH-03: Adaptive Review Engine & Explicit Proposal Cards ("View Evidence & Eligibility", Calories, 24h Deload, Volume & Maintenance)
 - `US-CCH-04`: Coaching Inbox, Barrier Check-In (`hunger`/`energy`/`satiety`) & Active Coaching Agreements
 - `US-CCH-05`: Guarded AI Coach Q&A ("Ask the Coach" — Log-Grounded Chat with Strict Safety Guardrails) *(Final AI Phase — Deferred)*
 - `US-CCH-06`: Structured Weekly Care-Team Check-In, Scientific Progress Audit & Zero-Guilt "Comeback Protocol"
@@ -55,18 +55,18 @@ As a user opening the Coach tab, I want an organized coaching command center dis
      - `Clinical Nutritionist` (`role: "nutrition"`) *(active dot: Green on-track / Amber low-evidence or hunger alert)*
      - `Strength & Conditioning Coach` (`role: "training"`) *(active dot: Green ready / Amber deload or pain hold / Red safety stop)*
      - `Recovery & Habit Specialist` (`role: "followup"`) *(active dot: Green checked-in / Slate check-in needed or comeback due)*
-   - Prominent header CTA pill: **`[💬 Ask the Coach AI]`** (`US-CCH-05`, shown only when `capabilities.ai_coach_qa == true` in Final AI Phase).
+   - Prominent header CTA pill: **`[Ask the Coach AI]`** (`US-CCH-05`, shown only when `capabilities.features` contains `ai_coach_qa` / absent from `deferredFeatures` in Final AI Phase).
 2. **Urgent / Pending Queue (Shown Only When Non-Empty, Strict Priority Order):**
    - **Slot A (`status == "stop"`):** Non-dismissible urgent Red-Flag Safety Card (`RED_FLAGS_STOP`) advising immediate workout stop & medical assessment (`US-CCH-02`).
    - **Slot B (`engagementState.comebackTier != "none"`):** Warm Zero-Guilt **Comeback Protocol** card (`US-CCH-06`) welcoming the user back smoothly after `>= 3` days off without shame.
-   - **Slot C (`pendingAdaptations.length > 0`):** Explicit Proposal Approval Card(s) (`US-CCH-03`) with `[Accept]`, `[Decline]`, and `[See the Science]`.
-   - **Slot D (`engagementState.weeklyCheckinDue == true`):** Highlighted `[Start 60-Sec Weekly Care Team Check-In]` banner (`US-CCH-06`).
+   - **Slot C (`pendingAdaptations.length > 0`):** Explicit Proposal Approval Card(s) (`US-CCH-03`) with `[Accept]`, `[Decline]`, and `[View Evidence & Eligibility]`.
+   - **Slot D (`bootstrap.weeklyCheckinDue == true`):** Highlighted `[Start 60-Sec Weekly Care Team Check-In]` banner (`US-CCH-06`).
    - **Slot E (`coachingInbox.items` with `reviewDue == true` or `status == "question" | "proposed"`):** Barrier & Agreement Card (`US-CCH-04`).
 3. **Today's Personal Brief Feed (`GET /v1/coaching/brief`):**
    - Renders structured `notes[]` ordered by `priority` (`"urgent" | "attention" | "normal"`) across the 3 canonical specialist roles (`role: "nutrition" | "training" | "followup"`), with specialist avatar & role badge mapped directly from `note.role`.
-   - Each `CoachingBriefNote` includes pure-English server `text`/`action` guidance plus canonical `code` & `params` from `contracts/coaching-codes.json` (83 canonical codes, including `BRIEF_TRAINING_PERFORMANCE`, `BRIEF_FOLLOWUP_TIRED`, `BRIEF_FOLLOWUP_SLEEP`, `BRIEF_FOLLOWUP_ACTIVITY`, `VOLUME_HOLD`) and a deterministic `actionTarget` deep-link route from the exact enum `["recovery", "food", "feedback", "workout", "water", "review"]`. KMM localizes display copy into Arabic/English on-device by `(code, params)`.
+   - Each `CoachingBriefNote` includes pure-English server `text`/`action` guidance plus canonical `code` & `params` from `contracts/coaching-codes.json` (97 canonical codes, including `BRIEF_TRAINING_PERFORMANCE`, `BRIEF_TRAINING_PERFORMANCE_UP`, `BRIEF_TRAINING_PERFORMANCE_REPS`, `BRIEF_FOLLOWUP_TIRED`, `BRIEF_FOLLOWUP_SLEEP`, `BRIEF_FOLLOWUP_ACTIVITY`, `VOLUME_HOLD`, `SPLIT_REVIEW_*`, `SEASONAL_EID_FLEX_ACTIVE`, `CYCLE_GENTLE_SESSION_ACTIVE`) and a deterministic `actionTarget` deep-link route from `["recovery", "food", "feedback", "workout", "water", "review"]` (including Week-1 guidance actionTargets). KMM localizes display copy into Arabic/English on-device by `(code, params)`.
 4. **Adaptive Weekly Checkup Trigger Card:**
-   - Displays evidence progress (`"10/10 food days ✓ • 6/6 weigh-ins ✓"` or missing items count) and `[Run Coach Review Now]` button (`US-CCH-03`).
+   - Displays evidence progress (`"10/10 adherent days (excluding flexDates) • 6/6 weigh-ins"` via `adherentCompleteDays14d`, or missing items count) and `[Run Coach Review Now]` button (`US-CCH-03`).
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/coaching/brief`** (Sends `If-None-Match` saved `briefEtag` -> `304 Not Modified` when unchanged!)
@@ -81,7 +81,7 @@ As a user opening the Coach tab, I want an organized coaching command center dis
 ### MAIN FLOW
 1. User taps Tab 4 (`Coach`).
 2. `CoachHubScreen` displays `Readiness: Unknown (Check-In Needed)` at top, 1 open `coachingInbox` barrier prompt (`"We noticed 2 missed sessions this week — what got in the way?"`), and 3 Personal Brief cards.
-3. User taps `[30-Sec Check-In]` right from the header -> Completes `US-CCH-02` -> Readiness updates immediately to `Ready to Train ✓`.
+3. User taps `[30-Sec Check-In]` right from the header -> Completes `US-CCH-02` -> Readiness updates immediately to `Ready to Train`.
 
 ### EDGE CASES
 - **Offline Open:** Serves last cached `coaching/brief` and `coaching/inbox` from SQLDelight cleanly with subtle `"Offline Snapshot"` timestamp.
@@ -129,13 +129,13 @@ As a user wanting safe, personalized training loads, I want a 30-second daily re
 - User opens Check-In from `Today`, `Workouts`, or `Coach` tab. (Freshness window is `24 hours`).
 
 ### SCREEN AND UI DETAILS
-1. **Step/Section 1 — Sleep & Energy (Fast Sliders & 1–5 Emoji Chips):**
+1. **Step/Section 1 — Sleep & Energy (Fast Sliders & Numeric 1–5 Scale Chips):**
    - **Sleep Hours (`0..24`, 0.5h steps):** Pre-filled automatically if Apple Health / Health Connect reported last night's sleep (`US-INT-01`) with `"From Apple Health — edit if needed"` hint!
-   - **Sleep Quality (`1..5` stars/faces, Required):** `1 = Very Poor` .. `5 = Restorative`.
+   - **Sleep Quality (`1..5` numeric pills, Required):** `1 = Very Poor` .. `5 = Restorative` *(WHOOP-style crisp numeric pill scale, zero childish emojis)*.
    - **Fatigue Level (`1..5`, Required):** `1 = Fresh / High Energy` .. `5 = Exhausted`.
    - **Stress Level (`1..5`, Optional):** Defaults to `"Skip / Not Reported"` (`null` — NEVER coerced to `1` or `0`!).
 2. **Step/Section 2 — Interactive Body-Map Soreness & Pain:**
-   - **Quick Toggle:** `[No Pain or Unusual Soreness ✓]` (sets `pain: false`, `painRegions: []`, `soreness: 0`) OR `[Tap Body Map to Mark Soreness / Pain]`.
+   - **Quick Toggle:** `[No Pain or Unusual Soreness]` (sets `pain: false`, `painRegions: []`, `soreness: 0`) OR `[Tap Body Map to Mark Soreness / Pain]`.
    - **Body Map Regions (Exact 14 canonical `MUSCLE_REGIONS` keys from `coaching-shared.mjs`):**
      `chest`, `back`, `lower_back`, `shoulders`, `biceps`, `triceps`, `forearms`, `abs`, `glutes`, `quadriceps`, `hamstrings`, `calves`, `hips`, `neck`.
    - Tapping any body region opens a crisp mini-popover:
@@ -219,7 +219,7 @@ As a user wanting safe, personalized training loads, I want a 30-second daily re
 
 ---
 
-## US-CCH-03: Adaptive Review Engine & Explicit Proposal Cards (Calories, 24h Deload, Volume & Maintenance)
+## US-CCH-03: Adaptive Review Engine & Explicit Proposal Cards ("View Evidence & Eligibility", Calories, 24h Deload, Volume & Maintenance)
 
 ### METADATA
 | Field | Value |
@@ -240,27 +240,27 @@ As a user committed to long-term results, I want my Smart Coach to analyze my 14
 
 ### SCREEN AND UI DETAILS
 1. **Explicit Pending Proposal Card (`pendingAdaptations[]`):**
-   - Clearly displays specialist attribution + proposal type badge + clear plain-language reason + `expiresAt` countdown + expandable **`[🔬 See the Science & Your Data]`** proof accordion:
-     - **Science Proof Accordion:** Shows exact verified equation inputs (`prev7` avg weight `82.1 kg` vs `curr7` avg weight `81.9 kg` = `-0.24%/wk`; `11/14` verified food days; gym progression status = `stable`; safety bounds check = `Passed > 1500 kcal floor`) so the user feels genuine clinical transparency!
+   - Clearly displays specialist attribution + proposal type badge + clear plain-language reason + `expiresAt` countdown + expandable **`[View Evidence & Eligibility]`** proof accordion:
+     - **Evidence Accordion:** Shows exact verified equation inputs (`prev7` avg weight `82.1 kg` vs `curr7` avg weight `81.9 kg` = `-0.24%/wk`; `11/14` adherent food days excluding `flexDates`; gym progression status = `stable`; safety bounds check = `Passed > 1500 kcal floor`) with calm clinical transparency!
      - **Type 1 — `recovery` (24-Hour Temporary Deload — 100% Free Safety Adaptation):**
        - Title: *"Recommended Today: Lighten Volume by {20% / 40%}"*
        - Subtitle: Explains exact triggered domains (e.g., *"Sleep 5h & Fatigue 4/5"*). Note: *"Applies to today only (24h); never alters your baseline plan (`effectiveSets >= 1`)."*
        - Buttons: `[Apply Light Session Today]` (`accept: true`) | `[Keep Normal Sets]` (`accept: false`).
      - **Type 2 — `calories` (Bounded Nutrition Adjustment `<= 5% / <= 150 kcal` — Pro):**
        - Title: *"Suggested Calorie Update: {+100 or -100 kcal}/day (Effective Tomorrow)"*
-       - Evidence pill: Shows 14-day weight trend rate (`-0.1%/wk vs 0.25–1% target`), `10+` complete food days verified, and confirms protein stays protected (`protein` never cut!).
+       - Evidence pill: Shows 14-day weight trend rate (`-0.1%/wk vs 0.25–1% target`), `10+` complete adherent food days verified (excluding `flexDates`), and confirms protein stays protected (`protein` never cut!).
        - Buttons: `[Approve Calorie Update]` | `[Keep Current Calories]`.
      - **Type 3 — `weekly_volume` (Muscle-Gain Volume Escalation `+1 set` — Pro):**
        - Title: *"Volume Boost Ready: +1 Weekly Set on {ExerciseName}"*
        - Evidence pill: Shows `>= 80%` 2-week completion, ready recovery, and 3 comparable stable exposures.
        - Buttons: `[Add +1 Set to Program]` | `[Keep Current Sets]`.
-     - **Type 4 — `maintenance` (Goal Weight Reached Celebration! — Pro):**
-       - Title: *"Congratulations! You Reached {targetWeight} kg 🎉"*
+     - **Type 4 — `maintenance` (Goal Weight Transition — Pro):**
+       - Title: *"Target Weight Reached: {targetWeight} kg — Transition to Maintenance"*
        - Subtitle: *"Ready to transition your meal plan to a clean 7-day Weight Maintenance plan starting tomorrow?"*
        - Buttons: `[Start Maintenance Plan]` | `[Stay on Current Goal]`.
      - *(Note: `kind: "schedule"` reschedule proposals from `US-WRK-09` are also 100% Free!)*
 2. **"Why No Change Yet?" Explainability Sheet (`lastReview`):**
-   - Opens when user taps `[Run Coach Review Now]` (`action: "review"`) and `proposals` is empty (`action: "hold"`), with full `[🔬 See the Science & Your Data]` transparency.
+   - Opens when user taps `[Run Coach Review Now]` (`action: "review"`) and `proposals` is empty (`action: "hold"`), with full **`[View Evidence & Eligibility]`** transparency.
    - Maps `lastReview.reasonCode` (`contracts/coaching-codes.json`) cleanly to transparent Arabic/English explanations:
      - `INSUFFICIENT_EVIDENCE_COVERAGE` -> Visual progress checklist (`3/3 prev week weights`, `2/3 this week weights`, `8/10 complete food days`).
      - `PERFORMANCE_DROP_CALORIE_CUT_HOLD` -> *"Your gym performance dropped slightly despite stable scale weight, so we held your calories steady to protect muscle and energy!"*
@@ -294,7 +294,7 @@ As a user committed to long-term results, I want my Smart Coach to analyze my 14
 ### MAIN FLOW
 1. User reaches Day 14 with `11` complete food days and `6` weigh-ins, having lost only `-0.08%/wk` on a `lose` goal.
 2. User taps `[Run Coach Review Now]` (or sees proposal automatically populated after today's check-in).
-3. Proposal Card appears: *"Clinical Nutritionist: Suggested Calorie Update: -95 kcal/day (Effective Tomorrow) — Protein preserved at 145g."* User expands `[See the Science & Your Data]` to inspect the 14-day curve metrics, then taps `[Approve Calorie Update]`.
+3. Proposal Card appears: *"Clinical Nutritionist: Suggested Calorie Update: -95 kcal/day (Effective Tomorrow) — Protein preserved at 145g."* User expands `[View Evidence & Eligibility]` to inspect the 14-day curve metrics, then taps `[Approve Calorie Update]`.
 4. `adaptation` (`accept: true`) creates the new retargeted nutrition plan starting tomorrow; client fetches updated plan and displays confirmation toast.
 
 ### EDGE CASES
@@ -366,7 +366,7 @@ As a user struggling with time, hunger, budget, equipment, or motivation — or 
    - **State 3 — `status: "accepted"` (Active Agreement):**
      - Shows countdown until `reviewOn` date (`1 day` for `pain`, `3 days` for other barriers).
      - When `reviewDue == true` (`today >= reviewOn`): Displays `[How Did It Go?]` outcome buttons:
-       - `[It Helped ✓]` (`outcome: "helped"`)
+       - `[It Helped]` (`outcome: "helped"`)
        - `[Didn't Help]` (`outcome: "not_helped"` — opens next empathetic question automatically!)
        - `[Couldn't Try Yet]` (`outcome: "not_tried"` — zero guilt, offers easier step!)
 3. **History Archive (`[Past Coaching Agreements]` -> `GET /v1/coaching/history`):** Paginated read-only timeline.
@@ -383,14 +383,14 @@ As a user struggling with time, hunger, budget, equipment, or motivation — or 
 ### RULES & BUSINESS LOGIC
 1. **Pain Barrier Safety Hold (`coachingSafetyHold`):** Submitting `domain: "training", barrier: "pain"` immediately places a safety hold on workout progression until a fresh pain-free `recovery` check-in (`US-CCH-02`) clears it; client reflects this hold immediately in Today & Workouts.
 2. **High Hunger Protection (`hunger >= 4` or `energy <= 2`):** Automatically suppresses negative calorie cut proposals in `US-CCH-03` for the next 2 days (`currentFeedback` freshness window).
-3. **Review Date Guard:** Disable `[It Helped ✓]` before `c.reviewOn` (`COACHING_REVIEW_DATE_NOT_REACHED`) with clear badge `"Check back on {reviewOn}"`, while keeping `[Didn't Help]` / `[Couldn't Try Yet]` available if user cancels early.
+3. **Review Date Guard:** Disable `[It Helped]` before `c.reviewOn` (`COACHING_REVIEW_DATE_NOT_REACHED`) with clear badge `"Check back on {reviewOn}"`, while keeping `[Didn't Help]` / `[Couldn't Try Yet]` available if user cancels early.
 
 ### MAIN FLOW
 1. User missed 2 sessions due to a busy week -> `reconcileCoaching` creates a `question` case in `coaching/inbox`.
 2. User taps `Time / Schedule` barrier chip on the Coach Hub card (`coaching_feedback`).
 3. Server responds with an empathetic `proposed` step (*"Organize session timing & review your available workout length"*).
 4. User taps `[I'll Try This Step]` (`coaching_decision` `accept: true`, sets `reviewOn = +3 days`).
-5. 3 days later, user sees `"How Did It Go?"` and taps `[It Helped ✓]` (`coaching_outcome`).
+5. 3 days later, user sees `"How Did It Go?"` and taps `[It Helped]` (`coaching_outcome`).
 
 ### EDGE CASES
 - **Plan Changed Mid-Agreement (`COACHING_CONTEXT_CHANGED`):** Server automatically supersedes stale agreements when plan changes; Inbox refreshes cleanly without throwing errors.
@@ -406,7 +406,7 @@ As a user struggling with time, hunger, budget, equipment, or motivation — or 
 - **Scenario 2: `It Helped` outcome enforces `reviewOn` review date**
   - **Given** an accepted agreement has `reviewOn == "2026-11-24"` and `today == "2026-11-22"`
   - **When** viewing the active agreement card
-  - **Then** `[It Helped ✓]` indicates `"Available on Nov 24"` rather than triggering `409 COACHING_REVIEW_DATE_NOT_REACHED`.
+  - **Then** `[It Helped]` indicates `"Available on Nov 24"` rather than triggering `409 COACHING_REVIEW_DATE_NOT_REACHED`.
 - **Scenario 3: High hunger feedback suppresses negative calorie adjustments**
   - **Given** user submits nutrition feedback with `hunger = 5`
   - **When** adaptive `review` executes within 48h
@@ -438,7 +438,7 @@ As a user struggling with time, hunger, budget, equipment, or motivation — or 
 As a user with specific day-to-day questions (like *"What can I order at a Lebanese restaurant tonight within my 600 remaining calories?"*, *"Why didn't my coach cut my calories this week?"*, or *"Can I swap squats while my knee hurts?"*), I want a conversational AI Coach in Arabic or English that knows my exact profile, remaining macros, active conditions, and recovery holds — and gives practical answers with quick deep-links to app actions without ever overriding CuraFit's clinical safety rules.
 
 ### PRECONDITIONS
-- User has `onboardingCompleted == true`, `capabilities.ai_coach_qa == true` (Final AI Phase enabled), and `Pro` entitlement (or remaining free sample messages).
+- User has `onboardingCompleted == true`, `capabilities.features` contains `ai_coach_qa` (Final AI Phase enabled), and `Pro` entitlement (or remaining free sample messages).
 
 ### SCREEN AND UI DETAILS
 1. **Chat Header:**
@@ -453,7 +453,7 @@ As a user with specific day-to-day questions (like *"What can I order at a Leban
 3. **Chat Message Stream:**
    - **AI Coach Bubbles:** Concise, actionable, grounded in live data (`profile`, `food-diary`, `lastReview`, `recovery`), displaying:
      - **Verified Grounding Badge** when citing user numbers (`"Based on today's 1,230 / 1,850 kcal diary"`).
-     - **Actionable Deep-Link Chips** inside the reply when relevant: e.g., `[Open Meal Swap ⇄]`, `[Do Recovery Check-In]`, `[Open Food Search]`.
+     - **Actionable Deep-Link Chips** inside the reply when relevant: e.g., `[Open Meal Swap]`, `[Do Recovery Check-In]`, `[Open Food Search]`.
    - **Urgent Medical Escalation Card:** If user types chest pain, fainting, dizziness, severe eating disorder cues, or medication dosing questions, AI strictly refuses to prescribe and displays an urgent red medical-care referral banner.
 
 ### API & BACKEND CONTRACT
@@ -495,7 +495,7 @@ As a user with specific day-to-day questions (like *"What can I order at a Leban
 2. **Bilingual Parity:** Responds naturally in Egyptian/MSA Arabic when user writes in Arabic (matching `locale`), or clean English when user writes in English.
 
 ### MAIN FLOW
-1. User taps `[💬 Ask the Coach AI]` on Coach Hub (once enabled in Final AI Phase).
+1. User taps `[Ask the Coach AI]` on Coach Hub (once enabled in Final AI Phase).
 2. User types `"What's a quick post-workout meal near me for 500 kcal and 40g protein?"` (user has `dairy` allergy).
 3. Backend injects sanitized snapshot (`540 kcal left`, `42g protein left`, `allergies: ["dairy"]`, `region: "egypt"`) and generates tailored grilled chicken shish tawook + pita + tahini salad option (dairy-free!) with a `[Log Manual Meal]` deep-link chip.
 
@@ -543,15 +543,15 @@ As a user with specific day-to-day questions (like *"What can I order at a Leban
 As a user who wants the reassuring accountability of a full scientific coaching team checking in on my week — and an empathetic, non-punitive way to restart cleanly if I fall off track for a few days due to travel, work, or illness — I want a guided 60-second Weekly Team Check-In and a personalized Zero-Guilt Comeback Protocol so I stay consistent long-term without ever crashing or feeling judged.
 
 ### PRECONDITIONS
-- **Weekly Team Check-In:** `engagementState.weeklyCheckinDue == true` (computed strictly from `journeyStartedOn` + last weekly `review` / `coaching_feedback` cadence — NOT reset by daily `recovery` check-ins — or triggered manually from Coach Hub).
-- **Comeback Protocol:** `engagementState.daysSinceLastLog >= 3` (`comebackTier` in `["short_3_6d", "medium_7_13d", "detrained_14d_plus"]`).
+- **Weekly Team Check-In:** `bootstrap.weeklyCheckinDue == true` (computed cleanly from `journeyStartedOn` and `lastWeeklyCheckinAt` — automated background `lastReview.auto === true` evaluations never suppress `weeklyCheckinDue`, and daily `recovery` check-ins never reset it) or triggered manually from Coach Hub.
+- **Comeback Protocol:** `engagementState.daysSinceLastLog >= 3` (`comebackTier` in `["short_3_6d", "medium_7_13d", "detrained_14d_plus"]`). Requires active `health_data_processing` consent (`403 HEALTH_CONSENT_REQUIRED` if withdrawn).
 
 ### SCREEN AND UI DETAILS
 1. **Guided 60-Second Weekly Care-Team Check-In (`WeeklyCheckinFlowScreen` — 3 Short Interactive Cards):**
    - **Card 1 — Scale & Tape Pulse:** Confirms current weight (pre-filled with today's or HealthKit's latest weight) + optional 1-tap `Waist (cm)` (`weight` + `body_measurement`).
    - **Card 2 — Biofeedback & Weekly Barriers:** Quick 1–5 ratings for **Hunger**, **Energy**, and **Sleep/Recovery**, plus top barrier chips (`coaching_feedback` + optional `recovery`).
-   - **Card 3 — 3-Specialist Scientific Verdict:**
-     - **Clinical Nutritionist:** Evaluates 7-day/14-day weight trend + adherence + proposes or holds calories (with `[See the Science]` link -> `US-CCH-03`), plus `[Generate Next 7-Day Meal Plan]` button if expired (`US-NUT-01`).
+   - **Card 3 — 3-Specialist Verdict:**
+     - **Clinical Nutritionist:** Evaluates 7-day/14-day weight trend + adherence + proposes or holds calories (with `[View Evidence & Eligibility]` link -> `US-CCH-03`), plus `[Generate Next 7-Day Meal Plan]` button if expired (`US-NUT-01`).
      - **Strength & Conditioning Coach:** Summarizes sessions completed (`4/4` or partial), PRs unlocked, and any `weekly_volume` boost or pain hold.
      - **Recovery & Habit Specialist:** Confirms next week's Streak Freeze availability + key micro-focus agreement (`US-CCH-04`).
 2. **Zero-Guilt Comeback Protocol Modal (`ComebackProtocolModal`):**
@@ -565,10 +565,10 @@ As a user who wants the reassuring accountability of a full scientific coaching 
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/bootstrap`**
-   - Returns `data.engagementState`: `{ "daysSinceLastLog": 9, "lastLoggedAt": "2026-11-12", "weeklyCheckinDue": false, "comebackTier": "medium_7_13d" }`, where `weeklyCheckinDue` evaluates `journeyStartedOn` and the last weekly review/feedback cadence (not daily recovery check-ins).
+   - Returns `data.weeklyCheckinDue` (`boolean`, tracked independently via `lastWeeklyCheckinAt` ignoring `lastReview.auto === true`) AND `data.engagementState`: `{ "daysSinceLastLog": 9, "lastLoggedAt": "2026-11-12T12:00:00.000Z", "weeklyCheckinDue": true, "comebackTier": "medium_7_13d" }`.
 2. **`POST /v1/commands?view=full`** (`action: "comeback_restart"`)
    - Payload: `{ "tier": "short_3_6d" | "medium_7_13d" | "detrained_14d_plus", "applyDeload": true, "deloadDurationDays": 1 | 7, "updatedWeightKg": 82.2, "reason": "busy_work", "renewMealPlan": true }`.
-   - Applies clean `sessionAdjustment` (`setFactor: 0.8` for 24h in Tier 2 or 7 days in Tier 3) without fabricating fake `recovery` sleep/fatigue check-ins, optionally refreshes `profile.weight` (logging `weight` cleanly) before invoking `renew_plan` when expired.
+   - Requires active `health_data_processing` consent (`403 HEALTH_CONSENT_REQUIRED` if withdrawn), applies clean `sessionAdjustment` (`setFactor: 0.8` for 24h in Tier 2 or 7 days in Tier 3) without fabricating fake `recovery` sleep/fatigue check-ins, and optionally refreshes `profile.weight` before invoking `renew_plan` when expired.
 3. **Weekly Check-In Command Sequence:** Executes `weight`, optional `body_measurement`, `coaching_feedback`, optional `recovery`, `review`, and optional `renew_plan`.
 
 ### RULES & BUSINESS LOGIC

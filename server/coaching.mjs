@@ -121,22 +121,35 @@ export function previewPlan(d={}){
  const elig=evaluateEligibility({...normalized,diseases:rawDiseases});
  const age=integer(normalized.age,18,95,'age'),weight=number(normalized.weight,35,250,'weight'),height=number(normalized.height,120,230,'height');
  if(!['male','female'].includes(normalized.sex))throw apiError('INVALID_SEX','sex must be male or female.',{status:400});
+ const goal=normalized.goal||'maintain';
+ if(!['lose','maintain','gain','muscle_gain'].includes(goal))throw apiError('INVALID_GOAL','goal must be one of lose, maintain, gain, or muscle_gain.',{status:400});
  const maternalStatus=normalized.maternalStatus||'none';
  if(!MATERNAL_STATUSES.has(maternalStatus))throw apiError('CLINICAL_REVIEW_REQUIRED','Unsupported maternalStatus value.',{status:400});
  if(maternalStatus!=='none'&&(normalized.sex!=='female'||age>50))throw apiError('INVALID_MATERNAL_PROFILE','Maternal status is only applicable to female profiles aged 18 to 50.',{status:400});
- if(isPregnantStatus(maternalStatus)&&normalized.goal==='lose')throw apiError('MATERNAL_CALORIE_CUT_BLOCKED','Calorie reductions are disabled during pregnancy for maternal safety.',{status:422});
+ if(isPregnantStatus(maternalStatus)&&goal==='lose')throw apiError('MATERNAL_CALORIE_CUT_BLOCKED','Calorie reductions are disabled during pregnancy for maternal safety.',{status:422});
+ const bmi=weight/((height/100)**2);
+ if(bmi<12.5||bmi>65)throw apiError('BMI_OUT_OF_RANGE','Calculated BMI is outside the automated planning range (12.5..65).',{status:400});
+ if(bmi<18.5&&goal==='lose')throw apiError('WEIGHT_LOSS_UNDERWEIGHT_UNSAFE','Weight loss plans are not suitable when current BMI is below 18.5.',{status:400});
+ const targetWeight=normalized.targetWeight!=null&&normalized.targetWeight!==''?number(normalized.targetWeight,35,250,'targetWeight'):null;
+ const bmiWarningOverride=normalized.bmiWarningOverride===true;
+ if(targetWeight&&goal==='lose'&&(targetWeight>=weight||(!bmiWarningOverride&&targetWeight/(height/100)**2<18.5))){
+  throw apiError('INVALID_TARGET_WEIGHT','targetWeight is inconsistent with your goal and safe BMI floor (18.5).',{status:400});
+ }
+ if(targetWeight&&((goal==='gain'&&targetWeight<=weight)||(goal==='muscle_gain'&&targetWeight<weight))){
+  throw apiError('INVALID_TARGET_WEIGHT','targetWeight for weight gain must be greater than current weight.',{status:400});
+ }
  const declaredDiseases=clean(rawDiseases);
  const dietType=normalized.dietType||'balanced';
- if(isDietUnsafeForProfile(dietType,{diseases:declaredDiseases,maternalStatus,goal:normalized.goal||'maintain'})){
+ if(isDietUnsafeForProfile(dietType,{diseases:declaredDiseases,maternalStatus,goal})){
   throw apiError('MEDICAL_DIET_CONFLICT','The selected diet pattern is contraindicated for your declared medical conditions, maternal status, or goal.',{status:400,params:{dietType}});
  }
  const extDays=Array.isArray(normalized.externalTrainingDays)?normalized.externalTrainingDays:[];
  const workoutDaysCount=normalized.selectedWorkoutDays?.length??(normalized.serviceTrack==='nutrition_only'?extDays.length:(normalized.workoutDaysCount??3));
  const seniorMode=age>=70||normalized.seniorMode===true;
- const recomposition=normalized.goal==='muscle_gain'&&normalized.targetWeight!=null&&Math.abs(Number(normalized.targetWeight)-weight)<0.5;
+ const recomposition=goal==='muscle_gain'&&targetWeight!=null&&Math.abs(targetWeight-weight)<0.5;
  const baseTargets=estimateNeeds({
-  age,weight,height,sex:normalized.sex,goal:normalized.goal||'maintain',
-  targetWeight:normalized.targetWeight,goalPace:normalized.goalPace||'moderate',
+  age,weight,height,sex:normalized.sex,goal,
+  targetWeight,goalPace:normalized.goalPace||'moderate',
   activity:normalized.activity||normalized.dailyActivity||'light',
   trainingDays:workoutDaysCount,diseases:declaredDiseases,maternalStatus,
   seniorMode,
@@ -146,21 +159,36 @@ export function previewPlan(d={}){
  const targets=applyDietMacroPreview(baseTargets,dietType,weight);
  const tz=normalized.timezone||defaultTimezoneForRegion(normalized.region||'egypt');
  const currDate=localDate(clockNow(),tz);
+ const currWeekday=new Date(currDate+'T12:00:00Z').getUTCDay();
  const selectedDays=Array.isArray(normalized.selectedWorkoutDays)?normalized.selectedWorkoutDays:extDays;
- const mockState={profile:{weight,activity:normalized.activity||normalized.dailyActivity||'light',maternalStatus,diseases:declaredDiseases,externalTrainingDays:selectedDays},preferences:{region:normalized.region||'egypt'},sessions:[],workoutPlan:null};
+ const baseWaterProfile={weight,activity:normalized.activity||normalized.dailyActivity||'light',maternalStatus,diseases:declaredDiseases};
+ const mockState={profile:{...baseWaterProfile,externalTrainingDays:selectedDays},preferences:{region:normalized.region||'egypt'},sessions:[],workoutPlan:null};
  const waterTarget=dailyWaterTarget(mockState,currDate);
+ const restDayWaterTarget=dailyWaterTarget({profile:{...baseWaterProfile,externalTrainingDays:[]},preferences:{region:normalized.region||'egypt'},sessions:[],workoutPlan:null},currDate);
+ const workoutDayWaterTarget=dailyWaterTarget({profile:{...baseWaterProfile,externalTrainingDays:[currWeekday]},preferences:{region:normalized.region||'egypt'},sessions:[],workoutPlan:null},currDate);
  const level=normalized.fitnessLevel||'beginner',loc=normalized.workoutLocation||'gym_only';
  const workoutUiModeDefault=(level==='beginner'||loc==='home_only')?'simple':'pro';
  const reqSplit=normalized.workoutSplitPreference||'auto';
  const recommendedSplit=normalized.serviceTrack==='nutrition_only'?null:(reqSplit==='auto'?(workoutDaysCount<=3?'full_body':workoutDaysCount>=5?'ppl':'upper_lower'):((reqSplit==='upper_lower'&&workoutDaysCount<2)||(reqSplit==='ppl'&&workoutDaysCount<3)||(reqSplit==='bro_split'&&workoutDaysCount<4))?'full_body':reqSplit);
- const warnings=[...(targets.notes||[]),...(elig.notes||[]).map(n=>n.message)];
+ let estimatedExercisesPerSession=null;
+ const wpWarnings=[];
+ if(normalized.serviceTrack!=='nutrition_only'){
+  const injuries=Array.isArray(normalized.injuries)?canonicalInjuries(clean(normalized.injuries)):[];
+  const wp=workoutPlan({...normalized,age,seniorMode,maternalStatus,injuries,goal});
+  estimatedExercisesPerSession=wp?.days?.length?Math.round(wp.days.reduce((sum,day)=>sum+(day.exercises?.length||0),0)/wp.days.length):null;
+  if(wp?.warnings?.length)wpWarnings.push(...wp.warnings);
+ }
+ const warnings=[...(targets.notes||[]),...(elig.notes||[]).map(n=>n.message),...wpWarnings];
  return {
   eligibility:elig,
   targets:{...targets,kcal:targets.energy,seniorMode},
   dailyCalories:targets.energy,
   macros:{protein:targets.protein,carbs:targets.carbs,fat:targets.fat},
   waterTarget,
+  restDayWaterTarget,
+  workoutDayWaterTarget,
   waterTargetLiters:waterTarget.liters,
+  estimatedExercisesPerSession,
   forecast:targets.forecast||null,
   estimatedWeeksMin:targets.forecast?.estimated_weeks_min??0,
   estimatedWeeksMax:targets.forecast?.estimated_weeks_max??0,
@@ -281,7 +309,9 @@ export function review(s){
  if(needsRecoveryAdvice&&!acceptedRecovery&&!declinedRecovery)proposals.push({kind:'recovery',reasonCode:'RECOVERY_DELOAD_PROPOSAL',reviewScope:'system_generated_guidance',recoveryEvidenceAt:ready.asOf,setFactor:ready.setFactor,regions:Object.entries(ready.muscles).filter(([,m])=>m.status==='caution').map(([r])=>r),reason:`Based on recent recovery strain (${ready.reasons.join(' ')}), we propose temporarily reducing working sets for 24 hours; applying this adjustment requires your approval.`,expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
  const profileChange=s.history.filter(h=>h.kind==='profile').at(-1)?.at;
  const contextStart=s.nutritionContextStartedOn||(profileChange?localDate(Date.parse(profileChange),tz):null);
- const contextWeights=s.weights.filter(w=>!contextStart||w.date>=contextStart),contextFood=s.foodLogs.filter(d=>!contextStart||d.date>=contextStart);
+ const flexSet=new Set(Array.isArray(s.flexDates)?s.flexDates:[]);
+ const contextWeights=contextStart||s.weights.some(w=>flexSet.has(w.date))?s.weights.filter(w=>(!contextStart||w.date>=contextStart)&&!flexSet.has(w.date)):s.weights;
+ const contextFood=contextStart||flexSet.size?s.foodLogs.filter(d=>(!contextStart||d.date>=contextStart)&&!flexSet.has(d.date)):s.foodLogs;
  const targetWeights=contextWeights.filter(w=>w.date>=dateOffset(currDate,-6)&&w.date<=currDate);
  const averageWeight=targetWeights.length?targetWeights.reduce((n,w)=>n+w.kg,0)/targetWeights.length:null;
  const reached=!s.profile.recomposition&&targetWeights.length>=3&&s.profile.targetWeight&&((s.profile.goal==='lose'&&averageWeight<=s.profile.targetWeight)||(['gain','muscle_gain'].includes(s.profile.goal)&&averageWeight>=s.profile.targetWeight));
@@ -291,7 +321,10 @@ export function review(s){
   if(matchingNutritionDecline(s,clockNow(),tz,'maintenance'))nutrition={...nutrition,action:'hold',reasonCode:'MAINTENANCE_ADVICE_DECLINED',reason:'Your choice to decline the maintenance transition is saved. Your goal remains unchanged until new data arrives.'};
   else proposals.push({kind:'maintenance',averageWeight,...nutrition,nutritionEvidence:nutritionEvidenceKey(s,clockNow(),tz),expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
  }
- else if(plan&&ready.status==='ready'&&(!s.lastVolumeChange||clockNow()-s.lastVolumeChange>=14*86400000)){
+ else if(plan&&ready.status==='ready'&&s.lastVolumeChange&&clockNow()-s.lastVolumeChange<14*86400000){
+  nutrition={action:'hold',reasonCode:'COOLDOWN_14D',reviewScope:'system_generated_guidance',reason:'Monitoring your response to a recent training volume adjustment; at least 14 days are required before proposing a calorie change.'};
+ }
+ else if(plan&&ready.status==='ready'){
   nutrition=calorieReview(contextWeights,contextFood,s.profile.recomposition?'recomposition':s.profile.goal,Number(plan.targets.energy),clockNow(),s.lastCalorieChange||0,tz);
   if(contextStart)nutrition.contextStartedOn=contextStart;
   const perfDrop=hasPerformanceDrop(s.workoutLogs,clockNow(),tz);
@@ -379,7 +412,7 @@ export function command(input,action,p){
  const tz=userTz(s),currDate=userToday(s);
  if(settingsActions.has(action)){const result=applySettingsCommand(s,action,p);s.lastReview=null;if(['steps','activity'].includes(action)&&p?.preservePending!==true)discardPending(s);return result;}
  if(action!=='review')s.lastReview=null;
- if(!['review','adaptation','timezone','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze'].includes(action))discardPending(s);
+ if(!['review','adaptation','timezone','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze'].includes(action))discardPending(s);
  if(action==='confirm_schedule'){
   if(!needsScheduleConfirmation(s))throw apiError('SCHEDULE_ALREADY_CONFIRMED','Workout schedule weekday convention has already been confirmed.',{status:400});
   const map=plainRecord(p.dayMap,'dayMap'),before=s.workoutPlan;
@@ -393,20 +426,20 @@ export function command(input,action,p){
   discardPending(s);return s;
  }
  if(action==='confirm_health'){if(!needsHealthConfirmation(s))throw apiError('HEALTH_ALREADY_CONFIRMED','Health readiness has already been confirmed.',{status:400});if(p.healthy!==true||p.injuryFree!==true)throw apiError('HEALTH_CONFIRMATION_REQUIRED','Confirm health readiness clearance before creating or modifying a workout plan.',{status:400});s.onboarding.workoutPrefs.healthConfirmed=true;s.onboarding.workoutPrefs.healthConfirmedAt=isoNow();discardPending(s);return s;}
- if(['food_entry','food_entry_update','food_delete','food_complete','food_switch_to_entries'].includes(action))return foodCommand(s,action,p);
+ if(['food_entry','food_entry_batch','food_entry_update','food_delete','food_complete','food_switch_to_entries'].includes(action))return foodCommand(s,action,p);
  if(action==='replace_meal')return replaceMeal(s,p);
  if(action==='renew_plan'){
   const current=activePlan(s);if(!current)throw apiError('PLAN_NOT_ACTIVE_FOR_TRACK','No active nutrition plan exists for a workouts-only track.',{status:400});
   const earlyRenew=p?.earlyRenew===true;
   if(!earlyRenew&&current.days.at(-1).date>=currDate)throw apiError('PLAN_STILL_ACTIVE','Current weekly nutrition plan is still active; renewal is allowed after it ends or with earlyRenew: true.',{status:400});
-  const start=earlyRenew?dateOffset(currDate,1):currDate;
+  const start=currDate;
   const next=makeWeek(s.profile,s.preferences,library,start,crypto.randomUUID(),s.nutritionAdjustment?.energy??null);
   if(earlyRenew){
    const todayPlanDay=current.days.find(d=>d.date===currDate);
-   if(todayPlanDay){next.days.pop();next.days.unshift(structuredClone(todayPlanDay));}
+   if(todayPlanDay)next.days[0]=structuredClone(todayPlanDay);
    next.changeReason='Early weekly plan renewal (today preserved)';
   }
-  next.created_at=isoNow();next.parent_id=current.id;next.effective_from=start;
+  next.created_at=isoNow();next.parent_id=current.id;next.effective_from=earlyRenew?dateOffset(currDate,1):start;
   s.plans.push(next);s.active_plan_id=next.id;
  }else if(action==='weight'){
   const date=dateForLog(p.date||currDate,s),kg=number(p.kg,35,250,'kg');
@@ -449,7 +482,8 @@ export function command(input,action,p){
   });
   if(sets.some(x=>!Number.isInteger(x.reps)))throw apiError('WORKOUT_REPS_MUST_BE_INTEGER','Performed set reps must be whole integers.',{status:400});
   const existing=s.workoutLogs.find(l=>!l.adHoc&&l.date===date&&l.exerciseId===exercise.id&&l.dayIndex===(day?.dayIndex??null)&&l.planId===s.workoutPlan.id);
-  const entry={id:existing?.id||crypto.randomUUID(),at:isoNow(),date,exerciseId:exercise.id,dayIndex:day?.dayIndex??null,planId:s.workoutPlan.id,loadMode:exercise.loadMode,progressionKey:exercise.progressionKey,laterality:exercise.laterality,bothSides:boolean(p.bothSides,'bothSides',false),entryMode,...(supersetGroupId?{supersetGroupId}:{}),sets,increment:!acceptsKg||p.increment==null||p.increment===''?null:number(p.increment,.1,20,'increment')};
+  const wNotes=p.notes!=null?String(p.notes).trim().slice(0,300)||null:null;
+  const entry={id:existing?.id||crypto.randomUUID(),at:isoNow(),date,exerciseId:exercise.id,dayIndex:day?.dayIndex??null,planId:s.workoutPlan.id,loadMode:exercise.loadMode,progressionKey:exercise.progressionKey,laterality:exercise.laterality,bothSides:boolean(p.bothSides,'bothSides',false),entryMode,...(supersetGroupId?{supersetGroupId}:{}),...(wNotes?{notes:wNotes}:{}),sets,increment:!acceptsKg||p.increment==null||p.increment===''?null:number(p.increment,.1,20,'increment')};
   if(existing)s.workoutLogs=s.workoutLogs.filter(l=>l.id!==existing.id);s.workoutLogs.push(entry);
   if(p.autoSession===true){
    const autoSess={id:crypto.randomUUID(),date,dayIndex,planId:s.workoutPlan.id,programId:s.workoutPlan.programId,status:'completed',expectedExercises:expectedExercises(s,day,date)};
@@ -472,13 +506,16 @@ export function command(input,action,p){
   if(!ex||!Array.isArray(p.sets)||p.sets.length<1||p.sets.length>15)throw apiError('AD_HOC_EXERCISE_INVALID','Ad-hoc exercise payload requires a valid catalog exerciseId and 1 to 15 performed sets.',{status:400});
   const injuries=canonicalInjuries(s.onboarding?.workoutPrefs?.injuries||[]);
   if(!isFriendlyForInjuries(ex,injuries,s.profile)&&p.overrideInjuryWarning!==true){
-   throw apiError('AD_HOC_INJURY_WARNING',`This exercise conflicts with your declared joint injuries (${injuries.join(', ')}); pass overrideInjuryWarning: true to log it anyway.`,{status:409,params:{injuries:injuries.join(', ')}});
+   const safetyReasons=[...injuries,...(s.profile?.seniorMode?['senior_mode']:[]),...(s.profile?.maternalStatus&&s.profile.maternalStatus!=='none'?[s.profile.maternalStatus]:[])];
+   const reasonText=safetyReasons.join(', ')||'profile_safety_filter';
+   throw apiError('AD_HOC_INJURY_WARNING',`This exercise conflicts with your declared safety constraints (${reasonText}); pass overrideInjuryWarning: true to log it anyway.`,{status:409,params:{injuries:reasonText}});
   }
   const date=dateForLog(p.date||currDate,s);
   const dayIndex=p.dayIndex==null?new Date(date+'T12:00:00Z').getUTCDay():integer(p.dayIndex,0,6,'dayIndex');
   const acceptsKg=usesKg(ex)||ex.supportsAddedWeight===true;
   const sets=p.sets.map(x=>({kg:acceptsKg?(x.kg==null?0:number(x.kg,0,500,'kg')):0,reps:integer(x.reps,1,100,'reps'),rir:x.rir==null?null:number(x.rir,0,10,'rir'),pain:boolean(x.pain,'pain',false),...(x.setType&&SET_TYPES.has(x.setType)&&x.setType!=='normal'?{setType:x.setType}:{})}));
-  const entry={id:crypto.randomUUID(),at:isoNow(),date,exerciseId:ex.id,dayIndex,planId:s.workoutPlan?.id||'ad_hoc',adHoc:true,loadMode:ex.loadMode,laterality:ex.laterality,bothSides:boolean(p.bothSides,'bothSides',false),entryMode:p.entryMode==='simple'?'simple':'pro',...(p.supersetGroupId?{supersetGroupId:String(p.supersetGroupId).slice(0,64)}:{}),sets};
+  const adNotes=p.notes!=null?String(p.notes).trim().slice(0,300)||null:null;
+  const entry={id:crypto.randomUUID(),at:isoNow(),date,exerciseId:ex.id,dayIndex,planId:s.workoutPlan?.id||'ad_hoc',adHoc:true,loadMode:ex.loadMode,laterality:ex.laterality,bothSides:boolean(p.bothSides,'bothSides',false),entryMode:p.entryMode==='simple'?'simple':'pro',...(p.supersetGroupId?{supersetGroupId:String(p.supersetGroupId).slice(0,64)}:{}),...(adNotes?{notes:adNotes}:{}),sets};
   s.workoutLogs.push(entry);
  }else if(action==='workout_delete'){
   const idx=(s.workoutLogs||[]).findIndex(l=>p.id?l.id===p.id:(l.date===p.date&&l.exerciseId===p.exerciseId&&(p.dayIndex==null||l.dayIndex===Number(p.dayIndex))));
@@ -500,7 +537,7 @@ export function command(input,action,p){
  }else if(action==='profile_update'){
   if(p.name!==undefined){
    const cleanName=String(p.name||'').trim();
-   if(cleanName.length<2||cleanName.length>50||!/^[\p{L}\s'-]+$/u.test(cleanName))throw apiError('INVALID_PROFILE_NAME','Profile name must be 2 to 50 alphabetic characters.',{status:400});
+   if(cleanName.length<2||cleanName.length>50||!/^[\p{L}\p{N}\s'-]+$/u.test(cleanName))throw apiError('INVALID_PROFILE_NAME','Profile name must be 2 to 50 valid characters.',{status:400});
    s.profile.name=cleanName;
   }
   if(p.workoutUiMode!==undefined){
@@ -552,7 +589,7 @@ export function command(input,action,p){
   }else{
    const item=p.item||(p.foodId?{name:String(p.name||p.foodId),source:'ingredient',key:p.foodId}:null);
    if(!item||typeof item!=='object'||typeof item.name!=='string'||!item.name.trim())throw apiError('INVALID_FAVORITE_PAYLOAD','Favorite item requires a non-empty name.',{status:400});
-   const fav={id:p.id||p.foodId||item.id||crypto.randomUUID(),foodId:p.foodId||item.key||null,name:item.name.trim().slice(0,120),source:['ingredient','manual','planned'].includes(item.source)?item.source:'manual',key:item.key||null,grams:item.grams!=null?number(item.grams,1,2000,'grams'):null,snapshot:item.snapshot||null,createdAt:isoNow()};
+   const fav={id:p.id||p.foodId||item.id||crypto.randomUUID(),foodId:p.foodId||item.key||null,name:item.name.trim().slice(0,120),source:['ingredient','recipe','barcode','manual','planned'].includes(item.source)?item.source:'manual',key:item.key||null,grams:item.grams!=null?number(item.grams,1,2000,'grams'):null,snapshot:item.snapshot||null,createdAt:isoNow()};
    s.foodFavorites=(s.foodFavorites||[]).filter(f=>f.id!==fav.id);
    s.foodFavorites.unshift(fav);
    if(s.foodFavorites.length>200)s.foodFavorites=s.foodFavorites.slice(0,200);
@@ -560,15 +597,21 @@ export function command(input,action,p){
  }else if(action==='copy_meal'){
   const fromDate=dateForLog(p.fromDate,s),toDate=dateForLog(p.toDate||currDate,s);
   if(!['breakfast','lunch','dinner','snack','all'].includes(p.slot))throw apiError('INVALID_COPY_MEAL_PAYLOAD','slot must be breakfast, lunch, dinner, snack, or all.',{status:400});
+  const toSlot=p.toSlot!=null?String(p.toSlot):null;
+  if(toSlot!=null&&(!['breakfast','lunch','dinner','snack'].includes(toSlot)||p.slot==='all'))throw apiError('INVALID_COPY_MEAL_PAYLOAD','toSlot must be breakfast, lunch, dinner, or snack and cannot be combined with slot: all.',{status:400});
+  const entryIdSet=Array.isArray(p.entryIds)?new Set(p.entryIds.map(String)):null;
   const existingTargetLog=(s.foodLogs||[]).find(d=>d.date===toDate);
   if(existingTargetLog&&existingTargetLog.source==='daily_total'){
    if(p.replaceDailyTotal!==true)throw apiError('FOOD_DAY_MODE_CONFLICT','Target date already has a legacy daily_total log; switch to entries or pass replaceDailyTotal: true.',{status:409,params:{date:toDate}});
    s.history.push({kind:'food_diary_mode',at:isoNow(),previous:structuredClone(existingTargetLog)});
   }
-  const src=(s.foodEntries||[]).filter(e=>e.date===fromDate&&(p.slot==='all'||e.slot===p.slot));
+  const src=(s.foodEntries||[]).filter(e=>e.date===fromDate&&(p.slot==='all'||e.slot===p.slot)&&(!entryIdSet||entryIdSet.has(e.id)));
   if(!src.length)throw apiError('INVALID_COPY_MEAL_PAYLOAD','No food entries found on fromDate for the selected slot.',{status:400});
   for(const e of src){
-   s.foodEntries.push({...structuredClone(e),id:crypto.randomUUID(),date:toDate,mealId:null,source:e.source==='planned'?'manual':e.source,at:isoNow()});
+   const nextSlot=toSlot||e.slot;
+   const copy={...structuredClone(e),id:crypto.randomUUID(),date:toDate,slot:nextSlot,mealId:null,source:e.source==='planned'?'manual':e.source,at:isoNow()};
+   if(toSlot&&toSlot!==e.slot)delete copy.displaySlot;
+   s.foodEntries.push(copy);
   }
   const {totals}=dayTotals(s,toDate);
   const plannedEnergy=plannedEnergyForDate(s,toDate);
@@ -585,24 +628,45 @@ export function command(input,action,p){
   if(!['start','end','adjust_window'].includes(p.op))throw apiError('INVALID_FASTING_REQUEST','op must be start, end, or adjust_window.',{status:400});
   const atIso=p.at&&Number.isFinite(Date.parse(p.at))?new Date(Date.parse(p.at)).toISOString():isoNow();
   const fs={...(s.fastingState||{mode:'if_16_8',phase:'eating',windowStart:'12:00',windowEnd:'20:00',startedAt:null,targetEndAt:null,streakDays:0})};
+  const presetRaw=p.preset!=null?String(p.preset):null;
+  if(presetRaw&&!['14_10','16_8','18_6','ramadan'].includes(presetRaw))throw apiError('INVALID_FASTING_REQUEST','preset must be 14_10, 16_8, 18_6, or ramadan.',{status:400});
+  const diseases=new Set(s.profile.diseases||[]);
+  const isMaternal=isPregnantStatus(s.profile.maternalStatus)||s.profile.maternalStatus==='breastfeeding';
+  const highRisk=diseases.has('diabetes')||diseases.has('diabetes_t1')||diseases.has('diabetes_t2')||diseases.has('kidney');
+  const effectivePreset=presetRaw||(fs.preset)||((s.ramadanMode?.enabled&&!(s.ramadanMode.endDate&&currDate>s.ramadanMode.endDate))?'ramadan':'16_8');
+  const windowHoursFor=pr=>pr==='14_10'?10:pr==='18_6'?6:8;
   if(p.op==='adjust_window'){
-   const h=integer(p.ifStartHour??12,8,16,'ifStartHour');
-   fs.mode='if_16_8';fs.windowStart=`${String(h).padStart(2,'0')}:00`;fs.windowEnd=`${String((h+8)%24).padStart(2,'0')}:00`;
+   if(isMaternal)throw apiError('MEDICAL_DIET_CONFLICT','Intermittent fasting windows are disabled during pregnancy or breastfeeding.',{status:400});
+   if(highRisk&&p.medicalClearanceAcknowledged!==true)throw apiError('RAMADAN_MEDICAL_CLEARANCE_REQUIRED','Confirm medical clearance before adjusting fasting windows with declared diabetes or kidney sensitivity.',{status:400});
+   const h=integer(p.ifStartHour??12,6,16,'ifStartHour');
+   const pr=effectivePreset==='ramadan'?'16_8':effectivePreset;
+   const wh=windowHoursFor(pr);
+   fs.preset=pr;fs.windowHours=wh;fs.mode=`if_${pr}`;
+   fs.windowStart=`${String(h).padStart(2,'0')}:00`;fs.windowEnd=`${String((h+wh)%24).padStart(2,'0')}:00`;
    if(s.preferences)s.preferences.eatingStart=fs.windowStart;
   }else if(p.op==='start'){
-   const isRamadan=Boolean(s.ramadanMode?.enabled);
-   fs.mode=isRamadan?'ramadan':'if_16_8';
+   const isRamadan=Boolean(s.ramadanMode?.enabled&&!(s.ramadanMode.endDate&&currDate>s.ramadanMode.endDate))||effectivePreset==='ramadan';
+   if(!isRamadan&&isMaternal)throw apiError('MEDICAL_DIET_CONFLICT','Intermittent fasting is disabled during pregnancy or breastfeeding.',{status:400});
+   if(highRisk&&p.medicalClearanceAcknowledged!==true&&!s.ramadanMode?.medicalClearanceAcknowledged)throw apiError('RAMADAN_MEDICAL_CLEARANCE_REQUIRED','Confirm medical clearance before starting a fasting timer with declared diabetes or kidney sensitivity.',{status:400});
+   const pr=isRamadan?'ramadan':effectivePreset;
+   const defaultFastHours=pr==='14_10'?14:pr==='18_6'?18:16;
+   fs.preset=pr;fs.windowHours=isRamadan?null:windowHoursFor(pr);fs.mode=isRamadan?'ramadan':`if_${pr}`;
    fs.phase='fasting';fs.startedAt=atIso;
-   let targetHours=p.targetHours!=null?number(p.targetHours,8,24,'targetHours'):16;
+   let targetHours=p.targetHours!=null?number(p.targetHours,8,24,'targetHours'):defaultFastHours;
    if(isRamadan&&p.targetHours==null){
-    const [sh,sm]=(s.ramadanMode.suhoorCutoffTime||'04:20').split(':').map(Number);
-    const [ih,im]=(s.ramadanMode.iftarTime||'18:05').split(':').map(Number);
+    const [sh,sm]=(s.ramadanMode?.suhoorCutoffTime||'04:20').split(':').map(Number);
+    const [ih,im]=(s.ramadanMode?.iftarTime||'18:05').split(':').map(Number);
     const diffMins=((ih*60+im)-(sh*60+sm)+1440)%1440;
     if(diffMins>=480&&diffMins<=1200)targetHours=Math.round((diffMins/60)*100)/100;
    }
    fs.targetEndAt=new Date(Date.parse(atIso)+Math.round(targetHours*3600000)).toISOString();
   }else if(p.op==='end'){
-   if(fs.phase==='fasting'&&fs.startedAt&&Date.parse(atIso)-Date.parse(fs.startedAt)>=12*3600000)fs.streakDays=(fs.streakDays||0)+1;
+   const elapsedHours=fs.startedAt?(Date.parse(atIso)-Date.parse(fs.startedAt))/3600000:0;
+   const endDate=localDate(Date.parse(atIso),tz);
+   if(fs.phase==='fasting'&&elapsedHours>=12&&elapsedHours<=36&&fs.lastStreakDate!==endDate){
+    fs.streakDays=(fs.streakDays||0)+1;
+    fs.lastStreakDate=endDate;
+   }
    fs.phase='eating';fs.startedAt=null;fs.targetEndAt=null;
   }
   s.fastingState=fs;
@@ -663,10 +727,40 @@ export function command(input,action,p){
   updateCycleSettings(s,p);
  }else if(action==='cycle_log'){
   logCycleEntry(s,p);
+ }else if(action==='cycle_gentle_session'){
+  if(s.profile.sex!=='female')throw apiError('CYCLE_TRACKING_UNAVAILABLE','Cycle-aware training adjustments are only available for female profiles.',{status:403});
+  const enabled=boolean(p.enabled,'enabled');
+  if(enabled&&s.workoutPlan){
+   s.sessionAdjustment={
+    planId:s.workoutPlan.id,
+    source:'cycle_gentle_session',
+    setFactor:0.8,
+    regions:[],
+    expiresAt:new Date(clockNow()+86400000).toISOString(),
+    reason:'Cycle comfort adjustment active (0.8x working sets for 24 hours).'
+   };
+  }else if(!enabled&&s.sessionAdjustment?.source==='cycle_gentle_session'){
+   s.sessionAdjustment=null;
+  }
+ }else if(action==='seasonal_flex'){
+  const enabled=boolean(p.enabled,'enabled');
+  if(!enabled){
+   s.seasonalFlex={enabled:false,dismissedAfterEndDate:p.dismissEidPrompt===true?currDate:(s.seasonalFlex?.dismissedAfterEndDate||null),updatedAt:isoNow()};
+  }else{
+   const occasion=p.occasion!=null?String(p.occasion):'eid_fitr';
+   if(!['eid_fitr','eid_adha','travel','custom'].includes(occasion))throw apiError('VALIDATION_ERROR','occasion must be eid_fitr, eid_adha, travel, or custom.',{status:400});
+   const endDate=p.endDate!=null?String(p.endDate):dateOffset(currDate,2);
+   if(!validDate(endDate)||endDate<currDate||endDate>dateOffset(currDate,7))throw apiError('INVALID_DATE_RANGE','Seasonal flex endDate must be between today and today + 7 days.',{status:400});
+   s.seasonalFlex={enabled:true,occasion,startDate:currDate,endDate,calorieMode:'maintenance',updatedAt:isoNow()};
+   const flexSet=new Set(Array.isArray(s.flexDates)?s.flexDates:[]);
+   for(let d=currDate;d<=endDate;d=dateOffset(d,1))flexSet.add(d);
+   s.flexDates=[...flexSet].sort();
+  }
  }else if(action==='session'){
   const dayIndex=integer(p.dayIndex,0,6,'dayIndex'),date=dateForLog(p.date||currDate,s),day=s.workoutPlan?.days.find(d=>d.dayIndex===dayIndex);
   if(!day||!['completed','partial','missed'].includes(p.status))throw apiError('INVALID_WORKOUT_SESSION','Workout session day or status (completed, partial, missed) is invalid.',{status:400});
-  const session={id:crypto.randomUUID(),date,dayIndex,planId:s.workoutPlan.id,programId:s.workoutPlan.programId,status:p.status,expectedExercises:expectedExercises(s,day,date)};
+  const sNotes=p.notes!=null?String(p.notes).trim().slice(0,300)||null:null;
+  const session={id:crypto.randomUUID(),date,dayIndex,planId:s.workoutPlan.id,programId:s.workoutPlan.programId,status:p.status,expectedExercises:expectedExercises(s,day,date),...(sNotes?{notes:sNotes}:{})};
   Object.assign(session,sessionCompletion(s,session));
   if(p.status!=='missed'&&!session.actualSets)throw apiError('SESSION_REQUIRES_ACTUAL_SETS','Log at least one exercise set before marking a session completed or partial.',{status:400});
   if(session.actualSets&&session.completionRatio<.8)session.status='partial';
@@ -685,6 +779,7 @@ export function command(input,action,p){
   const dayIndex=integer(p.dayIndex,0,6,'dayIndex');if(!s.workoutPlan?.days.some(d=>d.dayIndex===dayIndex))throw apiError('WORKOUT_DAY_NOT_IN_PLAN','Requested dayIndex is not present in your active workout plan.',{status:400});
   const existing=scheduledSessions(s,currDate).find(x=>x.date===date);if(existing||s.sessions.some(x=>x.date===date&&x.status==='completed'))throw apiError('RESCHEDULE_DAY_OCCUPIED','Another workout session already exists on the target reschedule date.',{status:409});
   const currentOccurrence=scheduledSessions(s,currDate).find(x=>x.dayIndex===dayIndex);const priorOverride=(s.scheduleOverrides||[]).find(o=>o.planId===s.workoutPlan.id&&o.dayIndex===dayIndex&&o.toDate===currentOccurrence?.date);const fromDate=priorOverride?.fromDate||currentOccurrence?.date;if(!fromDate||fromDate===date)throw apiError('RESCHEDULE_DATE_UNCHANGED','Target reschedule date must differ from the session\'s current date.',{status:400});
+  if(s.sessions.some(x=>x.date===fromDate&&x.dayIndex===dayIndex&&x.status==='completed'))throw apiError('SESSION_ALREADY_COMPLETED','Completed sessions cannot be rescheduled.',{status:409});
   discardPending(s);s.adaptations.push({id:crypto.randomUUID(),kind:'schedule',reasonCode:'WORKOUT_RESCHEDULE_PROPOSAL',reviewScope:'system_generated_guidance',dayIndex,fromDate,toDate:date,status:'pending',baseRevision:s.revision+1,at:isoNow(),expiresAt:new Date(clockNow()+86400000).toISOString(),reason:`Confirm moving your scheduled workout from ${fromDate} to ${date} while keeping daily calorie targets steady.`});
  }else if(action==='review')return review(s);
  else if(action==='adaptation'){
@@ -781,7 +876,8 @@ export function progressSummary(s){
  const avg=arr=>arr.length?Math.round(arr.reduce((sum,x)=>sum+x.kg,0)/arr.length*100)/100:null;
  const prevAvg=avg(prev7),currAvg=avg(curr7);
  const weeklyChangePct=prevAvg&&currAvg?Math.round((currAvg-prevAvg)/prevAvg*10000)/100:null;
- const food14=(s.foodLogs||[]).filter(x=>x.complete&&x.energy>0&&x.date>=start14&&x.date<=end&&(!contextStart||x.date>=contextStart));
+ const flexSet=new Set(Array.isArray(s.flexDates)?s.flexDates:[]);
+ const food14=(s.foodLogs||[]).filter(x=>x.complete&&x.energy>0&&x.date>=start14&&x.date<=end&&(!contextStart||x.date>=contextStart)&&!flexSet.has(x.date));
  const completeFood14=[...new Map(food14.map(x=>[x.date,x])).values()].length;
  const adherentCompleteFood14=[...new Map(food14.filter(x=>x.adherence>=80).map(x=>[x.date,x])).values()].length;
  const sessions14=(s.sessions||[]).filter(x=>x.date>=start14&&x.date<=end);

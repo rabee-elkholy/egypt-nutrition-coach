@@ -6,6 +6,8 @@ import {clockNow,isoNow} from './clock.mjs';
 import {command,review,evaluateEligibility,progressSummary,previewPlan} from './coaching.mjs';
 import {catalog,exerciseAlternatives,regionForMuscle,workoutSafetyIssues} from './workouts.mjs';
 import {enrichExercise,matchesExerciseQuery,enrichMuscleCatalog,computeWorkoutPrs} from './workouts-insights.mjs';
+import {accountRecovery} from './recovery.mjs';
+import {splitReview} from '../split-review.mjs';
 import {getPantryCatalog,getPantryAlternatives,getPlanGroceryList,lookupBarcode,submitBarcode,getFastingState} from './nutrition-tools.mjs';
 import {listCustomRecipes,listCardioLogs,computeCycleState} from './wellness-tools.mjs';
 import {computeProgressAnalytics,computeWeeklyWrapped,buildWidgetSnapshot} from './progress-analytics.mjs';
@@ -21,7 +23,10 @@ import {authenticateRequest,checkRateLimit} from './auth.mjs';
 import {refreshUserSession,logoutUserSession,revokeRefreshTokensForSession} from './native-auth.mjs';
 import {formatSuccessBody,formatErrorBody,createApiError,logEvent} from './logger.mjs';
 import {personalBrief} from '../personal-brief.mjs';
-import {localDate,integer,validDate} from '../coaching-shared.mjs';
+import {localDate,dateOffset,integer,validDate} from '../coaching-shared.mjs';
+
+const hasPushConfigured=env=>Boolean(env?.FCM_SERVICE_ACCOUNT_JSON||(env?.APNS_KEY_ID&&env?.APNS_TEAM_ID&&env?.APNS_PRIVATE_KEY&&env?.APNS_BUNDLE_ID));
+const enrichWorkoutPlan=wp=>wp?{...wp,days:(wp.days||[]).map(d=>({...d,exercises:(d.exercises||[]).map(enrichExercise)}))}:wp;
 
 const SECURITY_HEADERS={
  'Cache-Control':'no-store',
@@ -126,7 +131,7 @@ export default {async fetch(request,env){
     'automatic_evidence_review','native_cloudflare_auth','social_oauth','pantry_finder',
     'grocery_list','barcode_lookup','ramadan_fasting','body_measurements','progress_photos_r2',
     'store_subscriptions','push_notifications','widgets_snapshot','english_canonical_coaching_codes',
-    'custom_recipes','cardio_tracking','cycle_awareness'
+    'custom_recipes','cardio_tracking','cycle_awareness','seasonal_flex'
    ],
    deferredFeatures:['ai_meal_parse','ai_coach_qa']
   },200,{},reqId);
@@ -171,6 +176,17 @@ export default {async fetch(request,env){
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
    return json(previewPlan(body),200,{},reqId);
+  }
+
+  // Stateless Eligibility Pre-Screening (Public, IP rate-limited)
+  if(url.pathname==='/v1/eligibility'){
+   if(request.method!=='POST')return errorJson('Only POST is allowed for /v1/eligibility.',405,reqId,{code:'METHOD_NOT_ALLOWED',params:{allowedMethod:'POST'}},{Allow:'POST'});
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const eligKey='elig:'+(request.headers.get('CF-Connecting-IP')||request.headers.get('X-Forwarded-For')||'local');
+   checkRateLimit(eligKey,'read',env);
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   return json(evaluateEligibility(body),200,{},reqId);
   }
 
   // First-Party Cloudflare Workers + D1 Session Refresh & Direct Google/Apple OIDC Sign-In
@@ -218,6 +234,36 @@ export default {async fetch(request,env){
   if(request.method==='GET'&&url.pathname==='/v1/pantry/catalog')return json(getPantryCatalog(),200,{},reqId);
 
   // IMPORTANT: Register specific /v1/foods/* routes BEFORE generic /v1/foods/{id}
+  if(request.method==='GET'&&url.pathname==='/v1/foods/recent'){
+   const acc=await loadAccount(env.DB,user);
+   const tzAcc=acc.profile?.timezone||'Africa/Cairo';
+   const todayAcc=localDate(clockNow(),tzAcc);
+   const daysWindow=url.searchParams.get('days')==null?14:integer(url.searchParams.get('days'),1,90,'days');
+   const limit=url.searchParams.get('limit')==null?30:integer(url.searchParams.get('limit'),1,100,'limit');
+   const sinceDate=dateOffset(todayAcc,-(daysWindow-1));
+   const dedup=new Map();
+   const recentEntries=(acc.foodEntries||[]).filter(e=>e.date&&e.date>=sinceDate&&e.date<=todayAcc).slice().sort((a,b)=>String(b.at||b.date).localeCompare(String(a.at||a.date)));
+   for(const e of recentEntries){
+    const firstIng=e.snapshot?.ingredients?.[0];
+    const dedupKey=e.barcode?`barcode:${e.barcode}`:e.recipeId?`recipe:${e.recipeId}`:firstIng?.key?`ing:${firstIng.key}`:e.mealId?`meal:${e.snapshot?.name||e.mealId}`:`manual:${String(e.snapshot?.name||'').toLowerCase()}`;
+    if(dedup.has(dedupKey))continue;
+    dedup.set(dedupKey,{
+     foodId:firstIng?.food_id||firstIng?.key||null,
+     key:firstIng?.key||null,
+     barcode:e.barcode||null,
+     recipeId:e.recipeId||null,
+     name:e.snapshot?.name||'',
+     source:e.source,
+     lastLoggedDate:e.date,
+     lastSlot:e.slot,
+     lastQuantity:e.quantity,
+     snapshot:e.snapshot
+    });
+    if(dedup.size>=limit)break;
+   }
+   const items=[...dedup.values()];
+   return json({total:items.length,days:daysWindow,items},200,{},reqId);
+  }
   if(request.method==='GET'&&url.pathname==='/v1/foods/favorites'){
    const acc=await loadAccount(env.DB,user);
    const offset=cursor(url.searchParams.get('offset'),'offset');
@@ -307,8 +353,8 @@ export default {async fetch(request,env){
    return json({revoked:true,sessionId:targetSession,revokedAt:nowIso},200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/auth/logout'){
-   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
-   const rawBody=await requestJson(request);
+   const rawBody=request.body?await requestJson(request).catch(e=>{if(e?.code==='EMPTY_BODY')return '';throw e;}):'';
+   if(rawBody.trim()&&!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    const body=rawBody.trim()?JSON.parse(rawBody):{};
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
    return json(await logoutUserSession(env.DB,auth,body),200,{},reqId);
@@ -409,8 +455,21 @@ export default {async fetch(request,env){
   if(request.method==='POST'&&url.pathname==='/v1/account/consents'){
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    const body=JSON.parse(await requestJson(request));
-   if(!body||typeof body.consentType!=='string'||typeof body.version!=='string'||typeof body.accepted!=='boolean')throw createApiError('Consent payload requires string consentType, string version, and boolean accepted.',400,{code:'INVALID_CONSENT_PAYLOAD'});
    const nowIso=new Date().toISOString();
+   if(Array.isArray(body?.items)){
+    if(body.items.length<1||body.items.length>10)throw createApiError('Consent items batch must contain between 1 and 10 entries.',400,{code:'INVALID_CONSENT_PAYLOAD'});
+    const stmts=[];
+    const recorded=[];
+    for(const item of body.items){
+     if(!item||typeof item.consentType!=='string'||typeof item.version!=='string'||typeof item.accepted!=='boolean')throw createApiError('Consent payload requires string consentType, string version, and boolean accepted.',400,{code:'INVALID_CONSENT_PAYLOAD'});
+     const ct=item.consentType.slice(0,60),ver=item.version.slice(0,30);
+     stmts.push(env.DB.prepare('INSERT OR REPLACE INTO coaching_account_consents(user_id,consent_type,version,accepted,at) VALUES(?,?,?,?,?)').bind(user,ct,ver,item.accepted?1:0,nowIso));
+     recorded.push({consentType:ct,version:ver,accepted:item.accepted,at:nowIso,recordedAt:nowIso});
+    }
+    await env.DB.batch(stmts);
+    return json({items:recorded,recordedAt:nowIso},200,{},reqId);
+   }
+   if(!body||typeof body.consentType!=='string'||typeof body.version!=='string'||typeof body.accepted!=='boolean')throw createApiError('Consent payload requires string consentType, string version, and boolean accepted.',400,{code:'INVALID_CONSENT_PAYLOAD'});
    await env.DB.prepare('INSERT OR REPLACE INTO coaching_account_consents(user_id,consent_type,version,accepted,at) VALUES(?,?,?,?,?)').bind(user,body.consentType.slice(0,60),body.version.slice(0,30),body.accepted?1:0,nowIso).run();
    return json({consentType:body.consentType,version:body.version,accepted:body.accepted,at:nowIso,recordedAt:nowIso},200,{},reqId);
   }
@@ -480,11 +539,15 @@ export default {async fetch(request,env){
     ]);
     const rawAvatar=userRow?.avatar_url??s.profile?.avatarUrl??null;
     const signedAvatarUrl=await signAvatarUrlIfNeeded(url.origin,rawAvatar,user,env);
-    const bootPayload=presentBootstrap(s,{consents,entitlements,signedAvatarUrl});
+    const bootPayload=presentBootstrap(s,{consents,entitlements,signedAvatarUrl,pushConfigured:hasPushConfigured(env)});
     const fp=await sha256Hex(JSON.stringify([
      s.revision,currDate,entitlements.tier,entitlements.status,entitlements.updatedAt,
      consents.map(c=>`${c.consentType}:${c.accepted}:${c.at}`),
-     rawAvatar||'',bootPayload.todaySummary?.recovery?.status||''
+     rawAvatar||'',bootPayload.todaySummary?.recovery?.status||'',
+     bootPayload.todaySummary?.fastingState?.phase||'',
+     bootPayload.todaySummary?.seasonalContext?.mode||'standard',
+     bootPayload.pendingAdaptations?.length||0,
+     bootPayload.unreadCoachingInboxCount||0
     ]));
     const bootEtag=`W/"boot-${s.revision}-${currDate}-${fp.slice(0,12)}"`;
     if(request.headers.get('If-None-Match')===bootEtag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:bootEtag,'X-Request-Id':reqId}});
@@ -504,16 +567,23 @@ export default {async fetch(request,env){
    }
    if(url.pathname==='/v1/progress/weekly-wrapped')return json(computeWeeklyWrapped(s,url.searchParams.get('weekEnd')||null,clockNow()),200,{ETag:etag},reqId);
    if(url.pathname==='/v1/widgets/snapshot'){
-    if(request.headers.get('If-None-Match')===etag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:etag,'X-Request-Id':reqId}});
-    return json(buildWidgetSnapshot(s,clockNow()),200,{ETag:etag},reqId);
+    const snapFasting=getFastingState(s,clockNow());
+    const widgetEtag=`W/"rev-${s.revision}-${currDate}-${snapFasting.phase}-${snapFasting.seasonalContext?.mode||'standard'}"`;
+    if(request.headers.get('If-None-Match')===widgetEtag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:widgetEtag,'X-Request-Id':reqId}});
+    return json(buildWidgetSnapshot(s,clockNow()),200,{ETag:widgetEtag},reqId);
    }
    if(url.pathname==='/v1/measurements')return json(paginateDateCollection(s.bodyMeasurements||[],url),200,{},reqId);
    if(url.pathname==='/v1/recipes')return json(listCustomRecipes(s,{offset:url.searchParams.get('offset'),limit:url.searchParams.get('limit'),q:url.searchParams.get('q')}),200,{},reqId);
    if(url.pathname==='/v1/cardio-logs')return json(listCardioLogs(s,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),offset:url.searchParams.get('offset'),limit:url.searchParams.get('limit')}),200,{},reqId);
    if(url.pathname==='/v1/cycle/state')return json(computeCycleState(s,clockNow()),200,{},reqId);
    if(url.pathname==='/v1/workouts/prs')return json(computeWorkoutPrs(s,{since:url.searchParams.get('since')||null,exerciseId:url.searchParams.get('exerciseId')||null}),200,{},reqId);
+   if(url.pathname==='/v1/workouts/split-review'){
+    const readyState=accountRecovery(s,clockNow(),tz);
+    const reviewRes=splitReview({...s,recovery:readyState},currDate);
+    return json(reviewRes?{due:true,...reviewRes}:{due:false,kind:'not_due',code:'SPLIT_REVIEW_NOT_DUE',params:{},text:'8-week Full Body split review is available after 8 weeks and 16+ completed workouts on a 4+ day Full Body program.'},200,{},reqId);
+   }
    if(url.pathname==='/v1/nutrition/fasting-state')return json(getFastingState(s,clockNow()),200,{},reqId);
-   if(url.pathname==='/v1/coaching/inbox')return json(coachingInbox(s,clockNow()),200,{},reqId);
+   if(url.pathname==='/v1/coaching/inbox')return json(coachingInbox(s,clockNow(),{pushConfigured:hasPushConfigured(env)}),200,{},reqId);
    if(url.pathname==='/v1/coaching/history')return json(paginateDateCollection(s.coachingCases||[],url),200,{},reqId);
    if(url.pathname==='/v1/coaching/brief'){
     const snapshot=present(s),notes=s.profile?personalBrief(snapshot,currDate):[];
@@ -526,13 +596,29 @@ export default {async fetch(request,env){
     return json({apiVersion:'1',viewKind:'on_demand_coaching_brief',date:currDate,timezone:tz,revision:s.revision,generatedAt:snapshot.serverNow,requiresOnboarding:!s.profile,notes:items,requestId:reqId},200,{ETag:briefEtag},reqId);
    }
    if(url.pathname==='/v1/food-diary'){
+    const from=url.searchParams.get('from');
+    const to=url.searchParams.get('to');
+    if(from||to){
+     const startDate=from||dateOffset(to||currDate,-6);
+     const endDate=to||currDate;
+     if(!validDate(startDate)||!validDate(endDate)||startDate>endDate)throw createApiError('Invalid date range query parameters; expected from <= to in YYYY-MM-DD.',400,{code:'INVALID_DATE_RANGE',params:{field:'from'}});
+     const spanDays=Math.floor((Date.parse(`${endDate}T12:00:00Z`)-Date.parse(`${startDate}T12:00:00Z`))/86400000)+1;
+     if(spanDays>31)throw createApiError('Food diary range queries are capped at 31 days.',400,{code:'INVALID_DATE_RANGE',params:{field:'to'}});
+     const days=[];
+     for(let d=startDate;d<=endDate;d=dateOffset(d,1))days.push(dayTotals(s,d));
+     return json({from:startDate,to:endDate,days},200,{},reqId);
+    }
     const date=url.searchParams.get('date')||currDate;
     if(!validDate(date))throw createApiError('Invalid calendar date format; expected YYYY-MM-DD.',400,{code:'INVALID_DATE',params:{field:'date'}});
     return json(dayTotals(s,date),200,{},reqId);
    }
    if(url.pathname==='/v1/water-logs')return json(paginateDateCollection(s.waterLogs,url),200,{},reqId);
    if(url.pathname==='/v1/weight-logs')return json(paginateDateCollection(s.weights,url),200,{},reqId);
-   if(url.pathname==='/v1/workout-logs')return json(paginateDateCollection(s.workoutLogs,url),200,{},reqId);
+   if(url.pathname==='/v1/workout-logs'){
+    const exFilter=url.searchParams.get('exerciseId');
+    const filteredLogs=exFilter?(s.workoutLogs||[]).filter(l=>l.exerciseId===exFilter):s.workoutLogs;
+    return json(paginateDateCollection(filteredLogs,url),200,{},reqId);
+   }
    if(url.pathname==='/v1/sessions')return json(paginateDateCollection(s.sessions,url),200,{},reqId);
    if(url.pathname==='/v1/checkins')return json(paginateDateCollection(s.checkins,url),200,{},reqId);
    if(url.pathname==='/v1/activity-logs')return json(paginateDateCollection(s.activityLogs,url),200,{},reqId);
@@ -553,11 +639,12 @@ export default {async fetch(request,env){
     }
     if(!plan)return errorJson('Nutrition plan not found.',404,reqId,{code:'PLAN_NOT_FOUND'});
     if(groceryMatch){
-     if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
+     const isPreview=url.searchParams.get('preview')==='true';
+     if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'&&!isPreview){
       await requireProOrConsumeQuota(env.DB,s,user,{feature:'grocery_list'},env);
      }
      const daysScope=url.searchParams.get('days')||'all';
-     return json(getPlanGroceryList(s,plan,daysScope,currDate),200,{},reqId);
+     return json(getPlanGroceryList(s,plan,daysScope,currDate,{preview:isPreview}),200,{},reqId);
     }
     if(dayMatch){
      const day=plan.days.find(d=>d.date===dayMatch[2]);
@@ -568,9 +655,9 @@ export default {async fetch(request,env){
    if(url.pathname==='/v1/workout-plans')return json({items:s.workoutPlanRefs||[]},200,{},reqId);
    if(url.pathname.startsWith('/v1/workout-plans/')){
     const id=decodeURIComponent(url.pathname.slice(18));
-    if(s.workoutPlan?.id===id)return json(s.workoutPlan,200,{},reqId);
+    if(s.workoutPlan?.id===id)return json(enrichWorkoutPlan(s.workoutPlan),200,{},reqId);
     const row=await env.DB.prepare('SELECT body FROM coaching_workout_plans WHERE user_id=? AND plan_id=?').bind(user,id).first();
-    return row?json(JSON.parse(row.body),200,{},reqId):errorJson('Workout plan not found.',404,reqId,{code:'WORKOUT_PLAN_NOT_FOUND'});
+    return row?json(enrichWorkoutPlan(JSON.parse(row.body)),200,{},reqId):errorJson('Workout plan not found.',404,reqId,{code:'WORKOUT_PLAN_NOT_FOUND'});
    }
    if(url.pathname==='/v1/sync/changes'){
     const after=cursor(url.searchParams.get('after'),'after');
@@ -595,13 +682,6 @@ export default {async fetch(request,env){
      hasMore:rows.results.length===100||hasMoreDeltas,resyncRequired:after>s.revision
     },200,{},reqId);
    }
-  }
-
-  if(request.method==='POST'&&url.pathname==='/v1/eligibility'){
-   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
-   const body=JSON.parse(await requestJson(request));
-   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
-   return json(evaluateEligibility(body),200,{},reqId);
   }
 
   if(request.method==='POST'&&url.pathname==='/v1/wearables/ingest'){
@@ -666,7 +746,7 @@ export default {async fetch(request,env){
   if(!key||key.length>100)return errorJson('Idempotency-Key header (1..100 characters) is required.',400,reqId,{code:'IDEMPOTENCY_KEY_REQUIRED'});
 
   // Enforce withdrawn health_data_processing consent lock on personalized calculation & cycle health commands
-  if(['generate','review','adaptation','renew_plan','cycle_settings','cycle_log'].includes(body.action)&&await isHealthConsentWithdrawn(env.DB,user)){
+  if(['generate','review','adaptation','renew_plan','comeback_restart','cycle_settings','cycle_log','cycle_gentle_session'].includes(body.action)&&await isHealthConsentWithdrawn(env.DB,user)){
    return errorJson('Active health_data_processing consent is required to generate plans or compute coaching reviews.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
   }
 
@@ -718,7 +798,11 @@ export default {async fetch(request,env){
      await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_exercise_swaps',quotaKey:'exercise_swap',windowKey:isoWeekKeyForDate(currDate),freeLimit:2},env);
     }
    }else if(body.action==='renew_plan'){
-    await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_plan_renewals',quotaKey:'plan_renewal',windowKey:'lifetime',freeLimit:1},env);
+    if(body.payload?.earlyRenew===true){
+     await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_plan_renewals'},env);
+    }else{
+     await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_plan_renewals',quotaKey:'plan_renewal',windowKey:'lifetime',freeLimit:1},env);
+    }
    }else if(body.action==='adaptation'&&body.payload?.accept===true){
     const targetAdapt=(s.adaptations||[]).find(a=>a.id===body.payload?.id&&a.status==='pending');
     if(targetAdapt&&['calories','weekly_volume','maintenance'].includes(targetAdapt.kind)){
@@ -727,12 +811,21 @@ export default {async fetch(request,env){
    }
   }
 
-  if(['recovery','weight','food','food_entry','food_entry_update','food_complete','food_delete','copy_meal','session','session_delete','workout','workout_delete','coaching_feedback','renew_plan','comeback_restart','timezone','confirm_health','confirm_schedule'].includes(body.action))review(next);
+  if(['recovery','weight','food','food_entry','food_entry_batch','food_entry_update','food_complete','food_delete','copy_meal','session','session_delete','workout','workout_delete','coaching_feedback','renew_plan','comeback_restart','timezone','confirm_health','confirm_schedule'].includes(body.action)){
+   review(next);
+   if(next.lastReview)next.lastReview.auto=true;
+  }
+  if(body.action==='review'||body.action==='coaching_feedback'){
+   next.lastWeeklyCheckinAt=next.lastReview?.at||isoNow();
+  }
   reconcileCoaching(next,clockNow());
-  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log'].includes(body.action))next.adaptations=structuredClone(s.adaptations);
-  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log','coaching_ack','coaching_decision','coaching_outcome'].includes(body.action))for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
+  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log','ad_hoc_exercise'].includes(body.action))next.adaptations=structuredClone(s.adaptations);
+  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log','ad_hoc_exercise','coaching_ack','coaching_decision','coaching_outcome'].includes(body.action))for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
   next.revision=s.revision+1;
   await saveAccount(env.DB,user,next,s.revision,{key,digest:intentDigest,action:body.action,payload:body.payload,previousState:s});
+  if(body.action==='profile_update'&&body.payload?.name!==undefined&&next.profile?.name){
+   await env.DB.prepare('UPDATE coaching_users SET display_name=?, updated_at=? WHERE user_id=?').bind(next.profile.name,isoNow(),user).run().catch(()=>{});
+  }
 
   if(wantsMinimalResponse(request,url)){
    return json(presentReceipt(next,body.action,body.payload,false),200,{ETag:`W/"rev-${next.revision}"`},reqId);

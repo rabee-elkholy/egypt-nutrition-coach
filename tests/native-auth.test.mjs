@@ -384,7 +384,7 @@ test('Google & Apple OIDC Authentication, D1 Sessions & Postman Collection Verif
       assert.notEqual(reReg.user.userId, reg.user.userId);
     });
 
-    await t.test('Postman collection & environments are valid v2.1, cover 100% of OpenAPI routes & 47 command actions, and execute live', async () => {
+    await t.test('Postman collection & environments are valid v2.1, cover 100% of OpenAPI routes & 50 command actions, and execute live', async () => {
       const col = JSON.parse(await readFile('postman/CuraFit_API.postman_collection.json', 'utf8'));
       const cloudDevEnv = JSON.parse(await readFile('postman/CuraFit_Cloud_Dev.postman_environment.json', 'utf8'));
       const prodEnv = JSON.parse(await readFile('postman/CuraFit_Production.postman_environment.json', 'utf8'));
@@ -422,7 +422,7 @@ test('Google & Apple OIDC Authentication, D1 Sessions & Postman Collection Verif
         }
       };
       walk(col.item);
-      assert.equal(requests.length, 135, `Expected 135 requests in Postman collection, got ${requests.length}`);
+      assert.equal(requests.length, 140, `Expected 140 requests in Postman collection, got ${requests.length}`);
 
       for (const r of requests) {
         const desc = r.request.description || '';

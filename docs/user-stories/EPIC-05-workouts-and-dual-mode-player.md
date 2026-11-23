@@ -24,7 +24,8 @@
 - `US-WRK-07`: Exercise Demo Media, Interactive Muscle Map & Bilingual Form/Mistake Guide (868 Catalog)
 - `US-WRK-08`: Live & Planned Exercise Swap (Equipment-, Injury- & Time-Budget-Safe Substitutions)
 - `US-WRK-09`: Flexible Workout Rescheduling (14-Day One-Off Rest-Day Move) & Missed Session Logging
-- `US-WRK-10`: Session Completion Reconciliation (`>= 80%`), Session RPE/Duration, PR Celebration & Shareable Card
+- `US-WRK-10`: Session Completion Reconciliation (`>= 80%`), Session RPE/Duration, Personal Records Summary & Shareable Card
+- `US-WRK-11`: Dedicated Cardio & Walking Session Tracking (`cardio_log`, ACSM MET, Hydration Boost & Injury Caution)
 
 ---
 
@@ -59,19 +60,21 @@ As a user with a training plan, I want to view my 14-day projected workout calen
 2. **Workouts Tab Header:**
    - Active Split & Location pill (`"Upper / Lower • Gym • 45 min"`), **Dual Mode Quick Toggle** (`[Simple | Pro]`, `US-WRK-02`), and `[868 Exercise Library]` shortcut (`US-WRK-07`).
    - Horizontal **14-Day Projected Calendar Strip** showing:
-     - Workout day dot (`Completed ✓` green, `Scheduled` brand accent, `Moved` blue arrow, `Partial` amber, `Missed` gray, `Rest` muted).
+     - Workout day dot (`Completed` green, `Scheduled` brand accent, `Moved` blue indicator, `Partial` amber, `Missed` gray, `Rest` muted).
 3. **Selected Day Card & Exercise List:**
-   - Focus title (`Upper Body`), location badge (`Gym` / `Home`), estimated duration (`42 min`), active injury filters, and optional deload notice (`"-20% sets for 24h recovery"` or multi-day Comeback ramp-in via `comeback_restart` in `US-CCH-06`).
-   - **Weekly Muscle Volume Strip (Collapsible, emphasized in Pro mode):** Horizontal chips from `workoutPlan.weeklySets` (`Chest: 9 sets`, `Back: 9 sets`, `Quads: 6 sets`), plus `missing` pattern notice if home equipment/time budget left an explicit gap.
+   - Focus title (`Upper Body`), location badge (`Gym` / `Home`), estimated duration (`42 min`), active injury filters, and optional deload notice (`"-20% sets for 24h recovery"`, 24h `cycle_gentle_session`, or multi-day Comeback ramp-in via `comeback_restart` in `US-CCH-06`).
+   - **Weekly Muscle Volume Strip (Collapsible, emphasized in Pro mode):** Horizontal chips from `workoutPlan.weeklySets` (`Chest: 9 sets`, `Back: 9 sets`, `Quads: 6 sets`) + `weeklyMuscleSets`, plus `missing` pattern notice if home equipment/time budget left an explicit gap.
+   - **8-Week Split Review Banner (`GET /v1/workouts/split-review`):** When `due == true`, displays the Coach's calm split progression summary (e.g., Full Body -> Upper/Lower or Push/Pull/Legs) using pure-English localized `code` + `params` (`SPLIT_REVIEW_*`).
    - **Primary CTA on Today:** `[Start Workout]` (or `[Resume Partial Workout]` when `status == "partial"`, preserving already-logged sets and upgrading to `completed` once `>= 80%` sets are done!).
    - **Overflow / Quick Actions:** `[Move Day (Reschedule)]` (`US-WRK-09`) | `[Mark Session Missed]` | `[Delete Logged Session]` (`session_delete`).
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/workout-plans`** -> Lists plan version refs `{ id, version, split, parent_id }`.
-2. **`GET /v1/workout-plans/{activeWorkoutPlanId}`** -> Returns full plan (`days`, `exercises`, `weeklySets`, `warnings`, `coverage`, `injuryPolicyVersion`).
-3. **`GET /v1/sessions?offset=0&limit=30`** -> Paginated historical completion records.
-4. **`POST /v1/commands?view=receipt`** (`action: "confirm_health"`) -> `{ "healthy": true, "injuryFree": true }`.
-5. **`POST /v1/commands?view=receipt`** (`action: "confirm_schedule"`) -> `{ "dayMap": { "1": 1, "3": 3, "5": 5 } }`.
+2. **`GET /v1/workout-plans/{activeWorkoutPlanId}`** -> Returns full enriched plan (`days` with exercises containing `targetRepsRange`, `targetRir`, `restSeconds`, plus `weeklyMuscleSets`, `weeklySets`, `warnings`, `coverage`, `injuryPolicyVersion`).
+3. **`GET /v1/workouts/split-review`** -> Evaluates 8-week Full Body split progression readiness returning `{ due, kind, code, params, text }` in pure English.
+4. **`GET /v1/sessions?offset=0&limit=30`** -> Paginated historical completion records.
+5. **`POST /v1/commands?view=receipt`** (`action: "confirm_health"`) -> `{ "healthy": true, "injuryFree": true }`.
+6. **`POST /v1/commands?view=receipt`** (`action: "confirm_schedule"`) -> `{ "dayMap": { "1": 1, "3": 3, "5": 5 } }`.
    - Error Codes: `HEALTH_CONFIRMATION_REQUIRED`, `HEALTH_ALREADY_CONFIRMED`, `SCHEDULE_ALREADY_CONFIRMED`, `INVALID_SCHEDULE_MAPPING`, `WORKOUT_PLAN_NOT_FOUND`.
 
 ### RULES & BUSINESS LOGIC
@@ -138,7 +141,7 @@ As a fitness app user, I want the workout interface to start automatically in th
      - On Simple default: *"Guided Mode keeps things clean with visual steps and auto timers. Want kg/RIR tables and plate math? Tap Pro anytime!"*
      - On Pro default: *"Pro Mode shows set tables, RIR, Double Progression & plate calculator. Want a simpler view? Tap Simple anytime!"*
 2. **Comparison Table (Visual Preview when tapping `?` next to toggle):**
-   - **Simple Mode:** Animated Exercise Demo, 1-Tap Check-off (`Complete Set` / `Complete Exercise ✓`), Auto Rest Timer, Swap Exercise, Pain Flag.
+   - **Simple Mode:** Animated Exercise Demo, 1-Tap Check-off (`Complete Set` / `Complete Exercise`), Auto Rest Timer, Swap Exercise, Pain Flag.
    - **Pro Mode:** Full Set-by-Set `kg / reps / RIR` grid, Previous Session History (`Last: 20kg x 10`), Double Progression `+2.5 kg` green chip, Unilateral Both-Sides Confirm, Plate Calculator, Supersets/Drop-Sets, Ad-Hoc Exercise Add.
 
 ### API & BACKEND CONTRACT
@@ -212,16 +215,16 @@ As a beginner or casual fitness user who doesn't want spreadsheets or RIR jargon
    - Auto-looping animated GIF/Lottie/MP4 of the active exercise (`US-WRK-07`), Exercise Name (AR/EN), Target Muscle tag, and `[Form Tips]` pill.
 3. **Clear Prescription Banner (Zero Jargon):**
    - *"Do **3 sets** of **10–12 reps** • Controlled pace"* (translates technical `rir: 2` into plain-language guidance: *"Stop when you feel you could still do ~2 clean reps"*).
-   - If the exercise is unilateral (`laterality in ["unilateral", "alternating"]`), shows a clear pill: *"Both Sides (Left + Right)"* with a simple checkbox `[✓ Both Left & Right Done]` before final completion.
+   - If the exercise is unilateral (`laterality in ["unilateral", "alternating"]`), shows a clear pill: *"Both Sides (Left + Right)"* with checkbox `[Both Left & Right Done]` before final completion (`bothSides` defaults to `true` server-side unless explicitly unchecked).
    - If `usesKg(exercise)` is true and user wants to note a weight optionally, offers a single clean optional pill `"+ Note Weight (optional)"` — never required in Simple Mode! (When explicit `kg > 0` is entered, it also counts toward Personal Records in `GET /v1/workouts/prs`!)
 4. **Big Visual Set Check Circles:**
-   - E.g. `[ Set 1 ✓ ]`, `[ Set 2 ○ ]`, `[ Set 3 ○ ]` (adjusted automatically by `effectiveSets` if a 24h recovery deload is active, e.g., `2 sets` instead of `3` with a soft `"Recovery Deload Applied"` hint!).
+   - E.g. `[Set 1 Done]`, `[Set 2]`, `[Set 3]` (adjusted automatically by `effectiveSets` if a 24h recovery or `cycle_gentle_session` deload is active, e.g., `2 sets` instead of `3` with a soft `"Recovery Deload Applied"` hint!).
    - Tapping a Set circle:
      1. Marks the set done with haptic feedback.
      2. Immediately launches the **Floating Auto Rest Timer** (`exercise.restSeconds`, e.g., `90s`) with `[-15s]`, `[+15s]`, `[Skip Rest]` buttons, and soft audio chime + vibration when rest ends (respecting mute/background notification!).
 5. **Quick Exercise Controls (Bottom Sticky Dock):**
-   - Primary CTA: `[Done Next Set]` / `[Complete Exercise & Next →]` (auto-completes remaining sets if user taps `"Done All Sets"` shortcut).
-   - Secondary Actions: `[Swap Exercise ⇄]` (`US-WRK-08`) | `[Report Pain / Discomfort ⚠️]` (sets `pain: true` cleanly, pauses progression, and suggests swapping or resting) | `[Undo / Delete Logged Exercise]` (`workout_delete`).
+   - Primary CTA: `[Done Next Set]` / `[Complete Exercise & Next]` (auto-completes remaining sets if user taps `"Done All Sets"` shortcut, with optional compact exercise note field `notes` max 300 chars).
+   - Secondary Actions: `[Swap Exercise]` (`US-WRK-08`) | `[Report Pain / Discomfort]` (sets `pain: true` cleanly, pauses progression, and suggests swapping or resting) | `[Undo / Delete Logged Exercise]` (`workout_delete`).
 
 ### API & BACKEND CONTRACT
 1. **`POST /v1/commands?view=receipt`** (`action: "workout"`)
@@ -252,14 +255,14 @@ As a beginner or casual fitness user who doesn't want spreadsheets or RIR jargon
 ### RULES & BUSINESS LOGIC
 1. **Background Rest Timer & Process-Death Persistence:** Every tapped set writes immediately into local SQLDelight (`activeWorkoutDraft`), storing rest countdowns as an absolute epoch timestamp (`restTargetEpochMs`). Locking the phone, switching apps, or OS process kill recovers the exact active exercise, checked sets, elapsed workout duration, and zero-drift rest timer on reopen!
 2. **24-Hour Recovery Deload Rounding (`setFactor`):** When a `-20%` (`0.8`) or `-40%` (`0.6`) recovery deload (or multi-day Comeback ramp-in) is active, `effectiveSets = Math.max(1, factor < 1 ? Math.min(plannedSets - 1, Math.round(plannedSets * factor)) : Math.round(plannedSets * factor))` — matching backend `effectiveSets` 1:1 and guaranteeing that even a 2-set movement scales down by at least 1 set while never dropping below `1`.
-3. **Pain Safety Trigger:** If the user taps `[Report Pain / Discomfort ⚠️]`, set `pain: true` on the active/logged set, record it via `workout`, immediately offer `[Swap to Joint-Safe Alternative]` (`US-WRK-08`), and trigger backend `WORKOUT_PAIN_HOLD` automatically (`recovery.mjs`).
+3. **Pain Safety Trigger:** If the user taps `[Report Pain / Discomfort]`, set `pain: true` on the active/logged set, record it via `workout`, immediately offer `[Swap to Joint-Safe Alternative]` (`US-WRK-08`), and trigger backend `WORKOUT_PAIN_HOLD` automatically (`recovery.mjs`).
 4. **Unilateral Confirmation:** For `laterality in ["unilateral", "alternating"]` exercises, require checking `"Both Left & Right Completed"` so `bothSides: true` reaches the server accurately.
 
 ### MAIN FLOW
 1. Beginner user taps `[Start Workout]` and finishes Warm-Up (`US-WRK-06`).
 2. `LiveWorkoutPlayerSimpleScreen` displays Exercise 1 (`Dumbbell Goblet Squat`) with looping animation and 3 big Set buttons.
-3. User taps `[Set 1]` -> Set turns green ✓ and 90-second Rest Timer counts down with haptic alert when finished.
-4. User finishes Sets 2 and 3, taps `[Complete Exercise & Next →]`.
+3. User taps `[Set 1]` -> Set highlights green completed and 90-second Rest Timer counts down with haptic alert when finished.
+4. User finishes Sets 2 and 3, taps `[Complete Exercise & Next]`.
 5. `workout` command commits cleanly via outbox; player advances smoothly to Exercise 2.
 6. After Exercise 6, player routes to `SessionSummaryScreen` (`US-WRK-10`).
 
@@ -312,24 +315,24 @@ As an experienced lifter training at the gym, I want a structured Pro workout ta
 
 ### SCREEN AND UI DETAILS
 1. **Top Exercise Header & Action Bar:**
-   - Session timer, total session Volume (`kg`) ticker, `[Simple | Pro]` toggle, `[🔄 Swap]` (`US-WRK-08`), `[🧮 Plate Calc]` (`US-WRK-05`), `[➕ Add Exercise]` (`US-WRK-05`).
+   - Session timer, total session Volume (`kg` — or `lb` when `unitSystem == "imperial"`) ticker, `[Simple | Pro]` toggle, `[Swap]` (`US-WRK-08`), `[Plate Calc]` (`US-WRK-05`), `[Add Exercise]` (`US-WRK-05`), and compact `[Notes]` icon (`notes` up to 300 chars).
 2. **Exercise Prescription & Double Progression Banner:**
    - Displays prescribed range (`"3 sets • 8–12 reps • Target RIR 2 • Rest 120s"`).
    - **Double Progression Green Badge (`exercise.suggestedKg != null`):**
-     - *"Progress Ready: Try **{suggestedKg} kg** today! ({progressionReason})"* -> 1-tap `[Apply {suggestedKg} kg to All Sets]`.
+     - *"Progress Ready: Try **{suggestedKg} kg** today ({progressionReason})"* -> 1-tap `[Apply {suggestedKg} kg to All Sets]`.
    - **Safety Hold Badge (`recovery.progressionAllowed == false` or local muscle caution):**
      - Clear muted notice (*"Progression paused today due to recovery/pain status — match or reduce weight safely"*).
-3. **Interactive Set Table (`1..15` sets):**
-   - Columns: `Set` | `Previous` (e.g., `60kg × 10`) | `kg` *(or `+kg` if bodyweight added weight; hidden/0 if non-weighted)* | `Reps` | `RIR` *(optional tap selector `0..10`)* | `⚠️` *(Pain toggle)* | `✓` *(Done check)*.
+3. **Clean 5-Column Pro Set Table (`1..15` sets — Hevy/Strong ergonomics):**
+   - **5 Core Columns:** `Set` *(tap badge for `W` Warm-up / `1..N` Normal / `D` Drop / `F` Failure + compact `RIR` & `Pain` toggles inside the expandable row chip so narrow mobile screens stay spacious!)* | `Previous` (e.g., `60kg × 10`) | `kg` *(or `+kg` when `weightedBodyweight: true`; hidden/0 on unloaded bodyweight)* | `Reps` | `Done` (checkmark icon).
    - **Quick Fill Helpers:** Changing Set 1's `kg` shows `"Copy 62.5 kg down?"` pill to save typing; pre-fills inputs lightly with `suggestedKg` or last session's weight as placeholder.
-   - **Bodyweight Rules (`usesKg` & `supportsAddedWeight` from `exercise-load.mjs`):**
-     - Pure bodyweight exercises disable external load or label `+Added kg` cleanly without forcing `> 0` (`BODYWEIGHT_PROGRESSION_REPS_ONLY`).
+   - **Weighted Bodyweight & Assisted Rules (`usesKg` & `supportsAddedWeight` from `exercise-load.mjs`):**
+     - Loaded bodyweight movements (`supportsAddedWeight === true`, e.g. weighted dips/pull-ups) send explicit **`weightedBodyweight: true`** and per-set **`addedKg`** (or `kg`) so external added weight persists without breaking pure bodyweight defaults (`kg: 0`, `BODYWEIGHT_PROGRESSION_REPS_ONLY`).
      - Assisted machine exercises show `"Assisted kg (Lower = Harder)"` badge clearly (matching `recovery.mjs` assisted decrement logic).
    - **Unilateral Both-Sides Bar (`laterality in ["unilateral", "alternating"]`):**
-     - Prompt: *"Unilateral movement: Log weaker side's reps & lowest RIR at the same load, and check [✓ Both Sides Completed] to qualify for progression."*
+     - Prompt: *"Unilateral movement: Log weaker side's reps & lowest RIR at the same load, and keep [Both Sides Completed] checked to qualify for progression."* (`bothSides` defaults to `true`; unchecking sends `bothSides: false`).
    - **Preferred Load Step (`increment`):** Subtle step chip (`+1.25 kg` / `+2.5 kg` / `+5 kg`) bounded `<= 5%` for next-session Double Progression calculation.
    - **Add/Remove Set & Exercise Delete:** `[+ Add Set]` (up to `15` sets max, accommodating warm-up + working sets) / swipe left to delete extra set (`min 1`); overflow `[Delete Logged Exercise]` invokes `workout_delete`.
-4. **Auto Rest Timer Banner:** Sticky collapsible timer at bottom after checking any set ✓ (`exercise.restSeconds`).
+4. **Auto Rest Timer Banner:** Sticky collapsible timer at bottom after checking any set done (`exercise.restSeconds`).
 
 ### API & BACKEND CONTRACT
 1. **`POST /v1/commands?view=receipt`** (`action: "workout"`)
@@ -342,19 +345,21 @@ As an experienced lifter training at the gym, I want a structured Pro workout ta
          "date": "2026-11-21",
          "dayIndex": 1,
          "exerciseId": "oedb:73",
+         "weightedBodyweight": false,
          "sets": [
            { "kg": 62.5, "reps": 10, "rir": 2, "pain": false },
            { "kg": 62.5, "reps": 10, "rir": 2, "pain": false },
            { "kg": 62.5, "reps": 9, "rir": 2, "pain": false }
          ],
          "bothSides": true,
-         "increment": 2.5
+         "increment": 2.5,
+         "notes": "Controlled 2s eccentric"
        }
      }
      ```
 2. **`POST /v1/commands?view=receipt`** (`action: "workout_delete"`)
    - Payload: `{ "id": "<workoutLogId>" }` — removes an exercise log entry and reconciles session coverage cleanly (`404 WORKOUT_LOG_NOT_FOUND`).
-3. **`GET /v1/workout-logs?from={30d_ago}&to={today}&limit=100`** (Populates `Previous` column & progression history cleanly).
+3. **`GET /v1/workout-logs?exerciseId={id}&from={30d_ago}&to={today}&limit=100`** (Populates `Previous` column & per-exercise history cleanly).
    - Error Codes: `WORKOUT_SETS_REQUIRED` (`1..15` sets), `WORKOUT_REPS_MUST_BE_INTEGER`, `EXERCISE_NOT_IN_DAY`, `NUMBER_OUT_OF_RANGE`, `WORKOUT_LOG_NOT_FOUND`.
 
 ### RULES & BUSINESS LOGIC
@@ -367,11 +372,13 @@ As an experienced lifter training at the gym, I want a structured Pro workout ta
 ### MAIN FLOW
 1. Experienced lifter starts Gym Push Day in **Pro Mode**.
 2. Bench Press (`oedb:73`) shows `Previous: 60 kg × 12, 12, 12` and a green banner: **"Progress Ready: Try 62.5 kg today!"**.
-3. User taps `[Apply 62.5 kg]`, completes 3 sets (`10, 10, 9` reps at `RIR 2`), tapping `✓` after each set while the 120s Rest Timer runs.
+3. User taps `[Apply 62.5 kg]`, completes 3 sets (`10, 10, 9` reps at `RIR 2`), marking each set Done while the 120s Rest Timer runs.
 4. Client commits `workout` command cleanly; total session volume updates live (`+1,812.5 kg`).
 
 ### EDGE CASES
 - **User Logs Weight Only on 2 of 3 Prescribed Sets:** Commits the 2 logged sets cleanly; `sessionCompletion` counts `2/3` expected sets toward the `>= 80%` threshold (`US-WRK-10`).
+- **Mid-Workout Timer Background Drift:** Rest countdown uses absolute `restTargetEpochMs` persisted in `activeWorkoutDraft` and recovers accurately across OS sleep/app switch.
+- **Imperial Weight Entry (`unitSystem == "imperial"`):** Displays `lb` headers & `+5 lb` steps while converting deterministically to canonical `kg` (`round1(lb * 0.45359237)`) before transmitting `workout`.
 - **User Enters Different Weights Per Set (Pyramid Sets, e.g., `50, 60, 65 kg`):** Fully allowed! Note cleanly in Progression hint that uniform load across all working sets is required to trigger automatic Double Progression suggestions (`UNIFORM_LOAD_REQUIRED`).
 - **Per-Set Pain Checked (`pain: true`):** Immediately triggers red warning border on that set, blocks Double Progression automatically, and excludes the set from PR calculations.
 - **Process Death Mid-Set or Multi-Device Offline Rebase:** Persisted `activeWorkoutDraft` restores unfinished table rows locally on crash recovery without duplicating already-committed exercise logs.
@@ -417,7 +424,7 @@ As an advanced lifter using Pro Mode, I want a visual Barbell Plate Calculator, 
 
 ### SCREEN AND UI DETAILS
 1. **Barbell Plate Calculator (`PlateCalculatorSheet`):**
-   - Triggered from `🧮` icon next to any barbell exercise `kg` input.
+   - Triggered from Plate icon next to any barbell exercise `kg` input.
    - Input target weight (e.g. `87.5 kg`), select Bar Weight (`20 kg Olympic` default, `15 kg Women's`, `10 kg EZ Bar`, or custom), and toggle available gym plates (`25`, `20`, `15`, `10`, `5`, `2.5`, `1.25 kg`).
    - Renders color-coded **Visual Barbell Plate Diagram** + exact text: *"Per Side: `20kg + 10kg + 2.5kg + 1.25kg` (Total = 87.5 kg)"*.
    - `[Apply 87.5 kg]` button populates the active set input immediately.
@@ -446,7 +453,7 @@ As an advanced lifter using Pro Mode, I want a visual Barbell Plate Calculator, 
 2. **Ad-Hoc Non-Pollution:** Ad-hoc extra exercises do NOT overwrite `workoutPlan` structure or dilute `>= 80%` prescribed session completion coverage.
 
 ### MAIN FLOW
-1. User is doing Barbell Squat at `95 kg`, taps `🧮`, verifies `20kg + 15kg + 2.5kg` per side, and logs 3 sets.
+1. User is doing Barbell Squat at `95 kg`, opens Plate Calc, verifies `20kg + 15kg + 2.5kg` per side, and logs 3 sets.
 2. User links `Cable Tricep Pushdown` and `Dumbbell Hammer Curl` as a Superset (`SS1`) -> Player alternates exercises before triggering the 75s rest countdown.
 3. User taps `[+ Add Extra Exercise]`, searches `"Arnold Shoulder Press"`, logs 3 bonus sets (`ad_hoc_exercise`), and finishes the workout.
 
@@ -500,7 +507,7 @@ As a user starting or finishing a workout, I want a tailored 5-minute dynamic wa
 1. **Pre-Workout Dynamic Warm-Up Screen (`WarmupPreSessionSheet`):**
    - Header: *"5-Min Dynamic Warm-Up • {FocusLabel}"* (aligned cleanly with `workouts.mjs` `300s` warm-up budget included in `estimatedSessionMinutes`!).
    - Displays 3–4 quick targeted drills (e.g., for `Upper`: *Arm Circles 30s*, *Scapular Wall Slides 10 reps*, *Band Pull-Aparts / Thoracic Rotations 10/side*, *Light Ramp-Up Set*).
-   - Optional 30s/60s timer per drill + `[Check All & Begin Workout →]` + `[Skip Warm-Up]` link (non-blocking for experienced lifters who warmed up on a treadmill).
+   - Optional 30s/60s timer per drill + `[Check All & Begin Workout]` + `[Skip Warm-Up]` link (non-blocking for experienced lifters who warmed up on a treadmill).
 2. **Post-Workout Cool-Down Stretch (`CooldownPostSessionSheet`):**
    - Triggered optionally from `SessionSummaryScreen` (`US-WRK-10`): *"Take 3 minutes to stretch {PrimaryMuscles}"* with 3 gentle static stretches (`30s` hold timer each) + `[Done]` button.
 
@@ -514,7 +521,7 @@ As a user starting or finishing a workout, I want a tailored 5-minute dynamic wa
 ### MAIN FLOW
 1. User taps `[Start Workout]` on Lower Body day.
 2. `WarmupPreSessionSheet` suggests *Hip Openers*, *Glute Bridges (Bodyweight)*, and *Ankle Mobility Rocks* (`~4 min`), filtering out deep jumping jacks for `knee` injury.
-3. User ticks off drills and taps `[Begin Workout →]`, launching `LiveWorkoutPlayer` smoothly.
+3. User ticks off drills and taps `[Begin Workout]`, launching `LiveWorkoutPlayer` smoothly.
 
 ### EDGE CASES
 - **Express 20-Minute Session:** Keeps warm-up ultra-tight (`2` drills / `2–3 minutes`) so total workout duration stays strictly within the `20 min` budget.
@@ -661,7 +668,7 @@ As a user at a busy gym where a machine is taken or an exercise causes discomfor
 
 ### MAIN FLOW
 1. User enters the gym for Push Day; the Bench Press station is out of order.
-2. User taps `[Swap ⇄]` right inside Live Player -> `GET /v1/exercise-alternatives` returns *Dumbbell Bench Press (`oedb:75`)*, *Decline Dumbbell Fly (`oedb:239`)*, and *Incline Dumbbell Fly (`oedb:308`)*.
+2. User taps `[Swap]` right inside Live Player -> `GET /v1/exercise-alternatives` returns *Dumbbell Bench Press (`oedb:75`)*, *Decline Dumbbell Fly (`oedb:239`)*, and *Incline Dumbbell Fly (`oedb:308`)*.
 3. User taps *Dumbbell Bench Press* -> `[Swap Exercise]`.
 4. `replace_exercise` commits, updated plan loads seamlessly into Live Player, and user immediately starts Dumbbell Bench Press.
 
@@ -731,8 +738,8 @@ As a user with an unexpected busy day, illness, or travel, I want to reschedule 
    - Payload: `{ "id": "<proposalIdFromScheduleReceipt>", "accept": true }`.
    - *(Client passes `view=full` on `reschedule` or extracts the created `pendingAdaptations` ID to immediately finalize `adaptation` `accept: true` on user confirmation!)*
 3. **`POST /v1/commands?view=receipt`** (`action: "session"`)
-   - Missed Payload: `{ "date": "2026-11-21", "dayIndex": 6, "status": "missed" }`.
-   - Error Codes: `RESCHEDULE_DATE_OUT_OF_RANGE`, `RESCHEDULE_DAY_OCCUPIED`, `RESCHEDULE_DATE_UNCHANGED`, `WORKOUT_DAY_NOT_IN_PLAN`, `ADAPTATION_SCHEDULE_DATE_PASSED`.
+   - Missed Payload: `{ "date": "2026-11-21", "dayIndex": 6, "status": "missed", "notes"?: string }`.
+   - Error Codes: `RESCHEDULE_DATE_OUT_OF_RANGE`, `RESCHEDULE_DAY_OCCUPIED`, `RESCHEDULE_DATE_UNCHANGED`, `SESSION_ALREADY_COMPLETED` (`409` if source session is already completed), `WORKOUT_DAY_NOT_IN_PLAN`, `ADAPTATION_SCHEDULE_DATE_PASSED`.
 
 ### RULES & BUSINESS LOGIC
 1. **Strict 14-Day Window (`today .. today+13`):** Only dates in `[serverDate, dateOffset(serverDate, 13)]` that have zero scheduled or completed sessions are selectable.
@@ -771,7 +778,7 @@ As a user with an unexpected busy day, illness, or travel, I want to reschedule 
 
 ---
 
-## US-WRK-10: Session Completion Reconciliation (`>= 80%`), Session Delete, RPE/Duration, PR Celebration & Shareable Card
+## US-WRK-10: Session Completion Reconciliation (`>= 80%`), Session Delete, RPE/Duration, Personal Records Summary & Shareable Card
 
 ### METADATA
 | Field | Value |
@@ -780,12 +787,12 @@ As a user with an unexpected busy day, illness, or travel, I want to reschedule 
 | **Epic** | `EPIC-05` |
 | **Priority** | `High` |
 | **Labels** | `production`, `mobile`, `workouts`, `completion`, `pr`, `sharing` |
-| **Target Screens** | `FinishWorkoutSheet`, `WorkoutCelebrationSummaryScreen` |
+| **Target Screens** | `FinishWorkoutSheet`, `WorkoutSummaryScreen` |
 | **Entitlement** | `Free` |
 | **Backend Status** | `Implemented` |
 
 ### STORY
-As a user finishing a workout session, I want to record how long the session took and how hard it felt (`RPE 1–10`), see whether my completed sets earned Full Completion (`>= 80%`) or Partial credit honestly (with the option to resume a partial session or delete an erroneous workout/session), celebrate any new Personal Records (PRs) in weight/reps/volume/1RM, and optionally share a clean summary card on Instagram/WhatsApp.
+As a user finishing a workout session, I want to record how long the session took, how hard it felt (`RPE 1–10`), and optional session notes, see whether my completed sets earned Full Completion (`>= 80%`) or Partial credit honestly (with the option to resume a partial session or delete an erroneous workout/session), review any new Personal Records (PRs) in weight/reps/volume/1RM cleanly, and optionally share a crisp summary card on Instagram/WhatsApp.
 
 ### PRECONDITIONS
 - User logged at least 1 exercise set during today's session (`actualSets >= 1`, enforcing `SESSION_REQUIRES_ACTUAL_SETS`).
@@ -793,25 +800,25 @@ As a user finishing a workout session, I want to record how long the session too
 ### SCREEN AND UI DETAILS
 1. **Finish Workout Review Sheet (`FinishWorkoutSheet`):**
    - Displays transparent completion coverage bar:
-     - e.g. `17 / 18 prescribed sets completed (94% ✓ Full Session)` OR `9 / 18 sets completed (50% • Partial Session)`.
+     - e.g. `17 / 18 prescribed sets completed (94% Full Session)` OR `9 / 18 sets completed (50% • Partial Session)`.
      - **Explicit Rule Hint if `< 80%`:** *"Sessions below 80% of prescribed sets (or missing Both Sides on unilateral moves) are saved as Partial so your coach doesn't prematurely increase your load. You can resume this workout later today to reach 80%+ completion."*
-   - Pre-filled **Elapsed Duration (min)** (`1..240`, from live workout timer, editable).
-   - **Session RPE Slider (`1..10`)** with friendly emojis/labels (`1-4 Light`, `5-6 Moderate`, `7-8 Challenging`, `9-10 Max Effort`).
+   - Pre-filled **Elapsed Duration (min)** (`1..240`, from live workout timer, editable) + optional **Session Notes (`max 300` chars)**.
+   - **Session RPE Slider (`1..10`)** with crisp athletic intensity bands (`1-4 Light`, `5-6 Moderate`, `7-8 Challenging`, `9-10 Max Effort`).
    - Primary CTA: `[Save & Finish Workout]`.
-2. **Celebration & PR Summary Screen (`WorkoutCelebrationSummaryScreen`):**
-   - Subtle celebratory confetti + Streak progress increment (`🔥 Week Streak Updated`).
+2. **Workout Summary & Personal Records Screen (`WorkoutSummaryScreen`):**
+   - Calm Strava/Hevy-caliber athletic summary (zero confetti cannons or childish trophy icons) + Streak progress badge (`Week Streak Updated`).
    - **Session Highlights Grid:** Total Duration, Exercises Completed, Total Volume (`kg` lifted, hidden/replaced by Total Reps in Simple Mode when `kg == 0`), Session Status badge (`Completed` / `Partial`).
-   - **New PRs Unlocked Card** *(from `GET /v1/workouts/prs`)*: Highlights `🏆 New Best Load` (or `🏆 Lowest Assisted Weight` for `loadMode === "assisted"`, including first-time weight PRs!), `🏆 New Rep PR`, `🏆 Highest Volume`, and `🏆 New Est. 1RM` (`1 <= reps <= 15`) per exercise!
-   - **Action Buttons:** `[3-Min Cool-Down Stretch]` (`US-WRK-06`) | `[Share Workout Card 📤]` (renders clean branded portrait PNG card for Instagram Stories / WhatsApp) | `[Back to Today]`.
+   - **New PRs Unlocked Card** *(from `GET /v1/workouts/prs`)*: Highlights crisp athletic PR tags: `New Best Load` (or `Lowest Assisted Weight` for `loadMode === "assisted"`, including first-time weight PRs), `New Rep PR`, `Highest Volume`, and `New Est. 1RM` (`1 <= reps <= 15`) per exercise.
+   - **Action Buttons:** `[3-Min Cool-Down Stretch]` (`US-WRK-06`) | `[Share Workout Card]` (renders clean branded portrait PNG card for Instagram Stories / WhatsApp) | `[Back to Today]`.
 
 ### API & BACKEND CONTRACT
 1. **`POST /v1/commands?view=receipt`** (`action: "session"`)
-   - Payload: `{ "date": "2026-11-21", "dayIndex": 6, "status": "completed", "duration": 44, "rpe": 7 }`.
+   - Payload: `{ "date": "2026-11-21", "dayIndex": 6, "status": "completed", "duration": 44, "rpe": 7, "notes": "Strong pressing day" }`.
    - **Server Reconciliation Rule (`training-state.mjs`):** Even if client passes `status: "completed"`, server evaluates `completionRatio = completedSets / expectedSets`. If `< 0.80` (including unilateral logs lacking `bothSides: true`), server stores `status = "partial"` cleanly! Resuming a `partial` session preserves already-logged sets and promotes `status` to `"completed"` automatically once `completionRatio >= 0.80`.
 2. **`POST /v1/commands?view=receipt`** (`action: "session_delete"`) & **`action: "workout_delete"`**
-   - `session_delete` payload: `{ "id": "<sessionId>" }` OR `{ "date": "YYYY-MM-DD", "dayIndex": 6 }` (`404 SESSION_NOT_FOUND`).
+   - `session_delete` payload: `{ "id": "<sessionId>", "deleteWorkouts"?: true }` OR `{ "date": "YYYY-MM-DD", "dayIndex": 6, "deleteWorkouts"?: true }` (`404 SESSION_NOT_FOUND`; `deleteWorkouts: true` removes attached workout logs together).
    - `workout_delete` payload: `{ "id": "<workoutLogId>" }` (`404 WORKOUT_LOG_NOT_FOUND`); automatically reconciles session coverage.
-3. **`GET /v1/workouts/prs?since={ISO-or-date}&exerciseId={optional}`**
+3. **`GET /v1/workouts/prs?since={YYYY-MM-DD_or_ISO}&exerciseId={optional}`** (`?since=` normalizes both ISO timestamps and calendar dates cleanly)
    - Unified schema returning:
      ```json
      {
@@ -861,8 +868,8 @@ As a user finishing a workout session, I want to record how long the session too
 ### MAIN FLOW
 1. User finishes Exercise 6 of 6 (`18 / 18` sets = `100%`).
 2. `FinishWorkoutSheet` opens showing `Duration: 42 min` and user selects `RPE: 8`, then taps `[Save & Finish Workout]`.
-3. `session` commits, fetches detected PRs (`Bench Press: New 3x10 PR at 62.5 kg`), and displays `WorkoutCelebrationSummaryScreen`.
-4. User taps `[Back to Today]` -> Today's Workout Card now displays `"Completed ✓ • 42 min"`.
+3. `session` commits, fetches detected PRs (`Bench Press: New 3x10 PR at 62.5 kg`), and displays `WorkoutSummaryScreen`.
+4. User taps `[Back to Today]` -> Today's Workout Card now displays `"Completed • 42 min"`.
 
 ### EDGE CASES
 - **User Ends Session Early After 2 of 6 Exercises (`6/18` sets = `33%`):** Sheet clearly explains *"Logged 33% of sets — will save as Partial Session"* so user isn't surprised when `Sessions` lists it as `Partial`; resuming later today preserves those 6 sets and updates to `Completed` once `>= 80%` sets are logged.
@@ -918,18 +925,18 @@ As a user who walks briskly, runs, cycles, swims, or plays sports alongside (or 
    - **Modality Grid (10 Clean Icons — exact backend `CARDIO_MODALITIES` keys):** `Walking` (`walking`), `Brisk Walking` (`brisk_walking`), `Running` (`running`), `Cycling` (`cycling`), `Stationary Bike` (`stationary_bike`), `Swimming` (`swimming`), `Elliptical` (`elliptical`), `Rowing` (`rowing`), `Jump Rope` (`jump_rope`), `HIIT` (`hiit`).
    - **Duration Input (`5..360` min):** Quick preset chips (`15m`, `30m`, `45m`, `60m`) + custom stepper.
    - **Intensity Selector:** `Low (Conversational)` | `Moderate (Brisk)` | `Vigorous (Hard)`.
-   - **Optional Fields:** Distance (`km` or `mi` converted to `km`, `0.1..300`), Manual Calories Override (`10..5000 kcal`, defaults to live MET estimate), Date (`past 90 days..today`), Notes (`<= 200` chars).
-   - **Non-Blocking Safety Caution Strip (`CARDIO_HIGH_IMPACT_CAUTION`):** If `modality` is high-impact (`running | jump_rope | hiit`) AND user has `knee_pain` / `ankle_pain` / `lower_back_pain`, pregnancy (`pregnant_t1|t2|t3`), or `seniorMode == true`, displays a calm amber tip suggesting lower-impact alternatives (`brisk walking`, `cycling`, `swimming`) while still permitting logging if cleared by user.
+   - **Optional Fields:** Distance (`km` or `mi` converted to `km`, `0.01..300`), Manual Calories Override (`10..5000 kcal`, defaults to live **ACSM MET** estimate), Date (`past 90 days..today`), Notes (`<= 200` chars).
+   - **Non-Blocking Safety Caution Strip (`CARDIO_HIGH_IMPACT_CAUTION`):** If `modality` is high-impact (`running | jump_rope | hiit`) AND user has `knee_pain` / `ankle_pain` / `lower_back_pain` / `hip_pain`, pregnancy (`pregnant_t1|t2|t3`), or `seniorMode == true`, displays a calm amber tip suggesting lower-impact alternatives (`brisk walking`, `cycling`, `swimming`) while still permitting logging if cleared by user.
 2. **Today Activity & Cardio Summary Strip:**
    - Displays today's logged cardio sessions (e.g., `"Brisk Walk • 35 min • ~175 kcal"`) with swipe-to-delete (`cardio_delete`).
    - Clear info caption: *"Cardio boosts your hydration goal and streak — diet calories stay aligned to your deterministic plan."*
 
 ### API & BACKEND CONTRACT
 1. **`GET /v1/cardio-logs?from={YYYY-MM-DD}&to={YYYY-MM-DD}&offset=0&limit=30`**
-   - Returns paginated `{ total, offset, limit, nextOffset, items: [{ id, date, modality, durationMinutes, intensity, distanceKm, estimatedKcal, calorieSource, safetyCaution, notes, source, externalRecordId, at }] }`.
+   - Returns paginated `{ total, offset, limit, nextOffset, items: [{ id, date, modality, durationMinutes, intensity, distanceKm, estimatedKcal, caloriesSource, safetyCaution, notes, source, externalRecordId, at }] }` (`caloriesSource`: `"user_or_wearable"` | `"met_estimate"`).
 2. **`POST /v1/commands?view=receipt`** (`action: "cardio_log"`)
    - Payload: `{ "date": "2026-11-21", "modality": "walking", "durationMinutes": 35, "intensity": "moderate", "distanceKm": 3.2, "notes": "Evening corniche walk", "source": "manual" }`.
-   - Server computes MET-based `estimatedKcal` (`round(MET * weightKg * (durationMinutes / 60))`) when `caloriesKcal` is omitted, deduplicates by `externalRecordId`, enforces max `5` sessions per date (`400 CARDIO_DAILY_LIMIT_EXCEEDED`), and attaches `safetyCaution` (`code: "CARDIO_HIGH_IMPACT_CAUTION"`) when high-impact conflicts with injury/pregnancy/senior constraints.
+   - Server computes **ACSM MET-based `estimatedKcal`** (`round(MET * weightKg * (durationMinutes / 60))`, setting `caloriesSource: "met_estimate"`) when `caloriesKcal` is omitted (`caloriesSource: "user_or_wearable"` when provided), deduplicates by `externalRecordId`, enforces max `5` sessions per date (`400 CARDIO_DAILY_LIMIT_EXCEEDED`), and attaches `safetyCaution` (`code: "CARDIO_HIGH_IMPACT_CAUTION"`) when high-impact conflicts with injury/pregnancy/senior constraints.
 3. **`POST /v1/commands?view=receipt`** (`action: "cardio_delete"`)
    - Payload: `{ "id": "<cardioLogId>" }` (`404 CARDIO_LOG_NOT_FOUND`).
    - Error Codes: `INVALID_CARDIO_PAYLOAD`, `CARDIO_DAILY_LIMIT_EXCEEDED`, `CARDIO_LOG_NOT_FOUND`, `DATE_IN_FUTURE`, `DATE_TOO_OLD`.

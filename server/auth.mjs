@@ -1,6 +1,6 @@
 // Cloudflare Workers + D1 Authentication, JWT Verifier, Session Revocation, Rate Limiting & Privacy Guardrails
 // Supports:
-// 1. First-party Cloudflare Workers + D1 JWT Auth (`server/native-auth.mjs`: register/login/refresh/logout)
+// 1. First-party Cloudflare Workers + D1 OIDC & JWT Auth (`server/oauth.mjs`, `server/native-auth.mjs`: Google & Apple OIDC / refresh / session / logout)
 // 2. Bearer JWT verification (HMAC-SHA256 / RSASSA-PKCS1-v1_5 / ECDSA P-256 via WebCrypto SubtleCrypto)
 // 3. Optional external OIDC/JWKS verification via env vars (`AUTH_JWKS_URI` / `AUTH_JWKS_JSON`)
 // 4. Trusted platform header (`oai-authenticated-user-id`) when injected by trusted gateway or local test harness

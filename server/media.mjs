@@ -42,7 +42,13 @@ function requireBucket(env) {
 }
 
 async function hmacKey(env) {
-  const secret = env?.MEDIA_SIGNING_SECRET || env?.AUTH_JWT_SECRET || 'curafit-media-signing-fallback';
+  const secret = env?.MEDIA_SIGNING_SECRET || env?.AUTH_JWT_SECRET;
+  if (!secret || typeof secret !== 'string' || secret.length < 16) {
+    throw createApiError('Media storage is temporarily unavailable; retry shortly.', 503, {
+      code: 'MEDIA_STORAGE_UNAVAILABLE',
+      retryable: true
+    });
+  }
   return await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -171,10 +177,18 @@ export async function uploadProfileAvatar(request, env, db, userId, origin) {
 
   const ext = detected === 'image/png' ? 'png' : detected === 'image/webp' ? 'webp' : 'jpg';
   const key = `avatars/${userId}/${crypto.randomUUID()}.${ext}`;
+  let previousAvatarKey = null;
+  try {
+    const prevRow = await db.prepare('SELECT avatar_url FROM coaching_users WHERE user_id=?').bind(userId).first();
+    previousAvatarKey = prevRow?.avatar_url || null;
+  } catch {}
   await bucket.put(key, bytes, { httpMetadata: { contentType: detected } });
   const signed = await buildSignedMediaUrl(origin, key, 'get', env, 900, { u: userId });
   try {
     await db.prepare('UPDATE coaching_users SET avatar_url=?, updated_at=? WHERE user_id=?').bind(key, new Date().toISOString(), userId).run();
+    if (previousAvatarKey && previousAvatarKey !== key && previousAvatarKey.startsWith(`avatars/${userId}/`)) {
+      await bucket.delete(previousAvatarKey).catch(() => {});
+    }
   } catch {}
   return { avatarKey: key, avatarUrl: signed.url, expiresAt: signed.expiresAt };
 }

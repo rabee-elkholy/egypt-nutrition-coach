@@ -1566,6 +1566,243 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       }), 200);
       assert.equal(mergedLogin.user.avatarUrl, secondPhoto);
     });
+
+    await t.test('Market-Giant Upgrade: recent foods, batch log, split-review, cycle/seasonal/flex, batch consents, OAuth/billing/media edge cases', async () => {
+      // 1. Public unauthenticated /v1/eligibility & /v1/plans/preview
+      const pubDraft = {
+        name: 'Preview Athlete', age: 22, sex: 'male', weight: 150, height: 205,
+        goal: 'gain', goalPace: 'fast', activity: 'active',
+        serviceTrack: 'nutrition_and_workouts', workoutLocation: 'gym_only',
+        selectedWorkoutDays: [0, 1, 2, 3, 4, 5, 6], dietType: 'balanced', healthConfirmed: true,
+      };
+      const pubElig = await okJson(await call('/v1/eligibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pubDraft),
+      }));
+      assert.equal(pubElig.status, 'eligible');
+      const pubPrev = await okJson(await call('/v1/plans/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pubDraft),
+      }));
+      assert.equal(pubPrev.dailyCalories, 4200);
+      assert.ok(pubPrev.waterTarget.liters > 0);
+      assert.ok(Number.isInteger(pubPrev.estimatedExercisesPerSession) && pubPrev.estimatedExercisesPerSession >= 4);
+
+      // 2. OAuth unverified email collision & already-linked-to-other-user guards
+      const nowSec = Math.floor(Date.now() / 1000);
+      const existingAppleForUnv = await appleSigner.signJwt({
+        iss: 'https://appleid.apple.com', aud: 'com.curafit.ios',
+        sub: 'apple-sub-unv-target-mg', email: 'unverified.mg@curafit.app', email_verified: true,
+        iat: nowSec, exp: nowSec + 3600,
+      });
+      await okJson(await call('/v1/auth/oauth/apple', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identityToken: existingAppleForUnv, fullName: 'Existing Owner' }),
+      }), 201);
+      const unverifiedJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com', aud: 'curafit-android-client-id',
+        sub: 'google-sub-unverified-mg', email: 'unverified.mg@curafit.app', email_verified: false,
+        iat: nowSec, exp: nowSec + 3600,
+      });
+      await errJson(await call('/v1/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: unverifiedJwt, deviceId: 'mg-unv' }),
+      }), 409, 'AUTH_OAUTH_EMAIL_UNVERIFIED');
+
+      const ownerGoogleJwt = await googleSigner.signJwt({
+        iss: 'https://accounts.google.com', aud: 'curafit-android-client-id',
+        sub: 'google-sub-claimed-mg', email: 'owner.mg@curafit.app', email_verified: true,
+        name: 'Owner User', iat: nowSec, exp: nowSec + 3600,
+      });
+      await okJson(await call('/v1/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: ownerGoogleJwt, deviceId: 'mg-owner' }),
+      }), 201);
+
+      const femAppleJwt = await appleSigner.signJwt({
+        iss: 'https://appleid.apple.com', aud: 'com.curafit.ios',
+        sub: 'apple-sub-female-mg', email: 'female.mg@curafit.app', email_verified: true,
+        iat: nowSec, exp: nowSec + 3600,
+      });
+      const femAuth = await okJson(await call('/v1/auth/oauth/apple', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identityToken: femAppleJwt, fullName: 'Salma MG', deviceId: 'mg-fem-1' }),
+      }), 201);
+      const fToken = femAuth.accessToken;
+      const fHdr = { Authorization: `Bearer ${fToken}` };
+
+      await errJson(await call('/v1/auth/oauth/link', {
+        method: 'POST',
+        headers: { ...fHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'google', idToken: ownerGoogleJwt }),
+      }), 409, 'AUTH_OAUTH_ALREADY_LINKED_OTHER_USER');
+
+      // 3. Generate female account -> Recent foods, food_entry_batch, range diary, barcode, grocery preview & earlyRenew
+      const fGen = await okJson(await postCmd(fToken, 0, 'generate', {
+        name: 'Salma MG', age: 27, sex: 'female', weight: 65, height: 165,
+        goal: 'lose', targetWeight: 60, activity: 'light', dietType: 'balanced',
+        serviceTrack: 'nutrition_and_workouts', workoutLocation: 'gym_only',
+        selectedWorkoutDays: [new Date().getUTCDay(), (new Date().getUTCDay() + 2) % 7, (new Date().getUTCDay() + 4) % 7],
+        healthConfirmed: true,
+      }));
+      let fRev = fGen.revision;
+      const todayDate = fGen.serverDate;
+      const planId = fGen.plans[0].id;
+      const wpId = fGen.workoutPlan.id;
+
+      // Batch commit + atomic failure rollback
+      const batchOk = await okJson(await postCmd(fToken, fRev, 'food_entry_batch', {
+        date: todayDate,
+        items: [
+          { slot: 'breakfast', source: 'ingredient', key: 'fava', grams: 120 },
+          { slot: 'snack', source: 'manual', energy: 95 },
+        ],
+      }, { minimal: true }));
+      fRev = batchOk.revision;
+
+      await errJson(await postCmd(fToken, fRev, 'food_entry_batch', {
+        date: todayDate,
+        items: [
+          { slot: 'lunch', source: 'manual', name: 'Valid Chicken', energy: 250 },
+          { slot: 'lunch', source: 'manual', name: 'Bad Zero', energy: 0 },
+        ],
+      }, { minimal: true }), 400, 'MANUAL_MEAL_ENERGY_REQUIRED');
+
+      const recentFoods = await okJson(await call('/v1/foods/recent?days=30&limit=10', { headers: fHdr }));
+      assert.ok(recentFoods.items.some((x) => x.name === 'Quick Add'));
+      const rangeDiary = await okJson(await call(`/v1/food-diary?from=${todayDate}&to=${todayDate}`, { headers: fHdr }));
+      assert.equal(rangeDiary.days.length, 1);
+      assert.equal(rangeDiary.days[0].entries.length, 2);
+
+      // Submit & GET barcode with saturated
+      const bcSub = await okJson(await call('/v1/foods/barcode', {
+        method: 'POST',
+        headers: { ...fHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          barcode: '6221007008888', nameEn: 'Plain Yogurt MG', brand: 'Laban', servingSizeGrams: 150,
+          valuesPer100g: { energy: 80, protein: 9, carbs: 4, fat: 2.5, saturated: 1.5, fiber: 0, sodium: 45 },
+        }),
+      }), 201);
+      assert.equal(bcSub.status, 'pending_review');
+      const bcRes = await okJson(await call('/v1/foods/barcode/6221007008888', { headers: fHdr }));
+      assert.equal(bcRes.valuesPer100g.saturated, 1.5);
+      fRev = (await okJson(await postCmd(fToken, fRev, 'food_entry', {
+        date: todayDate, slot: 'snack', source: 'barcode', barcode: '6221007008888',
+        nameEn: 'Plain Yogurt MG', servingSizeGrams: 150, servings: 1,
+        valuesPer100g: bcRes.valuesPer100g,
+      }, { minimal: true }))).revision;
+
+      // Grocery ?preview=true succeeds for Free while full list & earlyRenew return 402
+      const grocPreview = await okJson(await call(`/v1/plans/${encodeURIComponent(planId)}/grocery-list?preview=true`, { headers: fHdr }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }));
+      assert.equal(grocPreview.preview, true);
+      await errJson(await call(`/v1/plans/${encodeURIComponent(planId)}/grocery-list`, { headers: fHdr }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }), 402, 'PRO_ENTITLEMENT_REQUIRED');
+      await errJson(await postCmd(fToken, fRev, 'renew_plan', { earlyRenew: true }, { minimal: true, envExtra: { ENFORCE_PRO_ENTITLEMENTS: 'true' } }), 402, 'PRO_ENTITLEMENT_REQUIRED');
+
+      // Verify Pro & retry earlyRenew preserving today's day[0]
+      await errJson(await call('/v1/subscriptions/verify', {
+        method: 'POST',
+        headers: { ...fHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'android', productId: 'curafit_pro.annual', purchaseToken: 'gp-mg-strict-test' }),
+      }, { STRICT_STORE_VERIFICATION: 'true' }), 503, 'SERVICE_UNAVAILABLE');
+
+      const proVerified = await okJson(await call('/v1/subscriptions/verify', {
+        method: 'POST',
+        headers: { ...fHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'android', productId: 'curafit_pro.annual', purchaseToken: 'gp-mg-pro-001' }),
+      }));
+      assert.equal(proVerified.entitlements.tier, 'pro');
+
+      const earlyPlanRes = await okJson(await postCmd(fToken, fRev, 'renew_plan', { earlyRenew: true }, { minimal: false, envExtra: { ENFORCE_PRO_ENTITLEMENTS: 'true' } }));
+      fRev = earlyPlanRes.revision;
+      assert.notEqual(earlyPlanRes.active_plan_id, planId);
+      assert.equal(earlyPlanRes.planRefs.length, 2);
+      assert.equal(earlyPlanRes.plans[0].parent_id, planId);
+      assert.equal(earlyPlanRes.plans[0].days[0].date, todayDate);
+
+      // 4. Workouts enriched GET, filtered logs, split-review, 409 SESSION_ALREADY_COMPLETED, wearables cardio+skipped
+      const wpEnriched = await okJson(await call(`/v1/workout-plans/${encodeURIComponent(wpId)}`, { headers: fHdr }));
+      assert.ok(wpEnriched.days[0].exercises[0].nameAr);
+      const day0 = wpEnriched.days[0];
+      for (const ex of day0.exercises) {
+        fRev = (await okJson(await postCmd(fToken, fRev, 'workout', {
+          date: todayDate, dayIndex: day0.dayIndex, exerciseId: ex.id,
+          sets: Array.from({ length: ex.sets }, () => ({ reps: 10, kg: 20, rir: 2 })),
+          notes: 'Clean form',
+        }, { minimal: true }))).revision;
+      }
+      fRev = (await okJson(await postCmd(fToken, fRev, 'session', {
+        date: todayDate, dayIndex: day0.dayIndex, status: 'completed', notes: 'Done',
+      }, { minimal: true }))).revision;
+      const exLogs = await okJson(await call(`/v1/workout-logs?exerciseId=${encodeURIComponent(day0.exercises[0].id)}`, { headers: fHdr }));
+      assert.equal(exLogs.total, 1);
+      assert.equal(exLogs.items[0].exerciseId, day0.exercises[0].id);
+
+      const restDayDate = new Date(Date.parse(`${todayDate}T12:00:00Z`) + 86400000).toISOString().slice(0, 10);
+      await errJson(await postCmd(fToken, fRev, 'reschedule', { dayIndex: day0.dayIndex, toDate: restDayDate }, { minimal: true }), 409, 'SESSION_ALREADY_COMPLETED');
+      const splitRev = await okJson(await call('/v1/workouts/split-review', { headers: fHdr }));
+      assert.equal(splitRev.due, false);
+      assert.equal(splitRev.code, 'SPLIT_REVIEW_NOT_DUE');
+
+      const wearRes = await okJson(await call('/v1/wearables/ingest', {
+        method: 'POST',
+        headers: { ...fHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          records: [
+            { type: 'cardio', date: todayDate, modality: 'running', durationMinutes: 30, distanceKm: 4.5, caloriesKcal: 280, source: 'apple_health', externalRecordId: 'hk-cardio-mg-1' },
+            { type: 'weight', date: 'not-a-date', kg: 64.5, source: 'apple_health' },
+          ],
+        }),
+      }));
+      assert.equal(wearRes.ingested, 1);
+      assert.equal(wearRes.skippedCount, 1);
+      assert.equal(wearRes.skippedRecords.length, 1);
+      fRev = wearRes.revision;
+
+      // 5. Female cycle discreetMode + gentle session + seasonal_flex + widget snapshot + batch consents lock
+      fRev = (await okJson(await postCmd(fToken, fRev, 'cycle_settings', {
+        enabled: true, averageCycleLengthDays: 28, averagePeriodLengthDays: 5,
+        lastPeriodStartDate: todayDate, discreetMode: true, adaptiveThemeEnabled: true,
+      }, { minimal: true }))).revision;
+      fRev = (await okJson(await postCmd(fToken, fRev, 'cycle_gentle_session', { enabled: true }, { minimal: true }))).revision;
+      const cycleState = await okJson(await call('/v1/cycle/state', { headers: fHdr }));
+      assert.equal(cycleState.discreetMode, true);
+      assert.equal(cycleState.phaseAccentToken, 'neutral');
+
+      fRev = (await okJson(await postCmd(fToken, fRev, 'seasonal_flex', { enabled: true, occasion: 'eid_fitr' }, { minimal: true }))).revision;
+      const widgetSnap = await okJson(await call('/v1/widgets/snapshot', { headers: fHdr }));
+      assert.equal(widgetSnap.seasonalMode, 'eid_flex');
+
+      const batchConsents = await okJson(await call('/v1/account/consents', {
+        method: 'POST',
+        headers: { ...fHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: [
+            { consentType: 'analytics_telemetry', version: '1.0.0', accepted: true },
+            { consentType: 'health_data_processing', version: '1.0.0', accepted: false },
+          ],
+        }),
+      }));
+      assert.equal(batchConsents.items.length, 2);
+      await errJson(await postCmd(fToken, fRev, 'comeback_restart', { mode: '7d_ramp' }, { minimal: true }), 403, 'HEALTH_CONSENT_REQUIRED');
+      await errJson(await postCmd(fToken, fRev, 'cycle_gentle_session', { enabled: false }, { minimal: true }), 403, 'HEALTH_CONSENT_REQUIRED');
+
+      // 6. Avatar re-upload R2 deletion + empty-body logout
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01]);
+      const av1 = await okJson(await call('/v1/profile/avatar', { method: 'POST', headers: { ...fHdr, 'Content-Type': 'image/jpeg' }, body: jpegBytes }));
+      const av2 = await okJson(await call('/v1/profile/avatar', { method: 'POST', headers: { ...fHdr, 'Content-Type': 'image/jpeg' }, body: jpegBytes }));
+      assert.notEqual(av1.avatarKey, av2.avatarKey);
+      assert.equal(await bucket.get(av1.avatarKey), null, 'Old R2 avatar must be deleted when replaced');
+      assert.ok(await bucket.get(av2.avatarKey), 'New R2 avatar must exist');
+
+      const emptyLogout = await okJson(await call('/v1/auth/logout', { method: 'POST', headers: fHdr }));
+      assert.equal(emptyLogout.loggedOut, true);
+    });
   } finally {
     await mf.dispose();
   }

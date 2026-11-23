@@ -34,7 +34,7 @@ const COLLECTION_OVERVIEW_MD = [
   '',
   '## 2. Authentication (Google & Apple OIDC Only + First-Party JWT/D1 Sessions)',
   '',
-  '- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/plans/preview`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/auth/refresh`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.',
+  '- **Public endpoints (No Auth):** `GET /v1/health`, `GET /v1/capabilities`, `POST /v1/eligibility`, `POST /v1/plans/preview`, `POST /v1/auth/oauth/google`, `POST /v1/auth/oauth/apple`, `POST /v1/auth/refresh`, `POST /v1/webhooks/apple`, `POST /v1/webhooks/google-play`, and HMAC-signed `GET/PUT /v1/media/signed/{token}`.',
   '- **Authenticated endpoints:** Send `Authorization: Bearer {{accessToken}}` (inherited automatically at collection level).',
   '- **Access Token:** HS256 JWT (TTL: `900s` / 15 minutes).',
   '- **Refresh Token:** Opaque rotating token (`cfrt_...`, TTL: 30 days) stored SHA-256 hashed in D1. Replaying an already-rotated token revokes the entire session (`401 AUTH_REFRESH_TOKEN_REUSED`).',
@@ -60,7 +60,7 @@ const COLLECTION_OVERVIEW_MD = [
   '| Field | Type | Description |',
   '| :--- | :--- | :--- |',
   '| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |',
-  '| `error.code` | `string` | Stable uppercase error code (290 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
+  '| `error.code` | `string` | Stable uppercase error code (293 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
   '| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |',
   '| `error.params` | `object` | Interpolation parameters for client-side localization |',
   '| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |',
@@ -812,7 +812,7 @@ const collection = {
           name: 'Claim Anonymous Web Session',
           method: 'POST',
           path: '/v1/auth/claim-anonymous',
-          summary: 'Atomically migrates an anonymous Web MVP trial account (`anon:...`) into the logged-in verified account. Requires owning `coach_uid` cookie + explicit `consent: true`.',
+          summary: 'Atomically migrates a legacy Web anonymous trial account (`anon:...`) into the logged-in verified account. Requires owning `coach_uid` Web cookie + explicit `consent: true` (Web-only).',
           fields: [
             { name: 'anonymousUserId', type: 'string', required: true, constraints: 'Must start with `anon:` and match cookie', description: 'Anonymous session userId from Web MVP.' },
             { name: 'consent', type: 'boolean', required: true, constraints: 'Must be `true`', description: 'Explicit user consent to merge data.' }
@@ -876,7 +876,8 @@ const collection = {
           name: 'Pre-Screening Eligibility Check',
           method: 'POST',
           path: '/v1/eligibility',
-          summary: 'Fast deterministic pre-onboarding screening checking age (18..70), BMI boundaries (12.5..65), medical conditions, injuries, and maternal status before plan generation.',
+          noAuth: true,
+          summary: 'Public fast deterministic pre-onboarding screening checking age (18..70), BMI boundaries (12.5..65), medical conditions, injuries, and maternal status before plan generation.',
           fields: [
             { name: 'age', type: 'integer', required: true, constraints: '18..70', description: 'User age in years.' },
             { name: 'sex', type: 'string (enum)', required: true, constraints: '`male` | `female`', description: 'Biological sex for BMR/energy calculation.' },
@@ -965,9 +966,9 @@ const collection = {
         cmdReq({
           name: 'Renew Weekly Nutrition Plan',
           action: 'renew_plan',
-          summary: 'Generates the next 7-day nutrition plan after the active plan\'s end date has elapsed, or early when `earlyRenew: true` (preserving today\'s meals).',
+          summary: 'Generates the next 7-day nutrition plan after the active plan\'s end date has elapsed, or early when `earlyRenew: true` (starting today while keeping today\'s meals; Pro-gated when enforcement is enabled).',
           payloadFields: [
-            { name: 'earlyRenew', type: 'boolean', required: false, constraints: 'default: false', description: 'When `true`, regenerates remaining days starting tomorrow while preserving today.' }
+            { name: 'earlyRenew', type: 'boolean', required: false, constraints: 'default: false (Pro when true)', description: 'When `true`, regenerates a full 7-day plan starting today while preserving today\'s meals.' }
           ],
           payload: {}
         })
@@ -1057,9 +1058,11 @@ const collection = {
           name: 'Get Food Diary for Date',
           method: 'GET',
           path: '/v1/food-diary?date={{todayDate}}',
-          summary: 'Returns actual food entries, nullable nutrient totals, completion status, and planned energy target for a specific user-local date.',
+          summary: 'Returns actual food entries, nullable nutrient totals, completion status, and planned energy target for a specific user-local date or `from..to` range (up to 62 days).',
           queryParams: [
-            { key: 'date', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Defaults to today', description: 'User-local calendar date.' }
+            { key: 'date', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Defaults to today', description: 'User-local calendar date.' },
+            { key: 'from', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Optional range start (with `to`)', description: 'Range start date (inclusive).' },
+            { key: 'to', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Optional range end (max 62 days)', description: 'Range end date (inclusive).' }
           ],
           responseFields: [
             { name: 'date', type: 'string (YYYY-MM-DD)', description: 'Diary date.' },
@@ -1136,14 +1139,35 @@ const collection = {
           ]
         }),
         cmdReq({
+          name: 'Log Food Entries Batch (food_entry_batch)',
+          action: 'food_entry_batch',
+          summary: 'Atomically logs 1..15 food entries (multi-select quick-log tray across recent, planned, ingredient, recipe, barcode, or manual items) in a single request.',
+          payloadFields: [
+            { name: 'date', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Optional batch default date', description: 'Default date applied when omitted per item.' },
+            { name: 'slot', type: 'string (enum)', required: false, constraints: 'Optional batch default slot', description: 'Default slot applied when omitted per item.' },
+            { name: 'displaySlot', type: 'string (enum)', required: false, constraints: '`suhoor` | `iftar` | `ramadan_snack` | null', description: 'Optional batch default Ramadan display slot.' },
+            { name: 'items', type: 'Array<object>', required: true, constraints: '1..15 food_entry objects', description: 'Array of food entries to validate and commit atomically.' }
+          ],
+          payload: {
+            date: '{{todayDate}}',
+            slot: 'breakfast',
+            items: [
+              { source: 'ingredient', key: 'egg', grams: 120 },
+              { source: 'manual', name: 'Espresso Without Sugar', energy: 5 }
+            ]
+          }
+        }),
+        cmdReq({
           name: 'Update Food Entry Atomically (food_entry_update)',
           action: 'food_entry_update',
-          summary: 'Atomically edits an existing food entry in place (preserving its ID and recomputing scaled macros for planned/ingredient entries, or updating manual fields).',
+          summary: 'Atomically edits an existing food entry in place (preserving ID, scaling without 0.1..4.0 clamp, converting grams/servings, and updating displaySlot).',
           payloadFields: [
             { name: 'id', type: 'string (UUID)', required: true, constraints: 'Existing food entry ID', description: 'Food entry ID to update.' },
             { name: 'slot', type: 'string (enum)', required: false, constraints: '`breakfast` | `lunch` | `dinner` | `snack`', description: 'Updated meal slot.' },
-            { name: 'quantity', type: 'number', required: false, constraints: '0.1..5 (planned entries)', description: 'Updated portion multiplier.' },
-            { name: 'grams', type: 'number', required: false, constraints: '1..3000 (ingredient entries)', description: 'Updated weight in grams.' },
+            { name: 'displaySlot', type: 'string (enum) | null', required: false, constraints: '`suhoor` | `iftar` | `ramadan_snack` | null', description: 'Updated Ramadan display slot.' },
+            { name: 'quantity', type: 'number', required: false, constraints: '0.1..10 (planned entries)', description: 'Updated portion multiplier.' },
+            { name: 'grams', type: 'number', required: false, constraints: '1..5000 (ingredient/recipe entries)', description: 'Updated weight in grams.' },
+            { name: 'servings', type: 'number', required: false, constraints: '0.1..20 (recipe entries)', description: 'Updated recipe servings.' },
             { name: 'name', type: 'string', required: false, constraints: '1..120 chars (manual entries)', description: 'Updated label.' },
             { name: 'energy', type: 'number', required: false, constraints: '0..5000 (manual entries)', description: 'Updated calories.' }
           ],
@@ -1311,21 +1335,24 @@ const collection = {
           name: 'Ingest Wearables Batch (Health Connect / Apple Health)',
           method: 'POST',
           path: '/v1/wearables/ingest',
-          summary: 'Idempotent batch ingestion of up to 100 weight/steps/activity records from Android Health Connect or Apple HealthKit.',
+          summary: 'Idempotent batch ingestion of up to 100 weight/steps/activity/cardio records from Android Health Connect or Apple HealthKit with partial skippedRecords[] reporting.',
           headers: [{ key: 'Idempotency-Key', value: '{{idempotencyKey}}', required: false, description: 'Optional UUID (server derives canonical digest key if omitted).' }],
           fields: [
             { name: 'records', type: 'Array<object>', required: true, constraints: '1..100 records', description: 'Array of wearable records.' },
-            { name: 'records[].type', type: 'string (enum)', required: true, constraints: '`weight` | `steps` | `activity`', description: 'Record type.' },
+            { name: 'records[].type', type: 'string (enum)', required: true, constraints: '`weight` | `steps` | `activity` | `cardio`', description: 'Record type.' },
             { name: 'records[].date', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Past 90 days..today', description: 'Record date.' },
             { name: 'records[].kg', type: 'number', required: false, constraints: 'Required for `weight` (35..250)', description: 'Weight in kg.' },
             { name: 'records[].steps', type: 'integer', required: false, constraints: '0..100000', description: 'Steps count.' },
             { name: 'records[].activeEnergyKcal', type: 'number', required: false, constraints: '0..5000', description: 'Active calories.' },
+            { name: 'records[].modality', type: 'string', required: false, constraints: 'For `cardio` (walking, running, cycling, swimming, etc.)', description: 'Cardio modality.' },
+            { name: 'records[].durationMinutes', type: 'integer', required: false, constraints: 'For `cardio` (5..360)', description: 'Cardio duration in minutes.' },
             { name: 'records[].externalRecordId', type: 'string', required: false, constraints: 'max 120 chars', description: 'Deduplication ID.' }
           ],
           responseFields: [
             { name: 'ok', type: 'boolean', description: '`true`.' },
             { name: 'revision', type: 'integer', description: 'Updated account revision.' },
-            { name: 'ingested', type: 'integer', description: 'Count of processed records.' }
+            { name: 'ingested', type: 'integer', description: 'Count of processed records.' },
+            { name: 'skippedRecords', type: 'Array<object>', description: 'Validation-skipped records without blocking valid rows.' }
           ],
           examples: [{ name: '200 OK — Ingested', code: 200, body: { ok: true, revision: 6, ingested: 2 } }],
           body: {
@@ -1360,20 +1387,22 @@ const collection = {
           name: 'Get Workout Plan by ID',
           method: 'GET',
           path: '/v1/workout-plans/{{activeWorkoutPlanId}}',
-          summary: 'Fetches full owned workout plan with days, exercises, target reps/RIR, rest seconds, and weekly set totals.',
+          summary: 'Fetches full owned workout plan enriched with days, exercises, targetRepsRange, targetRir, restSeconds, and weeklyMuscleSets.',
           pathParams: [{ key: 'activeWorkoutPlanId', type: 'string (UUID)', required: true, description: 'Owned workout plan ID.' }]
         }),
         cmdReq({
           name: 'Log Exercise Sets (workout)',
           action: 'workout',
-          summary: 'Logs performed sets (`kg`, `reps`, `rir`, `pain`) for a scheduled exercise and computes progression suggestions.',
+          summary: 'Logs performed sets (`kg`/`addedKg`, `reps`, `rir`, `pain`, `setType`) plus optional session notes and computes progression suggestions.',
           payloadFields: [
             { name: 'date', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Defaults to today', description: 'Exposure date.' },
             { name: 'dayIndex', type: 'integer', required: true, constraints: '0..6 (`0=Sun .. 6=Sat`)', description: 'Workout day index in active plan.' },
             { name: 'exerciseId', type: 'string', required: true, constraints: 'Must exist in day\'s exercises', description: 'Exercise ID.' },
-            { name: 'sets', type: 'Array<object>', required: true, constraints: '1..10 sets: `{ kg: 0..500, reps: int 1..100, rir?: 0..10, pain?: boolean }`', description: 'Performed sets.' },
-            { name: 'bothSides', type: 'boolean', required: false, constraints: 'Required `true` for unilateral exercises to progress', description: 'Confirms both sides completed.' },
+            { name: 'weightedBodyweight', type: 'boolean', required: false, constraints: 'Opt-in loaded bodyweight', description: 'Enables addedKg/kg tracking for supported bodyweight movements.' },
+            { name: 'sets', type: 'Array<object>', required: true, constraints: '1..10 sets: `{ kg?: 0..500, addedKg?: 0..500, reps: int 1..100, rir?: 0..10, pain?: boolean, setType?: string }`', description: 'Performed sets.' },
+            { name: 'bothSides', type: 'boolean', required: false, constraints: 'default: true (`false` pauses unilateral progression)', description: 'Confirms both sides completed.' },
             { name: 'increment', type: 'number | null', required: false, constraints: '0.1..20 (kg)', description: 'Optional preferred load step.' },
+            { name: 'notes', type: 'string', required: false, constraints: 'max 300 chars', description: 'Optional exercise performance notes.' },
             { name: 'autoSession', type: 'boolean', required: false, constraints: 'default: false', description: 'Automatically creates/updates session coverage record.' }
           ],
           payload: {
@@ -1393,8 +1422,11 @@ const collection = {
           name: 'List Workout Logs',
           method: 'GET',
           path: '/v1/workout-logs?offset=0&limit=30',
-          summary: 'Paginated exercise set/rep/load logs.',
-          queryParams: PAGINATION_QUERY_PARAMS,
+          summary: 'Paginated exercise set/rep/load logs ordered by date descending, optionally filtered by `exerciseId`.',
+          queryParams: [
+            ...PAGINATION_QUERY_PARAMS,
+            { key: 'exerciseId', type: 'string', required: false, constraints: 'Optional exercise ID filter', description: 'Filter history to one exercise.' }
+          ],
           responseFields: PAGINATION_RESPONSE_FIELDS
         }),
         cmdReq({
@@ -1418,7 +1450,8 @@ const collection = {
             { name: 'dayIndex', type: 'integer', required: true, constraints: '0..6', description: 'Workout day index.' },
             { name: 'status', type: 'string (enum)', required: true, constraints: '`completed` | `partial` | `missed`', description: 'Session completion status.' },
             { name: 'duration', type: 'number | null', required: false, constraints: '1..240 (minutes)', description: 'Total workout duration.' },
-            { name: 'rpe', type: 'number | null', required: false, constraints: '0..10', description: 'Session perceived exertion.' }
+            { name: 'rpe', type: 'number | null', required: false, constraints: '0..10', description: 'Session perceived exertion.' },
+            { name: 'notes', type: 'string | null', required: false, constraints: 'max 300 chars', description: 'Optional workout session notes.' }
           ],
           payload: { date: '{{todayDate}}', dayIndex: '__DAY_IDX__', status: 'completed', duration: 45, rpe: 7 }
         }),
@@ -1477,12 +1510,18 @@ const collection = {
         cmdReq({
           name: 'Propose Workout Reschedule (reschedule)',
           action: 'reschedule',
-          summary: 'Creates a pending schedule adaptation proposal moving a workout day to a rest day within the next 13 days.',
+          summary: 'Creates a pending schedule adaptation proposal moving a workout day to a rest day within the next 13 days (returns `409 SESSION_ALREADY_COMPLETED` if completed).',
           payloadFields: [
             { name: 'dayIndex', type: 'integer', required: true, constraints: '0..6', description: 'Workout day to move.' },
             { name: 'toDate', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Rest day within `today..today+13`', description: 'Target date.' }
           ],
           payload: { dayIndex: '__DAY_IDX__', toDate: '{{sampleRescheduleDate}}' }
+        }),
+        req({
+          name: 'Get 8-Week Split Review',
+          method: 'GET',
+          path: '/v1/workouts/split-review',
+          summary: 'Evaluates 8-week Full Body split progression readiness returning `{ due, kind, code, params, text }` in canonical pure English.'
         })
       ]
     },
@@ -1840,6 +1879,8 @@ const collection = {
             { name: 'workoutReminder', type: 'boolean', required: false, constraints: 'boolean', description: 'Workout day reminder.' },
             { name: 'waterReminder', type: 'boolean', required: false, constraints: 'boolean', description: 'Hydration reminder.' },
             { name: 'weeklyReviewReminder', type: 'boolean', required: false, constraints: 'boolean', description: 'Weekly review reminder.' },
+            { name: 'ramadanSuhoorReminder', type: 'boolean', required: false, constraints: 'boolean', description: 'Ramadan pre-dawn Suhoor reminder.' },
+            { name: 'exemptSuhoorFromQuietHours', type: 'boolean', required: false, constraints: 'boolean', description: 'Allow Suhoor alert even during quiet hours.' },
             { name: 'quietHoursStart', type: 'string (HH:mm)', required: false, constraints: '`00:00`..`23:59`', description: 'Quiet hours start.' },
             { name: 'quietHoursEnd', type: 'string (HH:mm)', required: false, constraints: '`00:00`..`23:59`', description: 'Quiet hours end.' }
           ],
@@ -1862,11 +1903,12 @@ const collection = {
           name: 'Record Privacy / Health Consent',
           method: 'POST',
           path: '/v1/account/consents',
-          summary: 'Records versioned explicit user consent in Cloudflare D1 (`coaching_account_consents`).',
+          summary: 'Records one or a batch (`items[]`) of versioned explicit user consents in Cloudflare D1 (`coaching_account_consents`).',
           fields: [
-            { name: 'consentType', type: 'string', required: true, constraints: 'max 60 chars', description: 'Consent category (e.g. `health_data_processing`).' },
-            { name: 'version', type: 'string', required: true, constraints: 'max 30 chars', description: 'Policy/terms version string.' },
-            { name: 'accepted', type: 'boolean', required: true, constraints: 'boolean', description: 'Whether accepted or withdrawn.' }
+            { name: 'consentType', type: 'string', required: false, constraints: 'max 60 chars (single mode)', description: 'Consent category (e.g. `health_data_processing`).' },
+            { name: 'version', type: 'string', required: false, constraints: 'max 30 chars (single mode)', description: 'Policy/terms version string.' },
+            { name: 'accepted', type: 'boolean', required: false, constraints: 'boolean (single mode)', description: 'Whether accepted or withdrawn.' },
+            { name: 'items', type: 'Array<object>', required: false, constraints: '1..10 items `{ consentType, version, accepted }`', description: 'Atomic batch consent payload alternative to single fields.' }
           ],
           responseFields: [
             { name: 'consentType', type: 'string', description: 'Recorded consent type.' },
@@ -1961,7 +2003,7 @@ const collection = {
           method: 'POST',
           path: '/v1/plans/preview',
           noAuth: true,
-          summary: 'Stateless onboarding calculation returning daily kcal/macros, safe calorie floors, water target, eligibility, and weekly forecast range.',
+          summary: 'Stateless onboarding calculation returning daily kcal/macros, safe calorie floors, `restDayWaterTarget`, `workoutDayWaterTarget`, `estimatedExercisesPerSession`, eligibility, and weekly forecast range.',
           fields: [
             { name: 'name', type: 'string', required: false, constraints: 'max 100 chars', description: 'Optional display name.' },
             { name: 'age', type: 'integer', required: true, constraints: '18..70', description: 'Age in years.' },
@@ -2051,7 +2093,16 @@ const collection = {
           ],
           body: { selectedIngredients: ['eggs', 'fava', 'olive', 'tomato'], limit: 15 }
         }),
-        req({ name: 'Get Plan Grocery List', method: 'GET', path: '/v1/plans/{{activePlanId}}/grocery-list?days=all', summary: 'Aggregated shopping list for the active nutrition plan with checked item state (Pro feature when enforcement is enabled).' }),
+        req({
+          name: 'Get Plan Grocery List',
+          method: 'GET',
+          path: '/v1/plans/{{activePlanId}}/grocery-list?days=all',
+          summary: 'Aggregated shopping list (`days=all|remaining|3|7`) with checked item state (Pro feature; append `?preview=true` for Free 2-item teaser).',
+          queryParams: [
+            { key: 'days', type: 'string (enum)', required: false, constraints: '`all` | `remaining` | `3` | `7`', description: 'Day window filter.' },
+            { key: 'preview', type: 'boolean', required: false, constraints: 'default: false (`true` = Free teaser)', description: 'Returns 2 sample items + lock count for Free tier.' }
+          ]
+        }),
         cmdReq({
           name: 'Toggle Grocery Item (grocery_toggle)',
           action: 'grocery_toggle',
@@ -2063,11 +2114,21 @@ const collection = {
           ],
           payload: { planId: '{{activePlanId}}', ingredientKey: 'egg', checked: true }
         }),
+        req({
+          name: 'List Recent Logged Foods',
+          method: 'GET',
+          path: '/v1/foods/recent?days=30&limit=25',
+          summary: 'Returns recently logged unique foods ranked by frequency and recency for zero-query rapid logging.',
+          queryParams: [
+            { key: 'days', type: 'integer', required: false, constraints: '1..90 (default 30)', description: 'Lookback window in days.' },
+            { key: 'limit', type: 'integer', required: false, constraints: '1..50 (default 25)', description: 'Max unique items returned.' }
+          ]
+        }),
         req({ name: 'List Food Favorites', method: 'GET', path: '/v1/foods/favorites?offset=0&limit=40', summary: 'Returns pinned/favorite foods for quick logging.' }),
         cmdReq({
           name: 'Toggle Food Favorite (food_favorite)',
           action: 'food_favorite',
-          summary: 'Pins or unpins a food item as a user favorite.',
+          summary: 'Pins or unpins a food item (`planned`, `ingredient`, `recipe`, `barcode`, or `manual`) as a user favorite.',
           payloadFields: [
             { name: 'op', type: 'string (enum)', required: true, constraints: '`add` | `remove`', description: 'Favorite operation.' },
             { name: 'item', type: 'object', required: true, constraints: 'Food item descriptor', description: 'Food item to pin or remove.' }
@@ -2077,11 +2138,13 @@ const collection = {
         cmdReq({
           name: 'Copy Meals from Previous Day (copy_meal)',
           action: 'copy_meal',
-          summary: 'Copies logged food entries from a source date/slot into a target date/slot.',
+          summary: 'Copies logged food entries (all, by slot, or specific `entryIds[]`) into `toDate` and optional target `toSlot`.',
           payloadFields: [
             { name: 'fromDate', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Valid ISO date', description: 'Source log date.' },
             { name: 'toDate', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Valid ISO date', description: 'Destination log date.' },
-            { name: 'slot', type: 'string (enum)', required: false, constraints: '`breakfast` | `lunch` | `dinner` | `snack`', description: 'Optional meal slot filter.' }
+            { name: 'slot', type: 'string (enum)', required: false, constraints: '`breakfast` | `lunch` | `dinner` | `snack`', description: 'Optional source meal slot filter.' },
+            { name: 'toSlot', type: 'string (enum)', required: false, constraints: '`breakfast` | `lunch` | `dinner` | `snack`', description: 'Optional destination slot override.' },
+            { name: 'entryIds', type: 'Array<string>', required: false, constraints: '1..30 entry IDs', description: 'Specific entry IDs from `fromDate` to copy.' }
           ],
           payload: { fromDate: '{{todayDate}}', toDate: '{{todayDate}}', slot: 'breakfast' }
         }),
@@ -2096,7 +2159,8 @@ const collection = {
             { name: 'nameEn', type: 'string', required: true, constraints: '2..120 chars', description: 'English product name.' },
             { name: 'brand', type: 'string', required: false, constraints: 'max 80 chars', description: 'Brand name.' },
             { name: 'servingSizeGrams', type: 'number', required: false, constraints: '1..2000', description: 'Default serving size in grams.' },
-            { name: 'valuesPer100g', type: 'object', required: true, constraints: '`{ energy, protein, carbs, fat }`', description: 'Nutrition facts per 100g.' }
+            { name: 'servingLabel', type: 'string', required: false, constraints: 'max 40 chars', description: 'Optional human-friendly serving label (e.g. `1 cup`, `1 bar`).' },
+            { name: 'valuesPer100g', type: 'object', required: true, constraints: '`{ energy, protein, carbs, fat, saturated?, fiber?, sodium?, sugars? }`', description: 'Nutrition facts per 100g.' }
           ],
           body: { barcode: '6221000000001', nameEn: 'Greek Yogurt Plain', brand: 'Local Dairy', servingSizeGrams: 170, valuesPer100g: { energy: 97, protein: 9.0, carbs: 3.6, fat: 5.0 } }
         }),
@@ -2115,7 +2179,7 @@ const collection = {
         cmdReq({
           name: 'Toggle Ramadan Mode (ramadan_mode)',
           action: 'ramadan_mode',
-          summary: 'Enables or disables Ramadan Iftar/Suhoor meal slot remapping (Free feature; works for both nutrition and workouts-only users).',
+          summary: 'Enables or disables Ramadan Iftar/Suhoor meal slot remapping with automatic post-Ramadan reversion (Free feature; works for both nutrition and workouts-only users).',
           payloadFields: [
             { name: 'enabled', type: 'boolean', required: true, constraints: 'boolean', description: 'Whether Ramadan mode is enabled.' },
             { name: 'iftarTime', type: 'string (HH:mm)', required: false, constraints: '`00:00`..`23:59`', description: 'Local Iftar start time.' },
@@ -2123,6 +2187,18 @@ const collection = {
             { name: 'endDate', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Optional Eid/Ramadan end date', description: 'Optional auto-expiration date for Ramadan mode.' }
           ],
           payload: { enabled: true, iftarTime: '18:15', suhoorCutoffTime: '04:00' }
+        }),
+        cmdReq({
+          name: 'Toggle Seasonal / Eid Flex Mode (seasonal_flex)',
+          action: 'seasonal_flex',
+          summary: 'Activates temporary maintenance calories (`tdee`) and automatic `flexDates` streak protection for Eid, travel, or seasonal breaks (1..7 days, Free feature).',
+          payloadFields: [
+            { name: 'enabled', type: 'boolean', required: true, constraints: 'boolean', description: 'Enable or disable Seasonal Flex Mode.' },
+            { name: 'occasion', type: 'string (enum)', required: false, constraints: '`eid_fitr` | `eid_adha` | `travel` | `custom`', description: 'Seasonal occasion tag.' },
+            { name: 'endDate', type: 'string (YYYY-MM-DD)', required: false, constraints: '`today`..`today+7d` (default `+2d`)', description: 'Last inclusive date for maintenance/flex protection.' },
+            { name: 'dismissEidPrompt', type: 'boolean', required: false, constraints: 'Optional when `enabled: false`', description: 'Dismisses the post-Ramadan Eid prompt cleanly.' }
+          ],
+          payload: { enabled: true, occasion: 'eid_fitr' }
         }),
         req({
           name: 'List Saved Custom Recipes',
@@ -2133,12 +2209,14 @@ const collection = {
         cmdReq({
           name: 'Save Custom Home Recipe (recipe_save)',
           action: 'recipe_save',
-          summary: 'Creates or updates a saved multi-ingredient home recipe (max 100 recipes) with verified per-serving and per-100g macros (Free feature).',
+          summary: 'Creates or updates a saved multi-ingredient home recipe (max 100 recipes) with cooked yield (`finalWeightGrams`), custom additions, `ml` liquid conversions, and quality tier (Free feature).',
           payloadFields: [
             { name: 'id', type: 'string', required: false, constraints: 'Optional UUID for update', description: 'Existing recipe ID to update in place.' },
             { name: 'name', type: 'string', required: true, constraints: '2..80 chars', description: 'Recipe display name.' },
             { name: 'servings', type: 'number', required: true, constraints: '0.5..30', description: 'Total servings produced by the recipe batch.' },
-            { name: 'items', type: 'Array<object>', required: true, constraints: '1..25 items `{ foodId, grams }`', description: 'Catalog ingredient IDs and gram weights.' },
+            { name: 'finalWeightGrams', type: 'number', required: false, constraints: '20..15000 (cooked batch yield)', description: 'Optional final cooked batch weight for accurate yield ratio.' },
+            { name: 'items', type: 'Array<object>', required: true, constraints: '1..25 items `{ foodId, grams? , ml? }`', description: 'Catalog ingredient IDs with grams or ml (auto-converted by density).' },
+            { name: 'additions', type: 'Array<object>', required: false, constraints: '0..10 items `{ name, energy, protein?, carbs?, fat?, grams? }`', description: 'Optional non-catalog additions (spices, sauces, oils).' },
             { name: 'notes', type: 'string', required: false, constraints: 'max 300 chars', description: 'Optional preparation notes.' }
           ],
           payload: { name: 'Home Grilled Chicken Rice Bowl', servings: 2, items: [{ foodId: 'chicken', grams: 300 }, { foodId: 'rice', grams: 200 }] }
@@ -2204,13 +2282,15 @@ const collection = {
           ],
           payload: { id: 'cardio-log-id-placeholder' }
         }),
-        req({ name: 'Get Female Cycle Awareness State', method: 'GET', path: '/v1/cycle/state', summary: 'Returns optional female menstrual cycle awareness state, phase estimate, luteal water-retention flag, and pregnancy auto-pause status (`available: false` for non-female profiles; Free opt-in feature).' }),
+        req({ name: 'Get Female Cycle Awareness State', method: 'GET', path: '/v1/cycle/state', summary: 'Returns optional female menstrual cycle awareness state (`phase`, `coachingHintCode`, `discreetMode`, `adaptiveThemeEnabled`, `phaseAccentToken`, `suggestedGentleSession`, `isOverdue`/`overdueDays`, luteal water-retention flag, and pregnancy auto-pause; Free opt-in feature).' }),
         cmdReq({
           name: 'Update Cycle Awareness Settings (cycle_settings)',
           action: 'cycle_settings',
-          summary: 'Enables/disables optional female cycle awareness and configures average cycle/period lengths (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).',
+          summary: 'Enables/disables optional female cycle awareness, discreet mode, adaptive phase accent, and cycle lengths (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).',
           payloadFields: [
             { name: 'enabled', type: 'boolean', required: true, constraints: 'boolean', description: 'Opt-in toggle for cycle awareness.' },
+            { name: 'discreetMode', type: 'boolean', required: false, constraints: 'default: false', description: 'Masks sensitive cycle labels and disables tinted cycle accent.' },
+            { name: 'adaptiveThemeEnabled', type: 'boolean', required: false, constraints: 'default: true', description: 'Allows subtle cycle-phase accent tokens when Discreet Mode is off.' },
             { name: 'averageCycleLengthDays', type: 'integer', required: false, constraints: '21..45 (default 28)', description: 'Average menstrual cycle length in days.' },
             { name: 'averagePeriodLengthDays', type: 'integer', required: false, constraints: '2..10 (default 5)', description: 'Average period duration in days.' },
             { name: 'lastPeriodStartDate', type: 'string (YYYY-MM-DD)', required: false, constraints: 'Within last 180 days or null', description: 'Start date of last menstrual period.' }
@@ -2229,6 +2309,15 @@ const collection = {
             { name: 'symptoms', type: 'Array<string>', required: false, constraints: 'Supported wellness symptom keys', description: 'Optional symptom tags (e.g. `cramps`, `bloating`, `fatigue`).' }
           ],
           payload: { date: '{{todayDate}}', periodStart: true, flowLevel: 'medium', crampSeverity: 2, symptoms: ['cramps', 'fatigue'] }
+        }),
+        cmdReq({
+          name: 'Toggle Cycle Comfort Session (cycle_gentle_session)',
+          action: 'cycle_gentle_session',
+          summary: 'One-tap female cycle comfort adjustment scaling working workout sets by 0.8x for 24 hours without mutating base plan progression (female-only `403 CYCLE_TRACKING_UNAVAILABLE`; requires active `health_data_processing` consent).',
+          payloadFields: [
+            { name: 'enabled', type: 'boolean', required: true, constraints: 'boolean', description: 'Activate or clear the 24h gentle comfort adjustment.' }
+          ],
+          payload: { enabled: true }
         }),
         req({ name: 'Get Workout Personal Records (PRs)', method: 'GET', path: '/v1/workouts/prs', summary: 'Returns best weight, reps, estimated 1RM, and session volume per exercise (with assisted-exercise load inversion).' }),
         req({ name: 'Get Progress Analytics', method: 'GET', path: '/v1/progress/analytics?range=30d', summary: 'Returns weight moving average trend, calorie adherence, training volume, and exercise e1RM series (`14d`/`30d` Free; `90d`/`all` Pro).' }),
@@ -2249,7 +2338,7 @@ const collection = {
         cmdReq({
           name: 'Use Streak Freeze (streak_freeze)',
           action: 'streak_freeze',
-          summary: 'Consumes one streak freeze token (max 1 per 7 days) to protect the nutrition streak.',
+          summary: 'Consumes one manual streak freeze token (max 1 per 7 days) alongside automatic Weekly Auto-Freeze protection (`autoAppliedFreezes`) for missed logging days.',
           payloadFields: [
             { name: 'date', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Valid ISO date', description: 'Date to protect with a streak freeze token.' }
           ],
@@ -2263,15 +2352,14 @@ const collection = {
       description: 'Worker-proxied HMAC-signed R2 avatars & progress photos, FCM/APNs push tokens, StoreKit/Play Billing verification & webhooks, and deferred AI phase 501 placeholders.',
       item: [
         req({
-          name: 'Create Profile Avatar Upload URL',
+          name: 'Upload Profile Avatar (Multipart / Binary)',
           method: 'POST',
           path: '/v1/profile/avatar',
-          summary: 'Issues a short-lived HMAC-signed PUT URL for uploading a profile avatar (JPEG/PNG/WebP, max 512 KB) into Cloudflare R2.',
+          summary: 'Uploads a profile avatar directly via `multipart/form-data` (`image`/`file`) or raw binary (`image/jpeg`, `image/png`, `image/webp`, max 512 KB) into private Cloudflare R2 with old-avatar cleanup and returns a short-lived signed GET URL.',
           fields: [
-            { name: 'contentType', type: 'string (enum)', required: true, constraints: '`image/jpeg` | `image/png` | `image/webp`', description: 'Avatar MIME type.' },
-            { name: 'byteSize', type: 'integer', required: true, constraints: '1..524288', description: 'Declared file size in bytes (max 512 KB).' }
+            { name: 'image', type: 'file (binary)', required: true, constraints: 'JPEG/PNG/WebP, max 512 KB (multipart/form-data or raw image body)', description: 'Avatar binary file.' }
           ],
-          body: { contentType: 'image/jpeg', byteSize: 180000 }
+          body: {}
         }),
         req({ name: 'Delete Profile Avatar', method: 'DELETE', path: '/v1/profile/avatar', summary: 'Deletes the signed-in user avatar from Cloudflare R2.' }),
         req({ name: 'List Progress Photos', method: 'GET', path: '/v1/progress/photos?offset=0&limit=30', summary: 'Lists progress photos with short-lived Worker-signed GET URLs (always free to read/delete).' }),
@@ -2285,9 +2373,9 @@ const collection = {
             { name: 'byteSize', type: 'integer', required: true, constraints: '1..5242880', description: 'Declared file size in bytes (max 5 MB).' },
             { name: 'pose', type: 'string (enum)', required: true, constraints: '`front` | `side` | `back`', description: 'Progress photo pose.' },
             { name: 'date', type: 'string (YYYY-MM-DD)', required: true, constraints: 'Valid ISO date', description: 'Photo date.' },
-            { name: 'weightKg', type: 'number', required: false, constraints: '35..250', description: 'Optional weight snapshot.' }
+            { name: 'weightKgSnapshot', type: 'number', required: false, constraints: '35..250', description: 'Optional weight snapshot.' }
           ],
-          body: { contentType: 'image/jpeg', byteSize: 250000, pose: 'front', date: '{{todayDate}}', weightKg: 79.5 }
+          body: { contentType: 'image/jpeg', byteSize: 250000, pose: 'front', date: '{{todayDate}}', weightKgSnapshot: 79.5 }
         }),
         req({
           name: 'Confirm Progress Photo Upload',
@@ -2342,12 +2430,18 @@ const collection = {
           name: 'Verify Store Subscription',
           method: 'POST',
           path: '/v1/subscriptions/verify',
-          summary: 'Verifies an Apple StoreKit or Google Play purchase and activates Pro entitlements.',
+          summary: 'Verifies an Apple StoreKit 2 or Google Play purchase and activates Pro entitlements (fails closed with `503 BILLING_VERIFICATION_UNAVAILABLE` if store upstream fails).',
           fields: [
             { name: 'platform', type: 'string (enum)', required: true, constraints: '`android` | `ios`', description: 'Store platform.' },
-            { name: 'productId', type: 'string', required: true, constraints: 'Configured SKU ID', description: 'Store subscription product ID.' },
+            { name: 'provider', type: 'string (enum)', required: false, constraints: '`apple` | `google`', description: 'Optional explicit billing provider.' },
+            { name: 'productId', type: 'string', required: false, constraints: 'Configured SKU ID', description: 'Store subscription product ID.' },
             { name: 'purchaseToken', type: 'string', required: false, constraints: 'Required for `android`', description: 'Google Play purchase token.' },
-            { name: 'signedTransactionInfo', type: 'string', required: false, constraints: 'Required for `ios`', description: 'Apple StoreKit 2 JWS transaction.' }
+            { name: 'orderId', type: 'string', required: false, constraints: 'Optional for `android`', description: 'Google Play order ID.' },
+            { name: 'signedTransactionInfo', type: 'string', required: false, constraints: 'For `ios` StoreKit 2', description: 'Apple StoreKit 2 JWS transaction.' },
+            { name: 'signedTransactionJws', type: 'string', required: false, constraints: 'Alias for `signedTransactionInfo`', description: 'Apple StoreKit 2 JWS transaction alias.' },
+            { name: 'transactionId', type: 'string', required: false, constraints: 'Optional for `ios`', description: 'Apple transaction identifier.' },
+            { name: 'originalTransactionId', type: 'string', required: false, constraints: 'Optional for `ios`', description: 'Apple original transaction identifier.' },
+            { name: 'isTrial', type: 'boolean', required: false, constraints: 'boolean', description: 'Marks introductory trial transaction.' }
           ],
           body: { platform: 'android', productId: 'curafit_pro.monthly', purchaseToken: 'test-purchase-token' }
         }),
@@ -2355,10 +2449,11 @@ const collection = {
           name: 'Restore Store Subscriptions',
           method: 'POST',
           path: '/v1/subscriptions/restore',
-          summary: 'Reconciles prior store purchases and restores active entitlements.',
+          summary: 'Reconciles prior store purchases (`string` tokens or receipt objects) and restores active entitlements.',
           fields: [
             { name: 'platform', type: 'string (enum)', required: true, constraints: '`android` | `ios`', description: 'Store platform.' },
-            { name: 'tokens', type: 'Array<string>', required: false, constraints: 'Optional purchase tokens/transactions', description: 'Active store purchase tokens to reconcile.' }
+            { name: 'provider', type: 'string (enum)', required: false, constraints: '`apple` | `google`', description: 'Optional explicit billing provider.' },
+            { name: 'tokens', type: 'Array<string | object>', required: false, constraints: 'Optional purchase tokens or `{ purchaseToken, transactionId, signedTransactionJws }` objects', description: 'Active store purchase tokens/receipts to reconcile.' }
           ],
           body: { platform: 'android', tokens: [] }
         }),
