@@ -53,7 +53,7 @@ export function handleCoachingCommand(s,action,p,now){
   if(existing)return s;
   for(const c of s.coachingCases.filter(c=>c.domain===p.domain&&active(c))){c.status='superseded';c.closedAt=at;}
   if(p.barrier==='none')return s;
-  const [title,step]=p.domain==='training'&&p.barrier==='time'?['Adjust session timing to fit your schedule.','Review your session duration and training days in Profile; workout duration is not reduced automatically without your confirmation.']:advice[p.barrier];
+  const [title,step]=p.domain==='training'&&p.barrier==='time'?['Adjust session timing to fit your schedule.','Review your session duration and training days in Profile; workout duration is never reduced without your confirmation.']:advice[p.barrier];
   s.coachingCases.push({id:crypto.randomUUID(),code:'COACHING_BARRIER_AGREEMENT',params:{domain:p.domain,barrier:p.barrier},domain:p.domain,date:today,createdAt:at,context:feedback.context,barrier:p.barrier,status:'proposed',title,step,evidence:{...evidence(s,p.domain,today),feedbackId:feedback.id},acknowledgedAt:null,acceptedAt:null,reviewOn:null,outcome:null,planMutation:false});
   return s;
  }

@@ -95,6 +95,21 @@ test('KMM Error Contract: pure English error catalog, source audit, and live HTT
     }
   });
 
+  await t.test('CuraFit Specialist Team voice: zero AI/automated/algorithm/engine terms in user-facing catalogs and push copy', async () => {
+    const FORBIDDEN_VOICE_RE = /\b(AI|AI Coach|Smart Coach|automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b|\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/i;
+    for (const [code, def] of Object.entries(catalog.codes)) {
+      assert.ok(!FORBIDDEN_VOICE_RE.test(def.message), `error-codes.json[${code}] contains forbidden mechanical/AI wording: ${def.message}`);
+    }
+    const coachingCatalog = JSON.parse(await readFile('contracts/coaching-codes.json', 'utf8'));
+    for (const [code, def] of Object.entries(coachingCatalog.codes)) {
+      assert.ok(!FORBIDDEN_VOICE_RE.test(def.message), `coaching-codes.json[${code}] contains forbidden mechanical/AI wording: ${def.message}`);
+    }
+    const pushSource = await readFile('server/push.mjs', 'utf8');
+    const pushMsgBlock = pushSource.match(/const messages = \{[\s\S]*?\};/);
+    assert.ok(pushMsgBlock, 'Expected push messages catalog in server/push.mjs');
+    assert.ok(!FORBIDDEN_VOICE_RE.test(pushMsgBlock[0]), `server/push.mjs contains forbidden mechanical/AI wording: ${pushMsgBlock[0]}`);
+  });
+
   await t.test('all server & engine error calls use cataloged codes and zero Arabic characters', async () => {
     const serverFiles = (await readdir('server')).filter(f => f.endsWith('.mjs')).map(f => resolve('server', f));
     const sharedFiles = [

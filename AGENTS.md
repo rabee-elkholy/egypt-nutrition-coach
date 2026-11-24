@@ -96,3 +96,16 @@ Every change merged to `dev` or promoted to `main` must satisfy these production
 6. **Zero-Regression Verification Before Every Push:**
    - Always run `npm run check` (`typecheck`, `check-data-manifest`, `build`, `check-modules`, `check-reference`, and all `307+` tests) plus `npm run audit:matrix` whenever domain engines (`planner-core.mjs`, `server/workouts.mjs`, `server/coaching.mjs`) are modified.
 
+---
+
+## 5. Cross-Cutting Brand Voice, Clinical Safety, Regional/Unit & Calibration Contracts
+
+All current and upcoming Worker endpoints (`EPIC-01` through `EPIC-10`) MUST follow `.agent/rules/curafit-specialist-and-clinical-contracts.md` without breaking existing KMM mobile clients (`{ ok, data, meta }` / `{ ok, error, meta }`, `js_sunday_0` weekday indexing):
+
+1. **Human-Expert Brand Voice ("CuraFit Specialist Team" — Zero AI/Automated Exposure):** Never output `AI`, `AI Coach`, `Smart Coach`, `automated`, `automatic`, `automatically`, `algorithm`, `engine`, `bot`, or their Arabic equivalents in any user-facing string (warnings, eligibility reasons, briefs, meal/workout explanations, push notifications, or future Q&A prompts/responses). Frame all guidance strictly as the **CuraFit Specialist Team** (e.g., `"Ask the CuraFit Specialist Team"` for `US-CCH-05` / `KAN-84`).
+2. **Additive Machine-Readable Codes:** Keep existing `warnings: string[]` and `eligibility.reasons` / `eligibilityReasons` for backwards compatibility AND emit parallel `warningCodes: string[]` and `eligibilityReasonCodes: string[]` registered in `contracts/coaching-codes.json` so mobile clients localize cleanly without substring matching.
+3. **Centralized Clinical Safety Gate Parity:** Reuse one shared clinical gate across onboarding, profile edits, plan reconfiguration, meal swaps, and workout swaps (`>= 4` injuries or `parqRedFlag === true` -> specialist review for workouts while still computing `nutritionFeasible`; `>= 3` overlapping dietary-restricting chronic conditions -> specialist review; `diabetes_t1`/`diabetes_t2` mutual exclusion; `dash`/`favism`/`lactose_intolerance`/`offal` parity; last-protein-pillar protection; maternal `T1`/`T2`/`T3`/`breastfeeding` and senior `70+` safety floors).
+4. **Persist & Sync `unit_system` and `region_id` + Regional Hydration Bonuses:** Accept and return both camelCase (`unitSystem`, `region`) and snake_case (`unit_system`, `region_id`) across preview, commit, profile update, and hydration endpoints, applying `dailyWaterTarget()` (`+200 ml` warm climate, `+500 ml` training/cardio/gout, `+300 ml` pregnancy, `+600 ml` breastfeeding) consistently everywhere.
+5. **Structured `calibrationMetadata`:** Return additive `calibrationMetadata` (`calibrationReasons`, `adjustedCalories`, `adjustedMacros`, `protectedJoints`, `activeProteinPillars`) on plan previews, generations, renewals, weekly check-ins, and adaptive calibrations to power `SpecialistPlanPreparationCard`.
+6. **Postman Retired:** Do **NOT** update `postman/*`, run `npm run postman:generate`, or publish Postman collections going forward; keep `contracts/openapi.yaml`, `contracts/error-codes.json`, and `contracts/coaching-codes.json` as the canonical API contracts.
+

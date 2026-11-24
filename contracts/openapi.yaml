@@ -665,11 +665,15 @@ paths:
                 height: { type: number }
                 sex: { type: string, enum: [male, female] }
                 serviceTrack: { type: string, enum: [nutrition_only, workouts_only, nutrition_and_workouts] }
-                parqRedFlag: { type: boolean, description: "Explicit PAR-Q screening red flag; blocks automated workout tracks unless switched to nutrition_only." }
+                parqRedFlag: { type: boolean, description: "Explicit PAR-Q screening red flag; requires physician clearance for workout tracks unless switched to nutrition_only." }
                 healthConfirmed: { type: boolean }
                 diseases: { type: array, items: { type: string } }
                 injuries: { type: array, items: { type: string } }
                 maternalStatus: { type: string, enum: [none, pregnant_t1, pregnant_t2, pregnant_t3, pregnant, breastfeeding] }
+                unitSystem: { type: string, enum: [metric, imperial] }
+                unit_system: { type: string, enum: [metric, imperial] }
+                region: { type: string, enum: [egypt, gulf, levant, maghreb] }
+                region_id: { type: string, enum: [egypt, gulf, levant, maghreb] }
       responses:
         "200":
           description: Eligibility result
@@ -1030,7 +1034,7 @@ paths:
   /v1/plans/preview:
     post:
       operationId: previewPlan
-      summary: Stateless onboarding targets, diet macros, recommended split, restDayWaterTarget, workoutDayWaterTarget, estimatedExercisesPerSession, safe floors, warnings, and weekly forecast preview
+      summary: Stateless onboarding targets, diet macros, recommended split, hydration targets with bonus breakdown, warningCodes, eligibilityReasonCodes, calibrationMetadata, and weekly forecast preview
       security: []
       requestBody:
         required: true
@@ -1061,9 +1065,13 @@ paths:
                 injuries: { type: array, items: { type: string } }
                 parqRedFlag: { type: boolean }
                 healthConfirmed: { type: boolean }
+                unitSystem: { type: string, enum: [metric, imperial] }
+                unit_system: { type: string, enum: [metric, imperial] }
+                region: { type: string, enum: [egypt, gulf, levant, maghreb] }
+                region_id: { type: string, enum: [egypt, gulf, levant, maghreb] }
       responses:
         "200":
-          description: Preview targets, hydration targets, session density, eligibility, structured feasibility dry-check, and forecast range
+          description: Preview targets, hydration targets with bonus breakdown, session density, eligibility with eligibilityReasonCodes, structured feasibility dry-check, warningCodes, calibrationMetadata, and forecast range
           content:
             application/json:
               schema:
@@ -2222,11 +2230,15 @@ components:
                   type: string
                 profile:
                   type: [object, "null"]
-                  description: Hydrated user profile including canonical `birthDate` (`YYYY-MM-DD`, when set), live birthday-rollover `age` (`18..95`), `seniorMode`, `unitSystem`, and optional short-lived `avatarUrl`.
+                  description: Hydrated user profile including canonical `birthDate` (`YYYY-MM-DD`, when set), live birthday-rollover `age` (`18..95`), `seniorMode`, `unitSystem`/`unit_system`, `region`/`region_id`, and optional short-lived `avatarUrl`.
                 preferences:
                   type: [object, "null"]
                 eligibility:
                   type: object
+                  description: Eligibility status with additive `eligibilityReasons` and `eligibilityReasonCodes`.
+                calibrationMetadata:
+                  type: [object, "null"]
+                  description: Structured specialist calibration summary (`calibrationReasons`, `adjustedCalories`, `previousCalories`, `calorieDelta`, `adjustedMacros`, `protectedJoints`, `activeProteinPillars`).
                 onboarding:
                   type: [object, "null"]
                 onboardingCompleted:

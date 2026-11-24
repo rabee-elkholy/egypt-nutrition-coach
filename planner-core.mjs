@@ -99,14 +99,14 @@ export function estimateNeeds(input) {
   if (input.healthNeeds && !input.maternalStatus && (!Array.isArray(input.diseases) || !input.diseases.length))
     throw apiError(
       'CLINICAL_REVIEW_REQUIRED',
-      'Declared clinical conditions or age require specialist review before automated plan generation.',
+      'Declared clinical conditions or age require direct specialist review before plan generation.',
       { status: 400 },
     );
   const bmi = weight / (height / 100) ** 2;
   if (bmi < 12.5 || bmi > 65)
     throw apiError(
       'BMI_OUT_OF_RANGE',
-      'Calculated BMI is outside the automated planning range (12.5..65).',
+      'Calculated BMI is outside the standard CuraFit Specialist Team planning range (12.5..65).',
       { status: 400 },
     );
   const trainingDays = finite(
@@ -131,12 +131,17 @@ export function estimateNeeds(input) {
   const maternalStatus = input.maternalStatus || "none";
   const seniorMode = age >= 70 || input.seniorMode === true;
   const notes = [];
+  const noteCodes = [];
+  const addNote = (code, text) => {
+    notes.push(text);
+    if (code && !noteCodes.includes(code)) noteCodes.push(code);
+  };
 
   let ree =
     10 * weight + 6.25 * height - 5 * age + (input.sex === "male" ? 5 : -161);
   if (diseases.has("hypothyroid")) {
     ree *= 0.95;
-    notes.push("Applied conservative 5% REE calibration for hypothyroidism; monitor actual weight trend.");
+    addNote("PLAN_HYPOTHYROID_REE_CALIBRATION", "Applied conservative 5% REE calibration for hypothyroidism; monitor actual weight trend.");
   }
 
   const baseline = ree * ACTIVITY[input.activity],
@@ -150,48 +155,50 @@ export function estimateNeeds(input) {
   if(input.goal === 'lose'){
     const maxDeficit = seniorMode ? 400 : 500;
     change = -Math.min(tdee * {slow:.1, moderate:.15, fast:.2}[pace], maxDeficit);
-    if (seniorMode) notes.push("Senior safety mode (70+): daily calorie deficit capped at -400 kcal.");
+    if (seniorMode) addNote("PLAN_SENIOR_DEFICIT_CAP", "Senior safety mode (70+): daily calorie deficit capped at -400 kcal.");
   }
-  else if(input.goal === 'muscle_gain'&&(input.recomposition||(input.targetWeight!=null&&Math.abs(Number(input.targetWeight)-weight)<0.5))){change=0;notes.push('Body recomposition starts at maintenance calories with progressive resistance training.');}
+  else if(input.goal === 'muscle_gain'&&(input.recomposition||(input.targetWeight!=null&&Math.abs(Number(input.targetWeight)-weight)<0.5))){change=0;addNote("PLAN_RECOMPOSITION_MAINTENANCE", 'Body recomposition starts at maintenance calories with progressive resistance training.');}
   else if(input.goal === 'muscle_gain')change=Math.min(tdee*{slow:.05,moderate:.08,fast:.1}[pace],250);
   else if(input.goal === 'gain')change=Math.min(tdee*{slow:.08,moderate:.12,fast:.15}[pace],400);
-  notes.push('Goal pace sets a bounded initial offset; actual energy needs are calibrated from recorded weight trends.');
+  addNote("PLAN_ADAPTIVE_GOAL_PACE", 'Goal pace sets a bounded initial offset; actual energy needs are calibrated from recorded weight trends.');
 
   // Maternal adjustments (never stack weight-gain surplus on top of trimester energy add-ons)
   if (maternalStatus === "pregnant_t1") {
     change = 0;
-    notes.push("First-trimester pregnancy calibration applied (maintenance baseline, calorie deficits disabled).");
+    addNote("PLAN_PREGNANCY_T1_CALIBRATION", "First-trimester pregnancy calibration applied (maintenance baseline, calorie deficits disabled).");
   } else if (maternalStatus === "pregnant_t2" || maternalStatus === "pregnant") {
     change = 340;
-    notes.push("Second-trimester pregnancy calibration applied (+340 kcal/day, deficits and extra gain surplus disabled).");
+    addNote("PLAN_PREGNANCY_T2_CALIBRATION", "Second-trimester pregnancy calibration applied (+340 kcal/day, deficits and extra gain surplus disabled).");
   } else if (maternalStatus === "pregnant_t3") {
     change = 450;
-    notes.push("Third-trimester pregnancy calibration applied (+450 kcal/day, deficits and extra gain surplus disabled).");
+    addNote("PLAN_PREGNANCY_T3_CALIBRATION", "Third-trimester pregnancy calibration applied (+450 kcal/day, deficits and extra gain surplus disabled).");
   } else if (maternalStatus === "breastfeeding") {
     const boundedOffset = input.goal === "lose" ? Math.max(-300, change) : change;
     change = boundedOffset + 400;
-    notes.push("Breastfeeding calibration applied (+400 kcal baseline, max deficit -300 kcal/day).");
+    addNote("PLAN_BREASTFEEDING_CALIBRATION", "Breastfeeding calibration applied (+400 kcal baseline, max deficit -300 kcal/day).");
   }
 
   let energy = Math.round((tdee + change) / 10) * 10;
   const minEnergyFloor = minSafeEnergyFloor({ sex: input.sex, maternalStatus });
   if (energy < minEnergyFloor) {
     energy = minEnergyFloor;
-    notes.push(
-      `Daily energy raised to the safe automated planning floor (${minEnergyFloor} kcal).`,
+    addNote(
+      "PLAN_MIN_ENERGY_FLOOR_APPLIED",
+      `Daily energy raised to the safe planning floor (${minEnergyFloor} kcal).`,
     );
   }
   if (energy > 4200) {
     energy = 4200;
-    notes.push(
-      'Daily energy capped at the safe automated planning ceiling (4200 kcal).',
+    addNote(
+      "PLAN_MAX_ENERGY_CEILING_APPLIED",
+      'Daily energy capped at the safe planning ceiling (4200 kcal).',
     );
   }
 
   if (bmi < 18.5) {
-    notes.push("BMI is below 18.5 (underweight): focus on nutrient-dense meals and gradual intake progression.");
+    addNote("PLAN_UNDERWEIGHT_NUTRIENT_CARE", "BMI is below 18.5 (underweight): focus on nutrient-dense meals and gradual intake progression.");
   } else if (bmi > 30) {
-    notes.push("Protein targets use Adjusted Body Weight (ABW) for BMI > 30 to avoid excessive portions.");
+    addNote("PLAN_ABW_PROTEIN_SCALING", "Protein targets use Adjusted Body Weight (ABW) for BMI > 30 to avoid excessive portions.");
   }
 
   const effectiveWeight =
@@ -214,20 +221,26 @@ export function estimateNeeds(input) {
   if (maternalStatus !== "none") factor = Math.max(factor, 1.4);
   if (diseases.has("gout")) {
     factor = Math.min(factor, 1.4);
-    notes.push("Protein capped at 1.4 g/kg and high-purine red meats/offal excluded for gout.");
+    addNote("PLAN_GOUT_PROTEIN_CAP", "Protein capped at 1.4 g/kg and high-purine red meats/offal excluded for gout.");
   }
   if (diseases.has("kidney")) {
     factor = Math.min(factor, 1.1);
-    notes.push("Protein conservatively capped at <= 1.1 g/kg for kidney condition support.");
+    addNote("PLAN_KIDNEY_PROTEIN_CAP", "Protein conservatively capped at <= 1.1 g/kg for kidney condition support.");
   }
   if (diseases.has("ibs")) {
-    notes.push("Heavy legumes, cabbage, and raw alliums excluded for IBS comfort.");
+    addNote("PLAN_IBS_EXCLUSIONS_ACTIVE", "Heavy legumes, cabbage, and raw alliums excluded for IBS comfort.");
   }
   if (diseases.has("hypertension")) {
-    notes.push("Low-sodium ceiling and high-sodium cheese exclusions enabled for blood pressure support.");
+    addNote("PLAN_HYPERTENSION_SODIUM_CEILING", "Low-sodium ceiling and high-sodium cheese exclusions enabled for blood pressure support.");
   }
   if (diseases.has("celiac")) {
-    notes.push("Gluten-containing grains and breads automatically excluded for celiac safety.");
+    addNote("PLAN_CELIAC_GLUTEN_EXCLUSION", "Gluten-containing grains and breads are excluded for celiac safety.");
+  }
+  if (diseases.has("favism")) {
+    addNote("PLAN_FAVISM_EXCLUSION", "Fava beans and falafel are excluded for favism (G6PD) safety.");
+  }
+  if (diseases.has("lactose_intolerance")) {
+    addNote("PLAN_LACTOSE_EXCLUSION", "Dairy products are excluded for lactose intolerance comfort.");
   }
 
   let fatShare = diseases.has("cholesterol") ? 0.25 : 0.3;
@@ -244,14 +257,14 @@ export function estimateNeeds(input) {
       const maxProtFactor = diseases.has("kidney") ? 1.1 : diseases.has("gout") ? 1.4 : 1.8;
       proteinGrams = round(Math.min(effectiveWeight * maxProtFactor, remaining * 0.45 / 4));
       fatGrams = round(Math.max(0, energy - carbGrams * 4 - proteinGrams * 4) / 9);
-      notes.push("Carbohydrate share calibrated to ~38% of daily energy for glycemic support.");
+      addNote("PLAN_GLYCEMIC_CARB_CALIBRATION", "Carbohydrate share calibrated to ~38% of daily energy for glycemic support.");
     }
   }
 
   if (input.goal === "gain" && trainingDays === 0)
-    notes.push("Calorie surplus without resistance training does not guarantee lean mass gain.");
+    addNote("PLAN_GAIN_WITHOUT_RESISTANCE", "Calorie surplus without resistance training does not guarantee lean mass gain.");
   if (input.goal === "muscle_gain")
-    notes.push("Muscle gain targets use a moderate surplus (<= 250 kcal) and progressive resistance training.");
+    addNote("PLAN_MUSCLE_GAIN_SURPLUS", "Muscle gain targets use a moderate surplus (<= 250 kcal) and progressive resistance training.");
   const targetWeightNum =
     input.targetWeight != null && String(input.targetWeight).trim() !== ""
       ? finite(input.targetWeight, 35, 250, "targetWeight")
@@ -314,6 +327,7 @@ export function estimateNeeds(input) {
     ...(maternalStatus !== "none" ? { maternal_status: maternalStatus } : {}),
     ...(diseases.size ? { medical_conditions: [...diseases] } : {}),
     notes,
+    noteCodes,
     method:
       "Mifflin-St Jeor 1990; activity multipliers and bounded goal offsets are deterministic product heuristics, not measured expenditure",
     sources: [

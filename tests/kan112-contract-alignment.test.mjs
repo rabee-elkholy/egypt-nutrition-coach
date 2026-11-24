@@ -446,6 +446,121 @@ test('Cross-Epic HTTP contract verification: PAR-Q, consents, recent foods, rama
     const cronRes = await runScheduledNotifications({ DB: db }, future11Utc);
     assert.equal(cronRes.checked, 1);
     assert.equal(cronRes.queued, 1);
+
+    // Cross-cutting contracts: Specialist Team voice, additive warningCodes/eligibilityReasonCodes, unit_system & region_id sync, hydration bonuses, and calibrationMetadata
+    const FORBIDDEN_VOICE_RE = /\b(AI|AI Coach|Smart Coach|automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b|\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/i;
+
+    // 1. Deferred Q&A route returns Specialist Team copy (zero "AI" exposure)
+    const chatRes = await call('coaching/chat', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message: 'Hello' }),
+    });
+    assert.equal(chatRes.status, 501);
+    const chatErr = (await chatRes.json()).error;
+    assert.equal(chatErr.code, 'FEATURE_DEFERRED_TO_AI_PHASE');
+    assert.ok(!FORBIDDEN_VOICE_RE.test(chatErr.message), `Deferred chat error leaked AI wording: ${chatErr.message}`);
+
+    // 2. Preview with snake_case unit_system & region_id, hypothyroid + gout + knee injury
+    const { region: _omitRegion, ...draftWithoutRegion } = BASE_DRAFT;
+    const richPrevRes = await call('plans/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...draftWithoutRegion,
+        unit_system: 'imperial',
+        region_id: 'gulf',
+        diseases: ['hypothyroid', 'gout'],
+        injuries: ['knee'],
+      }),
+    });
+    assert.equal(richPrevRes.status, 200);
+    const richPrev = (await richPrevRes.json()).data;
+    assert.equal(richPrev.unitSystem, 'imperial');
+    assert.equal(richPrev.unit_system, 'imperial');
+    assert.equal(richPrev.region, 'gulf');
+    assert.equal(richPrev.region_id, 'gulf');
+    assert.ok(Array.isArray(richPrev.warningCodes));
+    assert.ok(richPrev.warningCodes.includes('PLAN_HYPOTHYROID_REE_CALIBRATION'));
+    assert.ok(richPrev.warningCodes.includes('PLAN_GOUT_PROTEIN_CAP'));
+    assert.ok(richPrev.warningCodes.includes('WORKOUT_INJURY_EXCLUSIONS_ACTIVE'));
+    assert.ok(Array.isArray(richPrev.eligibilityReasonCodes));
+    assert.equal(richPrev.waterTarget.bonuses.warmClimateMl, 200);
+    assert.equal(richPrev.waterTarget.bonuses.goutMl, 500);
+    assert.ok(richPrev.calibrationMetadata);
+    assert.ok(richPrev.calibrationMetadata.calibrationReasons.includes('WARM_CLIMATE_HYDRATION_BONUS'));
+    assert.ok(richPrev.calibrationMetadata.calibrationReasons.includes('GOUT_HYDRATION_BONUS'));
+    assert.ok(richPrev.calibrationMetadata.protectedJoints.includes('knee_pain'));
+    assert.ok(!richPrev.calibrationMetadata.activeProteinPillars.includes('red_meat'));
+    assert.ok(richPrev.calibrationMetadata.activeProteinPillars.includes('poultry'));
+    for (const w of richPrev.warnings) {
+      assert.ok(!FORBIDDEN_VOICE_RE.test(w), `Preview warning leaked forbidden wording: ${w}`);
+    }
+
+    // 3. Preview & generate parity for keto + diabetes_t2 -> both return 400 MEDICAL_DIET_CONFLICT
+    const ketoDiabDraft = { ...BASE_DRAFT, serviceTrack: 'nutrition_only', dietType: 'keto', diseases: ['diabetes_t2'] };
+    assert.throws(() => previewPlan(ketoDiabDraft), err => err.status === 400 && err.code === 'MEDICAL_DIET_CONFLICT');
+    assert.throws(() => generate(empty(), ketoDiabDraft), err => err.status === 400 && err.code === 'MEDICAL_DIET_CONFLICT');
+
+    // 4. Last-protein-pillar allergy protection on vegan excluding legumes + soy + peanuts + tree_nuts
+    const veganZeroProt = {
+      ...BASE_DRAFT,
+      serviceTrack: 'nutrition_only',
+      dietType: 'vegan',
+      excludedGroups: ['legumes', 'soy', 'peanuts', 'tree_nuts'],
+    };
+    const zeroPrev = previewPlan(veganZeroProt);
+    assert.equal(zeroPrev.feasibility.nutritionFeasible, false);
+    assert.deepEqual(zeroPrev.calibrationMetadata.activeProteinPillars, []);
+    assert.ok(zeroPrev.eligibilityReasonCodes.includes('PLAN_CONSTRAINTS_UNMET'));
+    assert.throws(() => generate(empty(), veganZeroProt), err => err.status === 400 && err.code === 'PLAN_CONSTRAINTS_UNMET');
+
+    // 5. Persist & sync unit_system + region_id via profile_update and verify regional hydration bonus toggles (+200ml -> 0ml)
+    const updRes = await call('commands?view=full', {
+      method: 'POST',
+      headers: { ...headers, 'Idempotency-Key': 'kan112-unit-region-1' },
+      body: JSON.stringify({ revision: rev, action: 'profile_update', payload: { unit_system: 'imperial', region_id: 'levant' } }),
+    });
+    assert.equal(updRes.status, 200);
+    const updState = (await updRes.json()).data;
+    rev = updState.revision;
+    assert.equal(updState.profile.unitSystem, 'imperial');
+    assert.equal(updState.profile.unit_system, 'imperial');
+    assert.equal(updState.profile.region, 'levant');
+    assert.equal(updState.profile.region_id, 'levant');
+    assert.equal(updState.preferences.region_id, 'levant');
+
+    const bootAfterUpd = (await (await call('bootstrap', { headers })).json()).data;
+    assert.equal(bootAfterUpd.profile.unit_system, 'imperial');
+    assert.equal(bootAfterUpd.profile.region_id, 'levant');
+    assert.equal(bootAfterUpd.todaySummary.hydration.bonuses.warmClimateMl, 0);
+    assert.ok(bootAfterUpd.calibrationMetadata);
+    assert.ok(Array.isArray(bootAfterUpd.eligibility.eligibilityReasonCodes));
+
+    // Switch region_id back to gulf -> warmClimateMl becomes +200ml
+    const updGulfRes = await call('commands?view=receipt', {
+      method: 'POST',
+      headers: { ...headers, 'Idempotency-Key': 'kan112-unit-region-2' },
+      body: JSON.stringify({ revision: rev, action: 'profile_update', payload: { region_id: 'gulf' } }),
+    });
+    assert.equal(updGulfRes.status, 200);
+    rev = (await updGulfRes.json()).data.revision;
+    const bootGulf = (await (await call('bootstrap', { headers })).json()).data;
+    assert.equal(bootGulf.profile.region_id, 'gulf');
+    assert.equal(bootGulf.todaySummary.hydration.bonuses.warmClimateMl, 200);
+
+    // 6. Weekly review command receipt includes structured calibrationMetadata
+    const revRes = await call('commands?view=receipt', {
+      method: 'POST',
+      headers: { ...headers, 'Idempotency-Key': 'kan112-review-cal' },
+      body: JSON.stringify({ revision: rev, action: 'review', payload: {} }),
+    });
+    assert.equal(revRes.status, 200);
+    const revBody = (await revRes.json()).data;
+    assert.ok(revBody.calibrationMetadata);
+    assert.ok(Array.isArray(revBody.calibrationMetadata.calibrationReasons));
+    assert.ok(typeof revBody.calibrationMetadata.adjustedCalories === 'number');
+    assert.ok(revBody.calibrationMetadata.adjustedMacros);
   } finally {
     await mf.dispose();
   }

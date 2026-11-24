@@ -9,7 +9,7 @@ export function volumeReview(s,readiness,now=clockNow()){
  const hold=(reason,reasonCode='VOLUME_HOLD')=>({action:'hold',reasonCode,reviewScope:'system_generated_guidance',reason});
  const plan=s.workoutPlan;
  if(needsHealthConfirmation(s)||needsScheduleConfirmation(s))return hold('Confirm health readiness and workout schedule before volume progression is evaluated.','HEALTH_OR_SCHEDULE_UNCONFIRMED');
- if(!plan||s.profile.goal!=='muscle_gain')return hold('Automated weekly set increases apply to muscle-gain plans; holding volume does not mean your current training is insufficient.','GOAL_NOT_MUSCLE_GAIN');
+ if(!plan||s.profile.goal!=='muscle_gain')return hold('Progressive weekly set increases apply to muscle-gain plans; holding volume does not mean your current training is insufficient.','GOAL_NOT_MUSCLE_GAIN');
  if(readiness.status!=='ready'||!readiness.baselineReady)return hold('At least 7 valid recovery check-ins are needed to establish a baseline before proposing extra weekly sets.','RECOVERY_BASELINE_NOT_READY');
  if((s.lastVolumeChange&&now-s.lastVolumeChange<14*86400000)||(s.lastCalorieChange&&now-s.lastCalorieChange<14*86400000))return hold('Monitoring your response to the last adjustment; at least 14 days are required before proposing another volume change.','COOLDOWN_14D');
  const from=dateOffset(localDate(now,tz),-13),sessions=(s.sessions||[]).filter(x=>(x.planId===plan.id||x.programId===(plan.programId||plan.id))&&x.date>=from&&x.date<=localDate(now,tz)&&x.status==='completed'&&sessionCompletion(s,x).completionRatio>=.8);

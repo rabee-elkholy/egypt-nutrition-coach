@@ -85,121 +85,127 @@ function expandQuerySynonyms(rawQuery) {
   return [...phrases];
 }
 
-// Build unified catalog index at startup
-const planningByFoodId = new Map();
-const planningByKey = new Map();
-for (const ing of Object.values(library.ingredients)) {
-  planningByKey.set(ing.key, ing);
-  if (ing.food_id) planningByFoodId.set(ing.food_id, ing);
-}
-
-const egyptByFoodId = new Map();
-for (const eg of egyptCatalog) {
-  for (const fid of (eg.linked_food_ids || [])) {
-    egyptByFoodId.set(fid, eg);
+// Lazily build unified catalog index on first food-catalog request to stay well within Cloudflare Worker startup CPU limits.
+let _catalogCache = null;
+function ensureCatalogIndex() {
+  if (_catalogCache) return _catalogCache;
+  const planningByFoodId = new Map();
+  const planningByKey = new Map();
+  for (const ing of Object.values(library.ingredients)) {
+    planningByKey.set(ing.key, ing);
+    if (ing.food_id) planningByFoodId.set(ing.food_id, ing);
   }
-  for (const eid of (eg.estimate_links || [])) {
-    egyptByFoodId.set(eid, eg);
+
+  const egyptByFoodId = new Map();
+  for (const eg of egyptCatalog) {
+    for (const fid of (eg.linked_food_ids || [])) {
+      egyptByFoodId.set(fid, eg);
+    }
+    for (const eid of (eg.estimate_links || [])) {
+      egyptByFoodId.set(eid, eg);
+    }
   }
-}
 
-const estimateById = new Map(recipeEstimates.map(e => [e.id, e]));
+  const estimateById = new Map(recipeEstimates.map(e => [e.id, e]));
 
-const CATALOG_ITEMS = rawIndex.map(item => {
-  const planIng = planningByFoodId.get(item.id);
-  const egEntry = egyptByFoodId.get(item.id);
-  const estModel = estimateById.get(item.id);
-  const isApproved = item.status === 'approved';
-  const qualityTier = isApproved
-    ? 'Verified Source'
-    : (item.source === 'editorial-estimates' ? 'Calculated from Verified Ingredients (Requires Specialist Review)' : 'Pending Review');
-  const reviewStatus = isApproved ? 'Approved' : 'Pending Review';
-  const [energy, protein, fat, carbs] = item.macros || [null, null, null, null];
-  const values = planIng?.values || {
-    energy: energy ?? null,
-    protein: protein ?? null,
-    fat: fat ?? null,
-    carbs: carbs ?? null,
-    fiber: estModel?.calculation?.nutrients?.['fdc:1079'] ?? null,
-    saturated: estModel?.calculation?.nutrients?.['fdc:1258'] ?? null,
-    sodium: estModel?.calculation?.nutrients?.['fdc:1093'] ?? null,
-    sugars: estModel?.calculation?.nutrients?.['fdc:2000'] ?? null
-  };
-  const searchNames = [...new Set([
-    item.name,
-    item.english,
-    ...(item.names || []),
-    ...(planIng ? [planIng.label, ...(planIng.aliases || [])] : []),
-    ...(egEntry ? [egEntry.name_ar, egEntry.name_en, ...(egEntry.aliases || [])] : []),
-    ...(estModel ? [estModel.name_ar, ...(estModel.aliases || [])] : [])
-  ].filter(Boolean))];
+  const items = rawIndex.map(item => {
+    const planIng = planningByFoodId.get(item.id);
+    const egEntry = egyptByFoodId.get(item.id);
+    const estModel = estimateById.get(item.id);
+    const isApproved = item.status === 'approved';
+    const qualityTier = isApproved
+      ? 'Verified Source'
+      : (item.source === 'editorial-estimates' ? 'Calculated from Verified Ingredients (Requires Specialist Review)' : 'Pending Review');
+    const reviewStatus = isApproved ? 'Approved' : 'Pending Review';
+    const [energy, protein, fat, carbs] = item.macros || [null, null, null, null];
+    const values = planIng?.values || {
+      energy: energy ?? null,
+      protein: protein ?? null,
+      fat: fat ?? null,
+      carbs: carbs ?? null,
+      fiber: estModel?.calculation?.nutrients?.['fdc:1079'] ?? null,
+      saturated: estModel?.calculation?.nutrients?.['fdc:1258'] ?? null,
+      sodium: estModel?.calculation?.nutrients?.['fdc:1093'] ?? null,
+      sugars: estModel?.calculation?.nutrients?.['fdc:2000'] ?? null
+    };
+    const searchNames = [...new Set([
+      item.name,
+      item.english,
+      ...(item.names || []),
+      ...(planIng ? [planIng.label, ...(planIng.aliases || [])] : []),
+      ...(egEntry ? [egEntry.name_ar, egEntry.name_en, ...(egEntry.aliases || [])] : []),
+      ...(estModel ? [estModel.name_ar, ...(estModel.aliases || [])] : [])
+    ].filter(Boolean))];
 
-  return {
-    id: item.id,
-    key: planIng?.key || item.id,
-    planningKey: planIng?.key || null,
-    name: planIng?.label || item.name_presentation?.display_name || item.name,
-    name_ar: planIng?.label || egEntry?.name_ar || item.name_presentation?.display_name || item.name,
-    name_en: item.english || egEntry?.name_en || item.name_presentation?.source_title || null,
-    aliases: searchNames,
-    status: item.status,
-    reviewStatus,
-    qualityTier,
-    approvedForPlanning: Boolean(planIng && isApproved),
-    isApproximate: !isApproved,
-    kind: item.kind,
-    beverage: Boolean(item.beverage),
-    state: item.state,
-    categories: item.categories || [],
-    region: egEntry ? 'EG' : (meta.sources?.[item.source]?.region || 'US'),
-    source: item.source,
-    sourceMeta: meta.sources?.[item.source] ? {
-      id: meta.sources[item.source].id,
-      title: meta.sources[item.source].title,
-      region: meta.sources[item.source].region,
-      license: meta.sources[item.source].license
-    } : null,
-    basis: item.basis,
-    basis_label: item.basis_label,
-    quantity_basis: item.quantity_basis,
-    volume_evidence: item.volume_evidence || null,
-    portion_units: item.portion_units || [],
-    portions: planIng?.portions || [],
-    values,
-    _searchPairs: searchNames.map(n => {
-      const norm = normalizeAr(n);
-      const baseWords = norm.split(" ");
-      const words = new Set(baseWords);
-      for (const w of baseWords) {
-        for (const prefix of ["بال", "وال", "لل", "ال"]) {
-          if (w.startsWith(prefix) && w.length - prefix.length >= 2) words.add(w.slice(prefix.length));
+    return {
+      id: item.id,
+      key: planIng?.key || item.id,
+      planningKey: planIng?.key || null,
+      name: planIng?.label || item.name_presentation?.display_name || item.name,
+      name_ar: planIng?.label || egEntry?.name_ar || item.name_presentation?.display_name || item.name,
+      name_en: item.english || egEntry?.name_en || item.name_presentation?.source_title || null,
+      aliases: searchNames,
+      status: item.status,
+      reviewStatus,
+      qualityTier,
+      approvedForPlanning: Boolean(planIng && isApproved),
+      isApproximate: !isApproved,
+      kind: item.kind,
+      beverage: Boolean(item.beverage),
+      state: item.state,
+      categories: item.categories || [],
+      region: egEntry ? 'EG' : (meta.sources?.[item.source]?.region || 'US'),
+      source: item.source,
+      sourceMeta: meta.sources?.[item.source] ? {
+        id: meta.sources[item.source].id,
+        title: meta.sources[item.source].title,
+        region: meta.sources[item.source].region,
+        license: meta.sources[item.source].license
+      } : null,
+      basis: item.basis,
+      basis_label: item.basis_label,
+      quantity_basis: item.quantity_basis,
+      volume_evidence: item.volume_evidence || null,
+      portion_units: item.portion_units || [],
+      portions: planIng?.portions || [],
+      values,
+      _searchPairs: searchNames.map(n => {
+        const norm = normalizeAr(n);
+        const baseWords = norm.split(" ");
+        const words = new Set(baseWords);
+        for (const w of baseWords) {
+          for (const prefix of ["بال", "وال", "لل", "ال"]) {
+            if (w.startsWith(prefix) && w.length - prefix.length >= 2) words.add(w.slice(prefix.length));
+          }
         }
-      }
-      return { raw: n, norm, baseWords, words };
-    })
-  };
-});
+        return { raw: n, norm, baseWords, words };
+      })
+    };
+  });
 
-// Regional entries share the planner's component calculations and stable IDs.
-for (const recipe of REGIONAL_RECIPES) {
-  const snapshot = snapshotTemplate(recipe, recipe.items, library);
-  const grams = recipe.items.reduce((sum, p) => sum + Number(p.grams), 0);
-  const values = Object.fromEntries(Object.entries(snapshot.values).map(([key,value]) => [key,value == null ? null : String(Number(value) * 100 / grams)]));
-  const names = [recipe.name, recipe.id.split('-').slice(2).join(' ')];
-  CATALOG_ITEMS.push({id:recipe.id,key:recipe.id,planningKey:null,name:recipe.name,name_ar:recipe.name,name_en:null,
-    aliases:names,status:'estimated',reviewStatus:'Pending Review',qualityTier:'Editorial Regional Serving Estimate',modelKind:recipe.model_kind,
-    approvedForPlanning:false,isApproximate:true,kind:'recipe',beverage:false,state:'ready_to_eat',categories:['regional_recipe'],
-    region:recipe.country || 'MENA',regions:recipe.regions,source:'regional-serving-models-v1',
-    sourceMeta:{title:recipe.source_scope,url:recipe.source_url},
-    basis:'100g',basis_label:'لكل 100 جم من نموذج الحصة',quantity_basis:{amount:100,unit:'g',grams_available:true},
-    portion_units:[],portions:[],values,ingredients:snapshot.ingredients,notes:recipe.notes,servingGrams:grams,
-    _searchPairs:names.map(raw=>{const norm=normalizeAr(raw),baseWords=norm.split(' ');return {raw,norm,baseWords,words:new Set(baseWords)};})});
-}
+  // Regional entries share the planner's component calculations and stable IDs.
+  for (const recipe of REGIONAL_RECIPES) {
+    const snapshot = snapshotTemplate(recipe, recipe.items, library);
+    const grams = recipe.items.reduce((sum, p) => sum + Number(p.grams), 0);
+    const values = Object.fromEntries(Object.entries(snapshot.values).map(([key,value]) => [key,value == null ? null : String(Number(value) * 100 / grams)]));
+    const names = [recipe.name, recipe.id.split('-').slice(2).join(' ')];
+    items.push({id:recipe.id,key:recipe.id,planningKey:null,name:recipe.name,name_ar:recipe.name,name_en:null,
+      aliases:names,status:'estimated',reviewStatus:'Pending Review',qualityTier:'Editorial Regional Serving Estimate',modelKind:recipe.model_kind,
+      approvedForPlanning:false,isApproximate:true,kind:'recipe',beverage:false,state:'ready_to_eat',categories:['regional_recipe'],
+      region:recipe.country || 'MENA',regions:recipe.regions,source:'regional-serving-models-v1',
+      sourceMeta:{title:recipe.source_scope,url:recipe.source_url},
+      basis:'100g',basis_label:'لكل 100 جم من نموذج الحصة',quantity_basis:{amount:100,unit:'g',grams_available:true},
+      portion_units:[],portions:[],values,ingredients:snapshot.ingredients,notes:recipe.notes,servingGrams:grams,
+      _searchPairs:names.map(raw=>{const norm=normalizeAr(raw),baseWords=norm.split(' ');return {raw,norm,baseWords,words:new Set(baseWords)};})});
+  }
 
-const CATALOG_BY_ID = new Map();
-for (const c of CATALOG_ITEMS) {
-  CATALOG_BY_ID.set(c.id, c);
-  if (c.planningKey) CATALOG_BY_ID.set(c.planningKey, c);
+  const byId = new Map();
+  for (const c of items) {
+    byId.set(c.id, c);
+    if (c.planningKey) byId.set(c.planningKey, c);
+  }
+  _catalogCache = { items, byId, egyptByFoodId, estimateById };
+  return _catalogCache;
 }
 
 let externalCatalogSnapshot = null;
@@ -237,7 +243,7 @@ export function getFoodCatalogManifest() {
       regionalDishModels: REGIONAL_RECIPES.filter(r=>r.model_kind==='dish_serving').length,
       regionalMealCombinations: REGIONAL_RECIPES.filter(r=>r.model_kind==='meal_combination').length,
       regionalServingModelsByRegion: Object.fromEntries(['egypt','gulf','levant','maghreb'].map(r=>[r,REGIONAL_RECIPES.filter(x=>x.regions.includes(r)).length])),
-      totalIndexed: CATALOG_ITEMS.length
+      totalIndexed: rawIndex.length + REGIONAL_RECIPES.length
     },
     externalDatabaseAdapter: {
       connected: Boolean(externalCatalogSnapshot),
@@ -299,7 +305,7 @@ export function searchFoodCatalog(options = {}) {
     weight: idx === 0 ? 1 : (phrase.split(' ').length >= qWordCount ? 0.96 : 0.75)
   }));
 
-  let pool = CATALOG_ITEMS;
+  let pool = ensureCatalogIndex().items;
   if (scope === 'planning') {
     pool = pool.filter(x => x.planningKey != null || x.source === 'regional-serving-models-v1');
   } else if (scope === 'beverages' || kindFilter === 'beverage') {
@@ -384,7 +390,8 @@ export function searchFoodCatalog(options = {}) {
 }
 
 export function getFoodCatalogItem(idOrKey) {
-  const item = CATALOG_BY_ID.get(idOrKey);
+  const { byId, estimateById, egyptByFoodId } = ensureCatalogIndex();
+  const item = byId.get(idOrKey);
   if (!item) return null;
   const estModel = estimateById.get(item.id);
   const egEntry = egyptByFoodId.get(item.id);
@@ -422,9 +429,10 @@ export function calculatePreparedBeverageOrRecipe(input = {}) {
   const metrics = ['energy', 'protein', 'fat', 'carbs', 'fiber', 'saturated', 'sodium', 'sugars'];
   const resolvedItems = [];
 
+  const { byId } = ensureCatalogIndex();
   for (const part of [...ingredients, ...additions]) {
     const ingredientId = part.key || part.id;
-    const catItem = CATALOG_BY_ID.get(ingredientId);
+    const catItem = byId.get(ingredientId);
     if (!catItem) throw apiError('INGREDIENT_NOT_IN_CATALOG', `Ingredient not found in approved catalog: ${ingredientId}.`, { status: 400, params: { ingredient: ingredientId } });
     if (catItem.status !== 'approved' && input.requireApproved !== false) {
       throw apiError('INGREDIENT_NOT_VERIFIED', `Ingredient is not reference-verified and cannot be used in verified calculations: ${ingredientId}.`, { status: 400, params: { ingredient: ingredientId } });

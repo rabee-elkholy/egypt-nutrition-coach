@@ -129,7 +129,7 @@ export function personalBrief(state,today){
   if(['pregnant','pregnant_t1','pregnant_t2','pregnant_t3'].includes(maternal)){
    notes.push({
     role:'followup',key:'cycle-paused-pregnancy',code:'CYCLE_PAUSED_PREGNANCY',params:{maternalStatus:maternal},priority:'normal',
-    text:`Menstrual cycle predictions are automatically paused during pregnancy (${maternal}); maternal safety guidance remains active.`,
+    text:`Menstrual cycle predictions are paused during pregnancy (${maternal}); maternal safety guidance remains active.`,
     action:'Follow your pregnancy nutrition and movement safety guidelines.',actionTarget:'recovery'
    });
   }else{

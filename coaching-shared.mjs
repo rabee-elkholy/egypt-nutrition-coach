@@ -237,10 +237,71 @@ export function dateForLog(date, now = Date.now(), timeZone = 'Africa/Cairo') {
 export const DIETARY_CHRONIC_CONDITIONS = Object.freeze(new Set([
   'diabetes_t1', 'diabetes_t2', 'hypertension', 'cholesterol', 'celiac', 'ibs', 'gout', 'kidney'
 ]));
+export const SUPPORTED_WELLNESS_CONDITIONS = Object.freeze(new Set([
+  'hypertension', 'insulin_resistance', 'pcos', 'ibs', 'cholesterol', 'gout', 'anemia',
+  'vitamin_d_deficiency', 'lactose_intolerance', 'favism', 'fatty_liver',
+  'diabetes', 'diabetes_t1', 'diabetes_t2', 'hypothyroid', 'celiac', 'kidney'
+]));
+export const MATERNAL_STATUSES = Object.freeze(new Set([
+  'none', 'pregnant_t1', 'pregnant_t2', 'pregnant_t3', 'pregnant', 'breastfeeding'
+]));
 export const ACTIVE_ONBOARDING_CONDITIONS = Object.freeze([
   'diabetes_t1', 'diabetes_t2', 'insulin_resistance', 'pcos', 'hypothyroid',
   'hypertension', 'cholesterol', 'ibs', 'celiac', 'gout', 'kidney', 'favism', 'lactose_intolerance'
 ]);
+export const SUPPORTED_UNIT_SYSTEMS = Object.freeze(['metric', 'imperial']);
+
+export function resolveUnitSystemInput(input = {}, fallback = 'metric') {
+  const raw = input?.unitSystem !== undefined ? input.unitSystem : input?.unit_system;
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const normalized = String(raw).trim().toLowerCase();
+  if (!SUPPORTED_UNIT_SYSTEMS.includes(normalized)) {
+    throw apiError('INVALID_UNIT_SYSTEM', 'unitSystem must be either metric or imperial.', {
+      status: 400,
+      params: { unitSystem: normalized },
+      fieldErrors: [{ field: 'unitSystem', code: 'INVALID_UNIT_SYSTEM', message: 'unitSystem must be either metric or imperial.' }]
+    });
+  }
+  return normalized;
+}
+
+export function resolveRegionInput(input = {}, fallback = 'egypt', { allowAny = true } = {}) {
+  const raw = input?.region !== undefined
+    ? input.region
+    : (input?.regionId !== undefined ? input.regionId : input?.region_id);
+  if (raw === undefined || raw === null || String(raw).trim() === '') return fallback;
+  const normalized = String(raw).trim().toLowerCase();
+  const valid = SUPPORTED_REGIONS.includes(normalized) || (allowAny && normalized === 'any');
+  if (!valid) {
+    throw apiError('INVALID_REGION', 'region must be a supported regional catalog selection.', {
+      status: 400,
+      params: { region: normalized },
+      fieldErrors: [{ field: 'region', code: 'INVALID_REGION', message: 'region must be one of egypt, gulf, levant, or maghreb.' }]
+    });
+  }
+  return normalized;
+}
+
+export function computeActiveProteinPillars(dietType = 'balanced', diseases = [], excludedGroups = []) {
+  const diet = String(dietType || 'balanced').trim().toLowerCase();
+  const base = diet === 'vegan'
+    ? ['legumes', 'soy', 'nuts']
+    : diet === 'vegetarian'
+      ? ['eggs', 'dairy', 'legumes', 'soy', 'nuts']
+      : ['poultry', 'red_meat', 'fish', 'eggs', 'dairy', 'legumes', 'soy', 'nuts'];
+  const conds = new Set((Array.isArray(diseases) ? diseases : []).map(x => String(x || '').trim().toLowerCase()).filter(x => x && x !== 'none'));
+  const excluded = new Set((Array.isArray(excludedGroups) ? excludedGroups : []).map(x => String(x || '').trim().toLowerCase()).filter(x => x && x !== 'none'));
+  const remaining = new Set(base);
+  if (excluded.has('poultry') || excluded.has('chicken')) remaining.delete('poultry');
+  if (excluded.has('red_meat') || excluded.has('meat') || conds.has('gout')) remaining.delete('red_meat');
+  if (excluded.has('fish')) remaining.delete('fish');
+  if (excluded.has('eggs')) remaining.delete('eggs');
+  if (excluded.has('dairy') || conds.has('lactose_intolerance')) remaining.delete('dairy');
+  if (excluded.has('legumes')) remaining.delete('legumes');
+  if (excluded.has('soy')) remaining.delete('soy');
+  if (excluded.has('nuts') || (excluded.has('tree_nuts') && excluded.has('peanuts'))) remaining.delete('nuts');
+  return [...remaining];
+}
 
 export function hasConflictingDiabetesConditions(diseases = []) {
   const set = new Set(Array.isArray(diseases) ? diseases : []);
@@ -256,6 +317,219 @@ export function hasMultiConditionClinicalReview(diseases = [], maternalStatus = 
     if (DIETARY_CHRONIC_CONDITIONS.has(cond)) dietaryCount++;
   }
   return dietaryCount >= 3;
+}
+
+export function assertNoConflictingDiabetes(diseases = []) {
+  if (hasConflictingDiabetesConditions(diseases)) {
+    throw apiError('CONFLICTING_CONDITIONS', 'diabetes_t1 and diabetes_t2 are mutually exclusive and cannot be selected together.', {
+      status: 400,
+      params: { conditions: ['diabetes_t1', 'diabetes_t2'] },
+      fieldErrors: [{ field: 'diseases', code: 'CONFLICTING_CONDITIONS', message: 'Select either diabetes_t1 or diabetes_t2, not both.' }]
+    });
+  }
+}
+
+export function evaluateClinicalSafetyGate({
+  age = NaN,
+  sex = null,
+  weight = NaN,
+  height = NaN,
+  goal = null,
+  serviceTrack = 'nutrition_and_workouts',
+  diseases = [],
+  injuries = [],
+  maternalStatus = 'none',
+  parqRedFlag = null,
+  healthConfirmed = false,
+  dietType = 'balanced',
+  excludedGroups = []
+} = {}) {
+  const cleanDiseases = Array.isArray(diseases) ? diseases.filter(x => x && x !== 'none') : [];
+  assertNoConflictingDiabetes(cleanDiseases);
+  const cleanInjuries = Array.isArray(injuries) ? canonicalInjuries(injuries) : [];
+  const maternal = maternalStatus && maternalStatus !== 'none' ? maternalStatus : null;
+  const reasons = [];
+  const notes = [];
+  const questions = [];
+
+  if (!Number.isInteger(age) || age < 18 || age > 95) {
+    reasons.push({
+      code: 'AGE_UNSUPPORTED_OR_MISSING',
+      severity: 'requires_review',
+      message: 'CuraFit Specialist Team plans are available for adults aged 18 to 95 only.'
+    });
+  } else if (age >= 70) {
+    notes.push({
+      code: 'SENIOR_MODE_ACTIVE',
+      severity: 'info',
+      message: 'Senior safety mode (70+) is active: moderate deficit cap (-400 kcal), protein floor >= 1.2 g/kg, and joint-friendly low-impact exercises.'
+    });
+  }
+
+  if (maternal && !MATERNAL_STATUSES.has(maternal)) {
+    reasons.push({
+      code: 'CLINICAL_OR_INJURY_REQUIRES_REVIEW',
+      severity: 'requires_review',
+      message: 'Unsupported maternal status requires direct CuraFit Specialist Team review.'
+    });
+  }
+  if (maternal && (sex === 'male' || (Number.isFinite(age) && age > 50))) {
+    reasons.push({
+      code: 'CLINICAL_OR_INJURY_REQUIRES_REVIEW',
+      severity: 'requires_review',
+      message: 'Maternal status is only applicable to female profiles aged 18 to 50.'
+    });
+  }
+  if (isPregnantStatus(maternal) && goal === 'lose') {
+    reasons.push({
+      code: 'MATERNAL_WEIGHT_LOSS_FORBIDDEN',
+      severity: 'requires_review',
+      message: 'Weight loss goals are disabled during pregnancy for maternal and fetal safety.'
+    });
+  }
+
+  const supportedInjuries = new Set(SUPPORTED_WORKOUT_INJURIES);
+  const unsupportedDiseases = cleanDiseases.filter(x => !SUPPORTED_WELLNESS_CONDITIONS.has(x));
+  const unsupportedInjuries = cleanInjuries.filter(x => !supportedInjuries.has(x));
+  if (unsupportedDiseases.length || unsupportedInjuries.length) {
+    reasons.push({
+      code: 'CLINICAL_OR_INJURY_REQUIRES_REVIEW',
+      severity: 'requires_review',
+      message: 'Declared clinical conditions or injuries require direct specialist review before plan generation.'
+    });
+  }
+  if (hasMultiConditionClinicalReview(cleanDiseases, maternal || 'none')) {
+    reasons.push({
+      code: 'MULTI_CONDITION_CLINICAL_REVIEW',
+      severity: 'requires_review',
+      message: 'Multiple overlapping or high-acuity clinical conditions require direct specialist review before plan generation.'
+    });
+  }
+  if (parqRedFlag === true && serviceTrack !== 'nutrition_only') {
+    reasons.push({
+      code: 'PARQ_CLEARANCE_REQUIRED',
+      severity: 'requires_review',
+      message: 'Physician clearance is required before workout planning after a positive PAR-Q screening response. You can switch to nutrition_only in the meantime.'
+    });
+  }
+  if (serviceTrack !== 'nutrition_only') {
+    if (cleanInjuries.length === 3) {
+      notes.push({
+        code: 'MULTI_INJURY_WARNING',
+        severity: 'warning',
+        message: 'Three concurrent injuries limit available exercises; monitor joint comfort closely or consider switching to nutrition_only during recovery.'
+      });
+    } else if (cleanInjuries.length >= 4) {
+      reasons.push({
+        code: 'MULTI_INJURY_REQUIRES_REVIEW',
+        severity: 'requires_review',
+        message: 'Four or more concurrent injuries require specialist review before workout planning; switch to nutrition_only or seek clinical clearance.'
+      });
+    }
+  }
+
+  if (Number.isFinite(weight) && Number.isFinite(height) && height >= 120 && height <= 230) {
+    const bmi = weight / ((height / 100) ** 2);
+    if (bmi < 12.5 || bmi > 65) {
+      reasons.push({
+        code: 'BMI_OUT_OF_RANGE',
+        severity: 'requires_review',
+        message: 'Height and weight fall outside the standard CuraFit Specialist Team planning BMI range (12.5 to 65).'
+      });
+    } else if (bmi < 18.5 && goal === 'lose') {
+      reasons.push({
+        code: 'UNDERWEIGHT_LOSS_FORBIDDEN',
+        severity: 'requires_review',
+        message: 'Weight loss goals are unsafe when current BMI is below 18.5.'
+      });
+    }
+  }
+
+  if (serviceTrack === 'workouts_only' && parqRedFlag == null && healthConfirmed !== true) {
+    questions.push({
+      code: 'CONFIRM_WORKOUT_HEALTH',
+      field: 'healthConfirmed',
+      prompt: 'Confirm that you have no acute condition or injury requiring specialist clearance before starting workouts.'
+    });
+  }
+
+  const activeProteinPillars = computeActiveProteinPillars(dietType, cleanDiseases, excludedGroups);
+  const noProteinPillarsRemaining = serviceTrack !== 'workouts_only' && activeProteinPillars.length === 0;
+  const seniorMode = Number.isInteger(age) && age >= 70 && age <= 95;
+  const protectedJoints = [
+    ...new Set([
+      ...cleanInjuries,
+      ...(seniorMode ? ['senior_joints'] : []),
+      ...(isPregnantStatus(maternal) ? ['maternal_core'] : [])
+    ])
+  ];
+
+  return {
+    reasons,
+    notes,
+    questions,
+    eligibilityReasons: reasons.map(r => r.message),
+    eligibilityReasonCodes: [...new Set(reasons.map(r => r.code))],
+    warningCodes: [...new Set(notes.map(n => n.code))],
+    seniorMode,
+    unsupportedDiseases,
+    unsupportedInjuries,
+    cleanDiseases,
+    cleanInjuries,
+    maternal: maternal || 'none',
+    activeProteinPillars,
+    noProteinPillarsRemaining,
+    protectedJoints
+  };
+}
+
+export function buildCalibrationMetadata({
+  calibrationReasons = [],
+  adjustedCalories = null,
+  previousCalories = null,
+  adjustedMacros = null,
+  injuries = [],
+  seniorMode = false,
+  maternalStatus = 'none',
+  dietType = 'balanced',
+  diseases = [],
+  excludedGroups = [],
+  activeProteinPillars = null
+} = {}) {
+  const cleanInjuries = canonicalInjuries(Array.isArray(injuries) ? injuries : []);
+  const protectedJoints = [
+    ...new Set([
+      ...cleanInjuries,
+      ...(seniorMode ? ['senior_joints'] : []),
+      ...(isPregnantStatus(maternalStatus) ? ['maternal_core'] : [])
+    ])
+  ];
+  const resolvedPillars = Array.isArray(activeProteinPillars)
+    ? [...new Set(activeProteinPillars)]
+    : computeActiveProteinPillars(dietType, diseases, excludedGroups);
+  const adjCal = adjustedCalories != null && Number.isFinite(Number(adjustedCalories))
+    ? Math.round(Number(adjustedCalories))
+    : null;
+  const prevCal = previousCalories != null && Number.isFinite(Number(previousCalories))
+    ? Math.round(Number(previousCalories))
+    : null;
+  const calorieDelta = adjCal != null && prevCal != null ? adjCal - prevCal : 0;
+  const macros = adjustedMacros && Number.isFinite(Number(adjustedMacros.protein))
+    ? {
+        protein: Math.round(Number(adjustedMacros.protein) * 10) / 10,
+        carbs: Math.round(Number(adjustedMacros.carbs) * 10) / 10,
+        fat: Math.round(Number(adjustedMacros.fat) * 10) / 10
+      }
+    : null;
+  return {
+    calibrationReasons: [...new Set(calibrationReasons.filter(Boolean))],
+    adjustedCalories: adjCal,
+    previousCalories: prevCal,
+    calorieDelta,
+    adjustedMacros: macros,
+    protectedJoints,
+    activeProteinPillars: resolvedPillars
+  };
 }
 
 export const hasActiveParqRedFlag = s => s.onboarding?.serviceTrack !== 'nutrition_only' && s.onboarding?.workoutPrefs?.parqRedFlag === true;

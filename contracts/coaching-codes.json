@@ -24,7 +24,7 @@
       "domain": "recovery",
       "severity": "normal",
       "params": [],
-      "message": "Submit today's recovery check-in (sleep, fatigue, and pain status) so the engine can safely calibrate today's workout load."
+      "message": "Submit today's recovery check-in (sleep, fatigue, and pain status) so the CuraFit Specialist Team can safely calibrate today's workout load."
     },
     "ILLNESS_HOLD": {
       "domain": "recovery",
@@ -83,13 +83,13 @@
       "domain": "review",
       "severity": "attention",
       "params": [],
-      "message": "Confirm your weekly workout days before automated training and adaptive reviews run."
+      "message": "Confirm your weekly workout days before CuraFit Specialist Team training and adaptive reviews run."
     },
     "HEALTH_CONFIRMATION_REQUIRED": {
       "domain": "review",
       "severity": "attention",
       "params": [],
-      "message": "Confirm health readiness clearance before automated coaching reviews run."
+      "message": "Confirm health readiness clearance before CuraFit Specialist Team reviews run."
     },
     "WORKOUT_SAFETY_EXCLUSION_HOLD": {
       "domain": "review",
@@ -190,7 +190,7 @@
       "domain": "nutrition",
       "severity": "attention",
       "params": [],
-      "message": "High hunger or low energy was recently logged; calories are held steady pending follow-up instead of reducing automatically."
+      "message": "High hunger or low energy was recently logged; calories are held steady pending follow-up instead of reducing right now."
     },
     "CALORIE_ADVICE_DECLINED": {
       "domain": "nutrition",
@@ -204,7 +204,7 @@
       "params": [
         "minEnergyFloor"
       ],
-      "message": "Calories were held at the safe automated planning floor ({minEnergyFloor} kcal) instead of reducing further."
+      "message": "Calories were held at the safe planning floor ({minEnergyFloor} kcal) instead of reducing further."
     },
     "MAX_SAFE_ENERGY_CEILING_HOLD": {
       "domain": "nutrition",
@@ -212,7 +212,7 @@
       "params": [
         "maxEnergyCeiling"
       ],
-      "message": "Calories were held at the safe automated planning ceiling ({maxEnergyCeiling} kcal)."
+      "message": "Calories were held at the safe planning ceiling ({maxEnergyCeiling} kcal)."
     },
     "MATERNAL_CALORIE_CUT_BLOCKED": {
       "domain": "nutrition",
@@ -236,7 +236,7 @@
       "domain": "training",
       "severity": "normal",
       "params": [],
-      "message": "Automated weekly set increases apply to muscle-gain plans; holding volume does not mean your current training is insufficient."
+      "message": "Progressive weekly set increases apply to muscle-gain plans; holding volume does not mean your current training is insufficient."
     },
     "RECOVERY_BASELINE_NOT_READY": {
       "domain": "training",
@@ -336,7 +336,7 @@
       "domain": "eligibility",
       "severity": "requires_review",
       "params": [],
-      "message": "Automated planning is available for adults aged 18 to 95 only."
+      "message": "CuraFit Specialist Team plans are available for adults aged 18 to 95 only."
     },
     "SENIOR_MODE_ACTIVE": {
       "domain": "eligibility",
@@ -348,13 +348,13 @@
       "domain": "eligibility",
       "severity": "requires_review",
       "params": [],
-      "message": "Declared clinical conditions or injuries require direct specialist review before automated plan generation."
+      "message": "Declared clinical conditions or injuries require direct specialist review before plan generation."
     },
     "BMI_OUT_OF_RANGE": {
       "domain": "eligibility",
       "severity": "requires_review",
       "params": [],
-      "message": "Height and weight fall outside the automated planning BMI range (12.5 to 65)."
+      "message": "Height and weight fall outside the standard CuraFit Specialist Team planning BMI range (12.5 to 65)."
     },
     "UNDERWEIGHT_LOSS_FORBIDDEN": {
       "domain": "eligibility",
@@ -638,7 +638,7 @@
       "params": [
         "maternalStatus"
       ],
-      "message": "Menstrual cycle predictions are automatically paused during pregnancy ({maternalStatus}); maternal safety guidance remains active."
+      "message": "Menstrual cycle predictions are paused during pregnancy ({maternalStatus}); maternal safety guidance remains active."
     },
     "BRIEF_TRAINING_PERFORMANCE_UP": {
       "domain": "brief",
@@ -718,7 +718,7 @@
       "domain": "eligibility",
       "severity": "requires_review",
       "params": [],
-      "message": "Physician clearance is required before automated workout planning after a positive PAR-Q screening response. You can switch to nutrition_only in the meantime."
+      "message": "Physician clearance is required before workout planning after a positive PAR-Q screening response. You can switch to nutrition_only in the meantime."
     },
     "CONFLICTING_CONDITIONS": {
       "domain": "eligibility",
@@ -732,7 +732,7 @@
       "domain": "eligibility",
       "severity": "requires_review",
       "params": [],
-      "message": "Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation."
+      "message": "Multiple overlapping or high-acuity clinical conditions require direct specialist review before plan generation."
     },
     "MULTI_INJURY_WARNING": {
       "domain": "eligibility",
@@ -744,7 +744,237 @@
       "domain": "eligibility",
       "severity": "requires_review",
       "params": [],
-      "message": "Four or more concurrent injuries (or infeasible workout day coverage) require specialist review before automated workout planning; switch to nutrition_only or seek clinical clearance."
+      "message": "Four or more concurrent injuries (or infeasible workout day coverage) require specialist review before workout planning; switch to nutrition_only or seek clinical clearance."
+    },
+    "PLAN_HYPOTHYROID_REE_CALIBRATION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Applied conservative 5% REE calibration for hypothyroidism; monitor actual weight trend."
+    },
+    "PLAN_SENIOR_DEFICIT_CAP": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Senior safety mode (70+): daily calorie deficit capped at -400 kcal."
+    },
+    "PLAN_RECOMPOSITION_MAINTENANCE": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Body recomposition starts at maintenance calories with progressive resistance training."
+    },
+    "PLAN_ADAPTIVE_GOAL_PACE": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Goal pace sets a bounded initial offset; actual energy needs are calibrated from recorded weight trends."
+    },
+    "PLAN_PREGNANCY_T1_CALIBRATION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "First-trimester pregnancy calibration applied (maintenance baseline, calorie deficits disabled)."
+    },
+    "PLAN_PREGNANCY_T2_CALIBRATION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Second-trimester pregnancy calibration applied (+340 kcal/day, deficits and extra gain surplus disabled)."
+    },
+    "PLAN_PREGNANCY_T3_CALIBRATION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Third-trimester pregnancy calibration applied (+450 kcal/day, deficits and extra gain surplus disabled)."
+    },
+    "PLAN_BREASTFEEDING_CALIBRATION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Breastfeeding calibration applied (+400 kcal baseline, max deficit -300 kcal/day)."
+    },
+    "PLAN_MIN_ENERGY_FLOOR_APPLIED": {
+      "domain": "nutrition",
+      "severity": "attention",
+      "params": [
+        "minEnergyFloor"
+      ],
+      "message": "Daily energy raised to the safe planning floor ({minEnergyFloor} kcal)."
+    },
+    "PLAN_MAX_ENERGY_CEILING_APPLIED": {
+      "domain": "nutrition",
+      "severity": "attention",
+      "params": [],
+      "message": "Daily energy capped at the safe planning ceiling (4200 kcal)."
+    },
+    "PLAN_UNDERWEIGHT_NUTRIENT_CARE": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "BMI is below 18.5 (underweight): focus on nutrient-dense meals and gradual intake progression."
+    },
+    "PLAN_ABW_PROTEIN_SCALING": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Protein targets use Adjusted Body Weight (ABW) for BMI > 30 to avoid excessive portions."
+    },
+    "PLAN_GOUT_PROTEIN_CAP": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Protein capped at 1.4 g/kg and high-purine red meats/offal excluded for gout."
+    },
+    "PLAN_KIDNEY_PROTEIN_CAP": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Protein conservatively capped at <= 1.1 g/kg for kidney condition support."
+    },
+    "PLAN_IBS_EXCLUSIONS_ACTIVE": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Heavy legumes, cabbage, and raw alliums excluded for IBS comfort."
+    },
+    "PLAN_HYPERTENSION_SODIUM_CEILING": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Low-sodium ceiling and high-sodium cheese exclusions enabled for blood pressure support."
+    },
+    "PLAN_CELIAC_GLUTEN_EXCLUSION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Gluten-containing grains and breads are excluded for celiac safety."
+    },
+    "PLAN_FAVISM_EXCLUSION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Fava beans and falafel are excluded for favism (G6PD) safety."
+    },
+    "PLAN_LACTOSE_EXCLUSION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Dairy products are excluded for lactose intolerance comfort."
+    },
+    "PLAN_GLYCEMIC_CARB_CALIBRATION": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Carbohydrate share calibrated to ~38% of daily energy for glycemic support."
+    },
+    "PLAN_GAIN_WITHOUT_RESISTANCE": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Calorie surplus without resistance training does not guarantee lean mass gain."
+    },
+    "PLAN_MUSCLE_GAIN_SURPLUS": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Muscle gain targets use a moderate surplus (<= 250 kcal) and progressive resistance training."
+    },
+    "WORKOUT_INJURY_EXCLUSIONS_ACTIVE": {
+      "domain": "training",
+      "severity": "attention",
+      "params": [],
+      "message": "Movements contraindicated for declared injuries were excluded precautionarily; remaining selections are not medical clearance. Stop any painful movement."
+    },
+    "WORKOUT_SENIOR_SAFETY_ACTIVE": {
+      "domain": "training",
+      "severity": "info",
+      "params": [],
+      "message": "Senior safety mode (70+): high-impact plyometrics and heavy spinal loading were excluded."
+    },
+    "WORKOUT_PREGNANCY_SAFETY_ACTIVE": {
+      "domain": "training",
+      "severity": "info",
+      "params": [],
+      "message": "Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded."
+    },
+    "WORKOUT_SEVEN_DAY_RECOVERY_CAUTION": {
+      "domain": "training",
+      "severity": "attention",
+      "params": [],
+      "message": "7-day schedule detected: monitor daily recovery closely and keep intensity moderate on back-to-back sessions."
+    },
+    "WORKOUT_SPLIT_FALLBACK_FULL_BODY": {
+      "domain": "training",
+      "severity": "info",
+      "params": [],
+      "message": "Selected split requires more training days; switched to Full Body for balanced muscle coverage."
+    },
+    "WORKOUT_EQUIPMENT_FALLBACK_FULL_BODY": {
+      "domain": "training",
+      "severity": "info",
+      "params": [],
+      "message": "Requested split required unavailable equipment; switched to Full Body matching your equipment and time budget."
+    },
+    "WORKOUT_MISSING_PATTERNS_NOTED": {
+      "domain": "training",
+      "severity": "info",
+      "params": [],
+      "message": "Some movement patterns did not fit current equipment, injuries, or session duration; gaps are noted per day."
+    },
+    "WORKOUT_CONSECUTIVE_FULL_BODY_CAUTION": {
+      "domain": "training",
+      "severity": "attention",
+      "params": [],
+      "message": "Consecutive Full Body training days detected; monitor recovery and prefer a rest day between sessions when possible."
+    },
+    "WARM_CLIMATE_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Regional warm-climate hydration bonus (+200 ml) applied."
+    },
+    "GOUT_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Gout support hydration bonus (+500 ml) applied."
+    },
+    "MATERNAL_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Maternal hydration bonus (+300 ml pregnancy / +600 ml breastfeeding) applied."
+    },
+    "DASH_SODIUM_CEILING": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "DASH daily sodium ceiling (<= 2300 mg) active."
+    },
+    "PLAN_WEEKLY_RENEWAL": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Weekly nutrition plan renewed with updated targets."
+    },
+    "COMEBACK_RAMP_IN": {
+      "domain": "training",
+      "severity": "info",
+      "params": [],
+      "message": "Comeback restart calibration applied for a smooth return."
+    },
+    "RECOVERY_DELOAD_APPLIED": {
+      "domain": "training",
+      "severity": "info",
+      "params": [],
+      "message": "Approved temporary set reduction applied for recovery protection."
+    },
+    "CALORIE_ADAPTATION_APPLIED": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Approved calorie adaptation applied to upcoming plan days."
     }
   }
 }

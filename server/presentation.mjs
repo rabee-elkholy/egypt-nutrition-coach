@@ -13,24 +13,56 @@ import {coachingInbox} from '../coaching-journey.mjs';
 import {FREE_FEATURES} from './subscriptions.mjs';
 import {localDate,needsHealthConfirmation,hasActiveParqRedFlag,needsScheduleConfirmation,isPregnantStatus,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
 
+function buildEligibilityStatusBlock(needsHealth,parqBlocked,needsSchedule){
+ const reasons=[];
+ const reasonCodes=[];
+ if(parqBlocked){
+  reasonCodes.push('PARQ_CLEARANCE_REQUIRED');
+  reasons.push('Physician clearance is required before workout planning after a positive PAR-Q screening response.');
+ }
+ if(needsHealth){
+  reasonCodes.push('HEALTH_CONFIRMATION_REQUIRED');
+  reasons.push('Confirm health readiness clearance before starting workouts.');
+ }
+ if(needsSchedule){
+  reasonCodes.push('SCHEDULE_CONFIRMATION_REQUIRED');
+  reasons.push('Confirm your weekly workout days before CuraFit Specialist Team reviews run.');
+ }
+ return {
+  needsHealthConfirmation:needsHealth,
+  parqClearanceRequired:parqBlocked,
+  needsScheduleConfirmation:needsSchedule,
+  status:parqBlocked?'requires_review':needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible',
+  eligibilityReasons:reasons,
+  eligibilityReasonCodes:reasonCodes
+ };
+}
+
 export const present=s=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
  const liveProfile=effectiveProfileWithLiveAge(s.profile,currDate);
+ const resolvedUnitSystem=liveProfile?.unitSystem||liveProfile?.unit_system||'metric';
+ const resolvedRegion=s.preferences?.region||liveProfile?.region||liveProfile?.region_id||'egypt';
+ const hydratedProfile=liveProfile?{...liveProfile,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem,region:resolvedRegion,region_id:resolvedRegion}:null;
+ const hydratedPrefs=s.preferences?{...s.preferences,region:resolvedRegion,region_id:resolvedRegion,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem}:null;
  const liveState=liveProfile===s.profile?s:{...s,profile:liveProfile};
  const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=accountRecovery(s,clockNow(),tz),needsHealth=needsHealthConfirmation(s),parqBlocked=hasActiveParqRedFlag(s),needsSchedule=needsScheduleConfirmation(s);
  const safety=workoutSafetyIssues(liveState),dietIssues=[];
  if(plan)for(const day of plan.days){try{assertDietDay(day.meals.map(m=>m.snapshot),s.preferences.diet,day.targets||plan.targets,liveProfile);}catch(e){dietIssues.push({date:day.date,message:e.message});}}
  if(safety.length){ready.progressionAllowed=false;if(ready.status!=='stop'){ready.status='hold';ready.reasonCode='WORKOUT_SAFETY_EXCLUSION_HOLD';ready.reasons=['Your current workout plan contains movements excluded for your declared injuries; swap them or regenerate your plan before progressing.'];}}
+ const calibrationMetadata=s.lastReview?.calibrationMetadata||plan?.calibrationMetadata||s.lastCalibrationMetadata||null;
  return {
   ...s,
-  ...(liveProfile?{profile:liveProfile}:{}),
+  ...(hydratedProfile?{profile:hydratedProfile}:{}),
+  ...(hydratedPrefs?{preferences:hydratedPrefs}:{}),
   workoutSafetyIssues:safety,
   dietVerificationIssues:dietIssues,
   serverNow:isoNow(),
   serverDate:currDate,
   timezone:tz,
-  eligibility:{needsHealthConfirmation:needsHealth,parqClearanceRequired:parqBlocked,needsScheduleConfirmation:needsSchedule,status:parqBlocked?'requires_review':needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
+  eligibility:buildEligibilityStatusBlock(needsHealth,parqBlocked,needsSchedule),
+  ...(calibrationMetadata?{calibrationMetadata}:{}),
   planQuality:plan?.days.flatMap(d=>nutritionQualityIssues(d.summary,d.targets||plan.targets).map(message=>({date:d.date,message})))||[],
   scheduledSessions:scheduledSessions(s,currDate),
   progressSummary:progressSummary(s),
@@ -75,7 +107,9 @@ export const presentBootstrap=(s,extras={})=>{
  const {streakSummary,engagementState}=computeStreakAndEngagement(s,clockNow());
  const inbox=coachingInbox(s,clockNow(),{pushConfigured:Boolean(extras.pushConfigured)});
  const unreadCoachingInboxCount=inbox.items.filter(c=>c.readStatus!=='ACKNOWLEDGED').length;
- const hydratedProfile=liveProfile?{...liveProfile,unitSystem:liveProfile.unitSystem||'metric',...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
+ const resolvedUnitSystem=liveProfile?.unitSystem||liveProfile?.unit_system||'metric';
+ const resolvedRegion=s.preferences?.region||liveProfile?.region||liveProfile?.region_id||'egypt';
+ const hydratedProfile=liveProfile?{...liveProfile,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem,region:resolvedRegion,region_id:resolvedRegion,...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
  const fastingState=getFastingState(s,clockNow());
  const cardioMins=dailyCardioMinutes(s,currDate);
  const isCardioHydrationDay=!wTarget.isWorkoutDay&&cardioMins>=30;
@@ -88,6 +122,7 @@ export const presentBootstrap=(s,extras={})=>{
   extraKcal:mat==='pregnant_t2'?340:mat==='pregnant_t3'?450:mat==='breastfeeding'?400:0,
   safetyMode:true
  }:null;
+ const calibrationMetadata=s.lastReview?.calibrationMetadata||plan?.calibrationMetadata||s.lastCalibrationMetadata||null;
  return {
   schemaVersion:s.schemaVersion||3,
   revision:s.revision,
@@ -103,9 +138,10 @@ export const presentBootstrap=(s,extras={})=>{
    workoutPrefs:s.onboarding.workoutPrefs||null
   }:null,
   profile:hydratedProfile,
-  preferences:s.preferences?{...s.preferences,unitSystem:s.profile?.unitSystem||'metric'}:null,
+  preferences:s.preferences?{...s.preferences,region:resolvedRegion,region_id:resolvedRegion,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem}:null,
   consents:extras.consents||[],
-  eligibility:{needsHealthConfirmation:needsHealth,parqClearanceRequired:parqBlocked,needsScheduleConfirmation:needsSchedule,status:parqBlocked?'requires_review':needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
+  eligibility:buildEligibilityStatusBlock(needsHealth,parqBlocked,needsSchedule),
+  ...(calibrationMetadata?{calibrationMetadata}:{}),
   activeNutritionPlanRef:plan?{id:plan.id,start_date:plan.start_date,end_date:plan.days.at(-1)?.date,effective_from:plan.effective_from,targets:plan.targets}:null,
   activeWorkoutPlanRef:s.workoutPlan?{id:s.workoutPlan.id,version:s.workoutPlan.version,split:s.workoutPlan.split,daysCount:s.workoutPlan.days.length,weeklySets:s.workoutPlan.weeklySets,coverage:s.workoutPlan.coverage}:null,
   scheduledSessions:upcoming14,
@@ -124,7 +160,7 @@ export const presentBootstrap=(s,extras={})=>{
     complete:todayDiary.complete,
     entriesCount:todayDiary.entries.length
    },
-   hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,boostMl:hydrationBoostMl,boostReason:hydrationBoostReason},
+   hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,boostMl:hydrationBoostMl,boostReason:hydrationBoostReason,region:resolvedRegion,region_id:resolvedRegion,bonuses:wTarget.bonuses},
    activity:todayActivity?{steps:todayActivity.steps,activeEnergyKcal:todayActivity.activeEnergyKcal,source:todayActivity.source,updatedAt:todayActivity.at||null}:null,
    cardio:todayCardioSummary(s,currDate),
    latestWeight,
@@ -151,6 +187,9 @@ export const presentReceipt=(s,action,payload={},replayed=false)=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
  const deltas=s._lastReceipt?.affected||deriveSyncDeltas(s,action,payload,isoNow());
+ const calibrationMetadata=['generate','review','renew_plan','comeback_restart','adaptation'].includes(action)
+  ?(s.lastReview?.calibrationMetadata||s.lastCalibrationMetadata||null)
+  :null;
  return {
   revision:s.revision,
   serverNow:isoNow(),
@@ -162,6 +201,7 @@ export const presentReceipt=(s,action,payload={},replayed=false)=>{
    replayed,
    at:s._lastReceipt?.at||isoNow()
   },
+  ...(calibrationMetadata?{calibrationMetadata}:{}),
   affected:deltas
  };
 };

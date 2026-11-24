@@ -222,9 +222,9 @@ export default {async fetch(request,env){
   if(request.method!=='GET'&&request.method!=='OPTIONS'&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)throw createApiError('Cross-origin write requests are forbidden.',403,{code:'ORIGIN_FORBIDDEN'});
   if(!auth.scopes.includes(request.method==='GET'?'coach:read':'coach:write'))throw createApiError('Token lacks required authorization scope.',403,{code:'AUTH_SCOPE_REQUIRED'});
 
-  // Deferred Final AI Phase routes
+  // Deferred CuraFit Specialist Team Q&A and meal-parsing routes
   if(url.pathname==='/v1/nutrition/ai-parse'||url.pathname==='/v1/coaching/chat'||url.pathname==='/v1/coaching/chat/history'){
-   return errorJson('This AI feature is scheduled for the final AI rollout phase.',501,reqId,{code:'FEATURE_DEFERRED_TO_AI_PHASE',params:{feature:url.pathname}});
+   return errorJson('This CuraFit Specialist Team feature is scheduled for an upcoming release.',501,reqId,{code:'FEATURE_DEFERRED_TO_AI_PHASE',params:{feature:url.pathname}});
   }
 
   // Catalog Reads (require auth)

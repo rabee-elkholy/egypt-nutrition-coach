@@ -103,13 +103,15 @@ export function workoutPlan(draft){
  let split=draft.workoutSplitPreference==='auto'||!draft.workoutSplitPreference?(days.length<=3?'full_body':days.length>=5?'ppl':'upper_lower'):draft.workoutSplitPreference;
  if(!['full_body','upper_lower','ppl','bro_split'].includes(split))throw apiError('INVALID_WORKOUT_SPLIT','workoutSplitPreference must be auto, full_body, upper_lower, ppl, or bro_split.',{status:400});
  const warnings=[];
- if(injuries.length)warnings.push('Movements contraindicated for declared injuries were excluded precautionarily; remaining selections are not medical clearance. Stop any painful movement.');
- if(safetyProfile.seniorMode)warnings.push('Senior safety mode (70+): high-impact plyometrics and heavy spinal loading were excluded.');
- if(isPregnantStatus(safetyProfile.maternalStatus))warnings.push('Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded.');
- if(days.length===7)warnings.push('7-day schedule detected: monitor daily recovery closely and keep intensity moderate on back-to-back sessions.');
- if(split==='upper_lower'&&days.length<2){warnings.push('Upper/Lower split requires at least 2 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
- if(split==='bro_split'&&days.length<4){warnings.push('Bro Split requires at least 4 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
- if(split==='ppl'&&days.length<3){warnings.push('Push/Pull/Legs split requires at least 3 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
+ const warningCodes=[];
+ const addWarning=(code,msg)=>{warnings.push(msg);if(code&&!warningCodes.includes(code))warningCodes.push(code);};
+ if(injuries.length)addWarning('WORKOUT_INJURY_EXCLUSIONS_ACTIVE','Movements contraindicated for declared injuries were excluded precautionarily; remaining selections are not medical clearance. Stop any painful movement.');
+ if(safetyProfile.seniorMode)addWarning('WORKOUT_SENIOR_SAFETY_ACTIVE','Senior safety mode (70+): high-impact plyometrics and heavy spinal loading were excluded.');
+ if(isPregnantStatus(safetyProfile.maternalStatus))addWarning('WORKOUT_PREGNANCY_SAFETY_ACTIVE','Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded.');
+ if(days.length===7)addWarning('WORKOUT_SEVEN_DAY_RECOVERY_CAUTION','7-day schedule detected: monitor daily recovery closely and keep intensity moderate on back-to-back sessions.');
+ if(split==='upper_lower'&&days.length<2){addWarning('WORKOUT_SPLIT_FALLBACK_FULL_BODY','Upper/Lower split requires at least 2 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
+ if(split==='bro_split'&&days.length<4){addWarning('WORKOUT_SPLIT_FALLBACK_FULL_BODY','Bro Split requires at least 4 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
+ if(split==='ppl'&&days.length<3){addWarning('WORKOUT_SPLIT_FALLBACK_FULL_BODY','Push/Pull/Legs split requires at least 3 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
  const goalNote=goal==='lose'?'Resistance plan designed to preserve lean muscle mass during fat loss (pair with light walking when feasible).':goal==='muscle_gain'||goal==='gain'?'Hypertrophy-focused resistance plan emphasizing full range of motion and progressive overload.':'Balanced strength and mobility plan for fitness maintenance and joint health.';
  // Track used exercises per focus/pattern across the week so multi-day full_body or repeated focus days rotate variations deterministically
  const focusOccurrenceCount=new Map();
@@ -155,12 +157,14 @@ export function workoutPlan(draft){
  if(sessions.some(s=>!s.exercises.length)){
   if(split!=='full_body'){
    const fallback=workoutPlan({...draft,workoutSplitPreference:'full_body'});
-   fallback.warnings.unshift('Requested split required unavailable equipment; switched to Full Body matching your equipment and time budget.');return fallback;
+   fallback.warnings.unshift('Requested split required unavailable equipment; switched to Full Body matching your equipment and time budget.');
+   fallback.warningCodes=['WORKOUT_EQUIPMENT_FALLBACK_FULL_BODY',...(fallback.warningCodes||[]).filter(c=>c!=='WORKOUT_EQUIPMENT_FALLBACK_FULL_BODY')];
+   return fallback;
   }
   throw apiError('WORKOUT_INFEASIBLE','Current equipment, injury exclusions, and duration cannot build a valid workout session.',{status:400});
  }
- if(sessions.some(s=>s.missing.length))warnings.push('Some movement patterns did not fit current equipment, injuries, or session duration; gaps are noted per day.');
- if(split==='full_body'&&days.some((d,i)=>days.length>1&&(days[(i+1)%days.length]-d+7)%7===1))warnings.push('Consecutive Full Body training days detected; monitor recovery and prefer a rest day between sessions when possible.');
+ if(sessions.some(s=>s.missing.length))addWarning('WORKOUT_MISSING_PATTERNS_NOTED','Some movement patterns did not fit current equipment, injuries, or session duration; gaps are noted per day.');
+ if(split==='full_body'&&days.some((d,i)=>days.length>1&&(days[(i+1)%days.length]-d+7)%7===1))addWarning('WORKOUT_CONSECUTIVE_FULL_BODY_CAUTION','Consecutive Full Body training days detected; monitor recovery and prefer a rest day between sessions when possible.');
  const weeklySets=weeklySetTotals(sessions);
  const totalPatternsRequested=sessions.reduce((sum,s)=>sum+s.exercises.length+s.missing.length,0);
  const totalPatternsCovered=sessions.reduce((sum,s)=>sum+s.exercises.length,0);
@@ -172,6 +176,7 @@ export function workoutPlan(draft){
   goalNote,
   days:sessions,
   warnings,
+  warningCodes,
   weeklySets,
   coverage:{
    requestedPatterns:totalPatternsRequested,

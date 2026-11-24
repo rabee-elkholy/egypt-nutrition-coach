@@ -313,7 +313,7 @@
     },
     "AUTH_UNSUPPORTED_ALG": {
       "httpStatus": 401,
-      "message": "Unsupported JWT signing algorithm.",
+      "message": "Unsupported JWT signing method.",
       "params": [],
       "retryable": false
     },
@@ -586,13 +586,13 @@
     },
     "UNSUPPORTED_ELBOW_PAIN": {
       "httpStatus": 400,
-      "message": "Elbow pain requires specialist assessment; automated workout adaptation is not supported for this injury.",
+      "message": "Elbow pain requires specialist assessment before adapting exercises for this injury.",
       "params": [],
       "retryable": false
     },
     "CLINICAL_REVIEW_REQUIRED": {
       "httpStatus": 400,
-      "message": "Declared clinical conditions or age require specialist review before automated plan generation.",
+      "message": "Declared clinical conditions or age require direct specialist review before plan generation.",
       "params": [],
       "retryable": false
     },
@@ -610,7 +610,7 @@
     },
     "BMI_OUT_OF_RANGE": {
       "httpStatus": 400,
-      "message": "Calculated BMI is outside the automated planning range (12.5..65).",
+      "message": "Calculated BMI is outside the standard CuraFit Specialist Team planning range (12.5..65).",
       "params": [],
       "retryable": false
     },
@@ -671,7 +671,11 @@
     "INVALID_BIRTH_DATE": {
       "httpStatus": 400,
       "message": "Date of birth must correspond to an adult aged 18 to 95 years.",
-      "params": ["minAge", "maxAge", "computedAge"],
+      "params": [
+        "minAge",
+        "maxAge",
+        "computedAge"
+      ],
       "retryable": false
     },
     "INVALID_PROFILE_METRICS": {
@@ -954,7 +958,7 @@
     },
     "ENERGY_CHANGE_OUT_OF_RANGE": {
       "httpStatus": 400,
-      "message": "Adjusted daily calories exceed safe automated bounds (1200/1500/1600/1800..4200 kcal).",
+      "message": "Adjusted daily calories exceed safe planning bounds (1200/1500/1600/1800..4200 kcal).",
       "params": [],
       "retryable": false
     },
@@ -1708,7 +1712,7 @@
       "params": [
         "feature"
       ],
-      "message": "This AI feature is scheduled for the final AI rollout phase."
+      "message": "This CuraFit Specialist Team feature is scheduled for an upcoming release."
     },
     "MEDICAL_DIET_CONFLICT": {
       "httpStatus": 400,
@@ -1875,7 +1879,7 @@
     },
     "PARQ_CLEARANCE_REQUIRED": {
       "httpStatus": 422,
-      "message": "Physician clearance is required before automated workout planning after a positive PAR-Q screening response. Switch serviceTrack to nutrition_only or obtain medical clearance.",
+      "message": "Physician clearance is required before workout planning after a positive PAR-Q screening response. Switch serviceTrack to nutrition_only or obtain medical clearance.",
       "params": [
         "serviceTrack"
       ],
@@ -1891,7 +1895,7 @@
     },
     "MULTI_CONDITION_CLINICAL_REVIEW": {
       "httpStatus": 422,
-      "message": "Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation.",
+      "message": "Multiple overlapping or high-acuity clinical conditions require direct specialist review before plan generation.",
       "params": [
         "conditions",
         "maternalStatus"
@@ -1900,7 +1904,7 @@
     },
     "MULTI_INJURY_REQUIRES_REVIEW": {
       "httpStatus": 422,
-      "message": "Four or more concurrent injuries (or zero safe exercises for a scheduled day) require specialist review before automated workout generation; switch to nutrition_only or seek clinical clearance.",
+      "message": "Four or more concurrent injuries (or zero safe exercises for a scheduled day) require specialist review before workout planning; switch to nutrition_only or seek clinical clearance.",
       "params": [
         "injuryCount",
         "injuries"

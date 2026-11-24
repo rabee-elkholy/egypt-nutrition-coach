@@ -9,7 +9,7 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `RED_FLAGS_STOP` | `recovery` | `urgent` | — | Urgent safety notice: stop exercising immediately and seek medical evaluation for symptoms such as chest pain or severe dizziness. |
 | `WORKOUT_PAIN_HOLD` | `recovery` | `hold` | — | Pain was logged during your recent workout, so load progression is paused. Update your recovery check-in before resuming heavy effort. |
 | `FEEDBACK_PAIN_HOLD` | `recovery` | `hold` | — | You reported pain as a training barrier. Stop painful movements and submit a pain-free recovery check-in before increasing load. |
-| `CHECKIN_MISSING_OR_STALE` | `recovery` | `normal` | — | Submit today's recovery check-in (sleep, fatigue, and pain status) so the engine can safely calibrate today's workout load. |
+| `CHECKIN_MISSING_OR_STALE` | `recovery` | `normal` | — | Submit today's recovery check-in (sleep, fatigue, and pain status) so the CuraFit Specialist Team can safely calibrate today's workout load. |
 | `ILLNESS_HOLD` | `recovery` | `hold` | — | Health comes first: pause today's workout while experiencing illness symptoms and consult a clinician if symptoms persist. |
 | `JOINT_PAIN_HOLD` | `recovery` | `hold` | `painRegions` | Joint pain reported; pause painful movements, use safe alternatives or rest, and pause progression until pain resolves. |
 | `RECOVERY_READY` | `recovery` | `normal` | — | Current recovery check-in supports normal training intensity while monitoring technique and perceived effort. |
@@ -17,8 +17,8 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `RECOVERY_DELOAD_PROPOSAL` | `adaptation` | `attention` | `setFactor`, `regions` | Based on recent recovery strain, we propose temporarily reducing working sets for 24 hours; applying this adjustment requires your approval. |
 | `RECOVERY_ADJUSTMENT_ACTIVE` | `review` | `attention` | `setFactor`, `expiresAt` | Your approved temporary set reduction is currently active for today's workout. |
 | `RECOVERY_ADVICE_DECLINED` | `review` | `normal` | — | Your previous choice to decline the set reduction is saved. Your workout plan remains unchanged until a new recovery check-in is logged. |
-| `SCHEDULE_CONFIRMATION_REQUIRED` | `review` | `attention` | — | Confirm your weekly workout days before automated training and adaptive reviews run. |
-| `HEALTH_CONFIRMATION_REQUIRED` | `review` | `attention` | — | Confirm health readiness clearance before automated coaching reviews run. |
+| `SCHEDULE_CONFIRMATION_REQUIRED` | `review` | `attention` | — | Confirm your weekly workout days before CuraFit Specialist Team training and adaptive reviews run. |
+| `HEALTH_CONFIRMATION_REQUIRED` | `review` | `attention` | — | Confirm health readiness clearance before CuraFit Specialist Team reviews run. |
 | `WORKOUT_SAFETY_EXCLUSION_HOLD` | `review` | `hold` | `count` | Your current workout plan contains movements excluded for your declared injuries; swap them or regenerate your plan before progressing. |
 | `PLAN_CONSTRAINTS_VERIFICATION_FAILED` | `review` | `hold` | — | Your existing nutrition plan no longer satisfies current dietary constraints; regenerate your plan. |
 | `RECOVERY_NOT_READY_FOR_CALORIE_CHANGE` | `nutrition` | `normal` | — | Calorie adjustments are paused until sleep and recovery readiness stabilize. |
@@ -32,14 +32,14 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `CALORIE_DEFICIT_STEP` | `adaptation` | `normal` | `delta`, `rate` | Based on adherent food logs and a {rate}%/week weight trend, we propose a modest {delta} kcal daily reduction. |
 | `CALORIE_SURPLUS_STEP` | `adaptation` | `normal` | `delta`, `rate` | Based on adherent food logs and a {rate}%/week weight trend, we propose a modest +{delta} kcal daily increase. |
 | `PERFORMANCE_DROP_CALORIE_CUT_HOLD` | `nutrition` | `attention` | — | Training performance declined recently; calories are held steady to protect lean mass and recovery instead of cutting further. |
-| `APPETITE_ENERGY_REVIEW_REQUIRED` | `nutrition` | `attention` | — | High hunger or low energy was recently logged; calories are held steady pending follow-up instead of reducing automatically. |
+| `APPETITE_ENERGY_REVIEW_REQUIRED` | `nutrition` | `attention` | — | High hunger or low energy was recently logged; calories are held steady pending follow-up instead of reducing right now. |
 | `CALORIE_ADVICE_DECLINED` | `nutrition` | `normal` | — | Your previous choice to decline a calorie change is saved; your plan was not modified. |
-| `MIN_SAFE_ENERGY_FLOOR_HOLD` | `nutrition` | `attention` | `minEnergyFloor` | Calories were held at the safe automated planning floor ({minEnergyFloor} kcal) instead of reducing further. |
-| `MAX_SAFE_ENERGY_CEILING_HOLD` | `nutrition` | `attention` | `maxEnergyCeiling` | Calories were held at the safe automated planning ceiling ({maxEnergyCeiling} kcal). |
+| `MIN_SAFE_ENERGY_FLOOR_HOLD` | `nutrition` | `attention` | `minEnergyFloor` | Calories were held at the safe planning floor ({minEnergyFloor} kcal) instead of reducing further. |
+| `MAX_SAFE_ENERGY_CEILING_HOLD` | `nutrition` | `attention` | `maxEnergyCeiling` | Calories were held at the safe planning ceiling ({maxEnergyCeiling} kcal). |
 | `MATERNAL_CALORIE_CUT_BLOCKED` | `nutrition` | `hold` | — | Calorie reductions are disabled during pregnancy for maternal safety. |
 | `PLAN_CONSTRAINTS_ADJUSTMENT_HOLD` | `nutrition` | `attention` | — | Current calories were kept because the proposed change could not satisfy your dietary, macro, or exclusion constraints. |
 | `HEALTH_OR_SCHEDULE_UNCONFIRMED` | `training` | `attention` | — | Confirm health readiness and workout schedule before volume progression is evaluated. |
-| `GOAL_NOT_MUSCLE_GAIN` | `training` | `normal` | — | Automated weekly set increases apply to muscle-gain plans; holding volume does not mean your current training is insufficient. |
+| `GOAL_NOT_MUSCLE_GAIN` | `training` | `normal` | — | Progressive weekly set increases apply to muscle-gain plans; holding volume does not mean your current training is insufficient. |
 | `RECOVERY_BASELINE_NOT_READY` | `training` | `normal` | — | At least 7 valid recovery check-ins are needed to establish a baseline before proposing extra weekly sets. |
 | `INSUFFICIENT_SESSION_ADHERENCE` | `training` | `normal` | — | Complete at least 80% of scheduled sessions over the past 2 weeks before adding weekly volume. |
 | `WEEKLY_VOLUME_INCREASE_PROPOSED` | `adaptation` | `normal` | `exerciseId`, `region`, `extraSets` | Strong adherence and stable performance over the last 3 exposures support adding +{extraSets} weekly set. |
@@ -54,10 +54,10 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `BODYWEIGHT_PROGRESSION_REPS_ONLY` | `progression` | `normal` | — | Progress bodyweight movements through additional reps and tempo control. |
 | `VALID_INCREMENT_REQUIRED` | `progression` | `normal` | — | Current weight increment exceeds conservative progression bounds (<= 5%); build reps and control first. |
 | `DOUBLE_PROGRESSION_READY` | `progression` | `normal` | `kg` | Target reps achieved cleanly across two consecutive sessions; consider progressing to {kg} kg if technique and recovery feel solid. |
-| `AGE_UNSUPPORTED_OR_MISSING` | `eligibility` | `requires_review` | — | Automated planning is available for adults aged 18 to 95 only. |
+| `AGE_UNSUPPORTED_OR_MISSING` | `eligibility` | `requires_review` | — | CuraFit Specialist Team plans are available for adults aged 18 to 95 only. |
 | `SENIOR_MODE_ACTIVE` | `eligibility` | `info` | — | Senior safety mode (70+) is active: moderate deficit cap (-400 kcal), protein floor >= 1.2 g/kg, and joint-friendly low-impact exercises. |
-| `CLINICAL_OR_INJURY_REQUIRES_REVIEW` | `eligibility` | `requires_review` | — | Declared clinical conditions or injuries require direct specialist review before automated plan generation. |
-| `BMI_OUT_OF_RANGE` | `eligibility` | `requires_review` | — | Height and weight fall outside the automated planning BMI range (12.5 to 65). |
+| `CLINICAL_OR_INJURY_REQUIRES_REVIEW` | `eligibility` | `requires_review` | — | Declared clinical conditions or injuries require direct specialist review before plan generation. |
+| `BMI_OUT_OF_RANGE` | `eligibility` | `requires_review` | — | Height and weight fall outside the standard CuraFit Specialist Team planning BMI range (12.5 to 65). |
 | `UNDERWEIGHT_LOSS_FORBIDDEN` | `eligibility` | `requires_review` | — | Weight loss goals are unsafe when current BMI is below 18.5. |
 | `MATERNAL_WEIGHT_LOSS_FORBIDDEN` | `eligibility` | `requires_review` | — | Weight loss goals are disabled during pregnancy for maternal and fetal safety. |
 | `CONFIRM_WORKOUT_HEALTH` | `eligibility` | `needs_input` | — | Confirm that you have no acute condition or injury requiring specialist clearance before starting workouts. |
@@ -93,7 +93,7 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `CYCLE_LUTEAL_WATER_RETENTION` | `brief` | `normal` | `cycleDay` | Cycle day {cycleDay} (late luteal phase): temporary 0.5-2.0 kg water retention is normal; stay steady on your calorie target and avoid reacting to short-term scale jumps. |
 | `CYCLE_MENSTRUAL_GENTLE_TRAINING` | `brief` | `normal` | `cycleDay` | Cycle day {cycleDay} (menstrual phase): listen to energy and cramp levels; lighter loads, walking, or extra rest are completely normal today. |
 | `CYCLE_FOLLICULAR_PEAK_READINESS` | `brief` | `normal` | `cycleDay` | Cycle day {cycleDay} (follicular phase): energy and recovery readiness are often higher during this window; a good time for quality resistance sessions. |
-| `CYCLE_PAUSED_PREGNANCY` | `brief` | `normal` | `maternalStatus` | Menstrual cycle predictions are automatically paused during pregnancy ({maternalStatus}); maternal safety guidance remains active. |
+| `CYCLE_PAUSED_PREGNANCY` | `brief` | `normal` | `maternalStatus` | Menstrual cycle predictions are paused during pregnancy ({maternalStatus}); maternal safety guidance remains active. |
 | `BRIEF_TRAINING_PERFORMANCE_UP` | `brief` | `normal` | `exerciseId`, `fromKg`, `toKg` | Average load for {exerciseId} progressed from {fromKg} to {toKg} kg. |
 | `BRIEF_TRAINING_PERFORMANCE_REPS` | `brief` | `normal` | `exerciseId`, `fromReps`, `toReps` | Reps for {exerciseId} progressed from {fromReps} to {toReps}. |
 | `SPLIT_REVIEW_SUGGEST_UPPER_LOWER` | `training` | `normal` | `days` | Because you train {days}+ days consistently with ready recovery, Upper/Lower or Push/Pull/Legs is available in Preferences if sessions feel long or you prefer dedicated focus days. |
@@ -103,8 +103,46 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `SPLIT_REVIEW_NOT_DUE` | `training` | `normal` | — | 8-week Full Body split review is available after 8 weeks and 16+ completed workouts on a 4+ day Full Body program. |
 | `SEASONAL_EID_FLEX_ACTIVE` | `nutrition` | `normal` | `occasion`, `endDate` | Seasonal Flex Mode ({occasion}) is active through {endDate} at maintenance calories without streak penalty. |
 | `CYCLE_GENTLE_SESSION_ACTIVE` | `training` | `normal` | — | Cycle comfort adjustment is active with 0.8x working sets for 24 hours. |
-| `PARQ_CLEARANCE_REQUIRED` | `eligibility` | `requires_review` | — | Physician clearance is required before automated workout planning after a positive PAR-Q screening response. You can switch to nutrition_only in the meantime. |
+| `PARQ_CLEARANCE_REQUIRED` | `eligibility` | `requires_review` | — | Physician clearance is required before workout planning after a positive PAR-Q screening response. You can switch to nutrition_only in the meantime. |
 | `CONFLICTING_CONDITIONS` | `eligibility` | `requires_review` | `conditions` | diabetes_t1 and diabetes_t2 are mutually exclusive and cannot be selected together. |
-| `MULTI_CONDITION_CLINICAL_REVIEW` | `eligibility` | `requires_review` | — | Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation. |
+| `MULTI_CONDITION_CLINICAL_REVIEW` | `eligibility` | `requires_review` | — | Multiple overlapping or high-acuity clinical conditions require direct specialist review before plan generation. |
 | `MULTI_INJURY_WARNING` | `eligibility` | `warning` | — | Three concurrent injuries limit available exercises; monitor joint comfort closely or consider switching to nutrition_only during recovery. |
-| `MULTI_INJURY_REQUIRES_REVIEW` | `eligibility` | `requires_review` | — | Four or more concurrent injuries (or infeasible workout day coverage) require specialist review before automated workout planning; switch to nutrition_only or seek clinical clearance. |
+| `MULTI_INJURY_REQUIRES_REVIEW` | `eligibility` | `requires_review` | — | Four or more concurrent injuries (or infeasible workout day coverage) require specialist review before workout planning; switch to nutrition_only or seek clinical clearance. |
+| `PLAN_HYPOTHYROID_REE_CALIBRATION` | `nutrition` | `info` | — | Applied conservative 5% REE calibration for hypothyroidism; monitor actual weight trend. |
+| `PLAN_SENIOR_DEFICIT_CAP` | `nutrition` | `info` | — | Senior safety mode (70+): daily calorie deficit capped at -400 kcal. |
+| `PLAN_RECOMPOSITION_MAINTENANCE` | `nutrition` | `info` | — | Body recomposition starts at maintenance calories with progressive resistance training. |
+| `PLAN_ADAPTIVE_GOAL_PACE` | `nutrition` | `info` | — | Goal pace sets a bounded initial offset; actual energy needs are calibrated from recorded weight trends. |
+| `PLAN_PREGNANCY_T1_CALIBRATION` | `nutrition` | `info` | — | First-trimester pregnancy calibration applied (maintenance baseline, calorie deficits disabled). |
+| `PLAN_PREGNANCY_T2_CALIBRATION` | `nutrition` | `info` | — | Second-trimester pregnancy calibration applied (+340 kcal/day, deficits and extra gain surplus disabled). |
+| `PLAN_PREGNANCY_T3_CALIBRATION` | `nutrition` | `info` | — | Third-trimester pregnancy calibration applied (+450 kcal/day, deficits and extra gain surplus disabled). |
+| `PLAN_BREASTFEEDING_CALIBRATION` | `nutrition` | `info` | — | Breastfeeding calibration applied (+400 kcal baseline, max deficit -300 kcal/day). |
+| `PLAN_MIN_ENERGY_FLOOR_APPLIED` | `nutrition` | `attention` | `minEnergyFloor` | Daily energy raised to the safe planning floor ({minEnergyFloor} kcal). |
+| `PLAN_MAX_ENERGY_CEILING_APPLIED` | `nutrition` | `attention` | — | Daily energy capped at the safe planning ceiling (4200 kcal). |
+| `PLAN_UNDERWEIGHT_NUTRIENT_CARE` | `nutrition` | `info` | — | BMI is below 18.5 (underweight): focus on nutrient-dense meals and gradual intake progression. |
+| `PLAN_ABW_PROTEIN_SCALING` | `nutrition` | `info` | — | Protein targets use Adjusted Body Weight (ABW) for BMI > 30 to avoid excessive portions. |
+| `PLAN_GOUT_PROTEIN_CAP` | `nutrition` | `info` | — | Protein capped at 1.4 g/kg and high-purine red meats/offal excluded for gout. |
+| `PLAN_KIDNEY_PROTEIN_CAP` | `nutrition` | `info` | — | Protein conservatively capped at <= 1.1 g/kg for kidney condition support. |
+| `PLAN_IBS_EXCLUSIONS_ACTIVE` | `nutrition` | `info` | — | Heavy legumes, cabbage, and raw alliums excluded for IBS comfort. |
+| `PLAN_HYPERTENSION_SODIUM_CEILING` | `nutrition` | `info` | — | Low-sodium ceiling and high-sodium cheese exclusions enabled for blood pressure support. |
+| `PLAN_CELIAC_GLUTEN_EXCLUSION` | `nutrition` | `info` | — | Gluten-containing grains and breads are excluded for celiac safety. |
+| `PLAN_FAVISM_EXCLUSION` | `nutrition` | `info` | — | Fava beans and falafel are excluded for favism (G6PD) safety. |
+| `PLAN_LACTOSE_EXCLUSION` | `nutrition` | `info` | — | Dairy products are excluded for lactose intolerance comfort. |
+| `PLAN_GLYCEMIC_CARB_CALIBRATION` | `nutrition` | `info` | — | Carbohydrate share calibrated to ~38% of daily energy for glycemic support. |
+| `PLAN_GAIN_WITHOUT_RESISTANCE` | `nutrition` | `info` | — | Calorie surplus without resistance training does not guarantee lean mass gain. |
+| `PLAN_MUSCLE_GAIN_SURPLUS` | `nutrition` | `info` | — | Muscle gain targets use a moderate surplus (<= 250 kcal) and progressive resistance training. |
+| `WORKOUT_INJURY_EXCLUSIONS_ACTIVE` | `training` | `attention` | — | Movements contraindicated for declared injuries were excluded precautionarily; remaining selections are not medical clearance. Stop any painful movement. |
+| `WORKOUT_SENIOR_SAFETY_ACTIVE` | `training` | `info` | — | Senior safety mode (70+): high-impact plyometrics and heavy spinal loading were excluded. |
+| `WORKOUT_PREGNANCY_SAFETY_ACTIVE` | `training` | `info` | — | Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded. |
+| `WORKOUT_SEVEN_DAY_RECOVERY_CAUTION` | `training` | `attention` | — | 7-day schedule detected: monitor daily recovery closely and keep intensity moderate on back-to-back sessions. |
+| `WORKOUT_SPLIT_FALLBACK_FULL_BODY` | `training` | `info` | — | Selected split requires more training days; switched to Full Body for balanced muscle coverage. |
+| `WORKOUT_EQUIPMENT_FALLBACK_FULL_BODY` | `training` | `info` | — | Requested split required unavailable equipment; switched to Full Body matching your equipment and time budget. |
+| `WORKOUT_MISSING_PATTERNS_NOTED` | `training` | `info` | — | Some movement patterns did not fit current equipment, injuries, or session duration; gaps are noted per day. |
+| `WORKOUT_CONSECUTIVE_FULL_BODY_CAUTION` | `training` | `attention` | — | Consecutive Full Body training days detected; monitor recovery and prefer a rest day between sessions when possible. |
+| `WARM_CLIMATE_HYDRATION_BONUS` | `hydration` | `info` | — | Regional warm-climate hydration bonus (+200 ml) applied. |
+| `GOUT_HYDRATION_BONUS` | `hydration` | `info` | — | Gout support hydration bonus (+500 ml) applied. |
+| `MATERNAL_HYDRATION_BONUS` | `hydration` | `info` | — | Maternal hydration bonus (+300 ml pregnancy / +600 ml breastfeeding) applied. |
+| `DASH_SODIUM_CEILING` | `nutrition` | `info` | — | DASH daily sodium ceiling (<= 2300 mg) active. |
+| `PLAN_WEEKLY_RENEWAL` | `nutrition` | `info` | — | Weekly nutrition plan renewed with updated targets. |
+| `COMEBACK_RAMP_IN` | `training` | `info` | — | Comeback restart calibration applied for a smooth return. |
+| `RECOVERY_DELOAD_APPLIED` | `training` | `info` | — | Approved temporary set reduction applied for recovery protection. |
+| `CALORIE_ADAPTATION_APPLIED` | `nutrition` | `info` | — | Approved calorie adaptation applied to upcoming plan days. |

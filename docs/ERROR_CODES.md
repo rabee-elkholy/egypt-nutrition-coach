@@ -76,7 +76,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `AUTH_PROVIDER_NOT_CONFIGURED` | `503` | No | — | Authentication provider key material is not configured on the server. |
 | `AUTH_JWKS_UNAVAILABLE` | `503` | Yes | `provider` | Unable to fetch JWKS verification keys. |
 | `AUTH_KEY_ROTATED_OR_UNKNOWN` | `401` | No | — | JWT signing key ID (kid) is unknown or rotated. |
-| `AUTH_UNSUPPORTED_ALG` | `401` | No | — | Unsupported JWT signing algorithm. |
+| `AUTH_UNSUPPORTED_ALG` | `401` | No | — | Unsupported JWT signing method. |
 | `AUTH_INVALID_SIGNATURE` | `401` | No | — | Invalid JWT signature. |
 | `AUTH_TOKEN_MISSING_EXP` | `401` | No | — | JWT access token is missing required exp claim. |
 | `AUTH_TOKEN_EXPIRED` | `401` | No | — | Access token has expired; refresh your session. |
@@ -121,11 +121,11 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `PROFILE_REQUIRED` | `400` | No | — | Complete onboarding profile generation before running this command. |
 | `INVALID_SEX` | `400` | No | — | sex must be male or female. |
 | `INVALID_HEALTH_FLAGS` | `400` | No | — | diseases and injuries must be arrays of condition IDs. |
-| `UNSUPPORTED_ELBOW_PAIN` | `400` | No | — | Elbow pain requires specialist assessment; automated workout adaptation is not supported for this injury. |
-| `CLINICAL_REVIEW_REQUIRED` | `400` | No | — | Declared clinical conditions or age require specialist review before automated plan generation. |
+| `UNSUPPORTED_ELBOW_PAIN` | `400` | No | — | Elbow pain requires specialist assessment before adapting exercises for this injury. |
+| `CLINICAL_REVIEW_REQUIRED` | `400` | No | — | Declared clinical conditions or age require direct specialist review before plan generation. |
 | `INVALID_GOAL` | `400` | No | — | goal must be one of lose, maintain, gain, or muscle_gain. |
 | `INVALID_SERVICE_TRACK` | `400` | No | — | serviceTrack must be one of nutrition_only, workouts_only, or nutrition_and_workouts. |
-| `BMI_OUT_OF_RANGE` | `400` | No | — | Calculated BMI is outside the automated planning range (12.5..65). |
+| `BMI_OUT_OF_RANGE` | `400` | No | — | Calculated BMI is outside the standard CuraFit Specialist Team planning range (12.5..65). |
 | `WEIGHT_LOSS_UNDERWEIGHT_UNSAFE` | `400` | No | — | Weight loss plans are not suitable when current BMI is below 18.5. |
 | `INVALID_EXTERNAL_TRAINING_DAYS` | `400` | No | — | externalTrainingDays must be an array of up to 7 weekday integers (0..6). |
 | `MUSCLE_GAIN_REQUIRES_RESISTANCE_DAYS` | `400` | No | — | Muscle gain goal in nutrition_only track requires confirmed external resistance training days. |
@@ -182,7 +182,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `PAST_DAY_PLAN_IMMUTABLE` | `400` | No | — | Past plan days cannot be modified. |
 | `MEAL_ALREADY_CONSUMED` | `400` | No | — | Cannot replace a meal that has already been logged as consumed. |
 | `MEAL_ALTERNATIVE_UNAVAILABLE` | `400` | No | — | Selected meal alternative is no longer valid under your current constraints. |
-| `ENERGY_CHANGE_OUT_OF_RANGE` | `400` | No | — | Adjusted daily calories exceed safe automated bounds (1200/1500/1600/1800..4200 kcal). |
+| `ENERGY_CHANGE_OUT_OF_RANGE` | `400` | No | — | Adjusted daily calories exceed safe planning bounds (1200/1500/1600/1800..4200 kcal). |
 | `ENERGY_CHANGE_TARGETS_UNMET` | `400` | No | — | Proposed calorie change cannot satisfy minimum protein or nutrition targets. |
 | `INVALID_DIET_PLAN_CONFIG` | `400` | No | — | Unsupported diet rule verification mode. |
 | `MEAL_EXCLUDED_BY_HEALTH_CONDITION` | `400` | No | — | Meal conflicts with declared medical/wellness exclusions; changes were not saved. |
@@ -301,7 +301,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `WEBHOOK_SIGNATURE_INVALID` | `401` | No | `provider` | Store webhook signature or authorization token is invalid. |
 | `AD_HOC_EXERCISE_INVALID` | `400` | No | — | Ad-hoc exercise payload requires a valid catalog exerciseId and 1 to 15 performed sets. |
 | `INVALID_WORKOUT_UI_MODE` | `400` | No | — | workoutUiMode must be simple or pro. |
-| `FEATURE_DEFERRED_TO_AI_PHASE` | `501` | No | `feature` | This AI feature is scheduled for the final AI rollout phase. |
+| `FEATURE_DEFERRED_TO_AI_PHASE` | `501` | No | `feature` | This CuraFit Specialist Team feature is scheduled for an upcoming release. |
 | `MEDICAL_DIET_CONFLICT` | `400` | No | `dietType` | The selected diet pattern is contraindicated for your declared medical conditions, maternal status, or goal. |
 | `PROFILE_ALREADY_EXISTS` | `409` | No | — | An existing profile already exists on this account; pass overwriteExisting: true to replace it. |
 | `HEALTH_CONSENT_REQUIRED` | `403` | No | — | Active health_data_processing consent is required to generate plans or compute coaching reviews. |
@@ -325,7 +325,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `AUTH_OAUTH_EMAIL_UNVERIFIED` | `409` | No | `provider` | Identity provider email is not verified; link or sign in with a verified email. |
 | `AUTH_OAUTH_ALREADY_LINKED_OTHER_USER` | `409` | No | `existingProvider` | This sign-in identity is already linked to a different CuraFit account. |
 | `SESSION_ALREADY_COMPLETED` | `409` | No | — | Completed sessions cannot be rescheduled. |
-| `PARQ_CLEARANCE_REQUIRED` | `422` | No | `serviceTrack` | Physician clearance is required before automated workout planning after a positive PAR-Q screening response. Switch serviceTrack to nutrition_only or obtain medical clearance. |
+| `PARQ_CLEARANCE_REQUIRED` | `422` | No | `serviceTrack` | Physician clearance is required before workout planning after a positive PAR-Q screening response. Switch serviceTrack to nutrition_only or obtain medical clearance. |
 | `CONFLICTING_CONDITIONS` | `400` | No | `conditions` | diabetes_t1 and diabetes_t2 are mutually exclusive and cannot be selected together. |
-| `MULTI_CONDITION_CLINICAL_REVIEW` | `422` | No | `conditions`, `maternalStatus` | Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation. |
-| `MULTI_INJURY_REQUIRES_REVIEW` | `422` | No | `injuryCount`, `injuries` | Four or more concurrent injuries (or zero safe exercises for a scheduled day) require specialist review before automated workout generation; switch to nutrition_only or seek clinical clearance. |
+| `MULTI_CONDITION_CLINICAL_REVIEW` | `422` | No | `conditions`, `maternalStatus` | Multiple overlapping or high-acuity clinical conditions require direct specialist review before plan generation. |
+| `MULTI_INJURY_REQUIRES_REVIEW` | `422` | No | `injuryCount`, `injuries` | Four or more concurrent injuries (or zero safe exercises for a scheduled day) require specialist review before workout planning; switch to nutrition_only or seek clinical clearance. |

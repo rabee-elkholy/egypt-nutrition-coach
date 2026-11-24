@@ -109,7 +109,7 @@ async function verifySignature(alg, rawHeaderPayload, signatureBytes, env, kid) 
     return await crypto.subtle.verify(verifyAlg, cryptoKey, signatureBytes, data);
   }
 
-  throw createApiError('Unsupported JWT signing algorithm.', 401, { code: 'AUTH_UNSUPPORTED_ALG' });
+  throw createApiError('Unsupported JWT signing method.', 401, { code: 'AUTH_UNSUPPORTED_ALG' });
 }
 
 export async function verifyBearerToken(token, env, nowMs = Date.now()) {
@@ -123,7 +123,7 @@ export async function verifyBearerToken(token, env, nowMs = Date.now()) {
   const sigBytes = base64UrlDecodeBytes(s64);
 
   if (!header || typeof header.alg !== 'string' || header.alg === 'none') {
-    throw createApiError('Unsupported JWT signing algorithm.', 401, { code: 'AUTH_UNSUPPORTED_ALG' });
+    throw createApiError('Unsupported JWT signing method.', 401, { code: 'AUTH_UNSUPPORTED_ALG' });
   }
 
   const validSig = await verifySignature(header.alg, `${h64}.${p64}`, sigBytes, env, header.kid);
