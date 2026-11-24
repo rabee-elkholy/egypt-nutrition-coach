@@ -118,6 +118,7 @@ export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null,
     planId: plan.id,
     daysScope: daysScope === 'remaining' || daysScope === '3' || daysScope === '7' ? daysScope : 'all',
     preview: Boolean(preview),
+    previewMode: Boolean(preview),
     totalItemsCount,
     lockedCount: preview ? Math.max(0, totalItemsCount - 2) : 0,
     categories: [...buckets.values()]
@@ -282,7 +283,7 @@ export function getFastingState(s, now = clockNow()) {
   return {
     mode,
     preset: fs.preset || (mode === 'ramadan' ? 'ramadan' : (mode.startsWith('if_') ? mode.slice(3) : null)),
-    windowHours: fs.windowHours || (mode === 'if_14_10' ? 10 : mode === 'if_18_6' ? 6 : mode === 'if_16_8' ? 8 : null),
+    windowHours: fs.windowHours || (mode === 'if_12_12' ? 12 : mode === 'if_14_10' ? 10 : mode === 'if_18_6' ? 6 : mode === 'if_16_8' ? 8 : null),
     phase,
     windowStart,
     windowEnd,

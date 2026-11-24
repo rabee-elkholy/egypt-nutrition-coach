@@ -9,7 +9,7 @@ export {library};
 const dateForLog=(date,tz=clockTimeZone())=>validateLogDate(date,clockNow(),tz);
 const metrics=['energy','protein','fat','carbs','fiber','saturated','sodium','sugars'];
 const SLOTS=new Set(['breakfast','lunch','dinner','snack']);
-const DISPLAY_SLOTS=new Set(['breakfast','lunch','dinner','snack','snack_1','snack_2','suhoor','iftar','night_snack']);
+const DISPLAY_SLOTS=new Set(['breakfast','lunch','dinner','snack','snack_1','snack_2','suhoor','iftar','night_snack','ramadan_snack']);
 export const activePlan=s=>s.plans.find(p=>p.id===s.active_plan_id);
 export function plannedEnergyForDate(s,date){
  const direct=activePlan(s)?.days.find(d=>d.date===date);if(direct?.targets?.energy!=null)return direct.targets.energy;
@@ -50,7 +50,7 @@ function applySingleFoodEntry(s,p,tz){
  if(p.source==='planned'){
   const {plan,day,meal}=plannedMeal(s,p.mealId);if(day.date!==date)throw apiError('MEAL_DATE_MISMATCH','Logged date does not match the planned meal\'s scheduled date.',{status:400});if(p.slot!==meal.slot)throw apiError('MEAL_SLOT_MISMATCH','Logged slot does not match the planned meal\'s slot.',{status:400});
   if(s.foodEntries.some(e=>e.date===date&&e.mealId===meal.id))throw apiError('PLANNED_MEAL_ALREADY_LOGGED','Planned meal has already been logged; update or delete the entry to adjust quantity.',{status:400});
-  quantity=number(p.quantity,.1,4,'quantity');snapshot=rescaleSnapshotDirect(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;
+  quantity=number(p.quantity,.1,10,'quantity');snapshot=rescaleSnapshotDirect(meal.snapshot,quantity);mealId=meal.id;planId=plan.id;
  }else if(p.source==='ingredient'){
   const itemKey=typeof p.key==='string'?p.key:(typeof p.foodId==='string'?p.foodId:null);
   const i=itemKey&&Object.hasOwn(library.ingredients,itemKey)?library.ingredients[itemKey]:null;
@@ -59,7 +59,7 @@ function applySingleFoodEntry(s,p,tz){
   const gramsAvailable=Boolean(i||catItem?.quantity_basis?.grams_available);
   const isReferenceServing=Boolean(!i&&catItem&&(p.unit==='reference'||(!gramsAvailable&&(p.quantity!=null||p.servings!=null))));
   if(isReferenceServing){
-   quantity=number(p.quantity??p.servings??1,.1,10,'quantity');
+   quantity=number(p.quantity??p.servings??1,.1,20,'quantity');
    snapshot={
     name:catItem.name,
     is_approximate:catItem.status==='estimated'||Boolean(catItem.isApproximate),
@@ -68,7 +68,7 @@ function applySingleFoodEntry(s,p,tz){
    };
   }else{
    if(!gramsAvailable)throw apiError('FOOD_NOT_FOUND','Food item does not have verified gram-basis nutrition; log with unit: "reference" and quantity.',{status:404});
-   quantity=number(p.grams,1,2000,'grams');
+   quantity=number(p.grams,1,5000,'grams');
    if(i){
     snapshot={name:i.label,values:Object.fromEntries(metrics.map(k=>[k,i.values[k]==null?null:String(Number(i.values[k])*quantity/100)])),ingredients:[{key:i.key,name:i.label,grams:String(quantity),state:i.state,food_id:i.food_id,source:i.source,reference:i.reference,values_per_100g:i.values}]};
    }else{
@@ -82,11 +82,11 @@ function applySingleFoodEntry(s,p,tz){
   const byGrams=p.grams!=null&&p.grams!==''&&p.servings==null;
   let scaleRatio;
   if(byGrams){
-   quantity=number(p.grams,1,3000,'grams');
+   quantity=number(p.grams,1,5000,'grams');
    recipeUnit='grams';
    scaleRatio=quantity/(Number(recipe.totalGrams)||100);
   }else{
-   quantity=number(p.servings??p.quantity??1,.1,10,'quantity');
+   quantity=number(p.servings??p.quantity??1,.1,20,'quantity');
    recipeUnit='servings';
    scaleRatio=quantity/(Number(recipe.servings)||1);
   }
@@ -114,24 +114,25 @@ function applySingleFoodEntry(s,p,tz){
   const name=(typeof p.nameEn==='string'&&p.nameEn.trim())||(typeof p.name==='string'&&p.name.trim())||(barcode?`Product ${barcode}`:'');
   if(!barcode||!name||name.length>160)throw apiError('INVALID_BARCODE_FORMAT','Barcode food entry requires barcode/ean and product name.',{status:400});
   const provenance=typeof p.provenance==='string'?p.provenance:'verified_brand';
-  const isApprox=provenance==='pending_review';
+  const isApprox=typeof p.isApproximate==='boolean'?p.isApproximate:(provenance==='pending_review');
+  const brand=typeof p.brand==='string'&&p.brand.trim()?p.brand.trim().slice(0,120):null;
   if(p.valuesPer100g&&typeof p.valuesPer100g==='object'){
-   const grams=p.grams!=null?number(p.grams,1,2000,'grams'):(number(p.servings??p.quantity??1,.1,10,'servings')*number(p.servingSizeGrams??100,1,2000,'servingSizeGrams'));
+   const grams=p.grams!=null?number(p.grams,1,5000,'grams'):(number(p.servings??p.quantity??1,.1,20,'servings')*number(p.servingSizeGrams??100,1,2000,'servingSizeGrams'));
    quantity=Math.round(grams*10)/10;
    const vp=p.valuesPer100g;
    const vals=Object.fromEntries(metrics.map(k=>[k,vp[k]==null?null:String(Math.round(Number(vp[k])*quantity/100*100)/100)]));
    if(vals.energy==null||Number(vals.energy)<=0)throw apiError('MANUAL_MEAL_ENERGY_REQUIRED','Positive actual energy (kcal > 0) is required for food entries.',{status:400});
-   snapshot={name,values:vals,ingredients:[{key:barcode,name,grams:String(quantity),state:'as_sold',food_id:barcode,source:`barcode:${provenance}`,values_per_100g:vp}],is_approximate:isApprox};
+   snapshot={name,...(brand?{brand}:{}),values:vals,ingredients:[{key:barcode,name,grams:String(quantity),state:'as_sold',food_id:barcode,source:`barcode:${provenance}`,values_per_100g:vp}],is_approximate:isApprox};
   }else{
-   quantity=p.grams!=null?number(p.grams,1,2000,'grams'):100;
+   quantity=p.grams!=null?number(p.grams,1,5000,'grams'):100;
    const vals=Object.fromEntries(metrics.map(k=>[k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))]));
    if(vals.energy==null||Number(vals.energy)<=0)throw apiError('MANUAL_MEAL_ENERGY_REQUIRED','Positive actual energy (kcal > 0) is required for food entries.',{status:400});
-   snapshot={name,values:vals,ingredients:[],is_approximate:isApprox};
+   snapshot={name,...(brand?{brand}:{}),values:vals,ingredients:[],is_approximate:isApprox};
   }
  }else{
   const explicitName=p.name;
   const rawName=explicitName==null?'':String(explicitName).trim();
-  const name=explicitName===undefined&&Number(p.energy)>0?'Quick Add':rawName;
+  const name=!rawName&&Number(p.energy)>0?'Quick Add':rawName;
   if(!name||name.length>120)throw apiError('INVALID_MEAL_NAME','Manual meal name must be non-empty and at most 120 characters.',{status:400});
   snapshot={name,values:Object.fromEntries(metrics.map(k=>[k,p[k]==null||p[k]===''?null:String(number(p[k],0,k==='energy'?10000:k==='sodium'?50000:2000,k))])),ingredients:[],is_approximate:true};
   if(snapshot.values.energy==null||Number(snapshot.values.energy)<=0)throw apiError('MANUAL_MEAL_ENERGY_REQUIRED','Positive actual energy (kcal > 0) is required for manual food entries.',{status:400});
@@ -172,7 +173,7 @@ export function foodCommand(s,action,p){
   }
   let nextQuantity=existing.quantity,nextSnapshot=existing.snapshot,nextRecipeUnit=existing.recipeUnit;
   if(existing.source==='planned'){
-   nextQuantity=p.quantity!=null?number(p.quantity,.1,4,'quantity'):existing.quantity;
+   nextQuantity=p.quantity!=null?number(p.quantity,.1,10,'quantity'):existing.quantity;
    if(nextQuantity!==existing.quantity){
     const factor=nextQuantity/(Number(existing.quantity)||1);
     nextSnapshot=freezeSnapshot(rescaleSnapshotDirect(existing.snapshot,factor));
@@ -181,9 +182,9 @@ export function foodCommand(s,action,p){
    const firstIng=existing.snapshot?.ingredients?.[0];
    const isRef=existing.source==='ingredient'&&(p.unit==='reference'||(p.unit==null&&firstIng?.unit==='reference'));
    if(isRef){
-    nextQuantity=p.quantity!=null?number(p.quantity,.1,10,'quantity'):existing.quantity;
+    nextQuantity=p.quantity!=null?number(p.quantity,.1,20,'quantity'):existing.quantity;
    }else{
-    nextQuantity=p.grams!=null?number(p.grams,1,2000,'grams'):(p.quantity!=null?number(p.quantity,1,2000,'grams'):existing.quantity);
+    nextQuantity=p.grams!=null?number(p.grams,1,5000,'grams'):(p.quantity!=null?number(p.quantity,1,5000,'grams'):existing.quantity);
    }
    if(nextQuantity!==existing.quantity){
     if(firstIng?.values_per_100g&&!isRef){
@@ -203,7 +204,7 @@ export function foodCommand(s,action,p){
    const rec=(s.customRecipes||[]).find(r=>r.id===existing.recipeId)||null;
    if(p.grams!=null&&p.grams!==''){
     const prevTotalGrams=(existing.recipeUnit==='grams'?Number(existing.quantity):(existing.recipeTotalGrams?(Number(existing.recipeTotalGrams)/Math.max(0.5,Number(existing.recipeServings||1)))*Number(existing.quantity||1):0))||((existing.snapshot?.ingredients||[]).reduce((sum,i)=>sum+Number(i.grams||0),0)||Number(existing.quantity||100));
-    nextQuantity=number(p.grams,1,3000,'grams');
+    nextQuantity=number(p.grams,1,5000,'grams');
     nextRecipeUnit='grams';
     if(rec){
      const ratio=nextQuantity/(Number(rec.totalGrams)||100);
@@ -213,7 +214,7 @@ export function foodCommand(s,action,p){
      nextSnapshot=freezeSnapshot(rescaleSnapshotDirect(existing.snapshot,nextQuantity/(prevTotalGrams||1)));
     }
    }else if(p.servings!=null||p.quantity!=null){
-    nextQuantity=number(p.servings??p.quantity,.1,10,'quantity');
+    nextQuantity=number(p.servings??p.quantity,.1,20,'quantity');
     nextRecipeUnit='servings';
     if(rec){
      const ratio=nextQuantity/(Number(rec.servings)||1);

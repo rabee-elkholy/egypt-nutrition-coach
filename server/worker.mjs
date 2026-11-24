@@ -10,7 +10,7 @@ import {accountRecovery} from './recovery.mjs';
 import {splitReview} from '../split-review.mjs';
 import {getPantryCatalog,getPantryAlternatives,getPlanGroceryList,lookupBarcode,submitBarcode,getFastingState} from './nutrition-tools.mjs';
 import {listCustomRecipes,listCardioLogs,computeCycleState} from './wellness-tools.mjs';
-import {computeProgressAnalytics,computeWeeklyWrapped,buildWidgetSnapshot} from './progress-analytics.mjs';
+import {computeProgressAnalytics,computeWeeklyWrapped,buildWidgetSnapshot,computeStreakAndEngagement} from './progress-analytics.mjs';
 import {authenticateSocialOAuth,linkOAuthProvider,unlinkOAuthProvider,listLinkedProviders,revokeAppleTokenOnDelete} from './oauth.mjs';
 import {handleSignedMediaRequest,signAvatarUrlIfNeeded,uploadProfileAvatar,deleteProfileAvatar,createProgressPhotoUploadUrl,confirmProgressPhoto,listProgressPhotos,deleteProgressPhoto,exportSignedMediaRefs,collectUserMediaKeys,purgeMediaKeys} from './media.mjs';
 import {resolveEntitlements,requireProOrConsumeQuota,getSubscriptionOfferings,verifyStoreSubscription,restoreStoreSubscriptions,handleStoreWebhook,isoWeekKeyForDate,recordTrialTombstones} from './subscriptions.mjs';
@@ -26,7 +26,7 @@ import {personalBrief} from '../personal-brief.mjs';
 import {localDate,dateOffset,integer,validDate,SUPPORTED_REGIONS,countryToRegion} from '../coaching-shared.mjs';
 
 const hasPushConfigured=env=>Boolean(env?.FCM_SERVICE_ACCOUNT_JSON||(env?.APNS_KEY_ID&&env?.APNS_TEAM_ID&&env?.APNS_PRIVATE_KEY&&env?.APNS_BUNDLE_ID));
-const enrichWorkoutPlan=wp=>wp?{...wp,days:(wp.days||[]).map(d=>({...d,exercises:(d.exercises||[]).map(enrichExercise)}))}:wp;
+const enrichWorkoutPlan=wp=>wp?{...wp,weeklyMuscleSets:wp.weeklySets,days:(wp.days||[]).map(d=>({...d,exercises:(d.exercises||[]).map(e=>{const en=enrichExercise(e);return {...en,targetRepsRange:`${e.repMin}-${e.repMax}`,targetRir:e.rir};})}))}:wp;
 
 const SECURITY_HEADERS={
  'Cache-Control':'no-store',
@@ -254,7 +254,13 @@ export default {async fetch(request,env){
    for(const e of recentEntries){
     const firstIng=e.snapshot?.ingredients?.[0];
     const dedupKey=e.barcode?`barcode:${e.barcode}`:e.recipeId?`recipe:${e.recipeId}`:firstIng?.key?`ing:${firstIng.key}`:e.mealId?`meal:${e.snapshot?.name||e.mealId}`:`manual:${String(e.snapshot?.name||'').toLowerCase()}`;
-    if(dedup.has(dedupKey))continue;
+    const existing=dedup.get(dedupKey);
+    if(existing){
+     existing.logCount+=1;
+     continue;
+    }
+    const isGrams=e.source==='ingredient'&&firstIng?.unit!=='reference'||(e.source==='recipe'&&e.recipeUnit==='grams')||e.source==='barcode';
+    const isServings=(e.source==='ingredient'&&firstIng?.unit==='reference')||(e.source==='recipe'&&e.recipeUnit!=='grams')||e.source==='planned';
     dedup.set(dedupKey,{
      foodId:firstIng?.food_id||firstIng?.key||null,
      key:firstIng?.key||null,
@@ -262,14 +268,18 @@ export default {async fetch(request,env){
      recipeId:e.recipeId||null,
      name:e.snapshot?.name||'',
      source:e.source,
+     grams:isGrams&&e.quantity!=null?Number(e.quantity):null,
+     servings:isServings&&e.quantity!=null?Number(e.quantity):null,
      lastLoggedDate:e.date,
+     lastLoggedAt:e.at||`${e.date}T12:00:00.000Z`,
      lastSlot:e.slot,
      lastQuantity:e.quantity,
-     snapshot:e.snapshot
+     logCount:1,
+     snapshot:e.snapshot,
+     macroSnapshot:e.snapshot
     });
-    if(dedup.size>=limit)break;
    }
-   const items=[...dedup.values()];
+   const items=[...dedup.values()].sort((a,b)=>b.logCount-a.logCount||String(b.lastLoggedAt).localeCompare(String(a.lastLoggedAt))).slice(0,limit);
    return json({total:items.length,days:daysWindow,items},200,{},reqId);
   }
   if(request.method==='GET'&&url.pathname==='/v1/foods/favorites'){
@@ -412,7 +422,7 @@ export default {async fetch(request,env){
    if(!category||!message||message.length>2000)throw createApiError('Support feedback requires a valid category and message (1..2000 characters).',400,{code:'INVALID_SUPPORT_FEEDBACK'});
    const ticketId=`tkt_${crypto.randomUUID()}`;
    const now=isoNow();
-   const diagnostics=body?.includeDiagnostics?{foodOrExerciseId:body.foodOrExerciseId||null,appVersion:body.appVersion||null,platform:body.platform||null,lastRequestId:body.lastRequestId||null}:null;
+   const diagnostics=body?.includeDiagnostics?{foodOrExerciseId:body.foodOrExerciseId||null,appVersion:body.appVersion||null,platform:body.platform||null,locale:body.locale||null,engineVersion:body.engineVersion||'0.14.0',lastRequestId:body.lastRequestId||null}:null;
    await env.DB.prepare('INSERT INTO coaching_support_tickets(ticket_id,user_id,category,message,diagnostics_json,created_at) VALUES(?,?,?,?,?,?)').bind(ticketId,user,category,message,diagnostics?JSON.stringify(diagnostics):null,now).run();
    return json({ticketId,receivedAt:now},201,{},reqId);
   }
@@ -475,7 +485,7 @@ export default {async fetch(request,env){
      recorded.push({consentType:ct,version:ver,accepted:item.accepted,at:nowIso,recordedAt:nowIso});
     }
     await env.DB.batch(stmts);
-    return json({items:recorded,recordedAt:nowIso},200,{},reqId);
+    return json({items:recorded,consents:recorded,recordedAt:nowIso},200,{},reqId);
    }
    if(!body||typeof body.consentType!=='string'||typeof body.version!=='string'||typeof body.accepted!=='boolean')throw createApiError('Consent payload requires string consentType, string version, and boolean accepted.',400,{code:'INVALID_CONSENT_PAYLOAD'});
    await env.DB.prepare('INSERT OR REPLACE INTO coaching_account_consents(user_id,consent_type,version,accepted,at) VALUES(?,?,?,?,?)').bind(user,body.consentType.slice(0,60),body.version.slice(0,30),body.accepted?1:0,nowIso).run();
@@ -611,7 +621,7 @@ export default {async fetch(request,env){
      const endDate=to||currDate;
      if(!validDate(startDate)||!validDate(endDate)||startDate>endDate)throw createApiError('Invalid date range query parameters; expected from <= to in YYYY-MM-DD.',400,{code:'INVALID_DATE_RANGE',params:{field:'from'}});
      const spanDays=Math.floor((Date.parse(`${endDate}T12:00:00Z`)-Date.parse(`${startDate}T12:00:00Z`))/86400000)+1;
-     if(spanDays>31)throw createApiError('Food diary range queries are capped at 31 days.',400,{code:'INVALID_DATE_RANGE',params:{field:'to'}});
+     if(spanDays>62)throw createApiError('Food diary range queries are capped at 62 days.',400,{code:'INVALID_DATE_RANGE',params:{field:'to'}});
      const days=[];
      for(let d=startDate;d<=endDate;d=dateOffset(d,1))days.push(dayTotals(s,d));
      return json({from:startDate,to:endDate,days},200,{},reqId);
@@ -793,6 +803,14 @@ export default {async fetch(request,env){
    });
   }
 
+  if(body.action==='streak_freeze'&&s.profile){
+   const {streakSummary}=computeStreakAndEngagement(s,clockNow());
+   const targetDate=body.payload?.date||currDate;
+   const targetMs=Date.parse(targetDate+'T12:00:00Z');
+   if(Number.isFinite(targetMs)&&(streakSummary.autoAppliedFreezes||[]).some(d=>Math.abs(Date.parse(d+'T12:00:00Z')-targetMs)<7*86400000)){
+    throw createApiError('Weekly streak freeze allowance has already been used.',409,{code:'STREAK_FREEZE_UNAVAILABLE'});
+   }
+  }
   const next=command(structuredClone(s),body.action,body.payload);
 
   // Server-side Free Quota & Pro Entitlement Enforcement AFTER domain validation succeeds

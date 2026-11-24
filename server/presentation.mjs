@@ -11,14 +11,14 @@ import {todayCardioSummary,bootstrapCycleSummary,dailyCardioMinutes} from './wel
 import {computeStreakAndEngagement} from './progress-analytics.mjs';
 import {coachingInbox} from '../coaching-journey.mjs';
 import {FREE_FEATURES} from './subscriptions.mjs';
-import {localDate,needsHealthConfirmation,needsScheduleConfirmation,isPregnantStatus,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
+import {localDate,needsHealthConfirmation,hasActiveParqRedFlag,needsScheduleConfirmation,isPregnantStatus,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
 
 export const present=s=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
  const liveProfile=effectiveProfileWithLiveAge(s.profile,currDate);
  const liveState=liveProfile===s.profile?s:{...s,profile:liveProfile};
- const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=accountRecovery(s,clockNow(),tz),needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
+ const plan=s.plans.find(p=>p.id===s.active_plan_id),ready=accountRecovery(s,clockNow(),tz),needsHealth=needsHealthConfirmation(s),parqBlocked=hasActiveParqRedFlag(s),needsSchedule=needsScheduleConfirmation(s);
  const safety=workoutSafetyIssues(liveState),dietIssues=[];
  if(plan)for(const day of plan.days){try{assertDietDay(day.meals.map(m=>m.snapshot),s.preferences.diet,day.targets||plan.targets,liveProfile);}catch(e){dietIssues.push({date:day.date,message:e.message});}}
  if(safety.length){ready.progressionAllowed=false;if(ready.status!=='stop'){ready.status='hold';ready.reasonCode='WORKOUT_SAFETY_EXCLUSION_HOLD';ready.reasons=['Your current workout plan contains movements excluded for your declared injuries; swap them or regenerate your plan before progressing.'];}}
@@ -30,11 +30,11 @@ export const present=s=>{
   serverNow:isoNow(),
   serverDate:currDate,
   timezone:tz,
-  eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
+  eligibility:{needsHealthConfirmation:needsHealth,parqClearanceRequired:parqBlocked,needsScheduleConfirmation:needsSchedule,status:parqBlocked?'requires_review':needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
   planQuality:plan?.days.flatMap(d=>nutritionQualityIssues(d.summary,d.targets||plan.targets).map(message=>({date:d.date,message})))||[],
   scheduledSessions:scheduledSessions(s,currDate),
   progressSummary:progressSummary(s),
-  recovery:{...ready,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule}
+  recovery:{...ready,progressionAllowed:ready.progressionAllowed&&!parqBlocked&&!needsHealth&&!needsSchedule}
  };
 };
 
@@ -60,7 +60,7 @@ export const presentBootstrap=(s,extras={})=>{
  const planDay=plan?.days?.find(d=>d.date===currDate);
  const dayTargets=planDay?.targets||plan?.targets||null;
  const ready=accountRecovery(s,clockNow(),tz);
- const needsHealth=needsHealthConfirmation(s),needsSchedule=needsScheduleConfirmation(s);
+ const needsHealth=needsHealthConfirmation(s),parqBlocked=hasActiveParqRedFlag(s),needsSchedule=needsScheduleConfirmation(s);
  const liveProfile=effectiveProfileWithLiveAge(s.profile,currDate);
  const liveState=liveProfile===s.profile?s:{...s,profile:liveProfile};
  const safety=workoutSafetyIssues(liveState);
@@ -105,7 +105,7 @@ export const presentBootstrap=(s,extras={})=>{
   profile:hydratedProfile,
   preferences:s.preferences?{...s.preferences,unitSystem:s.profile?.unitSystem||'metric'}:null,
   consents:extras.consents||[],
-  eligibility:{needsHealthConfirmation:needsHealth,needsScheduleConfirmation:needsSchedule,status:needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
+  eligibility:{needsHealthConfirmation:needsHealth,parqClearanceRequired:parqBlocked,needsScheduleConfirmation:needsSchedule,status:parqBlocked?'requires_review':needsHealth?'needs_health_confirmation':needsSchedule?'needs_schedule_confirmation':'eligible'},
   activeNutritionPlanRef:plan?{id:plan.id,start_date:plan.start_date,end_date:plan.days.at(-1)?.date,effective_from:plan.effective_from,targets:plan.targets}:null,
   activeWorkoutPlanRef:s.workoutPlan?{id:s.workoutPlan.id,version:s.workoutPlan.version,split:s.workoutPlan.split,daysCount:s.workoutPlan.days.length,weeklySets:s.workoutPlan.weeklySets,coverage:s.workoutPlan.coverage}:null,
   scheduledSessions:upcoming14,
@@ -133,11 +133,12 @@ export const presentBootstrap=(s,extras={})=>{
    seasonalContext:fastingState.seasonalContext,
    cycleState:bootstrapCycleSummary(s,clockNow()),
    maternalContext,
-   recovery:{status:safety.length?(ready.status==='stop'?'stop':'hold'):ready.status,reasonCode:safety.length&&ready.status!=='stop'?'WORKOUT_SAFETY_EXCLUSION_HOLD':ready.reasonCode,progressionAllowed:ready.progressionAllowed&&!needsHealth&&!needsSchedule&&!safety.length},
+   recovery:{status:safety.length?(ready.status==='stop'?'stop':'hold'):ready.status,reasonCode:safety.length&&ready.status!=='stop'?'WORKOUT_SAFETY_EXCLUSION_HOLD':ready.reasonCode,progressionAllowed:ready.progressionAllowed&&!parqBlocked&&!needsHealth&&!needsSchedule&&!safety.length},
    scheduledWorkout:todaySched?{...todaySched,status:todaySess?.status||'scheduled'}:null
   },
   streakSummary,
   engagementState,
+  weeklyCheckinDue:Boolean(engagementState.weeklyCheckinDue),
   unreadCoachingInboxCount,
   pendingAdaptations:(s.adaptations||[]).filter(a=>a.status==='pending'),
   workoutSafetyIssues:safety,

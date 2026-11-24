@@ -325,3 +325,7 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `AUTH_OAUTH_EMAIL_UNVERIFIED` | `409` | No | `provider` | Identity provider email is not verified; link or sign in with a verified email. |
 | `AUTH_OAUTH_ALREADY_LINKED_OTHER_USER` | `409` | No | `existingProvider` | This sign-in identity is already linked to a different CuraFit account. |
 | `SESSION_ALREADY_COMPLETED` | `409` | No | — | Completed sessions cannot be rescheduled. |
+| `PARQ_CLEARANCE_REQUIRED` | `422` | No | `serviceTrack` | Physician clearance is required before automated workout planning after a positive PAR-Q screening response. Switch serviceTrack to nutrition_only or obtain medical clearance. |
+| `CONFLICTING_CONDITIONS` | `400` | No | `conditions` | diabetes_t1 and diabetes_t2 are mutually exclusive and cannot be selected together. |
+| `MULTI_CONDITION_CLINICAL_REVIEW` | `422` | No | `conditions`, `maternalStatus` | Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation. |
+| `MULTI_INJURY_REQUIRES_REVIEW` | `422` | No | `injuryCount`, `injuries` | Four or more concurrent injuries (or zero safe exercises for a scheduled day) require specialist review before automated workout generation; switch to nutrition_only or seek clinical clearance. |

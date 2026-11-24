@@ -234,7 +234,33 @@ export function dateForLog(date, now = Date.now(), timeZone = 'Africa/Cairo') {
   return date;
 }
 
-export const needsHealthConfirmation = s => s.onboarding?.serviceTrack === 'workouts_only' && s.onboarding?.workoutPrefs?.healthConfirmed !== true;
+export const DIETARY_CHRONIC_CONDITIONS = Object.freeze(new Set([
+  'diabetes_t1', 'diabetes_t2', 'hypertension', 'cholesterol', 'celiac', 'ibs', 'gout', 'kidney'
+]));
+export const ACTIVE_ONBOARDING_CONDITIONS = Object.freeze([
+  'diabetes_t1', 'diabetes_t2', 'insulin_resistance', 'pcos', 'hypothyroid',
+  'hypertension', 'cholesterol', 'ibs', 'celiac', 'gout', 'kidney', 'favism', 'lactose_intolerance'
+]);
+
+export function hasConflictingDiabetesConditions(diseases = []) {
+  const set = new Set(Array.isArray(diseases) ? diseases : []);
+  return set.has('diabetes_t1') && set.has('diabetes_t2');
+}
+
+export function hasMultiConditionClinicalReview(diseases = [], maternalStatus = 'none') {
+  const set = new Set(Array.isArray(diseases) ? diseases : []);
+  if (set.has('kidney') && set.has('diabetes_t1')) return true;
+  if (isPregnantStatus(maternalStatus) && (set.has('kidney') || set.has('diabetes_t1'))) return true;
+  let dietaryCount = 0;
+  for (const cond of set) {
+    if (DIETARY_CHRONIC_CONDITIONS.has(cond)) dietaryCount++;
+  }
+  return dietaryCount >= 3;
+}
+
+export const hasActiveParqRedFlag = s => s.onboarding?.serviceTrack !== 'nutrition_only' && s.onboarding?.workoutPrefs?.parqRedFlag === true;
+
+export const needsHealthConfirmation = s => s.onboarding?.serviceTrack === 'workouts_only' && s.onboarding?.workoutPrefs?.parqRedFlag == null && s.onboarding?.workoutPrefs?.healthConfirmed !== true;
 
 export function normalizeWeekdayDraft(draft) {
   const basis = draft.weekdayConvention ?? 'js_sunday_0';

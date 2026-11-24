@@ -297,11 +297,12 @@ export function buildWidgetSnapshot(s, now = clockNow()) {
   const plan = activePlan(s);
   const planDay = plan?.days?.find(d => d.date === date);
   const targets = planDay?.targets || plan?.targets || null;
-  const targetKcal = diary.planEnergy != null ? Number(diary.planEnergy) : (targets?.energy != null ? Number(targets.energy) : null);
+  const fasting = getFastingState(s, now);
+  const baseTargetKcal = diary.planEnergy != null ? Number(diary.planEnergy) : (targets?.energy != null ? Number(targets.energy) : null);
+  const targetKcal = fasting.seasonalContext?.maintenanceTargetKcal != null ? Number(fasting.seasonalContext.maintenanceTargetKcal) : baseTargetKcal;
   const consumedKcal = diary.totals.energy != null ? Number(diary.totals.energy) : 0;
   const waterTarget = dailyWaterTarget(s, date);
   const todayWater = (s.waterLogs || []).find(w => w.date === date);
-  const fasting = getFastingState(s, now);
   const nextScheduled = scheduledSessions(s, date, 7)[0] || null;
   const todaySession = (s.sessions || []).find(x => x.date === date) || null;
   const { streakSummary } = computeStreakAndEngagement(s, now);

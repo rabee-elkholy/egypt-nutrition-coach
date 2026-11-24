@@ -103,3 +103,8 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `SPLIT_REVIEW_NOT_DUE` | `training` | `normal` | — | 8-week Full Body split review is available after 8 weeks and 16+ completed workouts on a 4+ day Full Body program. |
 | `SEASONAL_EID_FLEX_ACTIVE` | `nutrition` | `normal` | `occasion`, `endDate` | Seasonal Flex Mode ({occasion}) is active through {endDate} at maintenance calories without streak penalty. |
 | `CYCLE_GENTLE_SESSION_ACTIVE` | `training` | `normal` | — | Cycle comfort adjustment is active with 0.8x working sets for 24 hours. |
+| `PARQ_CLEARANCE_REQUIRED` | `eligibility` | `requires_review` | — | Physician clearance is required before automated workout planning after a positive PAR-Q screening response. You can switch to nutrition_only in the meantime. |
+| `CONFLICTING_CONDITIONS` | `eligibility` | `requires_review` | `conditions` | diabetes_t1 and diabetes_t2 are mutually exclusive and cannot be selected together. |
+| `MULTI_CONDITION_CLINICAL_REVIEW` | `eligibility` | `requires_review` | — | Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation. |
+| `MULTI_INJURY_WARNING` | `eligibility` | `warning` | — | Three concurrent injuries limit available exercises; monitor joint comfort closely or consider switching to nutrition_only during recovery. |
+| `MULTI_INJURY_REQUIRES_REVIEW` | `eligibility` | `requires_review` | — | Four or more concurrent injuries (or infeasible workout day coverage) require specialist review before automated workout planning; switch to nutrition_only or seek clinical clearance. |

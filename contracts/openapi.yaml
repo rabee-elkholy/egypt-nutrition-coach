@@ -664,6 +664,12 @@ paths:
                 weight: { type: number }
                 height: { type: number }
                 sex: { type: string, enum: [male, female] }
+                serviceTrack: { type: string, enum: [nutrition_only, workouts_only, nutrition_and_workouts] }
+                parqRedFlag: { type: boolean, description: "Explicit PAR-Q screening red flag; blocks automated workout tracks unless switched to nutrition_only." }
+                healthConfirmed: { type: boolean }
+                diseases: { type: array, items: { type: string } }
+                injuries: { type: array, items: { type: string } }
+                maternalStatus: { type: string, enum: [none, pregnant_t1, pregnant_t2, pregnant_t3, pregnant, breastfeeding] }
       responses:
         "200":
           description: Eligibility result
@@ -671,6 +677,8 @@ paths:
             application/json:
               schema:
                 type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
   /v1/sync/changes:
     get:
       operationId: getSyncChanges
@@ -1046,9 +1054,16 @@ paths:
                 height: { type: number }
                 sex: { type: string, enum: [male, female] }
                 goal: { type: string, enum: [lose, maintain, gain, muscle_gain] }
+                serviceTrack: { type: string, enum: [nutrition_only, workouts_only, nutrition_and_workouts] }
+                dietType: { type: string, enum: [balanced, high_protein, low_carb, intermittent_fasting, mediterranean, dash, keto, vegetarian, vegan] }
+                excludedGroups: { type: array, items: { type: string } }
+                diseases: { type: array, items: { type: string } }
+                injuries: { type: array, items: { type: string } }
+                parqRedFlag: { type: boolean }
+                healthConfirmed: { type: boolean }
       responses:
         "200":
-          description: Preview targets, hydration targets, session density, eligibility, and forecast range
+          description: Preview targets, hydration targets, session density, eligibility, structured feasibility dry-check, and forecast range
           content:
             application/json:
               schema:

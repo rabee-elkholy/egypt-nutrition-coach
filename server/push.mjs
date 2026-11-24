@@ -17,7 +17,7 @@ async function buildApnsJwt(env) {
   });
 }
 
-async function sendPushMessage(row, trigger, env, authCache) {
+async function sendPushMessage(row, trigger, env, authCache, extraParams = {}) {
   const messages = {
     daily_checkin_reminder: { title: 'Daily Readiness Check-In', body: 'Log your morning sleep and readiness to personalize today\'s plan.' },
     coaching_case_review: { title: 'Coaching Follow-Up Due', body: 'Your scheduled coaching check-in is ready for review.' },
@@ -27,7 +27,7 @@ async function sendPushMessage(row, trigger, env, authCache) {
     ramadan_suhoor_reminder: { title: 'Suhoor Window Reminder', body: 'Complete Suhoor hydration and protein before cutoff time.' }
   };
   const copy = messages[trigger] || messages.daily_checkin_reminder;
-  const noticeParams = { trigger, date: row._localDate || null };
+  const noticeParams = { trigger, date: row._localDate || null, ...extraParams };
 
   if (row.platform === 'android' && env?.FCM_SERVICE_ACCOUNT_JSON) {
     if (!authCache.fcm) {
@@ -181,7 +181,7 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
       try { account = row.body ? JSON.parse(row.body) : null; } catch {}
       const prefs = account?.notificationPreferences || {};
       const channels = Array.isArray(prefs.channels) ? prefs.channels : ['in_app', 'push'];
-      const pushAllowed = channels.includes('push') || !prefs.channels;
+      const pushAllowed = channels.includes('push') || !prefs.channels || prefs.channelsConfigured !== true;
       if (!pushAllowed) continue;
 
       const quiet = isWithinQuietHours(hhmm, prefs.quietHoursStart || '22:00', prefs.quietHoursEnd || '08:00');
@@ -204,19 +204,30 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
       if (!quiet) {
         // 2. Daily readiness check-in reminder at 09:00 local
         if (hour === 9 && prefs.dailyReminder !== false) triggers.push({ trigger: 'daily_checkin_reminder' });
-        // 3. Coaching case follow-up due today at 10:00 local
-        if (hour === 10 && (account?.coachingCases || []).some(c => c.reviewOn === today && c.status !== 'closed')) {
-          triggers.push({ trigger: 'coaching_case_review' });
+        // 3. Coaching case follow-up due today at 10:00 local (reads normalized coaching_cases table + fallback)
+        if (hour === 10) {
+          let cases = Array.isArray(account?.coachingCases) ? account.coachingCases : [];
+          if (!cases.length) {
+            try {
+              const caseRows = await env.DB.prepare('SELECT body FROM coaching_cases WHERE user_id=?').bind(row.user_id).all();
+              cases = (caseRows?.results || []).map(r => { try { return JSON.parse(r.body); } catch { return null; } }).filter(Boolean);
+            } catch {}
+          }
+          const dueCase = cases.find(c => c.reviewOn === today && c.status === 'accepted');
+          if (dueCase) {
+            triggers.push({ trigger: 'coaching_case_review', extraParams: dueCase.id ? { caseId: dueCase.id } : {} });
+          }
         }
         // 4. Weekly check-in due at 10:00 local
         if (hour === 10 && prefs.weeklyReviewReminder !== false && account?.profile) {
           const { engagementState } = computeStreakAndEngagement(account, nowMs);
           if (engagementState.weeklyCheckinDue) triggers.push({ trigger: 'weekly_checkin_due' });
         }
-        // 5. Expired nutrition plan renewal at 11:00 local (deduped once per expired plan endDate)
+        // 5. Expired nutrition plan renewal at 11:00 local (checks planRefs since plans[] is stripped in D1 body)
         if (hour === 11 && account?.active_plan_id) {
           const activePlan = (account.plans || []).find(p => p.id === account.active_plan_id);
-          const endDate = activePlan?.days?.at(-1)?.date;
+          const activeRef = (account.planRefs || []).find(p => p.id === account.active_plan_id);
+          const endDate = activePlan?.days?.at(-1)?.date || activeRef?.end_date;
           if (endDate && endDate < today) {
             const win = `${account.active_plan_id}:${endDate}`;
             if (!(await alreadyNoticed(env.DB, row.user_id, 'push_notice_plan_renewal', win))) {
@@ -239,7 +250,7 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
       for (const item of triggers) {
         queued++;
         try {
-          const res = await sendPushMessage(row, item.trigger, env, authCache);
+          const res = await sendPushMessage(row, item.trigger, env, authCache, item.extraParams || {});
           if (item.dedupe) await markNoticed(env.DB, row.user_id, item.dedupe[0], item.dedupe[1]);
           if (res.delivered) delivered++;
           if (res.pruneToken) {

@@ -143,8 +143,9 @@ export function estimateNeeds(input) {
     exercise = sportsEnergy(input, weight, baseline),
     tdee = baseline + exercise.daily_extra;
 
-  const pace = input.goalPace || 'moderate';
-  if(!['slow','moderate','fast'].includes(pace))throw apiError('INVALID_GOAL_PACE','goalPace must be one of slow, moderate, or fast.',{status:400});
+  const rawPace = input.goalPace || 'moderate';
+  if(!['slow','moderate','fast'].includes(rawPace))throw apiError('INVALID_GOAL_PACE','goalPace must be one of slow, moderate, or fast.',{status:400});
+  const pace = (maternalStatus === 'breastfeeding' && input.goal === 'lose') ? 'slow' : rawPace;
   let change = 0;
   if(input.goal === 'lose'){
     const maxDeficit = seniorMode ? 400 : 500;
@@ -505,15 +506,153 @@ function ingredientIdentity(snapshot) {
   return JSON.stringify([...new Set(snapshot.ingredients.map((i) => i.food_id))].sort());
 }
 export const MIN_MEAL_CHOICES = 3;
-export function mealAvailability(prefs, lib) {
+export function mealAvailability(prefs, lib, profile = null) {
   const p = validatePreferences(prefs, lib);
-  const pool = preparePool(lib, p);
+  const pool = preparePool(lib, p, profile);
   const choices = {};
   for (const slot of new Set(daySlots(p.meals, p.diet).map((s) => s.slot))) {
     choices[slot] = new Set(pool.filter((t) => t.meal_slots.includes(slot))
       .map((t) => JSON.stringify([...new Set(t.items.map((i) => lib.ingredients[i.key].food_id))].sort()))).size;
   }
   return {minimum:MIN_MEAL_CHOICES, choices, sufficient:Object.values(choices).every((n) => n >= MIN_MEAL_CHOICES)};
+}
+export function checkPlanFeasibility(profile, prefs, lib, seed = 'preview') {
+  const p = validatePreferences(prefs, lib);
+  const targets = estimateNeeds(profile);
+  const slots = daySlots(p.meals, p.diet);
+  if (p.diet === 'high_protein') {
+    const weightBasis = targets.effective_weight ?? Number(profile.weight);
+    const maxFactor = targets.max_protein_factor ?? 1.8;
+    const resolvedFactor = Math.min(maxFactor, Math.max(targets.protein_factor || 1.6, 1.6));
+    targets.protein = round(weightBasis * resolvedFactor);
+    targets.protein_factor = resolvedFactor;
+    targets.carbs = round(Math.max(0, targets.energy - targets.protein * 4 - targets.fat * 9) / 4);
+  }
+  if (p.diet === 'low_carb') {
+    targets.carbs = 100;
+    targets.fat = round(Math.max(0, targets.energy - targets.protein * 4 - 400) / 9);
+  }
+  if (p.diet === 'keto') {
+    targets.carbs = 30;
+    targets.fat = round(Math.max(0, targets.energy - targets.protein * 4 - 120) / 9);
+  }
+  const tryFeasible = (includeRegional) => {
+    const pool = preparePool(lib, p, profile, includeRegional, seed);
+    for (const slot of slots) {
+      if (!pool.some((t) => t.meal_slots.includes(slot.slot))) {
+        return {
+          feasible: false,
+          code: 'PLAN_CONSTRAINTS_UNMET',
+          field: 'excludedGroups',
+          message: `No eligible meals match your dietary exclusions for meal slot ${slot.slot}. Update protein sources, budget, or exclusions.`,
+          stage: 'NO_ELIGIBLE_MEAL_FOR_SLOT'
+        };
+      }
+    }
+    const fitted = new Map();
+    const meals = [];
+    for (const slot of slots) {
+      const desired = targets.energy * slot.share;
+      const protein = targets.protein * slot.share;
+      const slotPool = egyptianSlotPool(pool, p.region, slot.slot);
+      const candidates = slotPool.map((t) => {
+        const key = t.id + '|' + Math.round(desired) + '|' + Math.round(protein);
+        if (!fitted.has(key)) fitted.set(key, fitMeal(t, desired, protein, lib));
+        const snapshot = fitted.get(key);
+        const v = snapshot.values;
+        const score = (Math.abs(Number(v.energy) - desired) / desired) * 5 + (Math.abs(protein - Number(v.protein)) / Math.max(1, protein)) * 1.5;
+        return { t, snapshot, score };
+      }).filter((a) => {
+        if (p.diet === 'dash' || profile?.diseases?.includes('hypertension')) {
+          const sod = a.snapshot.values.sodium;
+          return sod != null && Number(sod) <= 2300 * slot.share;
+        }
+        if (p.diet === 'keto' || p.diet === 'low_carb') {
+          const maxCarbs = p.diet === 'keto' ? 50 : 130;
+          const usedCarbs = meals.reduce((s, m) => s + Number(m.snapshot.values.carbs || 0), 0);
+          const remainingSlots = Math.max(0, slots.length - meals.length - 1);
+          const reserveCarbs = remainingSlots * (p.diet === 'keto' ? 6 : 15);
+          return usedCarbs + Number(a.snapshot.values.carbs || 0) <= maxCarbs - reserveCarbs;
+        }
+        return true;
+      }).sort((a, b) => a.score - b.score || a.t.id.localeCompare(b.t.id));
+      if (!candidates.length) {
+        return {
+          feasible: false,
+          code: 'PLAN_CONSTRAINTS_UNMET',
+          field: 'excludedGroups',
+          message: `No eligible meal satisfies diet rules for meal slot ${slot.slot} under current preferences.`,
+          stage: 'NO_CANDIDATE_WITHIN_DIET_LIMITS'
+        };
+      }
+      meals.push({ slot: slot.slot, target_energy: round(desired), target_protein: round(protein), snapshot: copy(candidates[0].snapshot) });
+    }
+    const mains = meals.filter(m => m.slot !== 'snack');
+    if (mains.length) {
+      for (let pass = 0; pass < 3; pass++) {
+        const curSum = sumSnapshots(meals.map(m => m.snapshot)).values;
+        const gap = targets.energy - Number(curSum.energy);
+        const pGap = Math.max(0, targets.protein - Number(curSum.protein));
+        if (Math.abs(gap) < targets.energy * 0.02 && pGap < 4) break;
+        for (const m of mains) {
+          const template = pool.find(t => t.id === m.snapshot.template_id);
+          if (!template) continue;
+          const nextE = Math.max(1, Number(m.snapshot.values.energy) + gap / mains.length);
+          const nextP = Math.max(m.target_protein, Number(m.snapshot.values.protein) + pGap / mains.length);
+          const next = fitMeal(template, nextE, nextP, lib);
+          const nextSnaps = meals.map(x => x === m ? next : x.snapshot);
+          const dashOk = (p.diet !== 'dash' && !profile?.diseases?.includes('hypertension')) || (sumSnapshots(nextSnaps).values.sodium != null && Number(sumSnapshots(nextSnaps).values.sodium) <= 2300);
+          const carbOk = !['keto', 'low_carb'].includes(p.diet) || Number(sumSnapshots(nextSnaps).values.carbs ?? 0) <= (p.diet === 'keto' ? 50 : 130);
+          if (nutritionObjective(sumSnapshots(nextSnaps), targets) < nutritionObjective(sumSnapshots(meals.map(x => x.snapshot)), targets) && dashOk && carbOk) {
+            m.snapshot = next;
+          }
+        }
+      }
+    }
+    for (let repair = 0; repair < meals.length * 2 && nutritionQualityIssues(sumSnapshots(meals.map(m => m.snapshot)), targets).length > 0; repair++) {
+      const currentSummary = sumSnapshots(meals.map(m => m.snapshot));
+      let best = null, current = repairObjective(currentSummary, targets);
+      const gap = Math.max(0, targets.protein - Number(currentSummary.values.protein));
+      for (const meal of meals) for (const template of pool.filter(t => t.meal_slots.includes(meal.slot))) {
+        const desiredEnergy = Math.max(1, targets.energy - Number(currentSummary.values.energy) + Number(meal.snapshot.values.energy));
+        const desiredProtein = meal.target_protein + gap / Math.max(1, meals.length - 1);
+        const key = template.id + '|p|' + Math.round(desiredEnergy) + '|' + Math.round(desiredProtein);
+        if (!fitted.has(key)) fitted.set(key, fitMeal(template, desiredEnergy, desiredProtein, lib));
+        const snapshot = fitted.get(key), snapshots = meals.map(m => m === meal ? snapshot : m.snapshot);
+        try { assertDietDay(snapshots, p.diet, targets, profile); } catch { continue; }
+        const score = repairObjective(sumSnapshots(snapshots), targets);
+        if (score < current) { best = { meal, snapshot }; current = score; }
+      }
+      if (!best) break;
+      best.meal.snapshot = copy(best.snapshot);
+    }
+    try {
+      assertDietDay(meals.map(m => m.snapshot), p.diet, targets, profile);
+    } catch (err) {
+      return {
+        feasible: false,
+        code: err?.code || 'PLAN_CONSTRAINTS_UNMET',
+        field: 'excludedGroups',
+        message: err?.message || 'Dietary constraints cannot be satisfied with current exclusions.',
+        stage: 'ASSERT_DIET_DAY_FAILED'
+      };
+    }
+    const summary = sumSnapshots(meals.map(m => m.snapshot));
+    if (nutritionQualityIssues(summary, targets).length > 0) {
+      return {
+        feasible: false,
+        code: 'PLAN_CONSTRAINTS_UNMET',
+        field: 'excludedGroups',
+        message: 'Meal search could not meet daily calorie and protein tolerances under your current dietary exclusions.',
+        stage: 'NUTRIENT_TARGETS_UNMET'
+      };
+    }
+    return { feasible: true };
+  };
+  const primary = tryFeasible(true);
+  if (primary.feasible) return primary;
+  const fallback = tryFeasible(false);
+  return fallback.feasible ? fallback : primary;
 }
 export function blockedExclusionSlots(before, after, lib) {
   const previous = mealAvailability(before, lib), next = mealAvailability(after, lib);

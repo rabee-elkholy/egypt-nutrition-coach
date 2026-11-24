@@ -44,7 +44,7 @@ Every JSON endpoint returns the canonical envelope:
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |
-| `error.code` | `string` | Stable uppercase error code (294 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
+| `error.code` | `string` | Stable uppercase error code (298 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |
 | `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |
 | `error.params` | `object` | Interpolation parameters for client-side localization |
 | `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |
@@ -808,9 +808,11 @@ Public fast deterministic pre-onboarding screening checking date of birth (`birt
 | `goal` | `string (enum)` | Yes | `lose` | `maintain` | `gain` | `muscle_gain` | Primary fitness/nutrition goal. |
 | `targetWeight` | `number | null` | No | 35..250 (kg) | Optional target weight. |
 | `serviceTrack` | `string (enum)` | No | `nutrition_only` | `workouts_only` | `nutrition_and_workouts` | Selected coaching track. |
-| `diseases` | `Array<string>` | No | Supported: `hypertension`, `insulin_resistance`, `pcos`, `ibs`, `cholesterol`, `gout`, `anemia`, `vitamin_d_deficiency`, `lactose_intolerance`, `favism`, `fatty_liver` | Declared wellness/medical conditions. Critical conditions (e.g. `diabetes`) return `requires_review`. |
-| `maternalStatus` | `string (enum)` | No | `none` | `pregnant` | `breastfeeding` | Non-`none` returns `requires_review`. |
-| `injuries` | `Array<string>` | No | e.g. `knee_pain`, `lower_back_pain`, `shoulder_pain` | Declared joint discomforts/injuries. |
+| `parqRedFlag` | `boolean` | No | boolean | Explicit PAR-Q screening red flag; triggers `PARQ_CLEARANCE_REQUIRED` on any workout-bearing track unless switched to `nutrition_only`. |
+| `healthConfirmed` | `boolean` | No | boolean | Legacy health readiness confirmation when `parqRedFlag` is omitted. |
+| `diseases` | `Array<string>` | No | Active 13 onboarding conditions: `diabetes_t1`, `diabetes_t2`, `insulin_resistance`, `pcos`, `hypothyroid`, `hypertension`, `cholesterol`, `ibs`, `celiac`, `gout`, `kidney`, `favism`, `lactose_intolerance` | Declared wellness/medical conditions. Combining `diabetes_t1` and `diabetes_t2` returns `400 CONFLICTING_CONDITIONS`; high-acuity combos or `>= 3` dietary-restricting chronic conditions return `requires_review` (`MULTI_CONDITION_CLINICAL_REVIEW`). |
+| `maternalStatus` | `string (enum)` | No | `none` | `pregnant_t1` | `pregnant_t2` | `pregnant_t3` | `breastfeeding` | Pregnancy + `kidney` or `diabetes_t1` returns `requires_review` (`MULTI_CONDITION_CLINICAL_REVIEW`). |
+| `injuries` | `Array<string>` | No | e.g. `knee`, `lower_back`, `shoulder`, `neck`, `wrist`, `ankle`, `elbow`, `hip`, `diastasis_recti` | Declared joint discomforts/injuries. Soft warning at 3; `>= 4` or infeasible workout day returns `requires_review` (`MULTI_INJURY_REQUIRES_REVIEW`). |
 
 ### Request Body Example
 ```json
@@ -822,6 +824,8 @@ Public fast deterministic pre-onboarding screening checking date of birth (`birt
   "goal": "lose",
   "targetWeight": 75,
   "serviceTrack": "nutrition_and_workouts",
+  "parqRedFlag": false,
+  "healthConfirmed": true,
   "diseases": [],
   "maternalStatus": "none",
   "injuries": []
@@ -832,9 +836,10 @@ Public fast deterministic pre-onboarding screening checking date of birth (`birt
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `status` | `string (enum)` | `eligible` | `needs_input` | `requires_review`. |
-| `reasons` | `Array<object>` | Blocking clinical reasons when `requires_review`. |
+| `reasons` | `Array<object>` | Blocking clinical reasons when `requires_review` (including `PARQ_CLEARANCE_REQUIRED`, `MULTI_CONDITION_CLINICAL_REVIEW`, `MULTI_INJURY_REQUIRES_REVIEW`). |
+| `notes` | `Array<object>` | Informational/warning notes (e.g. `SENIOR_MODE_ACTIVE`, `MULTI_INJURY_WARNING`). |
 | `questions` | `Array<object>` | Additional confirmation prompts when `needs_input`. |
-| `supportedAdaptations` | `object` | `{ diseases: string[], injuries: string[] }` handled automatically. |
+| `supportedAdaptations` | `object` | `{ diseases: string[], injuries: string[], maternalStatus: string }` handled automatically. |
 | `permittedFunctions` | `Array<string>` | Allowed client features. |
 
 #### Example Response — 200 OK — Eligible
@@ -845,10 +850,12 @@ Public fast deterministic pre-onboarding screening checking date of birth (`birt
     "status": "eligible",
     "reviewScope": "system_generated_screening_not_medical_diagnosis",
     "reasons": [],
+    "notes": [],
     "questions": [],
     "supportedAdaptations": {
       "diseases": [],
-      "injuries": []
+      "injuries": [],
+      "maternalStatus": "none"
     },
     "permittedFunctions": [
       "generate_plan",
@@ -6848,10 +6855,12 @@ Stateless onboarding calculation returning daily kcal/macros, safe calorie floor
 | `goal` | `string (enum)` | Yes | `lose` | `maintain` | `gain` | `muscle_gain` | Primary coaching goal. |
 | `targetWeight` | `number | null` | No | 35..250 (kg) | Optional target weight. |
 | `activity` | `string (enum)` | No | `sedentary` | `light` | `moderate` | `active` | Daily activity level. |
-| `dietType` | `string (enum)` | No | Supported diet enum | Dietary pattern. |
+| `dietType` | `string (enum)` | No | `balanced` | `high_protein` | `low_carb` | `intermittent_fasting` | `mediterranean` | `dash` | `keto` | `vegetarian` | `vegan` | Dietary pattern. |
+| `excludedGroups` | `Array<string>` | No | Canonical exclusion IDs (incl. `offal`) | Excluded food groups validated against catalog. |
 | `serviceTrack` | `string (enum)` | No | `nutrition_only` | `workouts_only` | `nutrition_and_workouts` | Coaching track. |
 | `selectedWorkoutDays` | `Array<integer>` | No | 0..6 | Selected weekly workout days. |
-| `healthConfirmed` | `boolean` | No | boolean | Health clearance confirmation. |
+| `parqRedFlag` | `boolean` | No | boolean | Explicit PAR-Q screening red flag; enforced across all workout-bearing tracks. |
+| `healthConfirmed` | `boolean` | No | boolean | Legacy health clearance confirmation. |
 
 ### Request Body Example
 ```json
@@ -6871,9 +6880,17 @@ Stateless onboarding calculation returning daily kcal/macros, safe calorie floor
     3,
     5
   ],
+  "parqRedFlag": false,
   "healthConfirmed": true
 }
 ```
+
+### Response Fields
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `eligibility` | `object` | Clinical & PAR-Q screening result (`eligible` | `needs_input` | `requires_review`). |
+| `feasibility` | `object` | `{ nutritionFeasible: boolean, workoutFeasible: boolean, blockingConflicts: Array<{ code, field, message }> }` preview-to-commit dry check. |
+| `workoutUiModeDefault` | `string (enum)` | `simple` when `beginner || home_only || seniorMode`, else `pro`. |
 
 ---
 

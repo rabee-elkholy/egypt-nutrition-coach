@@ -396,16 +396,22 @@ export async function verifyStoreSubscription(db, env, s, userId, body = {}) {
     const jws = body?.signedTransactionJws || body?.signedTransactionInfo;
     let parsed = jws ? parseJwsPayload(jws) : null;
     const rawTxId = parsed?.transactionId || body?.transactionId;
-    if (env?.APPLE_ISSUER_ID && env?.APPLE_KEY_ID && env?.APPLE_PRIVATE_KEY && rawTxId) {
-      parsed = await fetchAppleTransaction(String(rawTxId), env);
-    } else if (env?.STRICT_STORE_VERIFICATION === 'true') {
-      throw createApiError('Apple App Store Server API credentials are not configured.', 503, { code: 'SERVICE_UNAVAILABLE', retryable: true });
-    }
-    if (!parsed && !body?.transactionId) {
+    if (!parsed && !rawTxId) {
       throw createApiError('Store subscription receipt could not be verified.', 400, {
         code: 'INVALID_SUBSCRIPTION_RECEIPT',
         params: { platform: 'apple' }
       });
+    }
+    if (env?.APPLE_ISSUER_ID && env?.APPLE_KEY_ID && env?.APPLE_PRIVATE_KEY) {
+      if (!rawTxId) {
+        throw createApiError('Store subscription receipt could not be verified.', 400, {
+          code: 'INVALID_SUBSCRIPTION_RECEIPT',
+          params: { platform: 'apple' }
+        });
+      }
+      parsed = await fetchAppleTransaction(String(rawTxId), env);
+    } else if (env?.STRICT_STORE_VERIFICATION === 'true') {
+      throw createApiError('Apple App Store Server API credentials are not configured.', 503, { code: 'SERVICE_UNAVAILABLE', retryable: true });
     }
     const expectedBundleId = env?.APPLE_BUNDLE_ID || env?.APPLE_CLIENT_ID;
     if (expectedBundleId && parsed?.bundleId && parsed.bundleId !== expectedBundleId) {
@@ -490,7 +496,7 @@ export async function restoreStoreSubscriptions(db, env, s, userId, body = {}) {
   const provider = (body?.platform === 'apple' || body?.platform === 'ios' || body?.provider === 'apple') ? 'apple' : 'google';
   let restored = false;
   for (const rawItem of tokens.slice(0, 10)) {
-    const tk = typeof rawItem === 'string' ? rawItem : String(rawItem?.purchaseToken || rawItem?.transactionId || rawItem?.signedTransactionJws || '').trim();
+    const tk = typeof rawItem === 'string' ? rawItem : String(rawItem?.purchaseToken || rawItem?.transactionId || rawItem?.signedTransactionJws || rawItem?.signedTransactionInfo || '').trim();
     if (!tk) continue;
     const jwsParsed = provider === 'apple' && tk.includes('.') ? parseJwsPayload(tk) : null;
     const txLookup = String(jwsParsed?.originalTransactionId || jwsParsed?.transactionId || tk).trim();

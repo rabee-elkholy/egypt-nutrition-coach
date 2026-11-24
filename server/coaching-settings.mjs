@@ -37,6 +37,7 @@ export function applySettingsCommand(s,action,p){
   if(prefs.channels!==undefined){
    if(!Array.isArray(prefs.channels)||prefs.channels.some(c=>!['in_app','push'].includes(c)))throw apiError('INVALID_STRING_LIST','channels must contain only in_app or push.',{status:400,params:{field:'channels'}});
    next.channels=[...new Set(prefs.channels)];
+   next.channelsConfigured=true;
   }
   if(prefs.quietHoursStart!==undefined){
    if(typeof prefs.quietHoursStart!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(prefs.quietHoursStart))throw apiError('INVALID_QUIET_HOURS','quietHoursStart must be formatted as 24-hour HH:mm.',{status:400,params:{field:'quietHoursStart'},fieldErrors:[{field:'quietHoursStart',code:'INVALID_QUIET_HOURS',message:'quietHoursStart must be formatted as 24-hour HH:mm.'}]});

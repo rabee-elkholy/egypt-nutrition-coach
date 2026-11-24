@@ -1872,6 +1872,40 @@
       "message": "Completed sessions cannot be rescheduled.",
       "params": [],
       "retryable": false
+    },
+    "PARQ_CLEARANCE_REQUIRED": {
+      "httpStatus": 422,
+      "message": "Physician clearance is required before automated workout planning after a positive PAR-Q screening response. Switch serviceTrack to nutrition_only or obtain medical clearance.",
+      "params": [
+        "serviceTrack"
+      ],
+      "retryable": false
+    },
+    "CONFLICTING_CONDITIONS": {
+      "httpStatus": 400,
+      "message": "diabetes_t1 and diabetes_t2 are mutually exclusive and cannot be selected together.",
+      "params": [
+        "conditions"
+      ],
+      "retryable": false
+    },
+    "MULTI_CONDITION_CLINICAL_REVIEW": {
+      "httpStatus": 422,
+      "message": "Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation.",
+      "params": [
+        "conditions",
+        "maternalStatus"
+      ],
+      "retryable": false
+    },
+    "MULTI_INJURY_REQUIRES_REVIEW": {
+      "httpStatus": 422,
+      "message": "Four or more concurrent injuries (or zero safe exercises for a scheduled day) require specialist review before automated workout generation; switch to nutrition_only or seek clinical clearance.",
+      "params": [
+        "injuryCount",
+        "injuries"
+      ],
+      "retryable": false
     }
   }
 }

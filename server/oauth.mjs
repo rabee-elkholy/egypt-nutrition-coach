@@ -412,9 +412,9 @@ export async function unlinkOAuthProvider(db, userId, provider) {
 export async function listLinkedProviders(db, userId) {
   try {
     const rows = await db.prepare(
-      'SELECT provider, email, created_at FROM coaching_oauth_identities WHERE user_id=? ORDER BY created_at ASC'
+      'SELECT provider, subject, email, created_at FROM coaching_oauth_identities WHERE user_id=? ORDER BY created_at ASC'
     ).bind(userId).all();
-    return (rows?.results || []).map(r => ({ provider: r.provider, email: r.email || null, linkedAt: r.created_at }));
+    return (rows?.results || []).map(r => ({ provider: r.provider, subject: r.subject || null, email: r.email || null, linkedAt: r.created_at }));
   } catch (e) {
     if (/no such table/i.test(e?.message || '')) return [];
     throw e;

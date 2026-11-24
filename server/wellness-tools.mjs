@@ -170,7 +170,11 @@ export function saveCustomRecipe(s, p = {}) {
     }
     let grams = round1(amountNum);
     if (hasMl) {
-      if (raw.densityGPerMl != null && Number(raw.densityGPerMl) > 0) grams = round1(amountNum * Number(raw.densityGPerMl));
+      if (raw.densityGPerMl != null && Number(raw.densityGPerMl) > 0) {
+        grams = round1(amountNum * Number(raw.densityGPerMl));
+      } else if (catItem.volume_evidence?.grams != null && catItem.volume_evidence?.milliliters != null && Number(catItem.volume_evidence.milliliters) > 0) {
+        grams = round1(amountNum * (Number(catItem.volume_evidence.grams) / Number(catItem.volume_evidence.milliliters)));
+      }
       calcAdditions.push({ id: catItem.id, ml: amountNum, ...(raw.densityGPerMl != null ? { densityGPerMl: Number(raw.densityGPerMl) } : {}) });
     } else {
       calcAdditions.push({ id: catItem.id, grams });

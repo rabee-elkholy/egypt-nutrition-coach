@@ -4,15 +4,16 @@ import {settingsActions,applySettingsCommand} from './coaching-settings.mjs';
 import {handleCoachingCommand,currentFeedback} from '../coaching-journey.mjs';
 import {usesKg} from '../exercise-load.mjs';
 import {clockNow,isoNow,clockDate,clockTimeZone} from './clock.mjs';
-import {makeWeek,estimateNeeds,scaleSnapshot,sumSnapshots,assessDay,validatePreferences,nutritionQualityIssues} from '../planner-core.mjs';
-import {FIXED_DIET_MEALS,assertDietDay,isDietUnsafeForProfile} from '../diet-patterns.mjs';
+import {makeWeek,estimateNeeds,scaleSnapshot,sumSnapshots,assessDay,validatePreferences,nutritionQualityIssues,checkPlanFeasibility} from '../planner-core.mjs';
+import {DIETS,FIXED_DIET_MEALS,assertDietDay,isDietUnsafeForProfile} from '../diet-patterns.mjs';
+import {EXCLUSIONS} from '../planner-exclusions.mjs';
 import {catalog,workoutPlan,workoutSafetyIssues,exerciseAlternatives,muscleRegions,weeklySetTotals,scheduledSessions,estimatedSessionMinutes,isFriendlyForInjuries} from './workouts.mjs';
 import {recovery,accountRecovery,calorieReview,progression,hasPerformanceDrop,workoutProgressionSummary} from './recovery.mjs';
 import {library,activePlan,foodCommand,replaceMeal,plannedEnergyForDate,dayTotals} from './food.mjs';
 import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reconcileSessions} from './training-state.mjs';
 import {volumeReview} from './training-review.mjs';
 import {nutritionEvidenceKey,matchingNutritionDecline} from '../nutrition-decisions.mjs';
-import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,SUPPORTED_LOCALES,needsHealthConfirmation,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES,isPregnantStatus,minSafeEnergyFloor,computeAgeFromBirthDate,resolveProfileBirthDateAndAge,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
+import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,SUPPORTED_LOCALES,needsHealthConfirmation,hasActiveParqRedFlag,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES,isPregnantStatus,minSafeEnergyFloor,computeAgeFromBirthDate,resolveProfileBirthDateAndAge,effectiveProfileWithLiveAge,hasConflictingDiabetesConditions,hasMultiConditionClinicalReview} from '../coaching-shared.mjs';
 import {saveCustomRecipe,deleteCustomRecipe,logCardioSession,deleteCardioSession,dailyCardioMinutes,updateCycleSettings,logCycleEntry} from './wellness-tools.mjs';
 import {apiError} from '../coaching-error.mjs';
 
@@ -116,8 +117,62 @@ function applyDietMacroPreview(targets,dietType,weight){
  return t;
 }
 
+function parseOptionalParqRedFlag(d){
+ if(d?.parqRedFlag===undefined||d?.parqRedFlag===null)return null;
+ return boolean(d.parqRedFlag,'parqRedFlag');
+}
+function assertNoConflictingConditions(diseases){
+ if(hasConflictingDiabetesConditions(diseases)){
+  throw apiError('CONFLICTING_CONDITIONS','diabetes_t1 and diabetes_t2 are mutually exclusive and cannot be selected together.',{
+   status:400,
+   params:{conditions:['diabetes_t1','diabetes_t2']},
+   fieldErrors:[{field:'diseases',code:'CONFLICTING_CONDITIONS',message:'Select either diabetes_t1 or diabetes_t2, not both.'}]
+  });
+ }
+}
+function buildNutritionPrefs(d,declaredDiseases,region){
+ const dietType=d.dietType||'balanced';
+ if(!Object.hasOwn(DIETS,dietType)){
+  throw apiError('INVALID_DIET_TYPE','Selected dietType is not supported.',{
+   status:400,
+   params:{dietType},
+   fieldErrors:[{field:'dietType',code:'INVALID_DIET_TYPE',message:'Selected dietType is not supported.'}]
+  });
+ }
+ const rawExcluded=clean(d.excludedGroups).map(x=>x.toLowerCase());
+ if(rawExcluded.some(id=>!EXCLUSIONS.some(g=>g.id===id))){
+  throw apiError('INVALID_EXCLUDED_INGREDIENTS','excludedKeys or excludedGroups contains an unknown entry.',{
+   status:400,
+   fieldErrors:[{field:'excludedGroups',code:'INVALID_EXCLUDED_INGREDIENTS',message:'excludedGroups contains an unknown entry.'}]
+  });
+ }
+ const fixed=FIXED_DIET_MEALS[dietType];
+ const excludedGroups=[...new Set([
+  ...rawExcluded,
+  ...(declaredDiseases.includes('favism')?['fava']:[]),
+  ...(declaredDiseases.includes('lactose_intolerance')?['dairy','milk','yogurt','cheese']:[]),
+  ...(declaredDiseases.includes('celiac')?['gluten']:[])
+ ])];
+ const baseProteins=dietType==='vegan'?['legumes','nuts']:dietType==='vegetarian'?['legumes','eggs','dairy','nuts']:['legumes','eggs','dairy','chicken','fish','meat','nuts'];
+ const proteins=declaredDiseases.includes('lactose_intolerance')?baseProteins.filter(p=>p!=='dairy'):baseProteins;
+ const eatingStart=resolveEatingStart(d);
+ return {
+  diet:dietType,
+  fasting:fixed?.fasting||'none',
+  eatingStart,
+  region,
+  budget:d.budget||'medium',
+  meals:fixed?.meals||integer(d.mealsCount??4,2,5,'mealsCount'),
+  proteins,
+  excludedKeys:[],
+  excludedFoodIds:[],
+  excludedGroups
+ };
+}
+
 export function previewPlan(d={}){
  const normalized=normalizeWeekdayDraft(d);
+ const parqRedFlag=parseOptionalParqRedFlag(normalized);
  const rawDiseases=normalized.diseases??normalized.conditions;
  const elig=evaluateEligibility({...normalized,diseases:rawDiseases});
  const tz=normalized.timezone&&validTimeZone(normalized.timezone)?normalized.timezone:defaultTimezoneForRegion(normalized.region||'egypt');
@@ -143,46 +198,99 @@ export function previewPlan(d={}){
   throw apiError('INVALID_TARGET_WEIGHT','targetWeight for weight gain must be greater than current weight.',{status:400});
  }
  const declaredDiseases=clean(rawDiseases);
- const dietType=normalized.dietType||'balanced';
- if(isDietUnsafeForProfile(dietType,{diseases:declaredDiseases,maternalStatus,goal})){
+ assertNoConflictingConditions(declaredDiseases);
+ const region=normalized.region||'egypt';
+ const prefs=buildNutritionPrefs(normalized,declaredDiseases,region);
+ const dietType=prefs.diet;
+ if(normalized.serviceTrack!=='workouts_only'&&isDietUnsafeForProfile(dietType,{diseases:declaredDiseases,maternalStatus,goal})){
   throw apiError('MEDICAL_DIET_CONFLICT','The selected diet pattern is contraindicated for your declared medical conditions, maternal status, or goal.',{status:400,params:{dietType}});
  }
+ if(normalized.serviceTrack!=='workouts_only')validatePreferences(prefs,library);
  const extDays=Array.isArray(normalized.externalTrainingDays)?normalized.externalTrainingDays:[];
  const workoutDaysCount=normalized.selectedWorkoutDays?.length??(normalized.serviceTrack==='nutrition_only'?extDays.length:(normalized.workoutDaysCount??3));
  const seniorMode=age>=70||normalized.seniorMode===true;
  const recomposition=goal==='muscle_gain'&&targetWeight!=null&&Math.abs(targetWeight-weight)<0.5;
- const baseTargets=estimateNeeds({
+ const effectiveGoalPace=(maternalStatus==='breastfeeding'&&goal==='lose')?'slow':(normalized.goalPace||'moderate');
+ const previewProfile={
   age,weight,height,sex:normalized.sex,goal,
-  targetWeight,goalPace:normalized.goalPace||'moderate',
+  targetWeight,goalPace:effectiveGoalPace,
   activity:normalized.activity||normalized.dailyActivity||'light',
   trainingDays:workoutDaysCount,diseases:declaredDiseases,maternalStatus,
   seniorMode,
   allowZeroExternalTraining:normalized.serviceTrack==='nutrition_only',
-  recomposition
- });
+  recomposition,
+  ketoAcknowledged:dietType==='keto',
+  fastingAcknowledged:dietType==='intermittent_fasting'
+ };
+ const baseTargets=estimateNeeds(previewProfile);
  const targets=applyDietMacroPreview(baseTargets,dietType,weight);
  const currWeekday=new Date(currDate+'T12:00:00Z').getUTCDay();
  const selectedDays=Array.isArray(normalized.selectedWorkoutDays)?normalized.selectedWorkoutDays:extDays;
  const baseWaterProfile={weight,activity:normalized.activity||normalized.dailyActivity||'light',maternalStatus,diseases:declaredDiseases};
- const mockState={profile:{...baseWaterProfile,externalTrainingDays:selectedDays},preferences:{region:normalized.region||'egypt'},sessions:[],workoutPlan:null};
+ const mockState={profile:{...baseWaterProfile,externalTrainingDays:selectedDays},preferences:{region},sessions:[],workoutPlan:null};
  const waterTarget=dailyWaterTarget(mockState,currDate);
- const restDayWaterTarget=dailyWaterTarget({profile:{...baseWaterProfile,externalTrainingDays:[]},preferences:{region:normalized.region||'egypt'},sessions:[],workoutPlan:null},currDate);
- const workoutDayWaterTarget=dailyWaterTarget({profile:{...baseWaterProfile,externalTrainingDays:[currWeekday]},preferences:{region:normalized.region||'egypt'},sessions:[],workoutPlan:null},currDate);
+ const restDayWaterTarget=dailyWaterTarget({profile:{...baseWaterProfile,externalTrainingDays:[]},preferences:{region},sessions:[],workoutPlan:null},currDate);
+ const workoutDayWaterTarget=dailyWaterTarget({profile:{...baseWaterProfile,externalTrainingDays:[currWeekday]},preferences:{region},sessions:[],workoutPlan:null},currDate);
  const level=normalized.fitnessLevel||'beginner',loc=normalized.workoutLocation||'gym_only';
- const workoutUiModeDefault=(level==='beginner'||loc==='home_only')?'simple':'pro';
+ const workoutUiModeDefault=(level==='beginner'||loc==='home_only'||seniorMode===true)?'simple':'pro';
  const reqSplit=normalized.workoutSplitPreference||'auto';
  const recommendedSplit=normalized.serviceTrack==='nutrition_only'?null:(reqSplit==='auto'?(workoutDaysCount<=3?'full_body':workoutDaysCount>=5?'ppl':'upper_lower'):((reqSplit==='upper_lower'&&workoutDaysCount<2)||(reqSplit==='ppl'&&workoutDaysCount<3)||(reqSplit==='bro_split'&&workoutDaysCount<4))?'full_body':reqSplit);
  let estimatedExercisesPerSession=null;
  const wpWarnings=[];
+ let nutritionFeasible=true;
+ let workoutFeasible=true;
+ const blockingConflicts=[];
+ const pushConflict=(code,field,message)=>{
+  if(!blockingConflicts.some(c=>c.code===code&&c.field===field))blockingConflicts.push({code,field,message});
+ };
+ const multiCondReason=elig.reasons.find(r=>r.code==='MULTI_CONDITION_CLINICAL_REVIEW');
+ if(multiCondReason){
+  pushConflict('MULTI_CONDITION_CLINICAL_REVIEW','diseases',multiCondReason.message);
+ }
  if(normalized.serviceTrack!=='nutrition_only'){
   const injuries=Array.isArray(normalized.injuries)?canonicalInjuries(clean(normalized.injuries)):[];
-  const wp=workoutPlan({...normalized,age,seniorMode,maternalStatus,injuries,goal});
-  estimatedExercisesPerSession=wp?.days?.length?Math.round(wp.days.reduce((sum,day)=>sum+(day.exercises?.length||0),0)/wp.days.length):null;
-  if(wp?.warnings?.length)wpWarnings.push(...wp.warnings);
+  if(parqRedFlag===true){
+   workoutFeasible=false;
+   pushConflict('PARQ_CLEARANCE_REQUIRED','parqRedFlag','Physician clearance is required before automated workout planning after a positive PAR-Q screening response.');
+  }
+  try{
+   const wp=workoutPlan({...normalized,age,seniorMode,maternalStatus,injuries,goal});
+   estimatedExercisesPerSession=wp?.days?.length?Math.round(wp.days.reduce((sum,day)=>sum+(day.exercises?.length||0),0)/wp.days.length):null;
+   if(wp?.warnings?.length)wpWarnings.push(...wp.warnings);
+   if(injuries.length>=4){
+    workoutFeasible=false;
+    pushConflict('MULTI_INJURY_REQUIRES_REVIEW','injuries','Four or more concurrent injuries require specialist review before automated workout planning; switch to nutrition_only or seek clinical clearance.');
+   }
+  }catch(err){
+   if(err?.code==='WORKOUT_INFEASIBLE'){
+    workoutFeasible=false;
+    estimatedExercisesPerSession=0;
+    const msg='Current injury exclusions and equipment leave no safe exercises for at least one scheduled workout day; switch to nutrition_only or seek specialist review.';
+    if(!elig.reasons.some(r=>r.code==='MULTI_INJURY_REQUIRES_REVIEW')){
+     elig.reasons.push({code:'MULTI_INJURY_REQUIRES_REVIEW',severity:'requires_review',message:msg});
+     elig.status='requires_review';
+     elig.permittedFunctions=['browse_food_catalog','browse_exercise_catalog','export_clinical_summary'];
+     if(!elig.clinicalSummary){
+      elig.clinicalSummary={generatedAt:isoNow(),...(birthDate?{birthDate}:{}),age,weightKg:weight,heightCm:height,declaredDiseases,declaredInjuries:injuries,maternalStatus,parqRedFlag:parqRedFlag??null,note:'Automated screening summary suitable for sharing with a physician, registered dietitian, or physical therapist.'};
+     }
+    }
+    pushConflict('MULTI_INJURY_REQUIRES_REVIEW','injuries',msg);
+   }else{
+    throw err;
+   }
+  }
+ }
+ if(normalized.serviceTrack!=='workouts_only'){
+  const nutrFeas=checkPlanFeasibility(previewProfile,prefs,library);
+  if(!nutrFeas.feasible){
+   nutritionFeasible=false;
+   pushConflict(nutrFeas.code||'PLAN_CONSTRAINTS_UNMET',nutrFeas.field||'excludedGroups',nutrFeas.message);
+  }
  }
  const warnings=[...(targets.notes||[]),...(elig.notes||[]).map(n=>n.message),...wpWarnings];
  return {
   eligibility:elig,
+  feasibility:{nutritionFeasible,workoutFeasible,blockingConflicts},
   targets:{...targets,kcal:targets.energy,seniorMode},
   dailyCalories:targets.energy,
   macros:{protein:targets.protein,carbs:targets.carbs,fat:targets.fat},
@@ -206,6 +314,7 @@ export function previewPlan(d={}){
 
 export function generate(s,d,seed=crypto.randomUUID()){
  d=normalizeWeekdayDraft(d);
+ const parqRedFlag=parseOptionalParqRedFlag(d);
  if(d.overwriteExisting===false&&s.profile)throw apiError('PROFILE_ALREADY_EXISTS','An existing profile already exists on this account; pass overwriteExisting: true to replace it.',{status:409});
  const rawDiseasesInput=d.diseases??d.conditions;
  const dobTz=d.timezone&&validTimeZone(String(d.timezone).trim())?String(d.timezone).trim():defaultTimezoneForRegion(d.region||'egypt');
@@ -218,11 +327,33 @@ export function generate(s,d,seed=crypto.randomUUID()){
  if(!MATERNAL_STATUSES.has(maternalStatus))throw apiError('CLINICAL_REVIEW_REQUIRED','Unsupported maternalStatus value.',{status:400});
  if(maternalStatus!=='none'&&(d.sex!=='female'||age>50))throw apiError('INVALID_MATERNAL_PROFILE','Maternal status is only applicable to female profiles aged 18 to 50.',{status:400});
  const declaredDiseases=clean(rawDiseasesInput),rawInjuries=clean(d.injuries),declaredInjuries=canonicalInjuries(rawInjuries);
+ assertNoConflictingConditions(declaredDiseases);
  const unsupportedClinical=declaredDiseases.some(x=>!SUPPORTED_WELLNESS_CONDITIONS.has(x))||declaredInjuries.some(x=>!SUPPORTED_MILD_INJURIES.has(x));
  if(unsupportedClinical)throw apiError('CLINICAL_REVIEW_REQUIRED','Declared clinical conditions or injuries require specialist review before automated plan generation.',{status:400});
  if(!['lose','maintain','gain','muscle_gain'].includes(d.goal))throw apiError('INVALID_GOAL','goal must be one of lose, maintain, gain, or muscle_gain.',{status:400});
  if(isPregnantStatus(maternalStatus)&&d.goal==='lose')throw apiError('MATERNAL_CALORIE_CUT_BLOCKED','Calorie reductions are disabled during pregnancy for maternal safety.',{status:422});
  if(!['nutrition_only','workouts_only','nutrition_and_workouts'].includes(d.serviceTrack))throw apiError('INVALID_SERVICE_TRACK','serviceTrack must be one of nutrition_only, workouts_only, or nutrition_and_workouts.',{status:400});
+ if(parqRedFlag===true&&d.serviceTrack!=='nutrition_only'){
+  throw apiError('PARQ_CLEARANCE_REQUIRED','Physician clearance is required before automated workout planning after a positive PAR-Q screening response. Switch serviceTrack to nutrition_only or obtain medical clearance.',{
+   status:422,
+   params:{serviceTrack:d.serviceTrack},
+   fieldErrors:[{field:'parqRedFlag',code:'PARQ_CLEARANCE_REQUIRED',message:'Automated workout generation is blocked while parqRedFlag is true.'}]
+  });
+ }
+ if(hasMultiConditionClinicalReview(declaredDiseases,maternalStatus)){
+  throw apiError('MULTI_CONDITION_CLINICAL_REVIEW','Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation.',{
+   status:422,
+   params:{conditions:declaredDiseases,maternalStatus},
+   fieldErrors:[{field:'diseases',code:'MULTI_CONDITION_CLINICAL_REVIEW',message:'Declared clinical condition combination requires specialist review.'}]
+  });
+ }
+ if(d.serviceTrack!=='nutrition_only'&&declaredInjuries.length>=4){
+  throw apiError('MULTI_INJURY_REQUIRES_REVIEW','Four or more concurrent injuries require specialist review before automated workout generation; switch to nutrition_only or seek clinical clearance.',{
+   status:422,
+   params:{injuryCount:declaredInjuries.length,injuries:declaredInjuries},
+   fieldErrors:[{field:'injuries',code:'MULTI_INJURY_REQUIRES_REVIEW',message:'Four or more concurrent injuries require specialist review.'}]
+  });
+ }
  const bmi=weight/((height/100)**2);if(bmi<12.5||bmi>65)throw apiError('BMI_OUT_OF_RANGE','Calculated BMI is outside the automated planning range (12.5..65).',{status:400});if(bmi<18.5&&d.goal==='lose')throw apiError('WEIGHT_LOSS_UNDERWEIGHT_UNSAFE','Weight loss plans are not suitable when current BMI is below 18.5.',{status:400});
  const region=d.region||'egypt';
  const timezone=d.timezone?String(d.timezone).trim():defaultTimezoneForRegion(region);
@@ -232,15 +363,16 @@ export function generate(s,d,seed=crypto.randomUUID()){
  const unitSystem=d.unitSystem||s.profile?.unitSystem||'metric';
  let cleanName=String(d.name??s.profile?.name??'').trim();
  if(d.name!==undefined&&d.name!==null&&String(d.name).trim()!==''){
-  if(cleanName.length<2||cleanName.length>50||!/^[\p{L}\p{N}\s'-]+$/u.test(cleanName))throw apiError('INVALID_PROFILE_NAME','Profile name must be 2 to 50 valid characters.',{status:400});
+  if(cleanName.length<2||cleanName.length>50||!/\p{L}/u.test(cleanName)||!/^[\p{L}\p{N}\s'-]+$/u.test(cleanName))throw apiError('INVALID_PROFILE_NAME','Profile name must be 2 to 50 valid characters.',{status:400});
  }
  const seniorMode=age>=70||d.seniorMode===true;
  const wp=d.serviceTrack==='nutrition_only'?null:workoutPlan({...d,age,seniorMode,maternalStatus,injuries:declaredInjuries});
  const externalTrainingDays=d.externalTrainingDays==null?[]:(Array.isArray(d.externalTrainingDays)&&d.externalTrainingDays.length<=7?[...new Set(d.externalTrainingDays.map(v=>integer(v,0,6,'externalTrainingDays')))]:(()=>{throw apiError('INVALID_EXTERNAL_TRAINING_DAYS','externalTrainingDays must be an array of up to 7 weekday integers (0..6).',{status:400});})());
  const level=wp?(d.fitnessLevel??'beginner'):(d.fitnessLevel??'beginner');
  const loc=wp?(d.workoutLocation??'gym_only'):(d.workoutLocation??'gym_only');
- const defaultUiMode=(level==='beginner'||loc==='home_only')?'simple':'pro';
+ const defaultUiMode=(level==='beginner'||loc==='home_only'||seniorMode===true)?'simple':'pro';
  const workoutUiMode=['simple','pro'].includes(d.workoutUiMode)?d.workoutUiMode:(s.profile?.workoutUiMode||defaultUiMode);
+ const effectiveGoalPace=(maternalStatus==='breastfeeding'&&d.goal==='lose')?'slow':(d.goalPace||'moderate');
  const profile={
   weekdayConvention:'js_sunday_0',
   name:cleanName.slice(0,50),
@@ -248,7 +380,7 @@ export function generate(s,d,seed=crypto.randomUUID()){
   age,weight,height,sex:d.sex,goal:d.goal,
   targetWeight:d.targetWeight!=null&&d.targetWeight!==''?number(d.targetWeight,35,250,'targetWeight'):null,
   bmiWarningOverride:d.bmiWarningOverride===true,
-  goalPace:d.goalPace||'moderate',
+  goalPace:effectiveGoalPace,
   activity:d.activity||d.dailyActivity||'light',
   timezone,locale,unitSystem,seniorMode,maternalStatus,workoutUiMode,
   avatarUrl:s.profile?.avatarUrl||null,
@@ -261,21 +393,14 @@ export function generate(s,d,seed=crypto.randomUUID()){
   fastingAcknowledged:d.dietType==='intermittent_fasting'
  };
  if(profile.targetWeight&&profile.goal==='lose'&&(profile.targetWeight>=weight||(!profile.bmiWarningOverride&&profile.targetWeight/(height/100)**2<18.5)))throw apiError('INVALID_TARGET_WEIGHT','targetWeight is inconsistent with your goal and safe BMI floor (18.5).',{status:400});
- const fixed=FIXED_DIET_MEALS[d.dietType];
- const excludedGroups=[...new Set([
-  ...clean(d.excludedGroups).map(x=>x.toLowerCase()),
-  ...(declaredDiseases.includes('favism')?['fava']:[]),
-  ...(declaredDiseases.includes('lactose_intolerance')?['dairy','milk','yogurt','cheese']:[]),
-  ...(declaredDiseases.includes('celiac')?['gluten']:[])
- ])];
- const baseProteins=d.dietType==='vegan'?['legumes','nuts']:d.dietType==='vegetarian'?['legumes','eggs','dairy','nuts']:['legumes','eggs','dairy','chicken','fish','meat','nuts'];
- const proteins=declaredDiseases.includes('lactose_intolerance')?baseProteins.filter(p=>p!=='dairy'):baseProteins;
- const eatingStart=resolveEatingStart(d);
- const prefs={diet:d.dietType||'balanced',fasting:fixed?.fasting||'none',eatingStart,region,budget:d.budget||'medium',meals:fixed?.meals||integer(d.mealsCount??4,2,5,'mealsCount'),proteins,excludedKeys:[],excludedFoodIds:[],excludedGroups};
+ const prefs=buildNutritionPrefs(d,declaredDiseases,region);
+ if(d.serviceTrack!=='workouts_only'&&prefs.diet==='high_protein'&&declaredDiseases.includes('kidney')){
+  throw apiError('MEDICAL_DIET_CONFLICT','The selected diet pattern is contraindicated for your declared medical conditions, maternal status, or goal.',{status:400,params:{dietType:prefs.diet}});
+ }
  profile.recomposition=profile.goal==='muscle_gain'&&profile.targetWeight!=null&&Math.abs(profile.targetWeight-weight)<0.5;
  validatePreferences(prefs,library);
  const startLocalDate=localDate(clockNow(),timezone);
- if(d.serviceTrack==='workouts_only'&&d.healthConfirmed!==true)throw apiError('HEALTH_CONFIRMATION_REQUIRED','Confirm health readiness clearance before creating or modifying a workout plan.',{status:400});
+ if(d.serviceTrack==='workouts_only'&&parqRedFlag!==false&&d.healthConfirmed!==true)throw apiError('HEALTH_CONFIRMATION_REQUIRED','Confirm health readiness clearance before creating or modifying a workout plan.',{status:400});
  if(profile.targetWeight&&(profile.goal==='gain'&&profile.targetWeight<=weight||profile.goal==='muscle_gain'&&profile.targetWeight<weight))throw apiError('INVALID_TARGET_WEIGHT','targetWeight for weight gain must be greater than current weight.',{status:400});
  const plan=d.serviceTrack==='workouts_only'?null:makeWeek(profile,prefs,library,startLocalDate,seed);
  const journeyStartedOn=s.onboarding?.journeyStartedOn??(!s.profile?startLocalDate:null);
@@ -288,19 +413,20 @@ export function generate(s,d,seed=crypto.randomUUID()){
   s.workoutPlan=wp;
  }
  const normEquip=wp?stringList(d.homeEquipment??['none'],'homeEquipment',20).map(e=>e==='bands'?'resistance_bands':e==='chair'?'bench':e):['none'];
- const workoutPrefs={weekdayConvention:'js_sunday_0',fitnessLevel:level,selectedWorkoutDays:wp?.days.map(x=>x.dayIndex)||externalTrainingDays,workoutDaysCount:wp?.days.length||externalTrainingDays.length,workoutSplitPreference:wp?d.workoutSplitPreference??'auto':'auto',workoutLocation:loc,dayLocations:wp?Object.fromEntries(wp.days.map(day=>[day.dayIndex,day.location])):{},homeEquipment:normEquip,sessionDuration:wp?d.sessionDuration??45:45,injuries:rawInjuries.length?rawInjuries:['none'],healthConfirmed:d.healthConfirmed===true,externalTrainingDays};
+ const workoutPrefs={weekdayConvention:'js_sunday_0',fitnessLevel:level,selectedWorkoutDays:wp?.days.map(x=>x.dayIndex)||externalTrainingDays,workoutDaysCount:wp?.days.length||externalTrainingDays.length,workoutSplitPreference:wp?d.workoutSplitPreference??'auto':'auto',workoutLocation:loc,dayLocations:wp?Object.fromEntries(wp.days.map(day=>[day.dayIndex,day.location])):{},homeEquipment:normEquip,sessionDuration:wp?d.sessionDuration??45:45,injuries:rawInjuries.length?rawInjuries:['none'],healthConfirmed:d.healthConfirmed===true||parqRedFlag===false,...(typeof parqRedFlag==='boolean'?{parqRedFlag}:{}),externalTrainingDays};
  s.onboarding={serviceTrack:d.serviceTrack,workoutPrefs,isAuthenticated:true,...(journeyStartedOn?{journeyStartedOn}:{})};ensureTrainingState(s);
  if(plan){plan.created_at=isoNow();plan.effective_from=startLocalDate;s.plans.push(plan);s.active_plan_id=plan.id;}else s.active_plan_id=null;
  if(prefs.diet==='intermittent_fasting'){
-  const [hh,mm]=eatingStart.split(':').map(Number);
+  const [hh,mm]=prefs.eatingStart.split(':').map(Number);
   const endH=(hh+8)%24;
-  s.fastingState={...(s.fastingState||{}),mode:'if_16_8',windowStart:eatingStart,windowEnd:`${String(endH).padStart(2,'0')}:${String(mm).padStart(2,'0')}`};
+  s.fastingState={...(s.fastingState||{}),mode:'if_16_8',windowStart:prefs.eatingStart,windowEnd:`${String(endH).padStart(2,'0')}:${String(mm).padStart(2,'0')}`};
  }
  s.nutritionContextStartedOn=startLocalDate;s.lastReview=null;s.sessionAdjustment=null;discardPending(s);return s;
 }
 export function review(s){
  const tz=userTz(s),currDate=userToday(s);
  if(needsScheduleConfirmation(s)){discardPending(s);s.lastReview={at:isoNow(),reviewScope:'system_generated_guidance',reasonCode:'SCHEDULE_CONFIRMATION_REQUIRED',recovery:'unknown',nutrition:{action:'hold',reasonCode:'SCHEDULE_CONFIRMATION_REQUIRED',reason:'Confirm your weekly workout days before automated training and adaptive reviews run.'},volume:{action:'hold',reasonCode:'SCHEDULE_CONFIRMATION_REQUIRED',reason:'Confirm weekly workout days first.'},workout:{completed:0,partial:0,missed:0},message:'Confirm your weekly workout days before automated reviews run.'};return s;}
+ if(hasActiveParqRedFlag(s)){discardPending(s);s.lastReview={at:isoNow(),reviewScope:'system_generated_guidance',reasonCode:'PARQ_CLEARANCE_REQUIRED',recovery:'unknown',nutrition:{action:'hold',reasonCode:'PARQ_CLEARANCE_REQUIRED',reason:'Physician clearance is required after a positive PAR-Q response before automated training reviews run.'},volume:{action:'hold',reasonCode:'PARQ_CLEARANCE_REQUIRED',reason:'Physician clearance required first.'},workout:{completed:0,partial:0,missed:0},message:'Physician clearance is required before automated workout reviews run.'};return s;}
  if(needsHealthConfirmation(s)){discardPending(s);s.lastReview={at:isoNow(),reviewScope:'system_generated_guidance',reasonCode:'HEALTH_CONFIRMATION_REQUIRED',recovery:'unknown',nutrition:{action:'hold',reasonCode:'HEALTH_CONFIRMATION_REQUIRED',reason:'Confirm health readiness clearance before automated coaching reviews run.'},volume:{action:'hold',reasonCode:'HEALTH_CONFIRMATION_REQUIRED',reason:'Confirm health readiness first.'},workout:{completed:0,partial:0,missed:0},message:'Confirm health readiness clearance before automated reviews run.'};return s;}
  reconcileSessions(s);
  const ready=accountRecovery(s,clockNow(),tz),plan=activePlan(s),proposals=[];
@@ -434,7 +560,7 @@ export function command(input,action,p){
   const current=activePlan(s);if(current){const plan=structuredClone(current);plan.id='plan-'+crypto.randomUUID();plan.parent_id=current.id;plan.created_at=isoNow();plan.changeReason='Workout schedule weekdays confirmed';plan.profile=structuredClone(s.profile);for(const day of plan.days)if(day.date>=currDate)day.is_workout_day=s.profile.workoutDays.includes(new Date(day.date+'T12:00:00Z').getUTCDay());s.plans.push(plan);s.active_plan_id=plan.id;}
   discardPending(s);return s;
  }
- if(action==='confirm_health'){if(!needsHealthConfirmation(s))throw apiError('HEALTH_ALREADY_CONFIRMED','Health readiness has already been confirmed.',{status:400});if(p.healthy!==true||p.injuryFree!==true)throw apiError('HEALTH_CONFIRMATION_REQUIRED','Confirm health readiness clearance before creating or modifying a workout plan.',{status:400});s.onboarding.workoutPrefs.healthConfirmed=true;s.onboarding.workoutPrefs.healthConfirmedAt=isoNow();discardPending(s);return s;}
+ if(action==='confirm_health'){if(s.onboarding?.workoutPrefs?.parqRedFlag===true)throw apiError('PARQ_CLEARANCE_REQUIRED','An explicit PAR-Q red flag cannot be bypassed via confirm_health; obtain physician clearance or switch serviceTrack to nutrition_only.',{status:422});if(!needsHealthConfirmation(s))throw apiError('HEALTH_ALREADY_CONFIRMED','Health readiness has already been confirmed.',{status:400});if(p.healthy!==true||p.injuryFree!==true)throw apiError('HEALTH_CONFIRMATION_REQUIRED','Confirm health readiness clearance before creating or modifying a workout plan.',{status:400});s.onboarding.workoutPrefs.healthConfirmed=true;s.onboarding.workoutPrefs.healthConfirmedAt=isoNow();discardPending(s);return s;}
  if(['food_entry','food_entry_batch','food_entry_update','food_delete','food_complete','food_switch_to_entries'].includes(action))return foodCommand(s,action,p);
  if(action==='replace_meal')return replaceMeal(s,p);
  if(action==='renew_plan'){
@@ -547,7 +673,7 @@ export function command(input,action,p){
  }else if(action==='profile_update'){
   if(p.name!==undefined){
    const cleanName=String(p.name||'').trim();
-   if(cleanName.length<2||cleanName.length>50||!/^[\p{L}\p{N}\s'-]+$/u.test(cleanName))throw apiError('INVALID_PROFILE_NAME','Profile name must be 2 to 50 valid characters.',{status:400});
+   if(cleanName.length<2||cleanName.length>50||!/\p{L}/u.test(cleanName)||!/^[\p{L}\p{N}\s'-]+$/u.test(cleanName))throw apiError('INVALID_PROFILE_NAME','Profile name must be 2 to 50 valid characters.',{status:400});
    s.profile.name=cleanName;
   }
   if(p.workoutUiMode!==undefined){
@@ -607,16 +733,17 @@ export function command(input,action,p){
   }
  }else if(action==='copy_meal'){
   const fromDate=dateForLog(p.fromDate,s),toDate=dateForLog(p.toDate||currDate,s);
-  if(!['breakfast','lunch','dinner','snack','all'].includes(p.slot))throw apiError('INVALID_COPY_MEAL_PAYLOAD','slot must be breakfast, lunch, dinner, snack, or all.',{status:400});
+  const slotFilter=p.slot==null?'all':p.slot;
+  if(!['breakfast','lunch','dinner','snack','all'].includes(slotFilter))throw apiError('INVALID_COPY_MEAL_PAYLOAD','slot must be breakfast, lunch, dinner, snack, or all.',{status:400});
   const toSlot=p.toSlot!=null?String(p.toSlot):null;
-  if(toSlot!=null&&(!['breakfast','lunch','dinner','snack'].includes(toSlot)||p.slot==='all'))throw apiError('INVALID_COPY_MEAL_PAYLOAD','toSlot must be breakfast, lunch, dinner, or snack and cannot be combined with slot: all.',{status:400});
   const entryIdSet=Array.isArray(p.entryIds)?new Set(p.entryIds.map(String)):null;
+  if(toSlot!=null&&(!['breakfast','lunch','dinner','snack'].includes(toSlot)||(slotFilter==='all'&&!entryIdSet)))throw apiError('INVALID_COPY_MEAL_PAYLOAD','toSlot must be breakfast, lunch, dinner, or snack and cannot be combined with slot: all.',{status:400});
   const existingTargetLog=(s.foodLogs||[]).find(d=>d.date===toDate);
   if(existingTargetLog&&existingTargetLog.source==='daily_total'){
    if(p.replaceDailyTotal!==true)throw apiError('FOOD_DAY_MODE_CONFLICT','Target date already has a legacy daily_total log; switch to entries or pass replaceDailyTotal: true.',{status:409,params:{date:toDate}});
    s.history.push({kind:'food_diary_mode',at:isoNow(),previous:structuredClone(existingTargetLog)});
   }
-  const src=(s.foodEntries||[]).filter(e=>e.date===fromDate&&(p.slot==='all'||e.slot===p.slot)&&(!entryIdSet||entryIdSet.has(e.id)));
+  const src=(s.foodEntries||[]).filter(e=>e.date===fromDate&&(slotFilter==='all'||e.slot===slotFilter)&&(!entryIdSet||entryIdSet.has(e.id)));
   if(!src.length)throw apiError('INVALID_COPY_MEAL_PAYLOAD','No food entries found on fromDate for the selected slot.',{status:400});
   for(const e of src){
    const nextSlot=toSlot||e.slot;
@@ -640,12 +767,12 @@ export function command(input,action,p){
   const atIso=p.at&&Number.isFinite(Date.parse(p.at))?new Date(Date.parse(p.at)).toISOString():isoNow();
   const fs={...(s.fastingState||{mode:'if_16_8',phase:'eating',windowStart:'12:00',windowEnd:'20:00',startedAt:null,targetEndAt:null,streakDays:0})};
   const presetRaw=p.preset!=null?String(p.preset):null;
-  if(presetRaw&&!['14_10','16_8','18_6','ramadan'].includes(presetRaw))throw apiError('INVALID_FASTING_REQUEST','preset must be 14_10, 16_8, 18_6, or ramadan.',{status:400});
+  if(presetRaw&&!['12_12','14_10','16_8','18_6','ramadan'].includes(presetRaw))throw apiError('INVALID_FASTING_REQUEST','preset must be 12_12, 14_10, 16_8, 18_6, or ramadan.',{status:400});
   const diseases=new Set(s.profile.diseases||[]);
   const isMaternal=isPregnantStatus(s.profile.maternalStatus)||s.profile.maternalStatus==='breastfeeding';
   const highRisk=diseases.has('diabetes')||diseases.has('diabetes_t1')||diseases.has('diabetes_t2')||diseases.has('kidney');
   const effectivePreset=presetRaw||(fs.preset)||((s.ramadanMode?.enabled&&!(s.ramadanMode.endDate&&currDate>s.ramadanMode.endDate))?'ramadan':'16_8');
-  const windowHoursFor=pr=>pr==='14_10'?10:pr==='18_6'?6:8;
+  const windowHoursFor=pr=>pr==='12_12'?12:pr==='14_10'?10:pr==='18_6'?6:8;
   if(p.op==='adjust_window'){
    if(isMaternal)throw apiError('MEDICAL_DIET_CONFLICT','Intermittent fasting windows are disabled during pregnancy or breastfeeding.',{status:400});
    if(highRisk&&p.medicalClearanceAcknowledged!==true)throw apiError('RAMADAN_MEDICAL_CLEARANCE_REQUIRED','Confirm medical clearance before adjusting fasting windows with declared diabetes or kidney sensitivity.',{status:400});
@@ -660,7 +787,7 @@ export function command(input,action,p){
    if(!isRamadan&&isMaternal)throw apiError('MEDICAL_DIET_CONFLICT','Intermittent fasting is disabled during pregnancy or breastfeeding.',{status:400});
    if(highRisk&&p.medicalClearanceAcknowledged!==true&&!s.ramadanMode?.medicalClearanceAcknowledged)throw apiError('RAMADAN_MEDICAL_CLEARANCE_REQUIRED','Confirm medical clearance before starting a fasting timer with declared diabetes or kidney sensitivity.',{status:400});
    const pr=isRamadan?'ramadan':effectivePreset;
-   const defaultFastHours=pr==='14_10'?14:pr==='18_6'?18:16;
+   const defaultFastHours=pr==='12_12'?12:pr==='14_10'?14:pr==='18_6'?18:16;
    fs.preset=pr;fs.windowHours=isRamadan?null:windowHoursFor(pr);fs.mode=isRamadan?'ramadan':`if_${pr}`;
    fs.phase='fasting';fs.startedAt=atIso;
    let targetHours=p.targetHours!=null?number(p.targetHours,8,24,'targetHours'):defaultFastHours;
@@ -839,6 +966,7 @@ export function command(input,action,p){
  return s;
 }
 export function evaluateEligibility(d={}){
+ const parqRedFlag=parseOptionalParqRedFlag(d);
  const reasons=[],questions=[],notes=[];
  const dobTz=d.timezone&&validTimeZone(String(d.timezone).trim())?String(d.timezone).trim():defaultTimezoneForRegion(d.region||'egypt');
  const todayDate=localDate(clockNow(),dobTz);
@@ -854,6 +982,7 @@ export function evaluateEligibility(d={}){
  else if(ageNum>=70){notes.push({code:'SENIOR_MODE_ACTIVE',severity:'info',message:'Senior safety mode (70+) is active: moderate deficit cap (-400 kcal), protein floor >= 1.2 g/kg, and joint-friendly low-impact exercises.'});}
  const rawDiseases=d.diseases??d.conditions;
  const diseases=Array.isArray(rawDiseases)?rawDiseases.filter(x=>x&&x!=='none'):[];
+ assertNoConflictingConditions(diseases);
  const injuries=Array.isArray(d.injuries)?canonicalInjuries(d.injuries):[];
  const maternal=d.maternalStatus&&d.maternalStatus!=='none'?d.maternalStatus:null;
  if(maternal&&!MATERNAL_STATUSES.has(maternal)){reasons.push({code:'CLINICAL_OR_INJURY_REQUIRES_REVIEW',severity:'requires_review',message:'Unsupported maternal status requires specialist review.'});}
@@ -864,12 +993,34 @@ export function evaluateEligibility(d={}){
  if(unsupportedDiseases.length||unsupportedInjuries.length){
   reasons.push({code:'CLINICAL_OR_INJURY_REQUIRES_REVIEW',severity:'requires_review',message:'Declared clinical conditions or injuries require direct specialist review before automated plan generation.'});
  }
+ if(hasMultiConditionClinicalReview(diseases,maternal||'none')){
+  reasons.push({code:'MULTI_CONDITION_CLINICAL_REVIEW',severity:'requires_review',message:'Multiple overlapping or high-acuity clinical conditions require direct specialist review before automated plan generation.'});
+ }
+ if(parqRedFlag===true&&d.serviceTrack!=='nutrition_only'){
+  reasons.push({code:'PARQ_CLEARANCE_REQUIRED',severity:'requires_review',message:'Physician clearance is required before automated workout planning after a positive PAR-Q screening response. You can switch to nutrition_only in the meantime.'});
+ }
+ if(d.serviceTrack!=='nutrition_only'){
+  if(injuries.length===3){
+   notes.push({code:'MULTI_INJURY_WARNING',severity:'warning',message:'Three concurrent injuries limit available exercises; monitor joint comfort closely or consider switching to nutrition_only during recovery.'});
+  }else if(injuries.length>=4){
+   reasons.push({code:'MULTI_INJURY_REQUIRES_REVIEW',severity:'requires_review',message:'Four or more concurrent injuries require specialist review before automated workout planning; switch to nutrition_only or seek clinical clearance.'});
+  }else if(injuries.length>0&&!unsupportedInjuries.length){
+   try{
+    const safeDraft=normalizeWeekdayDraft({...d,injuries,age:Number.isInteger(ageNum)?ageNum:30,seniorMode:Number.isInteger(ageNum)&&ageNum>=70,maternalStatus:maternal||'none'});
+    workoutPlan(safeDraft);
+   }catch(err){
+    if(err?.code==='WORKOUT_INFEASIBLE'){
+     reasons.push({code:'MULTI_INJURY_REQUIRES_REVIEW',severity:'requires_review',message:'Current injury exclusions and equipment leave no safe exercises for at least one scheduled workout day; switch to nutrition_only or seek specialist review.'});
+    }
+   }
+  }
+ }
  if(Number.isFinite(weightNum)&&Number.isFinite(heightNum)&&heightNum>=120&&heightNum<=230){
   const bmi=weightNum/((heightNum/100)**2);
   if(bmi<12.5||bmi>65)reasons.push({code:'BMI_OUT_OF_RANGE',severity:'requires_review',message:'Height and weight fall outside the automated planning BMI range (12.5 to 65).'});
   else if(bmi<18.5&&d.goal==='lose')reasons.push({code:'UNDERWEIGHT_LOSS_FORBIDDEN',severity:'requires_review',message:'Weight loss goals are unsafe when current BMI is below 18.5.'});
  }
- if(d.serviceTrack==='workouts_only'&&d.healthConfirmed!==true){
+ if(d.serviceTrack==='workouts_only'&&parqRedFlag==null&&d.healthConfirmed!==true){
   questions.push({code:'CONFIRM_WORKOUT_HEALTH',field:'healthConfirmed',prompt:'Confirm that you have no acute condition or injury requiring specialist clearance before starting workouts.'});
  }
  const status=reasons.length?'requires_review':questions.length?'needs_input':'eligible';
@@ -887,7 +1038,7 @@ export function evaluateEligibility(d={}){
    maternalStatus:maternal||'none'
   },
   permittedFunctions:status==='requires_review'?['browse_food_catalog','browse_exercise_catalog','export_clinical_summary']:['generate_plan','log_execution','adaptive_review'],
-  clinicalSummary:status==='requires_review'?{generatedAt:isoNow(),...(rawBirthDate?{birthDate:rawBirthDate}:{}),age:Number.isFinite(ageNum)?ageNum:null,weightKg:Number.isFinite(weightNum)?weightNum:null,heightCm:Number.isFinite(heightNum)?heightNum:null,declaredDiseases:diseases,declaredInjuries:injuries,maternalStatus:maternal||'none',note:'Automated screening summary suitable for sharing with a physician, registered dietitian, or physical therapist.'}:null
+  clinicalSummary:status==='requires_review'?{generatedAt:isoNow(),...(rawBirthDate?{birthDate:rawBirthDate}:{}),age:Number.isFinite(ageNum)?ageNum:null,weightKg:Number.isFinite(weightNum)?weightNum:null,heightCm:Number.isFinite(heightNum)?heightNum:null,declaredDiseases:diseases,declaredInjuries:injuries,maternalStatus:maternal||'none',parqRedFlag:parqRedFlag??null,note:'Automated screening summary suitable for sharing with a physician, registered dietitian, or physical therapist.'}:null
  };
 }
 export function progressSummary(s){

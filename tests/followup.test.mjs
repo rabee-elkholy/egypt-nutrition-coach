@@ -250,7 +250,8 @@ test('previewPlan and evaluateEligibility compute 4200 clamp, rest/workout water
 });
 
 test('workouts support explicit weightedBodyweight/addedKg, workout/session notes, and reject completed reschedule',()=>{
- let s=generate(empty(),{...draft,workoutLocation:'home_only',homeEquipment:['pullup_bar'],healthConfirmed:true},'bw-fixture');
+ const todayDow=new Date(today()+'T12:00:00Z').getUTCDay();
+ let s=generate(empty(),{...draft,selectedWorkoutDays:[todayDow,(todayDow+2)%7,(todayDow+4)%7],workoutLocation:'home_only',homeEquipment:['pullup_bar'],healthConfirmed:true},'bw-fixture');
  const before=scheduledSessions(s);
  const first=before[0];
  const day=s.workoutPlan.days.find(d=>d.dayIndex===first.dayIndex);

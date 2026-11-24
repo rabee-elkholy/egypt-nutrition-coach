@@ -60,7 +60,7 @@ const COLLECTION_OVERVIEW_MD = [
   '| Field | Type | Description |',
   '| :--- | :--- | :--- |',
   '| `ok` | `boolean` | `false` on all `4xx`/`5xx` responses |',
-  '| `error.code` | `string` | Stable uppercase error code (294 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
+  '| `error.code` | `string` | Stable uppercase error code (298 codes cataloged in `contracts/error-codes.json` and `docs/ERROR_CODES.md`) |',
   '| `error.message` | `string` | Canonical English message (zero Arabic in API errors; mobile clients translate by `error.code` and `error.params`) |',
   '| `error.params` | `object` | Interpolation parameters for client-side localization |',
   '| `error.fieldErrors` | `Array<{field, code, message, params?}>` | Optional per-field validation errors (also 100% English) |',
@@ -893,19 +893,22 @@ const collection = {
             { name: 'goal', type: 'string (enum)', required: true, constraints: '`lose` | `maintain` | `gain` | `muscle_gain`', description: 'Primary fitness/nutrition goal.' },
             { name: 'targetWeight', type: 'number | null', required: false, constraints: '35..250 (kg)', description: 'Optional target weight.' },
             { name: 'serviceTrack', type: 'string (enum)', required: false, constraints: '`nutrition_only` | `workouts_only` | `nutrition_and_workouts`', description: 'Selected coaching track.' },
-            { name: 'diseases', type: 'Array<string>', required: false, constraints: 'Supported: `hypertension`, `insulin_resistance`, `pcos`, `ibs`, `cholesterol`, `gout`, `anemia`, `vitamin_d_deficiency`, `lactose_intolerance`, `favism`, `fatty_liver`', description: 'Declared wellness/medical conditions. Critical conditions (e.g. `diabetes`) return `requires_review`.' },
-            { name: 'maternalStatus', type: 'string (enum)', required: false, constraints: '`none` | `pregnant` | `breastfeeding`', description: 'Non-`none` returns `requires_review`.' },
-            { name: 'injuries', type: 'Array<string>', required: false, constraints: 'e.g. `knee_pain`, `lower_back_pain`, `shoulder_pain`', description: 'Declared joint discomforts/injuries.' }
+            { name: 'parqRedFlag', type: 'boolean', required: false, constraints: 'boolean', description: 'Explicit PAR-Q screening red flag; triggers `PARQ_CLEARANCE_REQUIRED` on any workout-bearing track unless switched to `nutrition_only`.' },
+            { name: 'healthConfirmed', type: 'boolean', required: false, constraints: 'boolean', description: 'Legacy health readiness confirmation when `parqRedFlag` is omitted.' },
+            { name: 'diseases', type: 'Array<string>', required: false, constraints: 'Active 13 onboarding conditions: `diabetes_t1`, `diabetes_t2`, `insulin_resistance`, `pcos`, `hypothyroid`, `hypertension`, `cholesterol`, `ibs`, `celiac`, `gout`, `kidney`, `favism`, `lactose_intolerance`', description: 'Declared wellness/medical conditions. Combining `diabetes_t1` and `diabetes_t2` returns `400 CONFLICTING_CONDITIONS`; high-acuity combos or `>= 3` dietary-restricting chronic conditions return `requires_review` (`MULTI_CONDITION_CLINICAL_REVIEW`).' },
+            { name: 'maternalStatus', type: 'string (enum)', required: false, constraints: '`none` | `pregnant_t1` | `pregnant_t2` | `pregnant_t3` | `breastfeeding`', description: 'Pregnancy + `kidney` or `diabetes_t1` returns `requires_review` (`MULTI_CONDITION_CLINICAL_REVIEW`).' },
+            { name: 'injuries', type: 'Array<string>', required: false, constraints: 'e.g. `knee`, `lower_back`, `shoulder`, `neck`, `wrist`, `ankle`, `elbow`, `hip`, `diastasis_recti`', description: 'Declared joint discomforts/injuries. Soft warning at 3; `>= 4` or infeasible workout day returns `requires_review` (`MULTI_INJURY_REQUIRES_REVIEW`).' }
           ],
           responseFields: [
             { name: 'status', type: 'string (enum)', description: '`eligible` | `needs_input` | `requires_review`.' },
-            { name: 'reasons', type: 'Array<object>', description: 'Blocking clinical reasons when `requires_review`.' },
+            { name: 'reasons', type: 'Array<object>', description: 'Blocking clinical reasons when `requires_review` (including `PARQ_CLEARANCE_REQUIRED`, `MULTI_CONDITION_CLINICAL_REVIEW`, `MULTI_INJURY_REQUIRES_REVIEW`).' },
+            { name: 'notes', type: 'Array<object>', description: 'Informational/warning notes (e.g. `SENIOR_MODE_ACTIVE`, `MULTI_INJURY_WARNING`).' },
             { name: 'questions', type: 'Array<object>', description: 'Additional confirmation prompts when `needs_input`.' },
-            { name: 'supportedAdaptations', type: 'object', description: '`{ diseases: string[], injuries: string[] }` handled automatically.' },
+            { name: 'supportedAdaptations', type: 'object', description: '`{ diseases: string[], injuries: string[], maternalStatus: string }` handled automatically.' },
             { name: 'permittedFunctions', type: 'Array<string>', description: 'Allowed client features.' }
           ],
-          examples: [{ name: '200 OK — Eligible', code: 200, body: { status: 'eligible', reviewScope: 'system_generated_screening_not_medical_diagnosis', reasons: [], questions: [], supportedAdaptations: { diseases: [], injuries: [] }, permittedFunctions: ['generate_plan', 'log_execution', 'adaptive_review'], clinicalSummary: null } }],
-          body: { birthDate: '1997-05-14', sex: 'male', height: 178, weight: 82, goal: 'lose', targetWeight: 75, serviceTrack: 'nutrition_and_workouts', diseases: [], maternalStatus: 'none', injuries: [] },
+          examples: [{ name: '200 OK — Eligible', code: 200, body: { status: 'eligible', reviewScope: 'system_generated_screening_not_medical_diagnosis', reasons: [], notes: [], questions: [], supportedAdaptations: { diseases: [], injuries: [], maternalStatus: 'none' }, permittedFunctions: ['generate_plan', 'log_execution', 'adaptive_review'], clinicalSummary: null } }],
+          body: { birthDate: '1997-05-14', sex: 'male', height: 178, weight: 82, goal: 'lose', targetWeight: 75, serviceTrack: 'nutrition_and_workouts', parqRedFlag: false, healthConfirmed: true, diseases: [], maternalStatus: 'none', injuries: [] },
           testScript: [
             'pm.test("Eligibility evaluated", function () {',
             '  pm.response.to.have.status(200);',
@@ -2022,12 +2025,19 @@ const collection = {
             { name: 'goal', type: 'string (enum)', required: true, constraints: '`lose` | `maintain` | `gain` | `muscle_gain`', description: 'Primary coaching goal.' },
             { name: 'targetWeight', type: 'number | null', required: false, constraints: '35..250 (kg)', description: 'Optional target weight.' },
             { name: 'activity', type: 'string (enum)', required: false, constraints: '`sedentary` | `light` | `moderate` | `active`', description: 'Daily activity level.' },
-            { name: 'dietType', type: 'string (enum)', required: false, constraints: 'Supported diet enum', description: 'Dietary pattern.' },
+            { name: 'dietType', type: 'string (enum)', required: false, constraints: '`balanced` | `high_protein` | `low_carb` | `intermittent_fasting` | `mediterranean` | `dash` | `keto` | `vegetarian` | `vegan`', description: 'Dietary pattern.' },
+            { name: 'excludedGroups', type: 'Array<string>', required: false, constraints: 'Canonical exclusion IDs (incl. `offal`)', description: 'Excluded food groups validated against catalog.' },
             { name: 'serviceTrack', type: 'string (enum)', required: false, constraints: '`nutrition_only` | `workouts_only` | `nutrition_and_workouts`', description: 'Coaching track.' },
             { name: 'selectedWorkoutDays', type: 'Array<integer>', required: false, constraints: '0..6', description: 'Selected weekly workout days.' },
-            { name: 'healthConfirmed', type: 'boolean', required: false, constraints: 'boolean', description: 'Health clearance confirmation.' }
+            { name: 'parqRedFlag', type: 'boolean', required: false, constraints: 'boolean', description: 'Explicit PAR-Q screening red flag; enforced across all workout-bearing tracks.' },
+            { name: 'healthConfirmed', type: 'boolean', required: false, constraints: 'boolean', description: 'Legacy health clearance confirmation.' }
           ],
-          body: { name: 'Preview User', birthDate: '1997-05-14', sex: 'male', weight: 82, height: 178, goal: 'lose', targetWeight: 75, activity: 'moderate', dietType: 'balanced', serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true }
+          responseFields: [
+            { name: 'eligibility', type: 'object', description: 'Clinical & PAR-Q screening result (`eligible` | `needs_input` | `requires_review`).' },
+            { name: 'feasibility', type: 'object', description: '`{ nutritionFeasible: boolean, workoutFeasible: boolean, blockingConflicts: Array<{ code, field, message }> }` preview-to-commit dry check.' },
+            { name: 'workoutUiModeDefault', type: 'string (enum)', description: '`simple` when `beginner || home_only || seniorMode`, else `pro`.' }
+          ],
+          body: { name: 'Preview User', birthDate: '1997-05-14', sex: 'male', weight: 82, height: 178, goal: 'lose', targetWeight: 75, activity: 'moderate', dietType: 'balanced', serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], parqRedFlag: false, healthConfirmed: true }
         }),
         req({
           name: 'List Linked OAuth Providers',
