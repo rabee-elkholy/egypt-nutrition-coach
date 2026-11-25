@@ -794,7 +794,7 @@ export function buildSpecialistHighlights({
       params: [Number(workoutDaysCount)],
       message: `Weight maintenance synergy active: nutrition calories cover your ${workoutDaysCount}-day training expenditure while sessions hold moderate 2-3 set RIR >= 3 volume to keep weight stable.`
     });
-  } else if (goal === 'lose' && recomposition) {
+  } else if (recomposition && trains && hasBothTracks) {
     push({
       id: 'goal_recomp_synergy',
       domain: 'synergy',

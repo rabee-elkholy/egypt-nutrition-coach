@@ -442,6 +442,16 @@ test('HTTP E2E verification for clinical nutrition & workout synergy endpoints',
     assert.ok(pregPrevBody.specialistHighlights.some(h => h.code === 'PLAN_PREGNANCY_FOOD_SAFETY'));
     assert.ok(pregPrevBody.specialistHighlights.some(h => h.code === 'WORKOUT_PREGNANCY_SAFETY_ACTIVE'));
 
+    // 2c. Recomposition preview (muscle_gain with equal targetWeight) emits HIGHLIGHT_RECOMP_SYNERGY
+    const recompPrevRes = await call('plans/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...BASE_DRAFT, goal: 'muscle_gain', weight: 80, targetWeight: 80 }),
+    });
+    assert.equal(recompPrevRes.status, 200);
+    const recompPrevBody = (await recompPrevRes.json()).data;
+    assert.ok(recompPrevBody.specialistHighlights.some(h => h.code === 'HIGHLIGHT_RECOMP_SYNERGY'));
+
     // 3. Auth + generate + verify generated state over HTTP
     const authRes = await call('auth/oauth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) });
     const token = (await authRes.json()).data.accessToken;
