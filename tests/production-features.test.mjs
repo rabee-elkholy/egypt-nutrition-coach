@@ -1795,7 +1795,8 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       // 4. Workouts enriched GET, filtered logs, split-review, 409 SESSION_ALREADY_COMPLETED, wearables cardio+skipped
       const wpEnriched = await okJson(await call(`/v1/workout-plans/${encodeURIComponent(wpId)}`, { headers: fHdr }));
       assert.ok(wpEnriched.days[0].exercises[0].nameAr);
-      const day0 = wpEnriched.days[0];
+      const todayDayIndex = new Date(`${todayDate}T12:00:00Z`).getUTCDay();
+      const day0 = wpEnriched.days.find((d) => d.dayIndex === todayDayIndex) || wpEnriched.days[0];
       for (const ex of day0.exercises) {
         fRev = (await okJson(await postCmd(fToken, fRev, 'workout', {
           date: todayDate, dayIndex: day0.dayIndex, exerciseId: ex.id,

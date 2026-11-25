@@ -1034,7 +1034,7 @@ paths:
   /v1/plans/preview:
     post:
       operationId: previewPlan
-      summary: Stateless onboarding targets, diet macros, recommended split, hydration targets with bonus breakdown, warningCodes, eligibilityReasonCodes, calibrationMetadata, and weekly forecast preview
+      summary: Stateless onboarding targets, diet macros, recommended split, hydration targets with bonus breakdown, warningCodes, eligibilityReasonCodes, calibrationMetadata, specialistHighlights, and weekly forecast preview
       security: []
       requestBody:
         required: true
@@ -1071,7 +1071,7 @@ paths:
                 region_id: { type: string, enum: [egypt, gulf, levant, maghreb] }
       responses:
         "200":
-          description: Preview targets, hydration targets with bonus breakdown, session density, eligibility with eligibilityReasonCodes, structured feasibility dry-check, warningCodes, calibrationMetadata, and forecast range
+          description: Preview targets, hydration targets with bonus breakdown, session density, eligibility with eligibilityReasonCodes, structured feasibility dry-check, warningCodes, calibrationMetadata, specialistHighlights, and forecast range
           content:
             application/json:
               schema:
@@ -2239,6 +2239,19 @@ components:
                 calibrationMetadata:
                   type: [object, "null"]
                   description: Structured specialist calibration summary (`calibrationReasons`, `adjustedCalories`, `previousCalories`, `calorieDelta`, `adjustedMacros`, `protectedJoints`, `activeProteinPillars`).
+                specialistHighlights:
+                  type: array
+                  description: Priority-ranked list (up to 6 items) of concrete clinical, nutritional, training, synergy, and hydration actions taken by the CuraFit Specialist Team (`id`, `domain`, `priority`, `code`, `params`, `message`).
+                  items:
+                    type: object
+                    required: [id, domain, priority, code, params, message]
+                    properties:
+                      id: { type: string }
+                      domain: { type: string, enum: [clinical, nutrition, training, synergy, hydration] }
+                      priority: { type: integer }
+                      code: { type: string }
+                      params: { type: array, items: {} }
+                      message: { type: string }
                 onboarding:
                   type: [object, "null"]
                 onboardingCompleted:

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { Miniflare } from 'miniflare';
 import { migrateLocal } from '../scripts/local-migrations.mjs';
 import cloudflareEntry from '../server/cloudflare-entry.mjs';
@@ -493,6 +494,15 @@ test('Cross-Epic HTTP contract verification: PAR-Q, consents, recent foods, rama
     assert.ok(richPrev.calibrationMetadata.protectedJoints.includes('knee_pain'));
     assert.ok(!richPrev.calibrationMetadata.activeProteinPillars.includes('red_meat'));
     assert.ok(richPrev.calibrationMetadata.activeProteinPillars.includes('poultry'));
+    assert.ok(Array.isArray(richPrev.specialistHighlights) && richPrev.specialistHighlights.length > 0 && richPrev.specialistHighlights.length <= 6);
+    assert.ok(richPrev.specialistHighlights.some(h => h.code === 'PLAN_GOUT_PROTEIN_CAP'));
+    assert.ok(richPrev.specialistHighlights.some(h => h.code === 'PLAN_HYPOTHYROID_REE_CALIBRATION'));
+    assert.ok(richPrev.specialistHighlights.some(h => h.code === 'HIGHLIGHT_PROTECTED_JOINTS'));
+    const coachingCatalog = JSON.parse(readFileSync('contracts/coaching-codes.json', 'utf8')).codes;
+    for (const h of richPrev.specialistHighlights) {
+      assert.ok(Object.hasOwn(coachingCatalog, h.code), `Highlight code ${h.code} missing from contracts/coaching-codes.json`);
+      assert.ok(!FORBIDDEN_VOICE_RE.test(h.message), `Highlight leaked forbidden wording: ${h.message}`);
+    }
     for (const w of richPrev.warnings) {
       assert.ok(!FORBIDDEN_VOICE_RE.test(w), `Preview warning leaked forbidden wording: ${w}`);
     }

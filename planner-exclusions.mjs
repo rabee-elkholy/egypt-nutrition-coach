@@ -21,8 +21,8 @@ const row = (id, label, section, keys, aliases = []) => ({
 export const EXCLUSIONS = [
   row('taro','القلقاس','الخضار',['taro']),
   row('corn','الذرة','الخضار',['corn'],['درة']),
-  row('mushrooms','المشروم','الخضار',['mushrooms'],['فطر','عيش الغراب']),
-  row('cauliflower','القرنبيط','الخضار',['cauliflower'],['زهرة']),
+  row('mushrooms','المشروم','الخضار',['mushrooms'],['فطر','عيش الغراب','mushroom','mushrooms']),
+  row('cauliflower','القرنبيط','الخضار',['cauliflower'],['زهرة','cauliflower']),
   row('beetroot','البنجر','الخضار',['beetroot'],['شمندر']),
   row('pumpkin','القرع','الخضار',['pumpkin'],['يقطين','قرعة']),
   row(
@@ -211,16 +211,8 @@ export const EXCLUSIONS = [
   row("okra", "البامية", "الخضار", [], ["باميه", "okra"]),
   row("molokhia", "الملوخية", "الخضار", [], ["ملوخيه", "molokhia"]),
   row("cabbage", "الكرنب", "الخضار", [], ["كرنب", "cabbage"]),
-  row("cauliflower", "القرنبيط", "الخضار", [], ["قرنبيط", "cauliflower"]),
   row("carrot", "الجزر", "الخضار", [], ["جزر", "carrot", "carrots"]),
   row("peas", "البسلة", "الخضار", [], ["بسله", "بازلاء", "peas"]),
-  row(
-    "mushrooms",
-    "المشروم",
-    "الخضار",
-    [],
-    ["مشروم", "فطر", "mushroom", "mushrooms"],
-  ),
   row("apple", "التفاح", "الفاكهة", ["apple"], ["تفاح", "apple", "apples"]),
   row("banana", "الموز", "الفاكهة", ["banana"], ["موز", "banana", "bananas"]),
   row(

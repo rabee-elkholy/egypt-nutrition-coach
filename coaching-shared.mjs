@@ -288,7 +288,11 @@ export function computeActiveProteinPillars(dietType = 'balanced', diseases = []
     ? ['legumes', 'soy', 'nuts']
     : diet === 'vegetarian'
       ? ['eggs', 'dairy', 'legumes', 'soy', 'nuts']
-      : ['poultry', 'red_meat', 'fish', 'eggs', 'dairy', 'legumes', 'soy', 'nuts'];
+      : diet === 'keto'
+        ? ['poultry', 'red_meat', 'fish', 'eggs', 'dairy', 'nuts']
+        : ['mediterranean', 'dash'].includes(diet)
+          ? ['poultry', 'fish', 'eggs', 'dairy', 'legumes', 'soy', 'nuts']
+          : ['poultry', 'red_meat', 'fish', 'eggs', 'dairy', 'legumes', 'soy', 'nuts'];
   const conds = new Set((Array.isArray(diseases) ? diseases : []).map(x => String(x || '').trim().toLowerCase()).filter(x => x && x !== 'none'));
   const excluded = new Set((Array.isArray(excludedGroups) ? excludedGroups : []).map(x => String(x || '').trim().toLowerCase()).filter(x => x && x !== 'none'));
   const remaining = new Set(base);
@@ -530,6 +534,391 @@ export function buildCalibrationMetadata({
     protectedJoints,
     activeProteinPillars: resolvedPillars
   };
+}
+
+/**
+ * Build a priority-ranked list of specialist personalization highlights so the
+ * mobile app can explain concrete clinical, nutritional, training, synergy, and
+ * hydration actions taken by the CuraFit Specialist Team.
+ */
+export function buildSpecialistHighlights({
+  maternalStatus = 'none',
+  seniorMode = false,
+  diseases = [],
+  allergies = [],
+  excludedGroups = [],
+  injuries = [],
+  protectedJoints = [],
+  goal = 'maintain',
+  goalPace = 'balanced',
+  recomposition = false,
+  serviceTrack = 'both',
+  workoutDaysCount = 0,
+  region = 'egypt',
+  restDayWaterTarget = null,
+  workoutDayWaterTarget = null,
+  warningCodes = [],
+  maxItems = 6
+} = {}) {
+  const items = [];
+  const seenCodes = new Set();
+  const push = (entry) => {
+    if (!entry || !entry.code || seenCodes.has(entry.code)) return;
+    seenCodes.add(entry.code);
+    items.push({
+      id: entry.id,
+      domain: entry.domain,
+      priority: entry.priority,
+      code: entry.code,
+      params: Array.isArray(entry.params) ? entry.params : [],
+      message: entry.message
+    });
+  };
+
+  const diseaseSet = new Set((diseases || []).map(x => String(x || '').trim()).filter(Boolean));
+  const allergySet = new Set((allergies || []).map(x => String(x || '').trim()).filter(Boolean));
+  const exclSet = new Set((excludedGroups || []).map(x => String(x || '').trim()).filter(Boolean));
+  const warnSet = new Set((warningCodes || []).map(x => String(x || '').trim()).filter(Boolean));
+  const pregnant = isPregnantStatus(maternalStatus);
+  const trains = serviceTrack !== 'nutrition_only' && Number(workoutDaysCount) > 0;
+  const hasBothTracks = serviceTrack === 'nutrition_and_workouts' || serviceTrack === 'both';
+
+  // Priority 1: Maternal & Senior safety
+  if (maternalStatus === 'pregnant_t1') {
+    push({
+      id: 'maternal_t1',
+      domain: 'clinical',
+      priority: 1,
+      code: 'PLAN_PREGNANCY_T1_CALIBRATION',
+      message: 'First-trimester pregnancy nutrition active: deficit goals are blocked and protein is elevated.'
+    });
+  } else if (maternalStatus === 'pregnant_t2') {
+    push({
+      id: 'maternal_t2',
+      domain: 'clinical',
+      priority: 1,
+      code: 'PLAN_PREGNANCY_T2_CALIBRATION',
+      message: 'Second-trimester pregnancy nutrition active: +340 kcal daily allowance and elevated protein applied.'
+    });
+  } else if (maternalStatus === 'pregnant_t3') {
+    push({
+      id: 'maternal_t3',
+      domain: 'clinical',
+      priority: 1,
+      code: 'PLAN_PREGNANCY_T3_CALIBRATION',
+      message: 'Third-trimester pregnancy nutrition active: +452 kcal daily allowance and elevated protein applied.'
+    });
+  } else if (maternalStatus === 'breastfeeding') {
+    push({
+      id: 'maternal_bf',
+      domain: 'clinical',
+      priority: 1,
+      code: 'PLAN_BREASTFEEDING_CALIBRATION',
+      message: 'Breastfeeding nutrition active: +400 kcal allowance and elevated protein applied to support lactation.'
+    });
+  }
+
+  if (pregnant) {
+    push({
+      id: 'pregnancy_food_safety',
+      domain: 'nutrition',
+      priority: 1,
+      code: 'PLAN_PREGNANCY_FOOD_SAFETY',
+      message: 'Pregnancy food safety active: organ meats such as liver are excluded to avoid excess vitamin A, and minimum carbohydrate intake is maintained.'
+    });
+    if (trains) {
+      push({
+        id: 'pregnancy_workout_safety',
+        domain: 'training',
+        priority: 1,
+        code: 'WORKOUT_PREGNANCY_SAFETY_ACTIVE',
+        message: 'Pregnancy training safety active: high-impact jumping, heavy abdominal loading, and post-first-trimester supine movements are excluded, with volume capped conservatively.'
+      });
+    }
+  }
+
+  if (seniorMode) {
+    push({
+      id: 'senior_mode',
+      domain: 'clinical',
+      priority: 1,
+      code: 'SENIOR_MODE_ACTIVE',
+      message: 'Senior protection mode (70+) active: protein target is boosted for muscle preservation, deficits are capped conservatively, and high-impact plyometrics are excluded.'
+    });
+  }
+
+  // Priority 2: Medical conditions & dietary exclusions
+  const hasGlycemic = ['diabetes', 'diabetes_t1', 'diabetes_t2', 'diabetes_type1', 'diabetes_type2', 'insulin_resistance', 'pcos'].some(d => diseaseSet.has(d));
+  if (hasGlycemic) {
+    push({
+      id: 'diabetes_sugar_filter',
+      domain: 'nutrition',
+      priority: 2,
+      code: 'HIGHLIGHT_DIABETES_SUGAR_FILTER',
+      message: 'Glycemic control active: dates, honey, added sugars, and high-glycemic spikes are filtered out and carbs are capped at 40% of calories.'
+    });
+    if (trains && ['diabetes', 'diabetes_t1', 'diabetes_t2', 'diabetes_type1', 'diabetes_type2'].some(d => diseaseSet.has(d))) {
+      push({
+        id: 'diabetes_training_guidance',
+        domain: 'training',
+        priority: 2,
+        code: 'WORKOUT_DIABETES_GUIDANCE',
+        message: 'Diabetes training guidance active: monitor blood glucose around sessions, stay hydrated, and avoid exhaustive fasted workouts.'
+      });
+    }
+  }
+
+  if (diseaseSet.has('hypertension')) {
+    push({
+      id: 'hypertension_sodium',
+      domain: 'nutrition',
+      priority: 2,
+      code: 'PLAN_HYPERTENSION_SODIUM_CEILING',
+      params: [1500],
+      message: 'Hypertension safety applied: sodium is limited to 1500 mg/day and high-sodium options are filtered.'
+    });
+    if (trains) {
+      push({
+        id: 'hypertension_training',
+        domain: 'training',
+        priority: 2,
+        code: 'WORKOUT_HYPERTENSION_GUIDANCE',
+        message: 'Hypertension training safety active: breath-holding movements are avoided, sets are capped conservatively, and controlled breathing is coached.'
+      });
+    }
+  }
+
+  if (diseaseSet.has('kidney') || diseaseSet.has('kidney_disease')) {
+    push({
+      id: 'kidney_protein_cap',
+      domain: 'clinical',
+      priority: 2,
+      code: 'PLAN_KIDNEY_PROTEIN_CAP',
+      message: 'Protein conservatively capped at <= 1.1 g/kg for kidney condition support and total training volume is moderated.'
+    });
+  }
+
+  if (diseaseSet.has('gout')) {
+    push({
+      id: 'gout_protection',
+      domain: 'clinical',
+      priority: 2,
+      code: 'PLAN_GOUT_PROTEIN_CAP',
+      message: 'Protein capped at <= 1.4 g/kg with red-meat avoidance for gout management and elevated hydration.'
+    });
+  }
+
+  if (diseaseSet.has('cholesterol')) {
+    push({
+      id: 'cholesterol_lipids',
+      domain: 'nutrition',
+      priority: 2,
+      code: 'HIGHLIGHT_CHOLESTEROL_LIPID_FILTER',
+      message: 'Lipid protection active: high-saturated-fat dairy and meats are filtered out and dietary fat is capped at 30% of calories.'
+    });
+  }
+
+  if (diseaseSet.has('hypothyroid')) {
+    push({
+      id: 'hypothyroid_ree',
+      domain: 'clinical',
+      priority: 2,
+      code: 'PLAN_HYPOTHYROID_REE_CALIBRATION',
+      message: 'Hypothyroid energy calibration applied: daily calories reflect a moderated baseline metabolic rate.'
+    });
+  }
+
+  if (diseaseSet.has('celiac') || allergySet.has('gluten') || exclSet.has('gluten')) {
+    push({
+      id: 'celiac_gluten_free',
+      domain: 'nutrition',
+      priority: 2,
+      code: 'PLAN_CELIAC_GLUTEN_EXCLUSION',
+      message: 'Gluten-free safety active: all wheat, barley, rye, and gluten-containing foods are excluded.'
+    });
+  }
+
+  if (diseaseSet.has('favism')) {
+    push({
+      id: 'favism_filter',
+      domain: 'nutrition',
+      priority: 2,
+      code: 'PLAN_FAVISM_EXCLUSION',
+      message: 'G6PD (favism) protection active: fava beans and legume triggers are strictly excluded from all meals.'
+    });
+  }
+
+  if (diseaseSet.has('lactose_intolerance') || allergySet.has('dairy') || exclSet.has('dairy')) {
+    push({
+      id: 'lactose_filter',
+      domain: 'nutrition',
+      priority: 2,
+      code: 'PLAN_LACTOSE_EXCLUSION',
+      message: 'Dairy-free safety active: milk, yogurt, and dairy cheeses are excluded from meal plans.'
+    });
+  }
+
+  if (diseaseSet.has('ibs')) {
+    push({
+      id: 'ibs_filter',
+      domain: 'nutrition',
+      priority: 2,
+      code: 'PLAN_IBS_EXCLUSIONS_ACTIVE',
+      message: 'Digestive comfort active: heavy legumes and high-fermentation triggers are filtered for IBS tolerance.'
+    });
+  }
+
+  // Priority 3: Protected joints & injuries
+  const joints = Array.isArray(protectedJoints) && protectedJoints.length
+    ? protectedJoints
+    : canonicalInjuries(injuries);
+  if (serviceTrack !== 'nutrition_only' && joints.length > 0) {
+    const jointLabel = joints.map(j => String(j).replace(/_/g, ' ')).join(', ');
+    push({
+      id: 'protected_joints',
+      domain: 'training',
+      priority: 3,
+      code: 'HIGHLIGHT_PROTECTED_JOINTS',
+      params: [jointLabel],
+      message: `Joint protection active for ${jointLabel}: aggravating movements are swapped for safer alternatives with controlled intensity.`
+    });
+  }
+
+  // Priority 4: Cross-module goal synergy & energy calibration
+  if (goal === 'maintain' && !recomposition && trains && hasBothTracks) {
+    push({
+      id: 'goal_maintain_synergy',
+      domain: 'synergy',
+      priority: 4,
+      code: 'HIGHLIGHT_MAINTAIN_SYNERGY',
+      params: [Number(workoutDaysCount)],
+      message: `Weight maintenance synergy active: nutrition calories cover your ${workoutDaysCount}-day training expenditure while sessions hold moderate 2-3 set RIR >= 3 volume to keep weight stable.`
+    });
+  } else if (goal === 'lose' && recomposition) {
+    push({
+      id: 'goal_recomp_synergy',
+      domain: 'synergy',
+      priority: 4,
+      code: 'HIGHLIGHT_RECOMP_SYNERGY',
+      message: 'Body recomposition active: nutrition is held near maintenance with high protein while resistance training drives fat loss and lean tissue retention.'
+    });
+  } else if (goal === 'lose' && trains && hasBothTracks) {
+    const paceLabel = String(goalPace || 'balanced').replace(/_/g, ' ');
+    push({
+      id: 'goal_lose_synergy',
+      domain: 'synergy',
+      priority: 4,
+      code: 'HIGHLIGHT_LOSE_SYNERGY',
+      params: [paceLabel],
+      message: `Fat-loss synergy active: nutrition targets a ${paceLabel} calorie deficit with muscle-sparing protein alongside strength training to protect lean mass.`
+    });
+  } else if (goal === 'muscle_gain' && trains && hasBothTracks) {
+    push({
+      id: 'goal_muscle_gain_synergy',
+      domain: 'synergy',
+      priority: 4,
+      code: 'HIGHLIGHT_MUSCLE_GAIN_SYNERGY',
+      message: 'Lean muscle-gain synergy active: a moderate caloric surplus and high daily protein pair directly with progressive hypertrophy programming.'
+    });
+  } else if (goal === 'gain' && trains && hasBothTracks) {
+    push({
+      id: 'goal_gain_synergy',
+      domain: 'synergy',
+      priority: 4,
+      code: 'HIGHLIGHT_GAIN_SYNERGY',
+      message: 'Healthy weight-gain synergy active: progressive resistance training pairs with a steady daily energy surplus to support quality weight gain.'
+    });
+  }
+
+  if (warnSet.has('PLAN_SEDENTARY_WORKOUT_ENERGY_NOTE')) {
+    push({
+      id: 'sedentary_workout_energy',
+      domain: 'synergy',
+      priority: 4,
+      code: 'PLAN_SEDENTARY_WORKOUT_ENERGY_NOTE',
+      message: 'Energy budget note: your daily calorie target reflects a sedentary daily lifestyle alongside your planned training sessions.'
+    });
+  }
+  if (warnSet.has('PLAN_MUSCLE_GAIN_EXTERNAL_TRAINING_NOTE')) {
+    push({
+      id: 'muscle_gain_external_training',
+      domain: 'synergy',
+      priority: 4,
+      code: 'PLAN_MUSCLE_GAIN_EXTERNAL_TRAINING_NOTE',
+      message: 'Nutrition-only muscle gain: protein is set for lean tissue support; pair this meal plan with external resistance training for muscle growth.'
+    });
+  }
+  if (warnSet.has('PLAN_FLOOR_NEEDS_ACTIVITY_FOR_DEFICIT')) {
+    push({
+      id: 'floor_activity_note',
+      domain: 'clinical',
+      priority: 4,
+      code: 'PLAN_FLOOR_NEEDS_ACTIVITY_FOR_DEFICIT',
+      message: 'Energy safety floor active: calories cannot safely drop lower, so gentle daily movement will support your pace.'
+    });
+  }
+  if (warnSet.has('PLAN_ABW_PROTEIN_SCALING')) {
+    push({
+      id: 'abw_protein',
+      domain: 'nutrition',
+      priority: 4,
+      code: 'PLAN_ABW_PROTEIN_SCALING',
+      message: 'Adjusted Body Weight protein scaling applied to prevent excess protein load while supporting fat loss.'
+    });
+  }
+  if (warnSet.has('PLAN_UNDERWEIGHT_NUTRIENT_CARE')) {
+    push({
+      id: 'underweight_care',
+      domain: 'clinical',
+      priority: 4,
+      code: 'PLAN_UNDERWEIGHT_NUTRIENT_CARE',
+      message: 'Underweight recovery nutrition active: weight-loss deficits are paused in favor of restorative nutrient density.'
+    });
+  }
+
+  // Priority 5: Hydration & climate adjustments
+  if (pregnant || maternalStatus === 'breastfeeding') {
+    push({
+      id: 'hydration_maternal',
+      domain: 'hydration',
+      priority: 5,
+      code: 'MATERNAL_HYDRATION_BONUS',
+      message: 'Maternal hydration bonus (+300 ml pregnancy / +600 ml breastfeeding) applied.'
+    });
+  }
+  if (diseaseSet.has('gout')) {
+    push({
+      id: 'hydration_gout',
+      domain: 'hydration',
+      priority: 5,
+      code: 'GOUT_HYDRATION_BONUS',
+      message: 'Gout support hydration bonus (+500 ml) applied.'
+    });
+  }
+  if (['egypt', 'gulf'].includes(String(region || '').toLowerCase())) {
+    push({
+      id: 'hydration_warm_climate',
+      domain: 'hydration',
+      priority: 5,
+      code: 'WARM_CLIMATE_HYDRATION_BONUS',
+      message: 'Regional warm-climate hydration bonus (+200 ml) applied.'
+    });
+  }
+  const trainingMl = Number(workoutDayWaterTarget?.bonuses?.trainingMl || 0);
+  if (trains && trainingMl > 0) {
+    push({
+      id: 'hydration_training_boost',
+      domain: 'hydration',
+      priority: 5,
+      code: 'HIGHLIGHT_TRAINING_HYDRATION_BOOST',
+      params: [trainingMl],
+      message: `Training-day hydration boost applied: +${trainingMl} ml added on scheduled workout days.`
+    });
+  }
+
+  items.sort((a, b) => a.priority - b.priority);
+  const limit = Number.isFinite(Number(maxItems)) && Number(maxItems) > 0 ? Number(maxItems) : 6;
+  return items.slice(0, limit);
 }
 
 export const hasActiveParqRedFlag = s => s.onboarding?.serviceTrack !== 'nutrition_only' && s.onboarding?.workoutPrefs?.parqRedFlag === true;

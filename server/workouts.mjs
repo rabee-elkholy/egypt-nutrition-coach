@@ -31,25 +31,28 @@ const INJURY_PATTERNS={
  hip_pain:['squat','lunge','hinge'], elbow_pain:[], diastasis_recti:['spinal_flexion','hip_flexion']
 };
 const INJURY_NAMES={
- knee_pain:/jump|plyo|pistol|sissy|lunge|split squat/i,
- lower_back_pain:/good morning|deadlift|back squat|sit.?up/i,
- shoulder_pain:/upright row|behind.*neck|dip|overhead/i,
- wrist_pain:/barbell curl|close.grip bench|handstand|push.?up/i,
+ knee_pain:/jump|plyo|pistol|sissy|lunge|split squat|step.?up|leg press|hack squat|burpee|box jump/i,
+ lower_back_pain:/good morning|deadlift|back squat|sit.?up|bent.?over row|barbell.*row|pendlay|front squat|hack squat|overhead press|military press|hyperextension|back extension|superman|russian twist|crunch|\brdl\b|romanian|clean|snatch|swing|rollout|ab wheel/i,
+ shoulder_pain:/upright row|behind.*neck|dip|overhead|incline.*bench|barbell.*bench|dumbbell bench press|chest fly|fly with|pec deck|butterfly|pull.?up|chin.?up|muscle.?up|snatch|clean|jerk|handstand|push press/i,
+ wrist_pain:/barbell curl|close.grip bench|handstand|push.?up|pushup/i,
  ankle_pain:/jump|hop|sprint|plyo|calf raise/i,
  neck_pain:/neck|shrug/i, hip_pain:/sumo|wide.stance|split squat|lunge/i,
  elbow_pain:/skull.?crusher|french press|preacher curl|close.grip|dip|behind.*head/i,
- diastasis_recti:/crunch|sit.?up|v.?up|leg raise/i
+ diastasis_recti:/crunch|sit.?up|v.?up|leg raise|plank|rollout|ab wheel|russian twist|hanging|dragon.?flag|flutter|scissor|lying leg|push.?up|pushup/i
 };
-const SENIOR_UNSAFE_RE=/jump|plyo|box jump|barbell back squat|conventional deadlift|snatch|clean|jerk|behind.*neck/i;
-const PREGNANCY_ALL_TRIMESTERS_UNSAFE_RE=/crunch|sit.?up|v.?up|leg raise|jump|plyo|box jump|deadlift/i;
-const PREGNANCY_POST_T1_SUPINE_RE=/supine|flat bench|barbell bench/i;
+const SENIOR_UNSAFE_RE=/jump|plyo|box jump|barbell.*squat|hack squat|overhead squat|front squat|deadlift|\brdl\b|snatch|clean|jerk|swing|behind.*neck|pistol|dragon|handstand|muscle.?up|rollout|ab wheel|barbell.*overhead|military press|\bdips?\b/i;
+const PREGNANCY_ALL_TRIMESTERS_UNSAFE_RE=/crunch|sit.?up|v.?up|leg raise|jump|plyo|box jump|deadlift|\brdl\b|romanian|clean|snatch|jerk|swing|dragon|pistol|handstand|muscle.?up|rollout|ab wheel|plank|russian twist|scissor|flutter|burpee/i;
+const PREGNANCY_POST_T1_SUPINE_RE=/supine|flat bench|barbell bench|bench press|floor press|chest fly|fly with dumbbells|lying|laying|prone|superman|decline|skull.?crusher|hip thrust|bridge|push.?up|pushup/i;
+const HYPERTENSION_UNSAFE_RE=/handstand|headstand|decline|barbell back squat|conventional deadlift|snatch|clean|jerk|dragon.?flag/i;
 
 export function isFriendlyForInjuries(e,injuries=[],profile={}){
  const injuryOk=canonicalInjuries(injuries).every(injury=>Object.hasOwn(INJURY_PATTERNS,injury)&&
   !INJURY_PATTERNS[injury].includes(e.pattern)&&!INJURY_NAMES[injury].test(e.name));
  if(!injuryOk)return false;
  if(profile?.seniorMode&&SENIOR_UNSAFE_RE.test(e.name))return false;
+ if(Array.isArray(profile?.diseases)&&profile.diseases.includes('hypertension')&&HYPERTENSION_UNSAFE_RE.test(e.name))return false;
  if(isPregnantStatus(profile?.maternalStatus)){
+  if(['spinal_flexion','hip_flexion'].includes(e.pattern))return false;
   if(PREGNANCY_ALL_TRIMESTERS_UNSAFE_RE.test(e.name))return false;
   if(profile.maternalStatus!=='pregnant_t1'&&PREGNANCY_POST_T1_SUPINE_RE.test(e.name))return false;
  }
@@ -97,8 +100,13 @@ export function workoutPlan(draft){
  const dayLocations=draft.dayLocations==null?{}:plainRecord(draft.dayLocations,'dayLocations');
  if(Object.entries(dayLocations).some(([key,value])=>!/^\d$/.test(key)||Number(key)>6||!['home','gym','home_only','gym_only'].includes(value)))throw apiError('INVALID_DAY_LOCATIONS','dayLocations keys must be weekday indices 0..6 with valid location values.',{status:400});
  const injuries=Array.isArray(draft.injuries)?canonicalInjuries(draft.injuries):[];
+ const diseases=Array.isArray(draft.diseases)?draft.diseases.filter(x=>x&&x!=='none'):[];
  const goal=draft.goal||'maintain';
- const safetyProfile={seniorMode:Boolean(draft.seniorMode||(Number(draft.age)>=70)),maternalStatus:draft.maternalStatus||'none'};
+ const safetyProfile={seniorMode:Boolean(draft.seniorMode||(Number(draft.age)>=70)),maternalStatus:draft.maternalStatus||'none',diseases};
+ const hasHypertension=diseases.includes('hypertension');
+ const hasDiabetes=diseases.includes('diabetes')||diseases.includes('diabetes_t1')||diseases.includes('diabetes_t2');
+ const hasRenalOrGout=diseases.includes('kidney')||diseases.includes('gout');
+ const isPregnant=isPregnantStatus(safetyProfile.maternalStatus);
  draft={...draft,workoutLocation,homeEquipment,dayLocations,fitnessLevel:level,injuries,goal};
  let split=draft.workoutSplitPreference==='auto'||!draft.workoutSplitPreference?(days.length<=3?'full_body':days.length>=5?'ppl':'upper_lower'):draft.workoutSplitPreference;
  if(!['full_body','upper_lower','ppl','bro_split'].includes(split))throw apiError('INVALID_WORKOUT_SPLIT','workoutSplitPreference must be auto, full_body, upper_lower, ppl, or bro_split.',{status:400});
@@ -107,12 +115,21 @@ export function workoutPlan(draft){
  const addWarning=(code,msg)=>{warnings.push(msg);if(code&&!warningCodes.includes(code))warningCodes.push(code);};
  if(injuries.length)addWarning('WORKOUT_INJURY_EXCLUSIONS_ACTIVE','Movements contraindicated for declared injuries were excluded precautionarily; remaining selections are not medical clearance. Stop any painful movement.');
  if(safetyProfile.seniorMode)addWarning('WORKOUT_SENIOR_SAFETY_ACTIVE','Senior safety mode (70+): high-impact plyometrics and heavy spinal loading were excluded.');
- if(isPregnantStatus(safetyProfile.maternalStatus))addWarning('WORKOUT_PREGNANCY_SAFETY_ACTIVE','Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded.');
+ if(isPregnant)addWarning('WORKOUT_PREGNANCY_SAFETY_ACTIVE','Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded.');
+ if(hasHypertension)addWarning('WORKOUT_HYPERTENSION_GUIDANCE','Hypertension guidance active: breathe smoothly through each repetition, avoid breath-holding (Valsalva), and keep intensity moderate (RIR >= 3).');
+ if(hasDiabetes)addWarning('WORKOUT_DIABETES_GUIDANCE','Diabetes training guidance active: monitor blood glucose around sessions, stay hydrated, and avoid exhaustive fasted workouts.');
+ if(hasRenalOrGout)addWarning('WORKOUT_RENAL_GOUT_GUIDANCE','Renal/gout guidance active: training volume is capped conservatively and extra workout-day hydration is enabled.');
  if(days.length===7)addWarning('WORKOUT_SEVEN_DAY_RECOVERY_CAUTION','7-day schedule detected: monitor daily recovery closely and keep intensity moderate on back-to-back sessions.');
  if(split==='upper_lower'&&days.length<2){addWarning('WORKOUT_SPLIT_FALLBACK_FULL_BODY','Upper/Lower split requires at least 2 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
  if(split==='bro_split'&&days.length<4){addWarning('WORKOUT_SPLIT_FALLBACK_FULL_BODY','Bro Split requires at least 4 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
  if(split==='ppl'&&days.length<3){addWarning('WORKOUT_SPLIT_FALLBACK_FULL_BODY','Push/Pull/Legs split requires at least 3 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
- const goalNote=goal==='lose'?'Resistance plan designed to preserve lean muscle mass during fat loss (pair with light walking when feasible).':goal==='muscle_gain'||goal==='gain'?'Hypertrophy-focused resistance plan emphasizing full range of motion and progressive overload.':'Balanced strength and mobility plan for fitness maintenance and joint health.';
+ const goalNote=goal==='lose'
+  ?'Resistance plan designed to preserve lean muscle mass during fat loss (pair with light walking when feasible).'
+  :goal==='muscle_gain'
+   ?(draft.recomposition?'Body recomposition resistance plan paired with maintenance calories and progressive overload.':'Hypertrophy-focused resistance plan emphasizing full range of motion and progressive overload.')
+   :goal==='gain'
+    ?'Strength and hypertrophy resistance plan aligned with your calorie surplus for steady healthy weight gain.'
+    :'Balanced strength and mobility plan calibrated with maintenance calories for weight stability, joint health, and recovery.';
  // Track used exercises per focus/pattern across the week so multi-day full_body or repeated focus days rotate variations deterministically
  const focusOccurrenceCount=new Map();
  const sessions=days.map((dayIndex,i)=>{
@@ -133,7 +150,10 @@ export function workoutPlan(draft){
    const pool=candidates(pattern,{...draft,fitnessLevel:level},location,used,safetyProfile);
    if(!pool.length){missing.push(pattern);continue;}
    const compound=['squat','hinge','horizontal_push','horizontal_pull','vertical_push','vertical_pull','lunge'].includes(pattern);
-   let sets=level==='beginner'?2:(level==='advanced'&&compound&&duration>=45?4:3);
+   let sets=level==='beginner'?2:(level==='advanced'&&compound&&duration>=45&&goal!=='maintain'&&!(goal==='lose'&&draft.goalPace==='fast')?4:3);
+   if(safetyProfile.seniorMode||isPregnant||hasHypertension||hasRenalOrGout)sets=Math.min(sets,3);
+   let rir=level==='beginner'?3:(goal==='maintain'?3:2);
+   if(safetyProfile.seniorMode||isPregnant||hasHypertension)rir=Math.max(rir,3);
    const restSeconds=compound?(goal==='lose'&&duration>=45?90:120):(goal==='lose'&&duration>=45?60:75);
    const repMin=compound?8:10,repMax=compound?12:15;
    let fitting=pool.filter(cand=>{
@@ -150,7 +170,7 @@ export function workoutPlan(draft){
    if(!fitting.length){missing.push(pattern);continue;}
    const e=fitting[focusOccurrence%fitting.length];
    const cost=sets*repMax*3*(eachSide(e)?2:1)+(sets-1)*restSeconds+60;
-   seconds+=cost;used.push(e.id);exercises.push({...e,regions:muscleRegions(e),sets,repMin,repMax,rir:level==='beginner'?3:2,restSeconds});
+   seconds+=cost;used.push(e.id);exercises.push({...e,regions:muscleRegions(e),sets,repMin,repMax,rir,restSeconds});
   }
   return {dayIndex,location,focus,goalNote,exercises,missing,duration,estimatedMinutes:Math.ceil(seconds/60),isTrainingDay:true};
  });

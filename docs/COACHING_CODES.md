@@ -146,3 +146,19 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `COMEBACK_RAMP_IN` | `training` | `info` | — | Comeback restart calibration applied for a smooth return. |
 | `RECOVERY_DELOAD_APPLIED` | `training` | `info` | — | Approved temporary set reduction applied for recovery protection. |
 | `CALORIE_ADAPTATION_APPLIED` | `nutrition` | `info` | — | Approved calorie adaptation applied to upcoming plan days. |
+| `PLAN_MUSCLE_GAIN_EXTERNAL_TRAINING_NOTE` | `nutrition` | `info` | — | Pair this high-protein nutrition plan with regular external resistance training for lean muscle growth. |
+| `PLAN_SEDENTARY_WORKOUT_ENERGY_NOTE` | `nutrition` | `info` | — | Sedentary daily multiplier reflects non-workout routine; 2-week weigh-ins calibrate workout expenditure from recorded trends. |
+| `PLAN_PREGNANCY_FOOD_SAFETY` | `nutrition` | `info` | — | Pregnancy nutrition safety active: organ meats (liver) and unsafe calorie cuts are excluded. |
+| `PLAN_FLOOR_NEEDS_ACTIVITY_FOR_DEFICIT` | `nutrition` | `attention` | — | Calories are held at the safe minimum floor; add gentle daily movement such as walking to create a gradual fat-loss deficit. |
+| `WORKOUT_HYPERTENSION_GUIDANCE` | `training` | `info` | — | Hypertension guidance active: breathe smoothly through each repetition, avoid breath-holding (Valsalva), and keep intensity moderate (RIR >= 3). |
+| `WORKOUT_DIABETES_GUIDANCE` | `training` | `info` | — | Diabetes training guidance active: monitor blood glucose around sessions, stay hydrated, and avoid exhaustive fasted workouts. |
+| `WORKOUT_RENAL_GOUT_GUIDANCE` | `training` | `info` | — | Renal/gout guidance active: training volume is capped conservatively and extra workout-day hydration is enabled. |
+| `HIGHLIGHT_DIABETES_SUGAR_FILTER` | `nutrition` | `info` | — | Glycemic control active: dates, honey, added sugars, and high-glycemic spikes are filtered out and carbs are capped at 40% of calories. |
+| `HIGHLIGHT_CHOLESTEROL_LIPID_FILTER` | `nutrition` | `info` | — | Lipid protection active: high-saturated-fat dairy and meats are filtered out and dietary fat is capped at 30% of calories. |
+| `HIGHLIGHT_PROTECTED_JOINTS` | `training` | `info` | `joints` | Joint protection active for {0}: aggravating movements are swapped for safer alternatives with controlled intensity. |
+| `HIGHLIGHT_MAINTAIN_SYNERGY` | `synergy` | `info` | `workoutDaysCount` | Weight maintenance synergy active: nutrition calories cover your {0}-day training expenditure while sessions hold moderate 2-3 set RIR >= 3 volume to keep weight stable. |
+| `HIGHLIGHT_RECOMP_SYNERGY` | `synergy` | `info` | — | Body recomposition active: nutrition is held near maintenance with high protein while resistance training drives fat loss and lean tissue retention. |
+| `HIGHLIGHT_LOSE_SYNERGY` | `synergy` | `info` | `goalPace` | Fat-loss synergy active: nutrition targets a {0} calorie deficit with muscle-sparing protein alongside strength training to protect lean mass. |
+| `HIGHLIGHT_MUSCLE_GAIN_SYNERGY` | `synergy` | `info` | — | Lean muscle-gain synergy active: a moderate caloric surplus and high daily protein pair directly with progressive hypertrophy programming. |
+| `HIGHLIGHT_GAIN_SYNERGY` | `synergy` | `info` | — | Healthy weight-gain synergy active: progressive resistance training pairs with a steady daily energy surplus to support quality weight gain. |
+| `HIGHLIGHT_TRAINING_HYDRATION_BOOST` | `hydration` | `info` | `extraMl` | Training-day hydration boost applied: +{0} ml added on scheduled workout days. |

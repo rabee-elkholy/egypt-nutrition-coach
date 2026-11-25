@@ -213,12 +213,17 @@ export function estimateNeeds(input) {
         : 1.6
       : input.goal === "lose"
         ? 1.4
-        : input.goal === "gain"
-          ? 1.3
-          : 1;
+        : input.goal === "muscle_gain"
+          ? 1.5
+          : input.goal === "gain"
+            ? 1.3
+            : 1;
 
   if (seniorMode) factor = Math.max(factor, 1.2);
   if (maternalStatus !== "none") factor = Math.max(factor, 1.4);
+  if (isPregnantStatus(maternalStatus)) {
+    addNote("PLAN_PREGNANCY_FOOD_SAFETY", "Pregnancy nutrition safety active: organ meats (liver) and unsafe calorie cuts are excluded.");
+  }
   if (diseases.has("gout")) {
     factor = Math.min(factor, 1.4);
     addNote("PLAN_GOUT_PROTEIN_CAP", "Protein capped at 1.4 g/kg and high-purine red meats/offal excluded for gout.");
@@ -250,48 +255,81 @@ export function estimateNeeds(input) {
   let carbGrams = round(Math.max(0, energy - proteinGrams * 4 - fatGrams * 9) / 4);
 
   if (diseases.has("diabetes") || diseases.has("diabetes_t1") || diseases.has("diabetes_t2") || diseases.has("insulin_resistance") || diseases.has("pcos")) {
-    const maxCarbEnergy = energy * 0.38;
-    if (carbGrams * 4 > maxCarbEnergy) {
-      carbGrams = round(maxCarbEnergy / 4);
+    const maxCarbShare = diseases.has("cholesterol") ? 0.44 : 0.38;
+    const minCarbGrams = isPregnantStatus(maternalStatus) ? 175 : 0;
+    const targetCarbCap = Math.max(minCarbGrams, (energy * maxCarbShare) / 4);
+    if (carbGrams > targetCarbCap) {
+      carbGrams = round(targetCarbCap);
       const remaining = Math.max(0, energy - carbGrams * 4);
       const maxProtFactor = diseases.has("kidney") ? 1.1 : diseases.has("gout") ? 1.4 : 1.8;
-      proteinGrams = round(Math.min(effectiveWeight * maxProtFactor, remaining * 0.45 / 4));
-      fatGrams = round(Math.max(0, energy - carbGrams * 4 - proteinGrams * 4) / 9);
+      const minSafeProt = proteinGrams;
+      const targetProtCap = effectiveWeight * maxProtFactor + (diseases.has("kidney") ? 0 : maternalProteinAddon);
+      const idealProt = Math.max(minSafeProt, Math.min(targetProtCap, (remaining * 0.45) / 4));
+      const maxFatShare = diseases.has("cholesterol") ? 0.30 : 0.38;
+      const maxFatGrams = (energy * maxFatShare) / 9;
+      proteinGrams = round(Math.min(idealProt, Math.max(minSafeProt, remaining / 4)));
+      const rawFatGrams = Math.max(0, energy - carbGrams * 4 - proteinGrams * 4) / 9;
+      if (rawFatGrams > maxFatGrams) {
+        fatGrams = round(maxFatGrams);
+        carbGrams = round(Math.max(carbGrams, (energy - proteinGrams * 4 - fatGrams * 9) / 4));
+      } else {
+        fatGrams = round(rawFatGrams);
+      }
       addNote("PLAN_GLYCEMIC_CARB_CALIBRATION", "Carbohydrate share calibrated to ~38% of daily energy for glycemic support.");
     }
   }
 
   if (input.goal === "gain" && trainingDays === 0)
     addNote("PLAN_GAIN_WITHOUT_RESISTANCE", "Calorie surplus without resistance training does not guarantee lean mass gain.");
-  if (input.goal === "muscle_gain")
+  if (input.goal === "muscle_gain") {
     addNote("PLAN_MUSCLE_GAIN_SURPLUS", "Muscle gain targets use a moderate surplus (<= 250 kcal) and progressive resistance training.");
+    if (trainingDays === 0) {
+      addNote("PLAN_MUSCLE_GAIN_EXTERNAL_TRAINING_NOTE", "Pair this high-protein nutrition plan with regular external resistance training for lean muscle growth.");
+    }
+  }
+  if (input.activity === "sedentary" && trainingDays >= 3) {
+    addNote("PLAN_SEDENTARY_WORKOUT_ENERGY_NOTE", "Sedentary daily multiplier reflects non-workout routine; 2-week weigh-ins calibrate workout expenditure from recorded trends.");
+  }
   const targetWeightNum =
-    input.targetWeight != null && String(input.targetWeight).trim() !== ""
+    input.goal !== "maintain" && input.targetWeight != null && String(input.targetWeight).trim() !== ""
       ? finite(input.targetWeight, 35, 250, "targetWeight")
       : null;
   const actualChange = round(energy - tdee);
+  const maintenanceBaseline = maternalStatus === "breastfeeding" ? tdee + 400 : tdee;
+  const forecastDelta = round(energy - maintenanceBaseline);
   const targetDeltaKg =
     targetWeightNum != null ? round(targetWeightNum - weight, 1) : null;
   let forecast = null;
-  if (targetDeltaKg != null) {
-    if (Math.abs(targetDeltaKg) < 0.2 || actualChange === 0) {
+  if (targetDeltaKg != null && input.goal !== "maintain" && !isPregnantStatus(maternalStatus)) {
+    if (input.goal === "lose" && forecastDelta >= 0) {
+      addNote("PLAN_FLOOR_NEEDS_ACTIVITY_FOR_DEFICIT", "Calories are held at the safe minimum floor; add gentle daily movement such as walking to create a gradual fat-loss deficit.");
       forecast = {
         target_weight_kg: targetWeightNum,
         target_delta_kg: targetDeltaKg,
-        daily_energy_delta: actualChange,
+        daily_energy_delta: forecastDelta,
+        weekly_rate_kg: 0,
+        estimated_weeks_min: 0,
+        estimated_weeks_max: 0,
+        basis: "Daily energy is held at the safe minimum planning floor; add gentle daily movement to establish a gradual deficit.",
+      };
+    } else if (Math.abs(targetDeltaKg) < 0.2 || forecastDelta === 0) {
+      forecast = {
+        target_weight_kg: targetWeightNum,
+        target_delta_kg: targetDeltaKg,
+        daily_energy_delta: forecastDelta,
         weekly_rate_kg: 0,
         estimated_weeks_min: 0,
         estimated_weeks_max: 0,
         basis: "Weight maintenance or body recomposition around current weight.",
       };
     } else {
-      const weeklyKg = round((Math.abs(actualChange) * 7) / 7700, 2);
+      const weeklyKg = round((Math.abs(forecastDelta) * 7) / 7700, 2);
       const centerWeeks = Math.max(1, Math.ceil(Math.abs(targetDeltaKg) / Math.max(0.1, weeklyKg)));
       forecast = {
         target_weight_kg: targetWeightNum,
         target_delta_kg: targetDeltaKg,
-        daily_energy_delta: actualChange,
-        weekly_rate_kg: actualChange < 0 ? -weeklyKg : weeklyKg,
+        daily_energy_delta: forecastDelta,
+        weekly_rate_kg: forecastDelta < 0 ? -weeklyKg : weeklyKg,
         estimated_weeks_min: Math.max(1, Math.floor(centerWeeks * 0.85)),
         estimated_weeks_max: Math.ceil(centerWeeks * 1.25),
         basis: "Initial estimate based on post-floor daily energy delta (7700 kcal/kg); refined from actual weigh-in trends.",
@@ -480,7 +518,7 @@ export function prepareTemplate(t, lib, p, profile = null) {
 // meal slots when deduplicating so a valid lunch/dinner does not disappear.
 function preparePool(lib, prefs, profile = null, includeRegional = true, selectionSeed = null) {
   const pool = new Map();
-  for (const template of planningTemplates(lib, prefs, includeRegional)) {
+  for (const template of planningTemplates(lib, prefs, includeRegional, profile)) {
     const t = prepareTemplate(template, lib, prefs, profile);
     if (!t) continue;
     const key = JSON.stringify(t.items.map((i) => [i.key, Number(i.grams)]).sort());
@@ -501,7 +539,7 @@ function preparePool(lib, prefs, profile = null, includeRegional = true, selecti
   for(const group of groups.values())named.push(...group.sort((a,b)=>rank(a.id)-rank(b.id)||a.id.localeCompare(b.id)).slice(0,4));
   return named;
 }
-export function planningTemplates(lib, prefs, includeRegional = true) {
+export function planningTemplates(lib, prefs, includeRegional = true, profile = null) {
   const region = prefs.region ?? 'egypt';
   let base;
   if (region === 'egypt') {
@@ -512,7 +550,8 @@ export function planningTemplates(lib, prefs, includeRegional = true) {
   } else {
     base = lib.templates;
   }
-  base = [...base, ...(!includeRegional || prefs.diet === 'dash' ? [] : regionalFoodTemplates(lib, region))];
+  const strictSodium = prefs.diet === 'dash' || Boolean(profile?.diseases?.includes('hypertension'));
+  base = [...base, ...(!includeRegional || strictSodium ? [] : regionalFoodTemplates(lib, region))];
   return dietTemplates(base, lib, prefs.diet ?? 'balanced', region);
 }
 function ingredientIdentity(snapshot) {
@@ -565,16 +604,28 @@ export function checkPlanFeasibility(profile, prefs, lib, seed = 'preview') {
     }
     const fitted = new Map();
     const meals = [];
+    const hasGlycemic = Array.isArray(profile?.diseases) && profile.diseases.some(d => ['diabetes', 'diabetes_t1', 'diabetes_t2', 'insulin_resistance', 'pcos'].includes(d));
+    const fitOpts = {
+      capProtein: Boolean(profile?.diseases?.includes('kidney') || profile?.diseases?.includes('gout')),
+      reduceCarbs: Boolean(hasGlycemic && !['keto', 'low_carb'].includes(p.diet))
+    };
     for (const slot of slots) {
       const desired = targets.energy * slot.share;
       const protein = targets.protein * slot.share;
       const slotPool = egyptianSlotPool(pool, p.region, slot.slot);
       const candidates = slotPool.map((t) => {
-        const key = t.id + '|' + Math.round(desired) + '|' + Math.round(protein);
-        if (!fitted.has(key)) fitted.set(key, fitMeal(t, desired, protein, lib));
+        const key = t.id + '|' + Math.round(desired) + '|' + Math.round(protein) + (fitOpts.capProtein ? '|cap' : '') + (fitOpts.reduceCarbs ? '|rc' : '');
+        if (!fitted.has(key)) fitted.set(key, fitMeal(t, desired, protein, lib, fitOpts));
         const snapshot = fitted.get(key);
         const v = snapshot.values;
-        const score = (Math.abs(Number(v.energy) - desired) / desired) * 5 + (Math.abs(protein - Number(v.protein)) / Math.max(1, protein)) * 1.5;
+        const carbCap = targets.carbs * slot.share;
+        const glycemicPenalty = fitOpts.reduceCarbs && v.carbs != null
+          ? Math.max(0, Number(v.carbs) - carbCap * 1.1) / Math.max(10, carbCap) * 2.5
+          : 0;
+        const renalPenalty = fitOpts.capProtein && v.protein != null
+          ? Math.max(0, Number(v.protein) - protein * 1.12) / Math.max(10, protein) * 2.5
+          : 0;
+        const score = (Math.abs(Number(v.energy) - desired) / desired) * 5 + (Math.abs(protein - Number(v.protein)) / Math.max(1, protein)) * 1.5 + glycemicPenalty + renalPenalty;
         return { t, snapshot, score };
       }).filter((a) => {
         if (p.diet === 'dash' || profile?.diseases?.includes('hypertension')) {
@@ -613,7 +664,7 @@ export function checkPlanFeasibility(profile, prefs, lib, seed = 'preview') {
           if (!template) continue;
           const nextE = Math.max(1, Number(m.snapshot.values.energy) + gap / mains.length);
           const nextP = Math.max(m.target_protein, Number(m.snapshot.values.protein) + pGap / mains.length);
-          const next = fitMeal(template, nextE, nextP, lib);
+          const next = fitMeal(template, nextE, nextP, lib, fitOpts);
           const nextSnaps = meals.map(x => x === m ? next : x.snapshot);
           const dashOk = (p.diet !== 'dash' && !profile?.diseases?.includes('hypertension')) || (sumSnapshots(nextSnaps).values.sodium != null && Number(sumSnapshots(nextSnaps).values.sodium) <= 2300);
           const carbOk = !['keto', 'low_carb'].includes(p.diet) || Number(sumSnapshots(nextSnaps).values.carbs ?? 0) <= (p.diet === 'keto' ? 50 : 130);
@@ -630,8 +681,8 @@ export function checkPlanFeasibility(profile, prefs, lib, seed = 'preview') {
       for (const meal of meals) for (const template of pool.filter(t => t.meal_slots.includes(meal.slot))) {
         const desiredEnergy = Math.max(1, targets.energy - Number(currentSummary.values.energy) + Number(meal.snapshot.values.energy));
         const desiredProtein = meal.target_protein + gap / Math.max(1, meals.length - 1);
-        const key = template.id + '|p|' + Math.round(desiredEnergy) + '|' + Math.round(desiredProtein);
-        if (!fitted.has(key)) fitted.set(key, fitMeal(template, desiredEnergy, desiredProtein, lib));
+        const key = template.id + '|p|' + Math.round(desiredEnergy) + '|' + Math.round(desiredProtein) + (fitOpts.capProtein ? '|cap' : '');
+        if (!fitted.has(key)) fitted.set(key, fitMeal(template, desiredEnergy, desiredProtein, lib, fitOpts));
         const snapshot = fitted.get(key), snapshots = meals.map(m => m === meal ? snapshot : m.snapshot);
         try { assertDietDay(snapshots, p.diet, targets, profile); } catch { continue; }
         const score = repairObjective(sumSnapshots(snapshots), targets);
@@ -769,15 +820,17 @@ export function snapshotTemplate(template, parts, lib) {
   }
   return result;
 }
-export function fitMeal(t, desiredEnergy, desiredProtein, lib) {
+export function fitMeal(t, desiredEnergy, desiredProtein, lib, options = {}) {
+  const capProtein = Boolean(options?.capProtein);
+  const reduceCarbs = Boolean(options?.reduceCarbs);
   const isKeto = Boolean(t.id && String(t.id).startsWith("keto-"));
   const isPart = Boolean(t.id && String(t.id).startsWith("part-"));
   const isMainMeal = !isPart && (!t.meal_slots || t.meal_slots.some(s => ["breakfast", "lunch", "dinner"].includes(s)));
   const lower = (p) => {
     const baseMin = Math.max(lib.ingredients[p.key].min_g, p.min_g || 0);
     const i = lib.ingredients[p.key];
-    // Protect complete animal protein in main meals so rice/veg protein never shrinks chicken/meat/fish to tiny portions
-    if (isMainMeal && i.role === "protein" && ["chicken", "meat", "fish"].includes(i.protein_group) && desiredProtein >= 22) {
+    // Protect complete animal protein in main meals unless renal/gout protein cap is active
+    if (!capProtein && isMainMeal && i.role === "protein" && ["chicken", "meat", "fish"].includes(i.protein_group) && desiredProtein >= 22) {
       return Math.max(baseMin, Math.min(Number(p.grams) || 120, desiredEnergy >= 750 ? 140 : 110));
     }
     return baseMin;
@@ -833,7 +886,8 @@ export function fitMeal(t, desiredEnergy, desiredProtein, lib) {
       }
     }
     let v = get();
-    if (Number(v.protein) > desiredProtein * 1.15) {
+    const trimThreshold = capProtein ? 1.04 : 1.15;
+    if (Number(v.protein) > desiredProtein * trimThreshold) {
       for (const p of parts.filter(
         (p) => lib.ingredients[p.key].role === "protein",
       )) {
@@ -855,15 +909,19 @@ export function fitMeal(t, desiredEnergy, desiredProtein, lib) {
     v = get();
     let difference = desiredEnergy - Number(v.energy);
     const candidates = parts
-      .filter((p) =>
-        isKeto
-          ? ["fat", "protein", "veg"].includes(lib.ingredients[p.key].role)
-          : ["carb", "fat", "fruit", "protein"].includes(lib.ingredients[p.key].role),
-      )
+      .filter((p) => {
+        const r = lib.ingredients[p.key].role;
+        if (capProtein && r === "protein" && difference > 0 && effectiveProtein() >= desiredProtein) return false;
+        return isKeto
+          ? ["fat", "protein", "veg"].includes(r)
+          : ["carb", "fat", "fruit", "protein"].includes(r);
+      })
       .sort((a, b) => {
         const role = isKeto
           ? { fat: 0, protein: 1, veg: 2 }
-          : { carb: 0, fruit: 1, fat: 2, protein: 3 };
+          : (reduceCarbs && difference > 0)
+            ? { fat: 0, protein: 1, carb: 2, fruit: 3 }
+            : { carb: 0, fruit: 1, fat: 2, protein: 3 };
         return (
           role[lib.ingredients[a.key].role] - role[lib.ingredients[b.key].role]
         );
@@ -1076,6 +1134,12 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
       : Array.from({ length: Math.min(7, targets.training_days || 0) }, (_, i) => Math.min(6, i * 2)),
   );
 
+  const hasGlycemic = Array.isArray(profile?.diseases) && profile.diseases.some(d => ['diabetes', 'diabetes_t1', 'diabetes_t2', 'insulin_resistance', 'pcos'].includes(d));
+  const fitOpts = {
+    capProtein: Boolean(profile?.diseases?.includes('kidney') || profile?.diseases?.includes('gout')),
+    reduceCarbs: Boolean(hasGlycemic && !['keto', 'low_carb'].includes(p.diet))
+  };
+
   for (let day = 0; day < 7; day++) {
     const isWorkoutDay = workoutDayIndices.has(new Date(addDays(startDate, day) + "T12:00:00Z").getUTCDay()) && (targets.training_days || 0) > 0;
     const meals = [];
@@ -1102,9 +1166,9 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
       if (differentDay.length) slotPool = differentDay;
 
       const rankCandidates = rankedPool => rankedPool.map((t) => {
-          const key = t.id + "|" + Math.round(desired) + "|" + Math.round(protein);
+          const key = t.id + "|" + Math.round(desired) + "|" + Math.round(protein) + (fitOpts.capProtein ? "|cap" : "") + (fitOpts.reduceCarbs ? "|rc" : "");
           if (!fitted.has(key))
-            fitted.set(key, fitMeal(t, desired, protein, lib));
+            fitted.set(key, fitMeal(t, desired, protein, lib, fitOpts));
           const snapshot = fitted.get(key),
             v = snapshot.values;
           const family = t.items
@@ -1112,10 +1176,19 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
             .find((i) => i.role === "protein")?.protein_group;
           const isAnimalMain = ["chicken", "meat", "fish"].includes(family);
           const isRegionalMenu = Boolean(t.component_definitions && t.dish_family);
+          const slotCarbCap = targets.carbs * slot.share;
+          const glycemicPenalty = fitOpts.reduceCarbs && v.carbs != null
+            ? Math.max(0, Number(v.carbs) - slotCarbCap * 1.1) / Math.max(10, slotCarbCap) * 2.5
+            : 0;
+          const renalPenalty = fitOpts.capProtein && v.protein != null
+            ? Math.max(0, Number(v.protein) - protein * 1.12) / Math.max(10, protein) * 2.5
+            : 0;
           const score =
             (Math.abs(Number(v.energy) - desired) / desired) * 5 +
             (Math.abs(protein - Number(v.protein)) / Math.max(1, protein)) *
               1.5 +
+            glycemicPenalty +
+            renalPenalty +
             (counts.get(egyptianMealFamily(t, lib, p.region)) || 0) * 0.35 +
             (chosen.has(t.id) ? 2 : 0) +
             (templateCounts.get(t.id) || 0) * 0.2 +
@@ -1185,7 +1258,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
           if(!template)continue;
           const nextE = Math.max(1, Number(m.snapshot.values.energy) + gap / mains.length);
           const nextP = Math.max(m.target_protein, Number(m.snapshot.values.protein) + pGap / mains.length);
-          const next=fitMeal(template, nextE, nextP, lib);
+          const next=fitMeal(template, nextE, nextP, lib, fitOpts);
           const currentTotal=Number(sumSnapshots(meals.map(x=>x.snapshot)).values.energy);
           const nextTotal=currentTotal-Number(m.snapshot.values.energy)+Number(next.values.energy);
           const dashOk = (p.diet!=='dash' && !profile?.diseases?.includes('hypertension')) || (sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium != null && Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium)<=2300);
@@ -1208,10 +1281,10 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
       let best=null,current=repairObjective(currentSummary,targets);
       const gap=Math.max(0,targets.protein-Number(currentSummary.values.protein));
       for(const meal of meals)for(const template of pool.filter(t=>t.meal_slots.includes(meal.slot)))for(const desiredEnergy of new Set([meal.target_energy,Math.max(1,targets.energy-Number(currentSummary.values.energy)+Number(meal.snapshot.values.energy))])){
-        const desiredProtein=meal.target_protein+gap/Math.max(1,meals.length-1),key=template.id+'|repair|'+desiredEnergy+'|'+desiredProtein;
-        if(!fitted.has(key))fitted.set(key,fitMeal(template,desiredEnergy,desiredProtein,lib));
+        const desiredProtein=meal.target_protein+gap/Math.max(1,meals.length-1),key=template.id+'|repair|'+desiredEnergy+'|'+desiredProtein+(fitOpts.capProtein?'|cap':'')+(fitOpts.reduceCarbs?'|rc':'');
+        if(!fitted.has(key))fitted.set(key,fitMeal(template,desiredEnergy,desiredProtein,lib,fitOpts));
         const snapshot=fitted.get(key),snapshots=meals.map(m=>m===meal?snapshot:m.snapshot);
-        try{assertDietDay(snapshots,p.diet,targets);}catch{continue;}
+        try{assertDietDay(snapshots,p.diet,targets,profile);}catch{continue;}
         // Never trade an already valid day for a lower-scoring invalid one.
         if(!nutritionQualityIssues(currentSummary,targets).length&&nutritionQualityIssues(sumSnapshots(snapshots),targets).length)continue;
         const score=repairObjective(sumSnapshots(snapshots),targets);
@@ -1219,7 +1292,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
       }
       if(!best)break;best.meal.snapshot=copy(best.snapshot);
     }
-    assertDietDay(meals.map(m=>m.snapshot),p.diet,targets);
+    assertDietDay(meals.map(m=>m.snapshot),p.diet,targets,profile);
     const summary = sumSnapshots(meals.map((m) => m.snapshot));
     const quality=nutritionQualityIssues(summary,targets);
     if(quality.length)throw planCoverageError('NUTRIENT_TARGETS_UNMET','Meal search could not meet daily calorie and protein tolerances under your constraints.');
@@ -1249,14 +1322,34 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
 }
 function nutritionObjective(summary,targets){
  const energy=Number(summary.values.energy),protein=Number(summary.values.protein);
- return Math.abs(energy-targets.energy)/targets.energy*5+Math.max(0,targets.protein-protein)/Math.max(1,targets.protein)*3;
+ const conds=Array.isArray(targets.medical_conditions)?targets.medical_conditions:[];
+ let penalty=Math.abs(energy-targets.energy)/targets.energy*5+Math.max(0,targets.protein-protein)/Math.max(1,targets.protein)*3;
+ if(conds.includes('kidney')||conds.includes('gout')){
+  const overProt=Math.max(0,protein-targets.protein*1.08)/Math.max(1,targets.protein);
+  penalty+=overProt*(conds.includes('kidney')?8:4);
+ }
+ if(conds.some(d=>['diabetes','diabetes_t1','diabetes_t2','insulin_resistance','pcos'].includes(d))&&summary.values.carbs!=null){
+  const carbs=Number(summary.values.carbs);
+  const carbCeiling=Math.max(targets.carbs*1.12,(targets.energy*0.45)/4);
+  if(Number.isFinite(carbs)&&carbs>carbCeiling){
+   penalty+=((carbs-carbCeiling)/Math.max(1,targets.carbs))*4.5;
+  }
+ }
+ return penalty;
 }
 function repairObjective(summary,targets){
  const e=Math.abs(Number(summary.values.energy)-targets.energy)/targets.energy,p=Number(summary.values.protein)/Math.max(1,targets.protein);
- return 10000*(Math.max(0,e-.15)+Math.max(0,.8-p))+100*(Math.max(0,e-.12)+Math.max(0,.85-p))+nutritionObjective(summary,targets);
+ const conds=Array.isArray(targets.medical_conditions)?targets.medical_conditions:[];
+ const kidneyHard=conds.includes('kidney')?Math.max(0,p-1.15)*200:0;
+ const glycemicHard=(conds.some(d=>['diabetes','diabetes_t1','diabetes_t2','insulin_resistance','pcos'].includes(d))&&summary.values.carbs!=null&&targets.carbs<=targets.energy*0.45/4)
+  ?Math.max(0,(Number(summary.values.carbs)*4)/targets.energy-0.46)*120:0;
+ return 10000*(Math.max(0,e-.15)+Math.max(0,.8-p))+100*(Math.max(0,e-.12)+Math.max(0,.85-p))+kidneyHard+glycemicHard+nutritionObjective(summary,targets);
 }
 function needsNutritionImprovement(summary,targets){
- return nutritionQualityIssues(summary,targets).length>0||Number(summary.values.protein)<targets.protein*.85||Math.abs(Number(summary.values.energy)-targets.energy)>targets.energy*.12;
+ const conds=Array.isArray(targets.medical_conditions)?targets.medical_conditions:[];
+ const kidneyOver=conds.includes('kidney')&&Number(summary.values.protein)>targets.protein*1.15;
+ const glycemicOver=conds.some(d=>['diabetes','diabetes_t1','diabetes_t2','insulin_resistance','pcos'].includes(d))&&summary.values.carbs!=null&&targets.carbs<=targets.energy*0.45/4&&Number(summary.values.carbs)>Math.max(targets.carbs*1.15,(targets.energy*0.47)/4);
+ return nutritionQualityIssues(summary,targets).length>0||Number(summary.values.protein)<targets.protein*.85||Math.abs(Number(summary.values.energy)-targets.energy)>targets.energy*.12||kidneyOver||glycemicOver;
 }
 export function nutritionQualityIssues(summary,targets){
  const messages=[],energy=Number(summary.values.energy),protein=Number(summary.values.protein);

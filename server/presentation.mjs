@@ -52,6 +52,7 @@ export const present=s=>{
  if(plan)for(const day of plan.days){try{assertDietDay(day.meals.map(m=>m.snapshot),s.preferences.diet,day.targets||plan.targets,liveProfile);}catch(e){dietIssues.push({date:day.date,message:e.message});}}
  if(safety.length){ready.progressionAllowed=false;if(ready.status!=='stop'){ready.status='hold';ready.reasonCode='WORKOUT_SAFETY_EXCLUSION_HOLD';ready.reasons=['Your current workout plan contains movements excluded for your declared injuries; swap them or regenerate your plan before progressing.'];}}
  const calibrationMetadata=s.lastReview?.calibrationMetadata||plan?.calibrationMetadata||s.lastCalibrationMetadata||null;
+ const specialistHighlights=plan?.specialistHighlights||s.lastSpecialistHighlights||[];
  return {
   ...s,
   ...(hydratedProfile?{profile:hydratedProfile}:{}),
@@ -63,6 +64,7 @@ export const present=s=>{
   timezone:tz,
   eligibility:buildEligibilityStatusBlock(needsHealth,parqBlocked,needsSchedule),
   ...(calibrationMetadata?{calibrationMetadata}:{}),
+  specialistHighlights,
   planQuality:plan?.days.flatMap(d=>nutritionQualityIssues(d.summary,d.targets||plan.targets).map(message=>({date:d.date,message})))||[],
   scheduledSessions:scheduledSessions(s,currDate),
   progressSummary:progressSummary(s),
@@ -123,6 +125,7 @@ export const presentBootstrap=(s,extras={})=>{
   safetyMode:true
  }:null;
  const calibrationMetadata=s.lastReview?.calibrationMetadata||plan?.calibrationMetadata||s.lastCalibrationMetadata||null;
+ const specialistHighlights=plan?.specialistHighlights||s.lastSpecialistHighlights||[];
  return {
   schemaVersion:s.schemaVersion||3,
   revision:s.revision,
@@ -142,6 +145,7 @@ export const presentBootstrap=(s,extras={})=>{
   consents:extras.consents||[],
   eligibility:buildEligibilityStatusBlock(needsHealth,parqBlocked,needsSchedule),
   ...(calibrationMetadata?{calibrationMetadata}:{}),
+  specialistHighlights,
   activeNutritionPlanRef:plan?{id:plan.id,start_date:plan.start_date,end_date:plan.days.at(-1)?.date,effective_from:plan.effective_from,targets:plan.targets}:null,
   activeWorkoutPlanRef:s.workoutPlan?{id:s.workoutPlan.id,version:s.workoutPlan.version,split:s.workoutPlan.split,daysCount:s.workoutPlan.days.length,weeklySets:s.workoutPlan.weeklySets,coverage:s.workoutPlan.coverage}:null,
   scheduledSessions:upcoming14,
@@ -190,6 +194,9 @@ export const presentReceipt=(s,action,payload={},replayed=false)=>{
  const calibrationMetadata=['generate','review','renew_plan','comeback_restart','adaptation'].includes(action)
   ?(s.lastReview?.calibrationMetadata||s.lastCalibrationMetadata||null)
   :null;
+ const specialistHighlights=['generate','renew_plan','comeback_restart'].includes(action)
+  ?((s.plans||[]).find(p=>p.id===s.active_plan_id)?.specialistHighlights||s.lastSpecialistHighlights||[])
+  :null;
  return {
   revision:s.revision,
   serverNow:isoNow(),
@@ -202,6 +209,7 @@ export const presentReceipt=(s,action,payload={},replayed=false)=>{
    at:s._lastReceipt?.at||isoNow()
   },
   ...(calibrationMetadata?{calibrationMetadata}:{}),
+  ...(specialistHighlights?{specialistHighlights}:{}),
   affected:deltas
  };
 };
