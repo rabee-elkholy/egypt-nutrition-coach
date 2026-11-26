@@ -13,12 +13,36 @@ const mean=a=>a.reduce((s,x)=>s+x,0)/a.length;
 const recent=recentByDate;
 const latest=latestRecord;
 const voices={
- nutrition:['Let us review your nutrition calmly.','Key nutrition takeaway from your logs:','Taking nutrition one meal at a time:','Building on what you actually logged:','Here is your nutrition focus today:','Keep your next meal simple and steady:','Nutrition check-in based on your diary:'],
- training:['Let us calibrate today\'s training effort.','Training note from your recent logs:','Taking training one session at a time:','Match today\'s effort to your readiness:','Here is your training priority today:','Focus on clean execution today:','Training check-in based on your logs:'],
- followup:['Keep the next habit step simple.','Focus on one small win today.','Here is a practical habit note for today:','Steady progress without pressure:','One small detail worth attention today:','Build a routine that fits real life:','Habit check-in for today:']
+ nutrition:[
+  'Your CuraFit nutrition specialist reviewed today\'s diary:',
+  'Checking in on your nutrition plan today:',
+  'Taking your nutrition one calm meal at a time:',
+  'Based on your logged meals so far:',
+  'Your nutrition focus for today:',
+  'Keeping your next meal simple and steady:',
+  'Daily nutrition follow-up from your specialist:'
+ ],
+ training:[
+  'Your CuraFit training captain checked today\'s readiness:',
+  'Training follow-up from your recent sessions:',
+  'Taking your training one focused session at a time:',
+  'Matching today\'s session effort to your recovery:',
+  'Your training priority for today:',
+  'Focusing on clean technique and control today:',
+  'Daily training check-in from your captain:'
+ ],
+ followup:[
+  'Your CuraFit follow-up specialist is right here with you:',
+  'One small, practical win to focus on today:',
+  'Here is your daily habit follow-up:',
+  'Building steady momentum without pressure:',
+  'One small daily detail worth protecting today:',
+  'Shaping a routine that fits your real life:',
+  'Daily check-in from your follow-up specialist:'
+ ]
 };
 const actions={
- food:['Log your next meal after finishing it.','Record what you actually eat today, even if it differs from the plan.','Take it one meal at a time; logging is feedback, not an exam.','Start by logging what you have eaten so far today.','If a planned meal does not fit, pick an allowed alternative.'],
+ food:['Log your next meal after finishing it.','Record what you actually eat today, even if it differs from the plan.','Take it one meal at a time; logging is guidance, not an exam.','Start by logging what you have eaten so far today.','If a planned meal does not fit, swap to an allowed alternative.'],
  complete:['Verify your diary includes any snacks or beverages you had today.','Prep one simple meal choice for tomorrow.','Stay flexible for tomorrow; consistency beats perfection.','Notice what made logging easy today and repeat it.','Plan ahead for the meal slot that usually feels hardest.'],
  weight:['Compare weigh-ins under consistent morning conditions.','Avoid changing calories over a single daily scale reading.','Track weekly averages alongside energy and strength.','Let multi-week trends guide adjustments.','Stay steady on your targets until enough data accumulates.'],
  sleep:['Pick a realistic bedtime you can repeat tonight.','Leave a short wind-down window before sleep.','Keep your bedroom dark, cool, and quiet.','Limit late caffeine if it affects sleep quality.','Treat sleep as a scheduled recovery pillar.'],
@@ -28,42 +52,64 @@ const actions={
  done:['Cool down and prioritize protein and hydration.','Stick to your completed session; extra junk volume is unnecessary.','Log how you feel in tomorrow\'s recovery check-in.','Consistent sessions beat occasional exhaustive workouts.','Protect recovery for the rest of today.'],
  water:['Spread hydration steadily across the day.','Update your water counter if you drank cups not yet logged.','Keep a bottle visible as an easy reminder.','Avoid trying to chug your entire target all at once.','Log water regularly for an accurate daily view.']
 };
+const ACTION_CODES={
+ food:'BRIEF_ACTION_LOG_MEAL',
+ complete:'BRIEF_ACTION_CONFIRM_DAY',
+ weight:'BRIEF_ACTION_LOG_WEIGHT',
+ sleep:'BRIEF_ACTION_RECOVERY_CHECKIN',
+ checkin:'BRIEF_ACTION_RECOVERY_CHECKIN',
+ rest:'BRIEF_ACTION_VIEW_WORKOUT',
+ train:'BRIEF_ACTION_START_WORKOUT',
+ done:'BRIEF_ACTION_VIEW_WORKOUT',
+ water:'BRIEF_ACTION_LOG_WATER'
+};
 
-// Pure-English canonical brief with stable `code`, `params`, and `actionTarget` on every note.
+// Pure-English canonical brief with stable `code`, `actionCode`, `params`, and `actionTarget` on every note.
 export function personalBrief(state,today){
  const notes=[],seed=today+':'+(state.profile?.name||'')+':'+(state.profile?.goal||'');
- const add=(role,key,fact,actionKey,priority='normal',code=null,params={},actionTarget=null)=>notes.push({
-  role,
-  key,
-  code:code||`BRIEF_${key.toUpperCase().replace(/[^A-Z0-9]+/g,'_')}`,
-  params,
-  priority,
-  text:`${seedPick(voices[role],seed+':'+key)} ${fact}`,
-  action:seedPick(actions[actionKey]||[actionKey],seed+':action:'+key,Math.floor(Date.parse(today)/86400000/7)),
-  actionTarget:actionTarget||({food:'food',complete:'food',weight:'food',sleep:'recovery',checkin:'recovery',rest:'workout',train:'workout',done:'workout',water:'water'}[actionKey]||'review')
- });
+ const userName=state.profile?.name?String(state.profile.name).trim():null;
+ const add=(role,key,fact,actionKey,priority='normal',code=null,params={},actionTarget=null,actionCode=null)=>{
+  const resolvedTarget=actionTarget||({food:'food',complete:'food',weight:'food',sleep:'recovery',checkin:'recovery',rest:'workout',train:'workout',done:'workout',water:'water'}[actionKey]||'review');
+  const resolvedActionCode=actionCode||ACTION_CODES[actionKey]||(resolvedTarget==='feedback'?'BRIEF_ACTION_SHARE_FEEDBACK':resolvedTarget==='review'?'BRIEF_ACTION_REVIEW_PROPOSAL':resolvedTarget==='recovery'?'BRIEF_ACTION_RECOVERY_CHECKIN':resolvedTarget==='workout'?'BRIEF_ACTION_VIEW_WORKOUT':resolvedTarget==='water'?'BRIEF_ACTION_LOG_WATER':'BRIEF_ACTION_LOG_MEAL');
+  notes.push({
+   role,
+   key,
+   code:code||`BRIEF_${key.toUpperCase().replace(/[^A-Z0-9]+/g,'_')}`,
+   actionCode:resolvedActionCode,
+   params:{...(userName?{userName}:{}),...params},
+   priority,
+   text:`${seedPick(voices[role],seed+':'+key)} ${fact}`,
+   action:seedPick(actions[actionKey]||[actionKey],seed+':action:'+key,Math.floor(Date.parse(today)/86400000/7)),
+   actionTarget:resolvedTarget
+  });
+ };
  const food=(state.foodLogs||[]).filter(x=>x.date<=today),entries=(state.foodEntries||[]).filter(x=>x.date===today),record=latest(food.filter(x=>x.date===today));
  const plan=(state.plans||[]).find(p=>p.id===state.active_plan_id),day=plan?.days?.find(d=>d.date===today);
  const target=day?.targets||plan?.targets;
+ const targetKcal=finite(target?.energy)?Math.round(target.energy):null;
+ const targetProt=finite(target?.protein)?Math.round(target.protein):null;
  const weights=recent((state.weights||[]).filter(x=>finite(x.kg)),today,14);
  const older=weights.filter(x=>x.date<dateOffset(today,-6)),newer=weights.filter(x=>x.date>=dateOffset(today,-6));
  const options=[];
  if(plan){
-  if(record?.complete) options.push(['food-complete',`Food diary for ${today} is complete. Consistent logging enables accurate weekly reviews.`,'complete','normal','BRIEF_FOOD_COMPLETE',{date:today},'food']);
-  else if(entries.length) options.push(['food-partial',`You have logged ${entries.length} meal(s) today and your day is still open; finish logging as you eat.`,'food','normal','BRIEF_FOOD_PARTIAL',{entriesCount:entries.length},'food']);
-  else options.push(['food-missing','No meals logged yet today; start by logging your next actual meal.','food','normal','BRIEF_FOOD_MISSING',{},'food']);
-  if(record?.complete&&finite(record.protein)&&finite(target?.protein))options.push(['protein',`Logged protein today is ${num(record.protein)} g against your ${num(target.protein)} g target.`,'complete','normal','BRIEF_PROTEIN_STATUS',{actualProtein:num(record.protein),targetProtein:num(target.protein)},'food']);
-  if(older.length>=3&&newer.length>=3)options.push(['weight-trend',`Current 7-day average weight is ${num(mean(newer.map(x=>x.kg)))} kg (${newer.length} logs) vs. ${num(mean(older.map(x=>x.kg)))} kg (${older.length} logs) last week.`,'weight','normal','BRIEF_WEIGHT_TREND',{currentAvg:num(mean(newer.map(x=>x.kg))),currentCount:newer.length,previousAvg:num(mean(older.map(x=>x.kg))),previousCount:older.length},'review']);
-  else if(weights.length)options.push(['weight-coverage',`You have ${weights.length} weigh-in(s) in the last 14 days; log at least 3 weigh-ins per week for reliable trend comparisons.`,'weight','normal','BRIEF_WEIGHT_COVERAGE',{count:weights.length},'food']);
+  if(record?.complete) options.push(['food-complete',`Food diary for ${today} is complete. Consistent logging enables accurate weekly reviews.`,'complete','normal','BRIEF_FOOD_COMPLETE',{date:today},'food','BRIEF_ACTION_CONFIRM_DAY']);
+  else if(entries.length) options.push(['food-partial',`You have logged ${entries.length} meal(s) today and your day is still open; finish logging as you eat.`,'food','normal','BRIEF_FOOD_PARTIAL',{entriesCount:entries.length,...(targetKcal?{targetEnergy:targetKcal}:{}),...(targetProt?{targetProtein:targetProt}:{})},'food','BRIEF_ACTION_LOG_MEAL']);
+  else options.push(['food-missing','No meals logged yet today; start by logging your next actual meal.','food','normal','BRIEF_FOOD_MISSING',{...(targetKcal?{targetEnergy:targetKcal}:{}),...(targetProt?{targetProtein:targetProt}:{})},'food','BRIEF_ACTION_LOG_MEAL']);
+  if(record?.complete&&finite(record.protein)&&finite(target?.protein))options.push(['protein',`Logged protein today is ${num(record.protein)} g against your ${num(target.protein)} g target.`,'complete','normal','BRIEF_PROTEIN_STATUS',{actualProtein:num(record.protein),targetProtein:num(target.protein)},'food','BRIEF_ACTION_CONFIRM_DAY']);
+  if(older.length>=3&&newer.length>=3)options.push(['weight-trend',`Current 7-day average weight is ${num(mean(newer.map(x=>x.kg)))} kg (${newer.length} logs) vs. ${num(mean(older.map(x=>x.kg)))} kg (${older.length} logs) last week.`,'weight','normal','BRIEF_WEIGHT_TREND',{currentAvg:num(mean(newer.map(x=>x.kg))),currentCount:newer.length,previousAvg:num(mean(older.map(x=>x.kg))),previousCount:older.length},'review','BRIEF_ACTION_REVIEW_PROPOSAL']);
+  else if(weights.length)options.push(['weight-coverage',`You have ${weights.length} weigh-in(s) in the last 14 days; log at least 3 weigh-ins per week for reliable trend comparisons.`,'weight','normal','BRIEF_WEIGHT_COVERAGE',{count:weights.length},'food','BRIEF_ACTION_LOG_WEIGHT']);
   const decline=matchingNutritionDecline(state,Date.parse(state.serverNow||today+'T23:59:59Z'),state.profile?.timezone);
   const feedback=currentFeedback(state,'nutrition',today);
   const expired=plan.days?.at(-1)?.date<today;
+  const dietBreak=state.lastReview?.dietBreakSuggestion||state.lastReview?.nutrition?.dietBreakSuggestion||null;
   const selected=expired
-   ?['plan-expired','Your previous 7-day nutrition plan has ended. Renew your plan to generate targets for the upcoming week.','Renew your nutrition plan from the Nutrition tab.','attention','BRIEF_PLAN_EXPIRED',{},'food']
+   ?['plan-expired','Your previous 7-day nutrition plan has ended. Renew your plan to generate targets for the upcoming week.','Renew your nutrition plan from the Nutrition tab.','attention','BRIEF_PLAN_EXPIRED',{},'food','BRIEF_ACTION_RENEW_PLAN']
    :feedback?.hunger>=4
-   ?['high-hunger',`You logged hunger ${feedback.hunger}/5 on ${feedback.metricEvidence?.hunger?.date||feedback.date}; calorie reductions are paused while we monitor appetite and energy.`,'Continue logging hunger and energy and review your coaching step.','attention','BRIEF_HIGH_HUNGER',{hunger:feedback.hunger,date:feedback.metricEvidence?.hunger?.date||feedback.date},'feedback']
+   ?['high-hunger',`You logged hunger ${feedback.hunger}/5 on ${feedback.metricEvidence?.hunger?.date||feedback.date}; calorie reductions are paused while we monitor appetite and energy.`,'Continue logging hunger and energy and review your coaching step.','attention','BRIEF_HIGH_HUNGER',{hunger:feedback.hunger,date:feedback.metricEvidence?.hunger?.date||feedback.date},'feedback','BRIEF_ACTION_SHARE_FEEDBACK']
+   :dietBreak?.suggested
+   ?['diet-break-8w',dietBreak.message,'Consider scheduling a 1-2 week maintenance break with your nutrition specialist.','normal','DIET_BREAK_8W_SUGGESTED',{weeksInDeficit:dietBreak.weeksInDeficit},'review','BRIEF_ACTION_REVIEW_PROPOSAL']
    :decline
-   ?[decline.kind==='maintenance'?'maintenance-declined':'calories-declined',decline.kind==='maintenance'?'Your choice to decline the maintenance transition is saved; your goal remains unchanged.':'Your previous choice to decline a calorie change is saved; your plan was not modified.','weight','normal',decline.kind==='maintenance'?'MAINTENANCE_ADVICE_DECLINED':'CALORIE_ADVICE_DECLINED',{},'review']
+   ?[decline.kind==='maintenance'?'maintenance-declined':'calories-declined',decline.kind==='maintenance'?'Your choice to decline the maintenance transition is saved; your goal remains unchanged.':'Your previous choice to decline a calorie change is saved; your plan was not modified.','weight','normal',decline.kind==='maintenance'?'MAINTENANCE_ADVICE_DECLINED':'CALORIE_ADVICE_DECLINED',{},'review','BRIEF_ACTION_REVIEW_PROPOSAL']
    :(options.find(o=>o[0]==='weight-trend')||options.find(o=>o[0]==='protein')||options[0]);
   add('nutrition',...selected);
  }
@@ -76,59 +122,59 @@ export function personalBrief(state,today){
   const scheduled=(state.scheduledSessions||[]).find(s=>s.date===today);
   const next=(state.scheduledSessions||[]).filter(s=>s.date>today).sort((a,b)=>a.date.localeCompare(b.date))[0];
   const insight=state.progressSummary?.workoutSummary?.insights;
-  if(['stop','hold'].includes(ready.status))add('training','safety',ready.reasons?.[0]||'Current recovery or safety flags indicate pausing heavy exercise and reviewing symptoms first.','Stop any painful movement; seek urgent medical care for chest pain or severe dizziness.','urgent',ready.reasonCode||'BRIEF_TRAINING_SAFETY',{},'recovery');
+  if(['stop','hold'].includes(ready.status))add('training','safety',ready.reasons?.[0]||'Current recovery or safety flags indicate pausing heavy exercise and reviewing symptoms first.','Stop any painful movement; seek urgent medical care for chest pain or severe dizziness.','urgent',ready.reasonCode||'BRIEF_TRAINING_SAFETY',{},'recovery','BRIEF_ACTION_SAFETY_STOP');
   else if(['high','caution'].includes(ready.status)){
    const adjustmentActive=p.days?.some(d=>d.exercises?.some(e=>effectiveSets(state,e,today,now)<e.sets));
    const declined=(state.adaptations||[]).some(a=>a.kind==='recovery'&&a.status==='rejected'&&a.setFactor===ready.setFactor&&Date.parse(a.expiresAt)>now&&(a.recoveryEvidenceAt?a.recoveryEvidenceAt===ready.asOf:Date.parse(a.at)>=Date.parse(ready.asOf)));
-   if(adjustmentActive)add('training','adjustment-active','Your approved temporary set reduction is active for today\'s session.','Follow the reduced working sets; no need to make up deloaded sets later.','attention','RECOVERY_ADJUSTMENT_ACTIVE',{setFactor:ready.setFactor},'workout');
-   else if(declined)add('training','fatigue-declined','Your choice to decline the set reduction is saved; your workout plan remains unchanged.','checkin','attention','RECOVERY_ADVICE_DECLINED',{},'recovery');
-   else add('training','fatigue',`Recovery check-in notes: ${ready.reasons?.join(' ')||'elevated recovery strain'}.`,'Review the proposed temporary set reduction before training; nothing changes without your approval.','attention','RECOVERY_DELOAD_SUGGESTED',{setFactor:ready.setFactor},'review');
+   if(adjustmentActive)add('training','adjustment-active','Your approved temporary set reduction is active for today\'s session.','Follow the reduced working sets; no need to make up deloaded sets later.','attention','RECOVERY_ADJUSTMENT_ACTIVE',{setFactor:ready.setFactor},'workout','BRIEF_ACTION_START_WORKOUT');
+   else if(declined)add('training','fatigue-declined','Your choice to decline the set reduction is saved; your workout plan remains unchanged.','checkin','attention','RECOVERY_ADVICE_DECLINED',{},'recovery','BRIEF_ACTION_RECOVERY_CHECKIN');
+   else add('training','fatigue',`Recovery check-in notes: ${ready.reasons?.join(' ')||'elevated recovery strain'}.`,'Review the proposed temporary set reduction before training; nothing changes without your approval.','attention','RECOVERY_DELOAD_SUGGESTED',{setFactor:ready.setFactor},'review','BRIEF_ACTION_REVIEW_PROPOSAL');
   }
-  else if(session?.status==='completed')add('training','completed',`Workout session for ${today} is logged as completed${finite(session.duration)?` (${session.duration} min)`:''}.${ready.status==='unknown'?' Log a fresh recovery check-in before your next session.':''}`,ready.status==='unknown'?'checkin':'done','normal','BRIEF_TRAINING_COMPLETED',{date:today,duration:session.duration??null},ready.status==='unknown'?'recovery':'workout');
-  else if(session?.status==='partial')add('training','partial','Today\'s workout is logged as partial; logging actual effort protects recovery and progression accuracy.'+(ready.status==='unknown'?' Submit a fresh recovery check-in before your next session.':''),ready.status==='unknown'?'checkin':'done','normal','BRIEF_TRAINING_PARTIAL',{},ready.status==='unknown'?'recovery':'workout');
-  else if(session?.status==='missed')add('training','missed','Today\'s workout is marked missed. One missed day does not erase prior progress.',ready.status==='unknown'?'checkin':'Resume on your next scheduled day or reschedule without doubling volume.','normal','BRIEF_TRAINING_MISSED',{},'workout');
-  else if(ready.status==='unknown')add('training','unknown','No fresh recovery check-in is logged yet, so load increases are held until readiness is recorded.','checkin','normal','CHECKIN_MISSING_OR_STALE',{},'recovery');
+  else if(session?.status==='completed')add('training','completed',`Workout session for ${today} is logged as completed${finite(session.duration)?` (${session.duration} min)`:''}.${ready.status==='unknown'?' Log a fresh recovery check-in before your next session.':''}`,ready.status==='unknown'?'checkin':'done','normal','BRIEF_TRAINING_COMPLETED',{date:today,duration:session.duration??null},ready.status==='unknown'?'recovery':'workout',ready.status==='unknown'?'BRIEF_ACTION_RECOVERY_CHECKIN':'BRIEF_ACTION_VIEW_WORKOUT');
+  else if(session?.status==='partial')add('training','partial','Today\'s workout is logged as partial; logging actual effort protects recovery and progression accuracy.'+(ready.status==='unknown'?' Submit a fresh recovery check-in before your next session.':''),ready.status==='unknown'?'checkin':'done','normal','BRIEF_TRAINING_PARTIAL',{},ready.status==='unknown'?'recovery':'workout',ready.status==='unknown'?'BRIEF_ACTION_RECOVERY_CHECKIN':'BRIEF_ACTION_VIEW_WORKOUT');
+  else if(session?.status==='missed')add('training','missed','Today\'s workout is marked missed. One missed day does not erase prior progress.',ready.status==='unknown'?'checkin':'Resume on your next scheduled day or reschedule without doubling volume.','normal','BRIEF_TRAINING_MISSED',{},'workout',ready.status==='unknown'?'BRIEF_ACTION_RECOVERY_CHECKIN':'BRIEF_ACTION_VIEW_WORKOUT');
+  else if(ready.status==='unknown')add('training','unknown','No fresh recovery check-in is logged yet, so load increases are held until readiness is recorded.','checkin','normal','CHECKIN_MISSING_OR_STALE',{...(scheduled?.focus?{focus:scheduled.focus}:{})},'recovery','BRIEF_ACTION_RECOVERY_CHECKIN');
   else {
    const changes=[...(insight?.loadIncreases||[]).map(x=>({...x,type:'up'})),...(insight?.loadDecreases||[]).map(x=>({...x,type:'down'})),...(insight?.repIncreases||[]).map(x=>({...x,type:'reps'}))].filter(x=>x.date===today);
    const change=seedPick(changes,seed+':exercise');
    const changedExercise=p.days?.flatMap(d=>d.exercises||[]).find(e=>e.id===change?.exerciseId);
    if(change){
     const perfCode=change.type==='up'?'BRIEF_TRAINING_PERFORMANCE_UP':change.type==='reps'?'BRIEF_TRAINING_PERFORMANCE_REPS':'BRIEF_TRAINING_PERFORMANCE';
-    const perfParams=change.type==='reps'?{exerciseId:change.exerciseId,fromReps:change.fromReps,toReps:change.toReps}:{exerciseId:change.exerciseId,fromKg:change.fromKg,toKg:change.toKg};
-    add('training','performance',change.type==='reps'?`${change.name} reps progressed from ${change.fromReps} to ${change.toReps} (${changedExercise&&!usesKg(changedExercise)?'bodyweight':`${change.kg} kg`}).`:`${change.name} average load moved from ${change.fromKg} to ${change.toKg} kg.`,'train','normal',perfCode,perfParams,'workout');
+    const perfParams=change.type==='reps'?{exerciseId:change.exerciseId,exerciseName:change.name,fromReps:change.fromReps,toReps:change.toReps}:{exerciseId:change.exerciseId,exerciseName:change.name,fromKg:change.fromKg,toKg:change.toKg};
+    add('training','performance',change.type==='reps'?`${change.name} reps progressed from ${change.fromReps} to ${change.toReps} (${changedExercise&&!usesKg(changedExercise)?'bodyweight':`${change.kg} kg`}).`:`${change.name} average load moved from ${change.fromKg} to ${change.toKg} kg.`,'train','normal',perfCode,perfParams,'workout','BRIEF_ACTION_VIEW_WORKOUT');
    }
-   else if(scheduled)add('training','scheduled',`Today's scheduled workout is ${FOCUS_LABELS[scheduled.focus]||scheduled.focus}. ${ready.domains?.length?'Minor recovery notes exist; monitor effort closely.':'Current readiness supports your planned session.'}`,'train','normal','BRIEF_TRAINING_SCHEDULED',{focus:scheduled.focus},'workout');
-   else add('training','rest',`Rest day today${next?`; next scheduled session is ${next.date} (${FOCUS_LABELS[next.focus]||next.focus})`:''}.`,'rest','normal','BRIEF_TRAINING_REST',{nextDate:next?.date||null,nextFocus:next?.focus||null},'workout');
+   else if(scheduled)add('training','scheduled',`Today's scheduled workout is ${FOCUS_LABELS[scheduled.focus]||scheduled.focus}. ${ready.domains?.length?'Minor recovery notes exist; monitor effort closely.':'Current readiness supports your planned session.'}`,'train','normal','BRIEF_TRAINING_SCHEDULED',{focus:scheduled.focus,...(finite(scheduled.exerciseCount)?{exerciseCount:scheduled.exerciseCount}:{}),...(finite(scheduled.estimatedMinutes)?{estimatedMinutes:scheduled.estimatedMinutes}:{})},'workout','BRIEF_ACTION_START_WORKOUT');
+   else add('training','rest',`Rest day today${next?`; next scheduled session is ${next.date} (${FOCUS_LABELS[next.focus]||next.focus})`:''}.`,'rest','normal','BRIEF_TRAINING_REST',{nextDate:next?.date||null,nextFocus:next?.focus||null},'workout','BRIEF_ACTION_VIEW_WORKOUT');
   }
  }
  const activity=[...(state.foodLogs||[]),...(state.foodEntries||[]),...(state.workoutLogs||[]),...(state.sessions||[]),...(state.waterLogs||[]),...(state.weights||[]),...(state.checkins||[])].filter(x=>x.date<=today);
  const last=latest(activity.filter(x=>x.date<today));
  const daysActive=new Set(recent(activity,today,7).map(x=>x.date)).size;
  const hyd=state.progressSummary?.hydration;
- if(['hold','stop'].includes(ready.status))add('followup','safety-support','Priority right now is addressing the safety hold, not hitting daily targets.','No need to make up meals or workouts; focus on evaluating symptoms first.','attention',ready.reasonCode||'BRIEF_TRAINING_SAFETY',{},'recovery');
- else if(check&&finite(check.sleepHours)&&check.sleepHours<7)add('followup','short-sleep',`Last logged sleep was ${check.sleepHours} hours on ${check.date}; prioritize recovery tonight.`,'sleep','normal','BRIEF_FOLLOWUP_SHORT_SLEEP',{sleepHours:check.sleepHours,date:check.date},'recovery');
- else if(check&&finite(check.fatigue)&&check.fatigue>=4)add('followup','tired',`Logged fatigue was ${check.fatigue}/5 on ${check.date}; keep today's expectations realistic.`,'rest','normal','BRIEF_FOLLOWUP_TIRED',{fatigue:check.fatigue,date:check.date},'recovery');
- else if(last&&last.date<dateOffset(today,-2)&&activity.some(x=>x.date===today))add('followup','return',`Welcome back! Last logged activity was on ${last.date}. Resume smoothly without compensating for missed days.`,'complete','normal','BRIEF_FOLLOWUP_RETURN',{lastDate:last.date},'food');
+ if(['hold','stop'].includes(ready.status))add('followup','safety-support','Priority right now is addressing the safety hold, not hitting daily targets.','No need to make up meals or workouts; focus on evaluating symptoms first.','attention',ready.reasonCode||'BRIEF_TRAINING_SAFETY',{},'recovery','BRIEF_ACTION_SAFETY_STOP');
+ else if(check&&finite(check.sleepHours)&&check.sleepHours<7)add('followup','short-sleep',`Last logged sleep was ${check.sleepHours} hours on ${check.date}; prioritize recovery tonight.`,'sleep','normal','BRIEF_FOLLOWUP_SHORT_SLEEP',{sleepHours:check.sleepHours,date:check.date},'recovery','BRIEF_ACTION_RECOVERY_CHECKIN');
+ else if(check&&finite(check.fatigue)&&check.fatigue>=4)add('followup','tired',`Logged fatigue was ${check.fatigue}/5 on ${check.date}; keep today's expectations realistic.`,'rest','normal','BRIEF_FOLLOWUP_TIRED',{fatigue:check.fatigue,date:check.date},'recovery','BRIEF_ACTION_RECOVERY_CHECKIN');
+ else if(last&&last.date<dateOffset(today,-2)&&activity.some(x=>x.date===today))add('followup','return',`Welcome back! Last logged activity was on ${last.date}. Resume smoothly without compensating for missed days.`,'complete','normal','BRIEF_FOLLOWUP_RETURN',{lastDate:last.date},'food','BRIEF_ACTION_LOG_MEAL');
  else {
   const follow=[];
-  if(hyd&&finite(hyd.targetCups))follow.push(['water',`Hydration logged today: ${hyd.todayCups||0} of ${hyd.targetCups} cups.`,'water','normal','BRIEF_FOLLOWUP_WATER',{cups:hyd.todayCups||0,targetCups:hyd.targetCups},'water']);
-  if(!check)follow.push(['missing-checkin','No recent sleep and energy check-in is logged; adding one helps calibrate daily guidance.','checkin','normal','CHECKIN_MISSING_OR_STALE',{},'recovery']);
-  else if(finite(check.sleepHours))follow.push(['sleep',`Last logged sleep was ${check.sleepHours} hours on ${check.date}. Consistent logging helps spot trends early.`,'sleep','normal','BRIEF_FOLLOWUP_SLEEP',{sleepHours:check.sleepHours,date:check.date},'recovery']);
-  follow.push(['activity',`You logged activity on ${daysActive} day(s) over the past 7 days. Every log clarifies your plan.`,'complete','normal','BRIEF_FOLLOWUP_ACTIVITY',{daysActive},'review']);
+  if(hyd&&finite(hyd.targetCups))follow.push(['water',hyd.clinicianGuided?`Hydration logged today: ${hyd.todayCups||0} of ${hyd.targetCups} cups (follow your physician's fluid limit).`:`Hydration logged today: ${hyd.todayCups||0} of ${hyd.targetCups} cups.`,'water','normal','BRIEF_FOLLOWUP_WATER',{cups:hyd.todayCups||0,targetCups:hyd.targetCups,...(finite(hyd.targetLiters)?{targetLiters:hyd.targetLiters}:{}),...(hyd.clinicianGuided?{clinicianGuided:true}:{})},'water','BRIEF_ACTION_LOG_WATER']);
+  if(!check)follow.push(['missing-checkin','No recent sleep and energy check-in is logged; adding one helps calibrate daily guidance.','checkin','normal','CHECKIN_MISSING_OR_STALE',{},'recovery','BRIEF_ACTION_RECOVERY_CHECKIN']);
+  else if(finite(check.sleepHours))follow.push(['sleep',`Last logged sleep was ${check.sleepHours} hours on ${check.date}. Consistent logging helps spot trends early.`,'sleep','normal','BRIEF_FOLLOWUP_SLEEP',{sleepHours:check.sleepHours,date:check.date},'recovery','BRIEF_ACTION_RECOVERY_CHECKIN']);
+  follow.push(['activity',`You logged activity on ${daysActive} day(s) over the past 7 days. Every log clarifies your plan.`,'complete','normal','BRIEF_FOLLOWUP_ACTIVITY',{daysActive},'review','BRIEF_ACTION_REVIEW_PROPOSAL']);
   add('followup',...seedPick(follow,seed+':followup-topic'));
  }
  const journey=coachingInbox(state,now).items.find(c=>!c.expired);
  if(journey&&agreementMayReplaceFollowup(ready,notes.find(n=>n.role==='followup'))){
   const index=notes.findIndex(n=>n.role==='followup');
   const fact=journey.reviewDue?'Your agreed coaching step is due for review. Did it help?':journey.status==='accepted'?'Your coaching agreement is active; scheduled review on '+journey.reviewOn+'.':journey.title;
-  const note={role:'followup',key:'coaching-'+journey.status,code:journey.reviewDue?'COACHING_REVIEW_DUE':journey.code||'COACHING_BARRIER_AGREEMENT',params:{caseId:journey.id,reviewOn:journey.reviewOn||null},priority:journey.reviewDue?'attention':'normal',text:fact,action:journey.reviewDue?'Report outcome: helped, not_helped, or not_tried.':journey.step,actionTarget:'feedback',caseId:journey.id};
+  const note={role:'followup',key:'coaching-'+journey.status,code:journey.reviewDue?'COACHING_REVIEW_DUE':journey.code||'COACHING_BARRIER_AGREEMENT',actionCode:journey.reviewDue?'BRIEF_ACTION_SHARE_FEEDBACK':'BRIEF_ACTION_REVIEW_PROPOSAL',params:{...(userName?{userName}:{}),caseId:journey.id,reviewOn:journey.reviewOn||null},priority:journey.reviewDue?'attention':'normal',text:fact,action:journey.reviewDue?'Report outcome: helped, not_helped, or not_tried.':journey.step,actionTarget:'feedback',caseId:journey.id};
   if(index>=0)notes[index]=note;else notes.push(note);
  }
  if(state.profile?.sex==='female'&&state.cycleSettings?.enabled){
   const maternal=state.profile?.maternalStatus||'none';
   if(['pregnant','pregnant_t1','pregnant_t2','pregnant_t3'].includes(maternal)){
    notes.push({
-    role:'followup',key:'cycle-paused-pregnancy',code:'CYCLE_PAUSED_PREGNANCY',params:{maternalStatus:maternal},priority:'normal',
+    role:'followup',key:'cycle-paused-pregnancy',code:'CYCLE_PAUSED_PREGNANCY',actionCode:'BRIEF_ACTION_RECOVERY_CHECKIN',params:{...(userName?{userName}:{}),maternalStatus:maternal},priority:'normal',
     text:`Menstrual cycle predictions are paused during pregnancy (${maternal}); maternal safety guidance remains active.`,
     action:'Follow your pregnancy nutrition and movement safety guidelines.',actionTarget:'recovery'
    });
@@ -143,13 +189,13 @@ export function personalBrief(state,today){
     const cycleDay=elapsed+1;
     if(!isOverdue&&cycleDay<=periodLen){
      notes.push({
-      role:'followup',key:'cycle-menstrual',code:'CYCLE_MENSTRUAL_GENTLE_TRAINING',params:{cycleDay},priority:'normal',
+      role:'followup',key:'cycle-menstrual',code:'CYCLE_MENSTRUAL_GENTLE_TRAINING',actionCode:'BRIEF_ACTION_RECOVERY_CHECKIN',params:{...(userName?{userName}:{}),cycleDay},priority:'normal',
       text:`Cycle day ${cycleDay} (menstrual phase): listen to energy and cramp levels; lighter loads, walking, or extra rest are completely normal today.`,
       action:'Adjust session intensity to your energy and log symptoms if helpful.',actionTarget:'recovery'
      });
     }else if(isOverdue||cycleDay>=cycleLen-5){
      notes.push({
-      role:'followup',key:'cycle-luteal-retention',code:'CYCLE_LUTEAL_WATER_RETENTION',params:{cycleDay},priority:'normal',
+      role:'followup',key:'cycle-luteal-retention',code:'CYCLE_LUTEAL_WATER_RETENTION',actionCode:'BRIEF_ACTION_LOG_MEAL',params:{...(userName?{userName}:{}),cycleDay},priority:'normal',
       text:`Cycle day ${cycleDay} (late luteal phase): temporary 0.5-2.0 kg water retention is normal; stay steady on your calorie target and avoid reacting to short-term scale jumps.`,
       action:'Keep steady nutrition and hydration; track multi-week averages.',actionTarget:'food'
      });

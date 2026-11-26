@@ -21,12 +21,30 @@ const regionAliases={quads:'quadriceps',adductors:'hips'};
 export function regionForMuscle(id){const group=byMuscle.get(id)?.group_id||id;return regionAliases[group]||group;}
 export function primaryRegions(exercise){return [...new Set(exercise.muscles.filter(m=>m.role==='primary').map(m=>regionForMuscle(m.muscle_id)))];}
 export function muscleRegions(exercise){return [...new Set(exercise.muscles.map(m=>regionForMuscle(m.muscle_id)))];}
-const schemes={full_body:['squat','horizontal_push','horizontal_pull','hinge','anti_extension','vertical_pull'],upper:['horizontal_push','horizontal_pull','vertical_push','vertical_pull','elbow_flexion','elbow_extension'],lower:['squat','hinge','lunge','knee_flexion','plantar_flexion','anti_extension'],push:['horizontal_push','vertical_push','shoulder_abduction','elbow_extension'],pull:['horizontal_pull','vertical_pull','elbow_flexion','scapular_elevation'],legs:['squat','hinge','lunge','knee_flexion','plantar_flexion'],chest:['horizontal_push','horizontal_push','elbow_extension'],back:['horizontal_pull','vertical_pull','scapular_elevation'],shoulders:['vertical_push','shoulder_abduction','horizontal_pull'],arms:['elbow_flexion','elbow_extension','elbow_flexion'],core:['squat','hinge','anti_extension'],chest_tri:['horizontal_push','horizontal_push','vertical_push','elbow_extension'],back_bi:['horizontal_pull','vertical_pull','scapular_elevation','elbow_flexion'],shoulders_core:['vertical_push','shoulder_abduction','horizontal_pull','anti_extension']};
+const schemes={
+ full_body:['squat','horizontal_push','horizontal_pull','hinge','vertical_push','anti_extension','plantar_flexion','elbow_flexion'],
+ upper:['horizontal_push','horizontal_pull','vertical_push','vertical_pull','shoulder_abduction','elbow_flexion','elbow_extension','scapular_elevation'],
+ lower:['squat','hinge','lunge','knee_flexion','hip_extension','plantar_flexion','anti_extension','hip_abduction'],
+ push:['horizontal_push','vertical_push','horizontal_push','shoulder_abduction','elbow_extension','shoulder_flexion','elbow_extension','anti_extension'],
+ pull:['horizontal_pull','vertical_pull','horizontal_pull','vertical_pull','elbow_flexion','scapular_elevation','elbow_flexion','anti_rotation'],
+ legs:['squat','hinge','lunge','knee_flexion','hip_extension','plantar_flexion','knee_extension','anti_extension'],
+ chest:['horizontal_push','horizontal_push','horizontal_push','vertical_push','shoulder_flexion','elbow_extension','anti_extension','horizontal_push'],
+ back:['horizontal_pull','vertical_pull','horizontal_pull','vertical_pull','scapular_elevation','hinge','elbow_flexion','anti_rotation'],
+ shoulders:['vertical_push','shoulder_abduction','horizontal_pull','shoulder_flexion','scapular_elevation','rotation','anti_rotation','vertical_push'],
+ arms:['elbow_flexion','elbow_extension','elbow_flexion','elbow_extension','wrist_flexion','wrist_extension','elbow_flexion','elbow_extension'],
+ core:['anti_extension','anti_rotation','spinal_flexion','anti_lateral_flexion','rotation','hip_extension','anti_extension','anti_rotation'],
+ chest_tri:['horizontal_push','horizontal_push','vertical_push','elbow_extension','elbow_extension','shoulder_abduction','anti_extension','horizontal_push'],
+ back_bi:['horizontal_pull','vertical_pull','horizontal_pull','elbow_flexion','scapular_elevation','elbow_flexion','anti_rotation','vertical_pull'],
+ shoulders_core:['vertical_push','shoulder_abduction','horizontal_pull','anti_extension','anti_rotation','shoulder_flexion','anti_lateral_flexion','rotation']
+};
+const DURATION_TARGET_COUNTS={20:4,30:5,45:6,60:7,90:8};
+const COMPOUND_PATTERNS=new Set(['squat','hinge','horizontal_push','horizontal_pull','vertical_push','vertical_pull','lunge']);
+const HEAVY_COMPOUND_PATTERNS=new Set(['squat','hinge','horizontal_push','horizontal_pull','vertical_push','vertical_pull']);
 // Conservative exclusion policy, not a clinical clearance or rehabilitation prescription.
-export const INJURY_POLICY_VERSION=2;
+export const INJURY_POLICY_VERSION=3;
 const INJURY_PATTERNS={
  knee_pain:['squat','lunge','knee_extension'], lower_back_pain:['hinge'],
- shoulder_pain:['vertical_push','shoulder_abduction'], wrist_pain:['elbow_flexion'],
+ shoulder_pain:['vertical_push','shoulder_abduction'], wrist_pain:['elbow_flexion','wrist_flexion','wrist_extension'],
  ankle_pain:['plantar_flexion','lunge'], neck_pain:['scapular_elevation'],
  hip_pain:['squat','lunge','hinge'], elbow_pain:[], diastasis_recti:['spinal_flexion','hip_flexion']
 };
@@ -34,7 +52,7 @@ const INJURY_NAMES={
  knee_pain:/jump|plyo|pistol|sissy|lunge|split squat|step.?up|leg press|hack squat|burpee|box jump/i,
  lower_back_pain:/good morning|deadlift|back squat|sit.?up|bent.?over row|barbell.*row|pendlay|front squat|hack squat|overhead press|military press|hyperextension|back extension|superman|russian twist|crunch|\brdl\b|romanian|clean|snatch|swing|rollout|ab wheel/i,
  shoulder_pain:/upright row|behind.*neck|dip|overhead|incline.*bench|barbell.*bench|dumbbell bench press|chest fly|fly with|pec deck|butterfly|pull.?up|chin.?up|muscle.?up|snatch|clean|jerk|handstand|push press/i,
- wrist_pain:/barbell curl|close.grip bench|handstand|push.?up|pushup/i,
+ wrist_pain:/barbell.*curl|wrist curl|close.grip bench|handstand|push.?up|pushup/i,
  ankle_pain:/jump|hop|sprint|plyo|calf raise/i,
  neck_pain:/neck|shrug/i, hip_pain:/sumo|wide.stance|split squat|lunge/i,
  elbow_pain:/skull.?crusher|french press|preacher curl|close.grip|dip|behind.*head/i,
@@ -46,8 +64,11 @@ const PREGNANCY_POST_T1_SUPINE_RE=/supine|flat bench|barbell bench|bench press|f
 const HYPERTENSION_UNSAFE_RE=/handstand|headstand|decline|barbell back squat|conventional deadlift|snatch|clean|jerk|dragon.?flag/i;
 
 export function isFriendlyForInjuries(e,injuries=[],profile={}){
- const injuryOk=canonicalInjuries(injuries).every(injury=>Object.hasOwn(INJURY_PATTERNS,injury)&&
-  !INJURY_PATTERNS[injury].includes(e.pattern)&&!INJURY_NAMES[injury].test(e.name));
+ const injuryOk=canonicalInjuries(injuries).every(injury=>{
+  if(!Object.hasOwn(INJURY_PATTERNS,injury))return false;
+  if(Array.isArray(e.safeForInjuries)&&e.safeForInjuries.includes(injury))return true;
+  return !INJURY_PATTERNS[injury].includes(e.pattern)&&!INJURY_NAMES[injury].test(e.name);
+ });
  if(!injuryOk)return false;
  if(profile?.seniorMode&&SENIOR_UNSAFE_RE.test(e.name))return false;
  if(Array.isArray(profile?.diseases)&&profile.diseases.includes('hypertension')&&HYPERTENSION_UNSAFE_RE.test(e.name))return false;
@@ -68,7 +89,7 @@ export function equipmentAllowed(exercise,prefs,location){
  const allowed=new Set(['bodyweight',...(prefs.homeEquipment||[]).flatMap(x=>equipmentMap[x]||[])]);
  return exercise.equipment.length>0&&exercise.equipment.every(q=>allowed.has(q.equipment_id));
 }
-function score(e,location){return (/\b(squat|push-up|push up|bench press|row|lat pulldown|deadlift|curl|calf raise)\b/i.test(e.name)?-20:0)+(e.loadMode==='assisted'?10:0)+e.equipment.length+(location==='gym'&&e.loadMode==='external'?-5:0);}
+function score(e,location){return (/\b(squat|push-up|push up|bench press|row|lat pulldown|deadlift|curl|calf raise)\b/i.test(e.name)?-20:0)+(eachSide(e)?15:0)+(e.loadMode==='assisted'?10:0)+e.equipment.length+(location==='gym'&&e.loadMode==='external'?-12:0);}
 // Immutable catalog index; user equipment, level and injury filters stay request-local.
 const patternIndex=new Map();
 for(const exercise of catalog.exercises){
@@ -118,7 +139,12 @@ export function workoutPlan(draft){
  if(isPregnant)addWarning('WORKOUT_PREGNANCY_SAFETY_ACTIVE','Pregnancy safety filters active: high-impact, crunches, and post-first-trimester supine movements were excluded.');
  if(hasHypertension)addWarning('WORKOUT_HYPERTENSION_GUIDANCE','Hypertension guidance active: breathe smoothly through each repetition, avoid breath-holding (Valsalva), and keep intensity moderate (RIR >= 3).');
  if(hasDiabetes)addWarning('WORKOUT_DIABETES_GUIDANCE','Diabetes training guidance active: monitor blood glucose around sessions, stay hydrated, and avoid exhaustive fasted workouts.');
- if(hasRenalOrGout)addWarning('WORKOUT_RENAL_GOUT_GUIDANCE','Renal/gout guidance active: training volume is capped conservatively and extra workout-day hydration is enabled.');
+ if(hasRenalOrGout){
+  const renalOnlyMsg=diseases.includes('kidney')
+   ?'Renal safety guidance active: training volume is capped conservatively; follow your physician\'s personalized daily fluid guidance.'
+   :'Gout guidance active: training volume is capped conservatively and extra workout-day hydration is enabled.';
+  addWarning('WORKOUT_RENAL_GOUT_GUIDANCE',renalOnlyMsg);
+ }
  if(days.length===7)addWarning('WORKOUT_SEVEN_DAY_RECOVERY_CAUTION','7-day schedule detected: monitor daily recovery closely and keep intensity moderate on back-to-back sessions.');
  if(split==='upper_lower'&&days.length<2){addWarning('WORKOUT_SPLIT_FALLBACK_FULL_BODY','Upper/Lower split requires at least 2 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
  if(split==='bro_split'&&days.length<4){addWarning('WORKOUT_SPLIT_FALLBACK_FULL_BODY','Bro Split requires at least 4 days; switched to Full Body for balanced muscle coverage.');split='full_body';}
@@ -141,35 +167,54 @@ export function workoutPlan(draft){
   const used=[],missing=[];let seconds=300;
   const exercises=[];
   const fullBodyOrders=[
-   ['squat','horizontal_push','horizontal_pull','hinge','anti_extension','vertical_pull'],
-   ['hinge','horizontal_pull','horizontal_push','squat','anti_extension','vertical_pull'],
-   ['squat','vertical_pull','horizontal_push','hinge','horizontal_pull','anti_extension']
+   ['squat','horizontal_push','horizontal_pull','hinge','vertical_push','plantar_flexion','anti_extension','elbow_flexion'],
+   ['hinge','vertical_pull','horizontal_push','squat','shoulder_abduction','elbow_extension','hip_extension','anti_extension'],
+   ['squat','horizontal_pull','vertical_push','hip_extension','horizontal_push','plantar_flexion','anti_extension','shoulder_abduction']
   ];
-  const patternOrder=focus==='full_body'?(duration<=30?(i%2?fullBodyOrders[1]:fullBodyOrders[0]):fullBodyOrders[focusOccurrence%fullBodyOrders.length]):schemes[focus];
-  for(const pattern of patternOrder){
+  const fullPatternList=focus==='full_body'
+   ?fullBodyOrders[focusOccurrence%fullBodyOrders.length]
+   :schemes[focus];
+  const targetCount=DURATION_TARGET_COUNTS[duration]||6;
+  for(const pattern of fullPatternList){
+   if(exercises.length>=targetCount)break;
    const pool=candidates(pattern,{...draft,fitnessLevel:level},location,used,safetyProfile);
    if(!pool.length){missing.push(pattern);continue;}
-   const compound=['squat','hinge','horizontal_push','horizontal_pull','vertical_push','vertical_pull','lunge'].includes(pattern);
-   let sets=level==='beginner'?2:(level==='advanced'&&compound&&duration>=45&&goal!=='maintain'&&!(goal==='lose'&&draft.goalPace==='fast')?4:3);
+   const compound=COMPOUND_PATTERNS.has(pattern);
+   const heavyCompound=HEAVY_COMPOUND_PATTERNS.has(pattern);
+   let sets=level==='beginner'
+    ?(days.length<=2&&compound&&duration>=30?3:2)
+    :(level==='advanced'&&compound&&duration>=45&&goal!=='maintain'&&!(goal==='lose'&&draft.goalPace==='fast')?4:3);
    if(safetyProfile.seniorMode||isPregnant||hasHypertension||hasRenalOrGout)sets=Math.min(sets,3);
    let rir=level==='beginner'?3:(goal==='maintain'?3:2);
    if(safetyProfile.seniorMode||isPregnant||hasHypertension)rir=Math.max(rir,3);
-   const restSeconds=compound?(goal==='lose'&&duration>=45?90:120):(goal==='lose'&&duration>=45?60:75);
-   const repMin=compound?8:10,repMax=compound?12:15;
-   let fitting=pool.filter(cand=>{
-    const cCost=sets*repMax*3*(eachSide(cand)?2:1)+(sets-1)*restSeconds+60;
-    return seconds+cCost<=duration*60;
-   });
+   const restSeconds=duration<=20
+    ?(compound?60:45)
+    :duration<=30
+     ?(compound?75:55)
+     :(compound?(goal==='lose'&&duration>=45?90:105):(goal==='lose'&&duration>=45?60:75));
+   const isStrengthHypertrophy=['muscle_gain','gain'].includes(goal)&&level!=='beginner'&&!safetyProfile.seniorMode&&!isPregnant;
+   const repMin=(safetyProfile.seniorMode||isPregnant)?10:(heavyCompound&&isStrengthHypertrophy?6:(compound?8:10));
+   const repMax=(safetyProfile.seniorMode||isPregnant)?15:(heavyCompound&&isStrengthHypertrophy?10:(compound?12:15));
+   const calcCost=(cand,sCount)=>sCount*repMax*3*(eachSide(cand)?2:1)+(sCount-1)*restSeconds+60;
+   let fitting=pool.filter(cand=>seconds+calcCost(cand,sets)<=duration*60);
    if(!fitting.length&&sets===4){
     sets=3;
-    fitting=pool.filter(cand=>{
-     const cCost=sets*repMax*3*(eachSide(cand)?2:1)+(sets-1)*restSeconds+60;
-     return seconds+cCost<=duration*60;
-    });
+    fitting=pool.filter(cand=>seconds+calcCost(cand,sets)<=duration*60);
+   }
+   if(!fitting.length&&sets===3&&duration<=30){
+    sets=2;
+    fitting=pool.filter(cand=>seconds+calcCost(cand,sets)<=duration*60);
    }
    if(!fitting.length){missing.push(pattern);continue;}
-   const e=fitting[focusOccurrence%fitting.length];
-   const cost=sets*repMax*3*(eachSide(e)?2:1)+(sets-1)*restSeconds+60;
+   let poolPick=fitting;
+   if(location==='gym'&&HEAVY_COMPOUND_PATTERNS.has(pattern)){
+    const externalPool=poolPick.filter(x=>x.loadMode==='external');
+    if(externalPool.length)poolPick=externalPool;
+   }
+   const bilateralPool=poolPick.filter(x=>!eachSide(x));
+   if(bilateralPool.length)poolPick=bilateralPool;
+   const e=poolPick[focusOccurrence%poolPick.length];
+   const cost=calcCost(e,sets);
    seconds+=cost;used.push(e.id);exercises.push({...e,regions:muscleRegions(e),sets,repMin,repMax,rir,restSeconds});
   }
   return {dayIndex,location,focus,goalNote,exercises,missing,duration,estimatedMinutes:Math.ceil(seconds/60),isTrainingDay:true};

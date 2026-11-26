@@ -1,8 +1,8 @@
 # CuraFit Manual Setup, Secrets & Deployment Checklist
 
-This document lists **every action that requires manual operator intervention** (in Cloudflare Dashboard, Antigravity Desktop / local Wrangler CLI, Google Cloud / Play Console, Apple Developer Console, Firebase Console, or Postman) before promoting CuraFit to Cloud Dev (`dev`) and Production (`main`).
+This document lists **every action that requires manual operator intervention** (in Cloudflare Dashboard, Antigravity Desktop / local Wrangler CLI, Google Cloud / Play Console, Apple Developer Console, or Firebase Console) before promoting CuraFit to Cloud Dev (`dev`) and Production (`main`).
 
-> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts (`294` error codes, `97` coaching codes), bilingual exercise/muscle i18n (`868` exercises + `69` muscles), OpenAPI spec (`84` paths / `50` commands), Postman collection (`16` groups / `140` endpoints), all `13` User Story documents, and `308+` automated tests are already implemented and pushed on branch **`dev`**. The items below are strictly external infrastructure provisioning, secrets, and release operations to complete from **Antigravity Desktop (local machine)** or external developer consoles.
+> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts, bilingual exercise/muscle i18n (`868` exercises + `69` muscles), canonical OpenAPI spec (`contracts/openapi.yaml`; Postman is retired), and automated tests are maintained on branch **`dev`**. Default runtime `[vars]` (`ENFORCE_PRO_ENTITLEMENTS`, `ENABLE_OPENFOODFACTS`, `STRICT_STORE_VERIFICATION`, `MIN_ANDROID_VERSION`, `MIN_IOS_VERSION`) are explicitly configured in `wrangler.jsonc`. The items below are strictly external infrastructure provisioning, secrets, and release operations.
 
 ---
 
@@ -20,8 +20,8 @@ This document lists **every action that requires manual operator intervention** 
 
 ## 1. Cloudflare Infrastructure Provisioning (Cloud Dev & Production)
 
-### 1.1 Create Private Cloudflare R2 Buckets
-Create two **private** R2 buckets (no public bucket URL; all reads/writes pass through Worker HMAC-signed `/v1/media/signed/{token}`):
+### 1.1 Enable R2 & Create Private Cloudflare R2 Buckets
+First enable **R2 Object Storage** in the Cloudflare Dashboard (account `7a3acfb886853d23106e93102fb81731` — required once before Wrangler R2 commands succeed; otherwise Wrangler returns error `10042`), then create two **private** R2 buckets (no public bucket URL; all reads/writes pass through Worker HMAC-signed `/v1/media/signed/{token}`):
 
 ```bash
 wrangler r2 bucket create curafit-media-dev
@@ -47,7 +47,7 @@ npm run deploy:d1:prod
 > **Important:** `drizzle/0006_production_features.sql` is the single consolidated pre-production migration (there is **no `0007`** migration). It executes `ALTER TABLE coaching_users ADD COLUMN avatar_url text;` plus `CREATE TABLE IF NOT EXISTS` for all **17** production tables — including `coaching_streak_freezes` (with `auto_applied`), `coaching_trial_tombstones`, `coaching_custom_recipes`, `coaching_cardio_logs`, and `coaching_cycle_logs`. It is strictly additive and non-destructive.
 
 ### 1.3 Verify Cloudflare Cron Trigger
-`wrangler.jsonc` already configures `"triggers": { "crons": ["0 * * * *"] }` invoking `scheduled()` in `server/cloudflare-entry.mjs` (hourly timezone-aware push reminder dispatch across all 6 production triggers: `ramadan_suhoor_reminder`, `daily_checkin_reminder`, `coaching_case_review`, `weekly_checkin_due`, `plan_renewal_due`, `trial_ending_day5`). Verify in Cloudflare Dashboard -> Workers -> `curafit-api-dev` / `curafit-api` -> **Triggers** after deploying.
+`wrangler.jsonc` already configures `"triggers": { "crons": ["0 * * * *"] }` invoking `scheduled()` in `server/cloudflare-entry.mjs` (hourly timezone-aware bilingual AR/EN push reminder dispatch across `ramadan_suhoor_reminder`, `daily_checkin_reminder`, `pre_workout_reminder`, `meal_reminder`, `hydration_reminder`, `coaching_case_review`, `weekly_checkin_due`, `plan_renewal_due`, `trial_ending_day5`, with strict fasting-window suppression for food and hydration reminders). Verify in Cloudflare Dashboard -> Workers -> `curafit-api-dev` / `curafit-api` -> **Triggers** after deploying.
 
 ---
 

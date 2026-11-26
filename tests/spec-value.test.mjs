@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { estimateNeeds, makeWeek } from '../planner-core.mjs';
-import { generateWorkoutWeek, effectiveInjuries, EXERCISE_LIBRARY } from '../workout-engine.mjs';
+import { workoutPlan, isFriendlyForInjuries } from '../server/workouts.mjs';
 import { empty, generate, command, today, evaluateEligibility, progressSummary } from '../server/coaching.mjs';
 import { library } from '../server/food.mjs';
 import { dateOffset } from '../coaching-shared.mjs';
@@ -72,23 +72,42 @@ test('SPEC-N06: estimateNeeds produces a unified target-weight forecast derived 
   assert.ok(fast.forecast.estimated_weeks_max <= slow.forecast.estimated_weeks_max);
 });
 
-test('SPEC-T08: 0 workout days returns 0 resistance sessions instead of coercing 0 || 3', () => {
-  const zeroPlan = generateWorkoutWeek({ workoutDaysCount: 0, selectedWorkoutDays: [] }, { trainingDays: 0, goal: 'maintain' });
-  assert.equal(zeroPlan.workoutDaysCount, 0);
-  assert.deepEqual(zeroPlan.selectedWorkoutDays, []);
-  assert.ok(zeroPlan.days.every(d => d.isTrainingDay === false));
+test('SPEC-T08: nutrition_only with 0 external training days produces no resistance workout plan', () => {
+  const s = generate(empty(), {
+    name: 'NoWorkout',
+    age: 30,
+    weight: 78,
+    height: 175,
+    sex: 'male',
+    goal: 'maintain',
+    serviceTrack: 'nutrition_only',
+    externalTrainingDays: [],
+    healthConfirmed: true
+  }, 'spec-t08');
+  assert.equal(s.workoutPlan, null);
+  assert.equal(s.profile.trainingDays, 0);
+  assert.deepEqual(s.profile.workoutDays, []);
 });
 
-test('SPEC-MATERNAL-SAFETY: pregnancy does not fabricate lower_back_pain or diastasis_recti diagnoses in effectiveInjuries, and badges avoid categorical safety claims', () => {
-  const injuries = effectiveInjuries({ injuries: ['none'] }, { maternalStatus: 'pregnant_t2' });
-  assert.deepEqual(injuries, []);
-  const kneePlan = generateWorkoutWeek({ workoutDaysCount: 3, injuries: ['knee_pain'] }, { goal: 'maintain' });
-  for (const d of kneePlan.days.filter(x => x.isTrainingDay)) {
-    assert.ok(d.estimatedMinutes <= d.durationMinutes);
+test('SPEC-MATERNAL-SAFETY: pregnancy enforces maternal movement filters without fabricating diagnoses, and knee-injury plans respect duration and injury filters', () => {
+  const pregPlan = workoutPlan({
+    workoutDaysCount: 3,
+    selectedWorkoutDays: [1, 3, 5],
+    injuries: ['none'],
+    maternalStatus: 'pregnant_t2',
+    goal: 'maintain'
+  });
+  for (const d of pregPlan.days) {
+    assert.ok(d.estimatedMinutes <= d.duration);
     for (const ex of d.exercises) {
-      if (ex.injury_safe_badge) {
-        assert.ok(ex.injury_safe_badge.startsWith('بديل منخفض التحميل لـ:'));
-      }
+      assert.equal(isFriendlyForInjuries(ex, [], { maternalStatus: 'pregnant_t2' }), true);
+    }
+  }
+  const kneePlan = workoutPlan({ workoutDaysCount: 3, selectedWorkoutDays: [1, 3, 5], injuries: ['knee_pain'], goal: 'maintain' });
+  for (const d of kneePlan.days) {
+    assert.ok(d.estimatedMinutes <= d.duration);
+    for (const ex of d.exercises) {
+      assert.equal(isFriendlyForInjuries(ex, ['knee_pain'], {}), true);
     }
   }
 });

@@ -162,3 +162,34 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `HIGHLIGHT_MUSCLE_GAIN_SYNERGY` | `synergy` | `info` | — | Lean muscle-gain synergy active: a moderate caloric surplus and high daily protein pair directly with progressive hypertrophy programming. |
 | `HIGHLIGHT_GAIN_SYNERGY` | `synergy` | `info` | — | Healthy weight-gain synergy active: progressive resistance training pairs with a steady daily energy surplus to support quality weight gain. |
 | `HIGHLIGHT_TRAINING_HYDRATION_BOOST` | `hydration` | `info` | `extraMl` | Training-day hydration boost applied: +{0} ml added on scheduled workout days. |
+| `HYDRATION_KIDNEY_CLINICIAN_LIMIT` | `hydration` | `attention` | — | Kidney hydration safety active: daily water target is capped conservatively; follow your physician's personalized fluid limit. |
+| `HYDRATION_SENIOR_SAFETY_CAP` | `hydration` | `info` | — | Senior hydration guidance active: steady daily sipping with a conservative upper cap. |
+| `DIABETES_HYDRATION_BONUS` | `hydration` | `info` | — | Glycemic hydration support (+250 ml) applied for steady daily fluid balance. |
+| `IBS_HYDRATION_BONUS` | `hydration` | `info` | — | Digestive comfort hydration bonus (+150 ml) applied; sip steadily across the day. |
+| `KETO_HYDRATION_BONUS` | `hydration` | `info` | — | Keto hydration bonus (+500 ml) applied to replenish glycogen-linked fluid and electrolyte loss. |
+| `LOW_CARB_HYDRATION_BONUS` | `hydration` | `info` | — | Low-carb hydration bonus (+250 ml) applied to support fluid balance. |
+| `HIGH_PROTEIN_HYDRATION_BONUS` | `hydration` | `info` | — | High-protein hydration bonus (+300 ml) applied to support protein metabolism. |
+| `HIGH_FIBER_HYDRATION_BONUS` | `hydration` | `info` | — | Plant-forward high-fiber hydration bonus (+150 ml) applied for digestive comfort. |
+| `CARDIO_HYDRATION_BONUS` | `hydration` | `info` | `cardioMl` | Cardio sweat-replacement hydration bonus applied for today's logged session. |
+| `HIGH_STEPS_HYDRATION_BONUS` | `hydration` | `info` | — | High-step-day hydration bonus (+250 ml) applied for 10,000+ daily steps. |
+| `HYDRATION_FASTING_PACING` | `hydration` | `info` | — | Fasting hydration pacing: spread your water target steadily rather than drinking large volumes at once. |
+| `HYDRATION_RAMADAN_PACING` | `hydration` | `info` | — | Ramadan hydration pacing: spread fluids steadily between Iftar and Suhoor instead of drinking large amounts at once. |
+| `BRIEF_ACTION_LOG_MEAL` | `brief` | `normal` | — | Log Next Meal |
+| `BRIEF_ACTION_CONFIRM_DAY` | `brief` | `normal` | — | Confirm Food Day |
+| `BRIEF_ACTION_LOG_WEIGHT` | `brief` | `normal` | — | Log Weight |
+| `BRIEF_ACTION_RECOVERY_CHECKIN` | `brief` | `normal` | — | Recovery Check-In |
+| `BRIEF_ACTION_START_WORKOUT` | `brief` | `normal` | — | Start Workout |
+| `BRIEF_ACTION_VIEW_WORKOUT` | `brief` | `normal` | — | View Workout Plan |
+| `BRIEF_ACTION_LOG_WATER` | `brief` | `normal` | — | Log Water |
+| `BRIEF_ACTION_RENEW_PLAN` | `brief` | `normal` | — | Renew Plan |
+| `BRIEF_ACTION_REVIEW_PROPOSAL` | `brief` | `normal` | — | Review Specialist Note |
+| `BRIEF_ACTION_SHARE_FEEDBACK` | `brief` | `normal` | — | Share Update |
+| `BRIEF_ACTION_SAFETY_STOP` | `brief` | `urgent` | — | Review Safety Guidance |
+| `CYCLE_RETENTION_HOLD` | `nutrition` | `info` | `cyclePhase` | Late-luteal or menstrual cycle phase with likely temporary water retention detected; calorie reductions are held steady until fluid balance normalizes. |
+| `DIET_BREAK_8W_SUGGESTED` | `nutrition` | `info` | `weeksInDeficit` | You have sustained a fat-loss phase for 8+ weeks; consider a structured 1-2 week maintenance diet break to support metabolic and appetite recovery. |
+| `PLAN_CARB_CYCLING_ACTIVE` | `nutrition` | `info` | — | Carb cycling active: +10% calories and carbohydrates on training days and -5% on rest days while preserving daily protein targets. |
+| `PLAN_CHOLESTEROL_SAT_FAT_CAP` | `clinical` | `info` | — | Cholesterol safety active: saturated fat is capped at <= 8% of daily energy and high-saturated-fat cuts are excluded. |
+| `PLAN_PREGNANCY_MERCURY_PASTEURIZATION_NOTE` | `clinical` | `attention` | — | Limit tuna to at most 2 servings per week for mercury safety, choose pasteurized dairy only, and cook meats and eggs thoroughly. |
+| `GLUTEN_OATS_CROSS_CONTACT_WARNING` | `nutrition` | `attention` | — | Oats are naturally gluten-free but frequently processed on shared equipment; choose certified gluten-free oats when avoiding gluten. |
+| `RECENT_SORENESS_TOO_HIGH` | `training` | `info` | — | Recent muscle soreness is above 4/10; weekly set volume is held steady to prioritize recovery. |
+| `CARDIO_LEG_DAY_INTERFERENCE_NOTE` | `training` | `info` | `date`, `modality`, `intensity`, `overlapType` | Vigorous cardio overlaps with or sits adjacent to a lower-body strength session; consider spacing sessions by 6+ hours or choosing low-impact aerobic work to protect leg recovery. |

@@ -7,11 +7,12 @@ import {accountRecovery} from './recovery.mjs';
 import {deriveSyncDeltas} from './store.mjs';
 import {dayTotals} from './food.mjs';
 import {getFastingState} from './nutrition-tools.mjs';
-import {todayCardioSummary,bootstrapCycleSummary,dailyCardioMinutes} from './wellness-tools.mjs';
+import {todayCardioSummary,bootstrapCycleSummary} from './wellness-tools.mjs';
 import {computeStreakAndEngagement} from './progress-analytics.mjs';
 import {coachingInbox} from '../coaching-journey.mjs';
 import {FREE_FEATURES} from './subscriptions.mjs';
-import {localDate,needsHealthConfirmation,hasActiveParqRedFlag,needsScheduleConfirmation,isPregnantStatus,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
+import {CLINICAL_CONSTANTS} from '../clinical-constants.mjs';
+import {localDate,dateOffset,needsHealthConfirmation,hasActiveParqRedFlag,needsScheduleConfirmation,isPregnantStatus,effectiveProfileWithLiveAge} from '../coaching-shared.mjs';
 
 function buildEligibilityStatusBlock(needsHealth,parqBlocked,needsSchedule){
  const reasons=[];
@@ -113,19 +114,39 @@ export const presentBootstrap=(s,extras={})=>{
  const resolvedRegion=s.preferences?.region||liveProfile?.region||liveProfile?.region_id||'egypt';
  const hydratedProfile=liveProfile?{...liveProfile,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem,region:resolvedRegion,region_id:resolvedRegion,...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
  const fastingState=getFastingState(s,clockNow());
- const cardioMins=dailyCardioMinutes(s,currDate);
- const isCardioHydrationDay=!wTarget.isWorkoutDay&&cardioMins>=30;
- const hydrationBoostMl=(wTarget.isWorkoutDay||isCardioHydrationDay)?500:0;
- const hydrationBoostReason=wTarget.isWorkoutDay?'workout':isCardioHydrationDay?'cardio':'none';
+ const hydrationBoostMl=wTarget.boostMl;
+ const hydrationBoostReason=wTarget.boostReason;
+ const weeklyHydrationTargets={};
+ for(let offset=-6;offset<=0;offset++){
+  const d=dateOffset(currDate,offset);
+  const dt=d===currDate?wTarget:dailyWaterTarget(s,d);
+  weeklyHydrationTargets[d]={
+   targetCups:dt.targetCups,
+   targetLiters:dt.liters,
+   targetMl:dt.targetMl,
+   boostMl:dt.boostMl,
+   boostReason:dt.boostReason
+  };
+ }
  const mat=s.profile?.maternalStatus||'none';
  const maternalContext=mat!=='none'?{
   status:mat,
   themeToken:'maternal_warm',
-  extraKcal:mat==='pregnant_t2'?340:mat==='pregnant_t3'?450:mat==='breastfeeding'?400:0,
+  extraKcal:mat==='pregnant_t2'?CLINICAL_CONSTANTS.PREGNANCY_T2_EXTRA_KCAL:mat==='pregnant_t3'?CLINICAL_CONSTANTS.PREGNANCY_T3_EXTRA_KCAL:mat==='breastfeeding'?CLINICAL_CONSTANTS.BREASTFEEDING_EXTRA_KCAL:0,
   safetyMode:true
  }:null;
  const calibrationMetadata=s.lastReview?.calibrationMetadata||plan?.calibrationMetadata||s.lastCalibrationMetadata||null;
  const specialistHighlights=plan?.specialistHighlights||s.lastSpecialistHighlights||[];
+ const batchPrepMode=Boolean(s.preferences?.batchPrepMode||s.profile?.batchPrepMode);
+ const discreetMode=Boolean(s.cycleSettings?.discreetMode);
+ const proImpact={
+  streakDays:streakSummary.currentDays??0,
+  foodDaysLogged:(s.foodLogs||[]).filter(f=>f.complete||Number(f.energy||0)>0).length,
+  workoutsCompleted:(s.sessions||[]).filter(x=>x.status==='completed').length,
+  weightsLogged:(s.weights||[]).length,
+  plansGenerated:(s.plans||[]).length,
+  adaptationsAccepted:(s.adaptations||[]).filter(a=>a.status==='accepted').length
+ };
  return {
   schemaVersion:s.schemaVersion||3,
   revision:s.revision,
@@ -133,6 +154,10 @@ export const presentBootstrap=(s,extras={})=>{
   serverDate:currDate,
   timezone:tz,
   onboardingCompleted:Boolean(s.profile),
+  daysSinceStart:engagementState.daysSinceStart??0,
+  batchPrepMode,
+  discreetMode,
+  proImpact,
   serviceTrack:s.onboarding?.serviceTrack||null,
   onboarding:s.onboarding?{
    serviceTrack:s.onboarding.serviceTrack,
@@ -156,15 +181,17 @@ export const presentBootstrap=(s,extras={})=>{
     protein:todayDiary.totals.protein,
     carbs:todayDiary.totals.carbs,
     fat:todayDiary.totals.fat,
+    fiber:todayDiary.totals.fiber,
     targetEnergy:fastingState.seasonalContext?.maintenanceTargetKcal??todayDiary.planEnergy,
     basePlanEnergy:todayDiary.planEnergy,
     targetProtein:dayTargets?.protein??null,
     targetCarbs:dayTargets?.carbs??null,
     targetFat:dayTargets?.fat??null,
+    targetFiber:dayTargets?.fiber??(todayDiary.planEnergy?Math.max(25,Math.min(45,Math.round((todayDiary.planEnergy/1000)*14))):null),
     complete:todayDiary.complete,
     entriesCount:todayDiary.entries.length
    },
-   hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,boostMl:hydrationBoostMl,boostReason:hydrationBoostReason,region:resolvedRegion,region_id:resolvedRegion,bonuses:wTarget.bonuses},
+   hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,targetMl:wTarget.targetMl,boostMl:hydrationBoostMl,boostReason:hydrationBoostReason,clinicianGuided:wTarget.clinicianGuided,guidanceCodes:wTarget.guidanceCodes,region:resolvedRegion,region_id:resolvedRegion,bonuses:wTarget.bonuses,weeklyTargets:weeklyHydrationTargets},
    activity:todayActivity?{steps:todayActivity.steps,activeEnergyKcal:todayActivity.activeEnergyKcal,source:todayActivity.source,updatedAt:todayActivity.at||null}:null,
    cardio:todayCardioSummary(s,currDate),
    latestWeight,

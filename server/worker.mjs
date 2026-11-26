@@ -3,7 +3,7 @@ import {requestJson,cursor,paginateDateCollection,wantsMinimalResponse} from './
 import {coachingInbox,reconcileCoaching} from '../coaching-journey.mjs';
 import {clockNow,isoNow} from './clock.mjs';
 
-import {command,review,evaluateEligibility,progressSummary,previewPlan} from './coaching.mjs';
+import {command,review,evaluateEligibility,progressSummary,previewPlan,dailyWaterTarget} from './coaching.mjs';
 import {catalog,exerciseAlternatives,regionForMuscle,workoutSafetyIssues} from './workouts.mjs';
 import {enrichExercise,matchesExerciseQuery,enrichMuscleCatalog,computeWorkoutPrs} from './workouts-insights.mjs';
 import {accountRecovery} from './recovery.mjs';
@@ -26,7 +26,28 @@ import {personalBrief} from '../personal-brief.mjs';
 import {localDate,dateOffset,integer,validDate,SUPPORTED_REGIONS,countryToRegion} from '../coaching-shared.mjs';
 
 const hasPushConfigured=env=>Boolean(env?.FCM_SERVICE_ACCOUNT_JSON||(env?.APNS_KEY_ID&&env?.APNS_TEAM_ID&&env?.APNS_PRIVATE_KEY&&env?.APNS_BUNDLE_ID));
-const enrichWorkoutPlan=wp=>wp?{...wp,weeklyMuscleSets:wp.weeklySets,days:(wp.days||[]).map(d=>({...d,exercises:(d.exercises||[]).map(e=>{const en=enrichExercise(e);return {...en,targetRepsRange:`${e.repMin}-${e.repMax}`,targetRir:e.rir};})}))}:wp;
+const WORKOUT_COMPOUND_PATTERNS=new Set(['squat','hinge','horizontal_push','horizontal_pull','vertical_push','vertical_pull','lunge']);
+const enrichWorkoutPlan=wp=>wp?{
+ ...wp,
+ weeklyMuscleSets:wp.weeklySets,
+ days:(wp.days||[]).map(d=>{
+  let warmupAttached=false;
+  return {
+   ...d,
+   exercises:(d.exercises||[]).map(e=>{
+    const en=enrichExercise(e);
+    const attachWarmup=!warmupAttached&&WORKOUT_COMPOUND_PATTERNS.has(e.pattern);
+    if(attachWarmup)warmupAttached=true;
+    return {
+     ...en,
+     targetRepsRange:`${e.repMin}-${e.repMax}`,
+     targetRir:e.rir,
+     ...(attachWarmup?{warmupSets:[{setType:'warmup',loadPct:50,reps:8},{setType:'warmup',loadPct:75,reps:4}]}:{})
+    };
+   })
+  };
+ })
+}:wp;
 
 const SECURITY_HEADERS={
  'Cache-Control':'no-store',
@@ -292,7 +313,8 @@ export default {async fetch(request,env){
   if(request.method==='GET'&&url.pathname.startsWith('/v1/foods/barcode/')){
    if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
     const acc=await loadAccount(env.DB,user);
-    await requireProOrConsumeQuota(env.DB,acc,user,{feature:'barcode_scanner'},env);
+    const barcodeDay=localDate(clockNow(),acc?.profile?.timezone||'Africa/Cairo');
+    await requireProOrConsumeQuota(env.DB,acc,user,{feature:'barcode_scanner',quotaKey:'barcode_scan',windowKey:barcodeDay,freeLimit:3},env);
    }
    const ean=decodeURIComponent(url.pathname.slice('/v1/foods/barcode/'.length));
    return json(await lookupBarcode(env.DB,env,ean),200,{},reqId);
@@ -301,7 +323,8 @@ export default {async fetch(request,env){
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
     const acc=await loadAccount(env.DB,user);
-    await requireProOrConsumeQuota(env.DB,acc,user,{feature:'barcode_scanner'},env);
+    const barcodeDay=localDate(clockNow(),acc?.profile?.timezone||'Africa/Cairo');
+    await requireProOrConsumeQuota(env.DB,acc,user,{feature:'barcode_scanner',quotaKey:'barcode_scan',windowKey:barcodeDay,freeLimit:3},env);
    }
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
@@ -630,7 +653,13 @@ export default {async fetch(request,env){
     if(!validDate(date))throw createApiError('Invalid calendar date format; expected YYYY-MM-DD.',400,{code:'INVALID_DATE',params:{field:'date'}});
     return json(dayTotals(s,date),200,{},reqId);
    }
-   if(url.pathname==='/v1/water-logs')return json(paginateDateCollection(s.waterLogs,url),200,{},reqId);
+   if(url.pathname==='/v1/water-logs'){
+    const paged=paginateDateCollection(s.waterLogs,url);
+    const fromQ=url.searchParams.get('from');
+    const toQ=url.searchParams.get('to');
+    const singleDate=(fromQ&&fromQ===toQ&&validDate(fromQ))?fromQ:(url.searchParams.get('date')&&validDate(url.searchParams.get('date'))?url.searchParams.get('date'):null);
+    return json(singleDate?{...paged,dateTarget:dailyWaterTarget(s,singleDate)}:paged,200,{},reqId);
+   }
    if(url.pathname==='/v1/weight-logs')return json(paginateDateCollection(s.weights,url),200,{},reqId);
    if(url.pathname==='/v1/workout-logs'){
     const exFilter=url.searchParams.get('exerciseId');
@@ -826,8 +855,6 @@ export default {async fetch(request,env){
    }else if(body.action==='renew_plan'){
     if(body.payload?.earlyRenew===true){
      await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_plan_renewals'},env);
-    }else{
-     await requireProOrConsumeQuota(env.DB,s,user,{feature:'unlimited_plan_renewals',quotaKey:'plan_renewal',windowKey:'lifetime',freeLimit:1},env);
     }
    }else if(body.action==='adaptation'&&body.payload?.accept===true){
     const targetAdapt=(s.adaptations||[]).find(a=>a.id===body.payload?.id&&a.status==='pending');

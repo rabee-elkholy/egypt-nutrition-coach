@@ -20,7 +20,8 @@ export const FREE_FEATURES = [
   'custom_recipes',
   'cardio_tracking',
   'cycle_awareness',
-  'seasonal_flex'
+  'seasonal_flex',
+  'standard_plan_renewals'
 ];
 
 export const PRO_FEATURES = [
@@ -37,12 +38,15 @@ export const PRO_FEATURES = [
 
 const ACTIVE_SUB_STATUSES = new Set(['active', 'trialing', 'grace_period', 'cancelled_active']);
 const KNOWN_SUB_STATUSES = new Set(['active', 'trialing', 'grace_period', 'cancelled_active', 'account_hold', 'paused', 'billing_retry', 'expired']);
-const FREE_LIMITS = {
+export const FREE_LIMITS = {
   dailyMealSwapsLimit: 2,
   weeklyExerciseSwapsLimit: 2,
-  freePlanRenewalsTotal: 1,
-  aiParsesFreeTotal: 1,
-  aiCoachMessagesFreeTotal: 3
+  barcodeScansDailyLimit: 3,
+  mealCaptureMonthlyLimit: 3,
+  specialistConsultationMonthlyLimit: 5,
+  // Backward-compatible keys
+  aiParsesFreeTotal: 3,
+  aiCoachMessagesFreeTotal: 5
 };
 
 function isoWeekKey(dateStr) {
@@ -257,12 +261,13 @@ export async function resolveEntitlements(db, s, userId, todayDate = null, env =
   const isProFromState = !hasSubRows && (s?.entitlements?.tier === 'pro' || s?.entitlements?.tier === 'premium');
   const isPro = isProFromSub || isProFromState;
 
-  const [mealSwapsUsed, exerciseSwapsUsed, renewalsUsed, aiParsesUsed, aiCoachUsed] = await Promise.all([
+  const monthKey = today.slice(0, 7);
+  const [mealSwapsUsed, exerciseSwapsUsed, barcodeScansUsed, mealCaptureUsed, specialistConsultUsed] = await Promise.all([
     getQuotaUsage(db, userId, 'meal_swap', today),
     getQuotaUsage(db, userId, 'exercise_swap', weekKey),
-    getQuotaUsage(db, userId, 'plan_renewal', 'lifetime'),
-    getQuotaUsage(db, userId, 'ai_parse', 'lifetime'),
-    getQuotaUsage(db, userId, 'ai_coach', 'lifetime')
+    getQuotaUsage(db, userId, 'barcode_scan', today),
+    getQuotaUsage(db, userId, 'meal_capture', monthKey),
+    getQuotaUsage(db, userId, 'specialist_consultation', monthKey)
   ]);
 
   let status = 'none';
@@ -284,6 +289,10 @@ export async function resolveEntitlements(db, s, userId, todayDate = null, env =
         : 'https://play.google.com/store/account/subscriptions')
       : null;
 
+  const mealCaptureRemaining = isPro ? null : Math.max(0, FREE_LIMITS.mealCaptureMonthlyLimit - mealCaptureUsed);
+  const specialistConsultRemaining = isPro ? null : Math.max(0, FREE_LIMITS.specialistConsultationMonthlyLimit - specialistConsultUsed);
+  const barcodeScansRemaining = isPro ? null : Math.max(0, FREE_LIMITS.barcodeScansDailyLimit - barcodeScansUsed);
+
   return {
     tier: isPro ? 'pro' : 'free',
     status,
@@ -298,9 +307,18 @@ export async function resolveEntitlements(db, s, userId, todayDate = null, env =
     managementUrl,
     features: isPro ? PRO_FEATURES : FREE_FEATURES,
     quotas: {
-      aiParsesRemainingFree: isPro ? null : Math.max(0, FREE_LIMITS.aiParsesFreeTotal - aiParsesUsed),
-      aiCoachMessagesRemainingFree: isPro ? null : Math.max(0, FREE_LIMITS.aiCoachMessagesFreeTotal - aiCoachUsed),
-      freePlanRenewalsRemaining: isPro ? null : Math.max(0, FREE_LIMITS.freePlanRenewalsTotal - renewalsUsed),
+      barcodeScansDailyLimit: isPro ? null : FREE_LIMITS.barcodeScansDailyLimit,
+      barcodeScansDailyRemaining: barcodeScansRemaining,
+      mealCaptureMonthly: isPro
+        ? { limit: null, used: mealCaptureUsed, remaining: null }
+        : { limit: FREE_LIMITS.mealCaptureMonthlyLimit, used: mealCaptureUsed, remaining: mealCaptureRemaining },
+      specialistConsultationMonthly: isPro
+        ? { limit: null, used: specialistConsultUsed, remaining: null }
+        : { limit: FREE_LIMITS.specialistConsultationMonthlyLimit, used: specialistConsultUsed, remaining: specialistConsultRemaining },
+      // Backward-compatible quota aliases
+      aiParsesRemainingFree: mealCaptureRemaining,
+      aiCoachMessagesRemainingFree: specialistConsultRemaining,
+      freePlanRenewalsRemaining: null,
       dailyMealSwapsLimit: isPro ? null : FREE_LIMITS.dailyMealSwapsLimit,
       dailyMealSwapsRemaining: isPro ? null : Math.max(0, FREE_LIMITS.dailyMealSwapsLimit - mealSwapsUsed),
       weeklyExerciseSwapsLimit: isPro ? null : FREE_LIMITS.weeklyExerciseSwapsLimit,

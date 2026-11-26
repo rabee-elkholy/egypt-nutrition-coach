@@ -329,3 +329,5 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `CONFLICTING_CONDITIONS` | `400` | No | `conditions` | diabetes_t1 and diabetes_t2 are mutually exclusive and cannot be selected together. |
 | `MULTI_CONDITION_CLINICAL_REVIEW` | `422` | No | `conditions`, `maternalStatus` | Multiple overlapping or high-acuity clinical conditions require direct specialist review before plan generation. |
 | `MULTI_INJURY_REQUIRES_REVIEW` | `422` | No | `injuryCount`, `injuries` | Four or more concurrent injuries (or zero safe exercises for a scheduled day) require specialist review before workout planning; switch to nutrition_only or seek clinical clearance. |
+| `KIDNEY_SODIUM_LIMIT_EXCEEDED` | `400` | No | `limitMg` | Plan exceeds the 2000mg daily sodium limit required for kidney support or lacks sodium measurements. |
+| `CHOLESTEROL_SATURATED_FAT_EXCEEDED` | `400` | No | `maxSatSharePct` | Plan exceeds the 8% daily saturated fat ceiling required for cholesterol management. |

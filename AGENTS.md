@@ -7,8 +7,8 @@
 > 2. **TWO CANONICAL BRANCHES ONLY (`dev` -> `main`):** Always develop and test changes on **`dev`** (`origin/dev`, Cloud Dev) first, verify green CI, and only then fast-forward merge **`dev` -> `main`** (`origin/main`, Production). **NEVER** create ad-hoc feature branches or deploy to OpenAI preview hosting or GitHub Pages.
 > 3. **PURE-ENGLISH DOCS, ERROR & COACHING MESSAGE CONTRACTS:**
 >    - All `4xx`/`5xx` API responses must follow `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta: { requestId, serverTime } }` with **100% English** messages (`contracts/error-codes.json`). All `2xx` responses must follow `{ ok: true, data, meta: { requestId, serverTime, revision? } }`.
->    - All server coaching, brief, review, and eligibility messages are **100% English** with canonical codes & params (`contracts/coaching-codes.json`); the KMM mobile client localizes non-English languages (such as Arabic) on-device.
->    - All documentation (`docs/`, `postman/`, `README.md`, `AGENTS.md`), OpenAPI contracts, examples, and Postman definitions must contain **zero Arabic characters** (enforced automatically by `tests/error-contract.test.mjs`).
+>    - All server coaching, brief, review, and eligibility messages are **100% English** with canonical codes & params (`contracts/coaching-codes.json`); the KMM mobile client localizes non-English languages (such as Arabic) on-device. **Exception:** OS lock-screen APNs/FCM push notifications in `server/push.mjs` are localized in Arabic (`ar`) or English (`en`) per normalized user `locale`, personalized with first name, free of forbidden AI/automated copy, and strictly suppress food/hydration alerts during active IF or Ramadan daylight fasting hours.
+>    - All documentation (`docs/`, `README.md`, `AGENTS.md`) and OpenAPI/JSON contracts (`contracts/openapi.yaml`, `contracts/error-codes.json`, `contracts/coaching-codes.json`) must contain **zero Arabic characters** (enforced automatically by `tests/error-contract.test.mjs`). Postman is permanently retired; do NOT run `postman:generate`.
 > 4. **PRESERVE CATALOGS & KEEP RETIRED SYSTEMS REMOVED:**
 >    - Preserve all food and exercise catalogs in `data/` (`node scripts/check-data-manifest.mjs`).
 >    - Direct first-party Google Sign-In & Apple Sign-In OIDC verification inside Cloudflare Workers (keeping first-party HS256 JWT + D1 refresh tokens) is explicitly supported; third-party BaaS IdPs (Supabase, Auth0, Firebase Auth) remain permanently banned.
@@ -25,10 +25,10 @@
   * Worker: `curafit-api-dev`
   * D1 Database: `curafit-db-dev` (`database_id`: `0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`, binding: `DB`)
 * **Git Repository & Branches:** `https://github.com/rabee-elkholy/egypt-nutrition-coach.git` — Branches: **`dev`** & **`main`**
-* **Postman Documentation (Published):** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `140` endpoints; environments: `CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`)
+* **Canonical API Specification:** `contracts/openapi.yaml` (OpenAPI 3.x is the sole source of truth; Postman is permanently retired)
 * **Worker Entrypoint & Config:** `server/cloudflare-entry.mjs` (bundled into `dist/server/cloudflare.js`), `wrangler.jsonc`, `drizzle/`
 
-Full step-by-step instructions for AI agents and developers (error & coaching contract sync, OpenAPI/Postman regeneration, Drizzle D1 migrations, QA, and CI/CD) live in [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md).
+Full step-by-step instructions for AI agents and developers (error & coaching contract sync, OpenAPI maintenance, Drizzle D1 migrations, QA, and CI/CD) live in [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md).
 
 ---
 
@@ -39,7 +39,7 @@ Run from `e:\Egypt_Nutrition_Local\website\dist`:
 1. **Sync Contracts When Editing Errors, Coaching Codes, Endpoints, or Docs:**
    ```powershell
    node scripts/sync-error-contracts.mjs   # syncs contracts/error-codes.json & coaching-codes.json -> docs/
-   npm.cmd run postman:generate             # regenerates postman/*.json & docs/API_REFERENCE.md
+   # Update contracts/openapi.yaml directly whenever endpoints or DTOs change (Postman is retired)
    ```
 2. **Develop, Test & Deploy on `dev` (Cloud Dev) First:**
    ```powershell
@@ -70,7 +70,7 @@ Run from `e:\Egypt_Nutrition_Local\website\dist`:
 
 1. **Do NOT create branches other than `dev` and `main`.**
 2. **Do NOT replace Production D1 `90fa62f1-7866-4156-ac29-f0aec4814bab` with an empty DB, and do NOT reset `curafit-db-dev` (`0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`) to an empty schema without cloning Production data.**
-3. **Do NOT commit Arabic text into `contracts/`, `docs/`, `postman/`, `README.md`, `AGENTS.md`, or server/domain error or coaching responses.** All server error messages (`contracts/error-codes.json`) and coaching/brief/review/eligibility messages (`contracts/coaching-codes.json`) are pure English with canonical codes & params; non-English UI translations live strictly in the KMM mobile app (and bilingual food/exercise catalog data in `data/`).
+3. **Do NOT commit Arabic text into `contracts/`, `docs/`, `README.md`, `AGENTS.md`, or server/domain error or coaching responses.** All server error messages (`contracts/error-codes.json`) and coaching/brief/review/eligibility messages (`contracts/coaching-codes.json`) are pure English with canonical codes & params; non-English UI translations live strictly in the KMM mobile app (with bilingual AR/EN OS lock-screen push notifications in `server/push.mjs` and bilingual food/exercise catalogs in `data/`).
 4. **Do NOT overwrite `scripts/build.mjs` to remove the `dist/server/cloudflare.js` build target or skip `npm.cmd run check` before pushing.**
 5. **Do NOT use `.openai/hosting.json`, GitHub Pages, or any third-party BaaS IdP (Supabase, Auth0, Firebase Auth).** First-party Google Sign-In and Apple Sign-In OIDC token verification directly inside Cloudflare Workers with first-party HS256 JWT + D1 refresh tokens is explicitly permitted.
 
@@ -105,7 +105,7 @@ All current and upcoming Worker endpoints (`EPIC-01` through `EPIC-10`) MUST fol
 1. **Human-Expert Brand Voice ("CuraFit Specialist Team" — Zero AI/Automated Exposure):** Never output `AI`, `AI Coach`, `Smart Coach`, `automated`, `automatic`, `automatically`, `algorithm`, `engine`, `bot`, or their Arabic equivalents in any user-facing string (warnings, eligibility reasons, briefs, meal/workout explanations, push notifications, or future Q&A prompts/responses). Frame all guidance strictly as the **CuraFit Specialist Team** (e.g., `"Ask the CuraFit Specialist Team"` for `US-CCH-05` / `KAN-84`).
 2. **Additive Machine-Readable Codes:** Keep existing `warnings: string[]` and `eligibility.reasons` / `eligibilityReasons` for backwards compatibility AND emit parallel `warningCodes: string[]` and `eligibilityReasonCodes: string[]` registered in `contracts/coaching-codes.json` so mobile clients localize cleanly without substring matching.
 3. **Centralized Clinical Safety Gate Parity:** Reuse one shared clinical gate across onboarding, profile edits, plan reconfiguration, meal swaps, and workout swaps (`>= 4` injuries or `parqRedFlag === true` -> specialist review for workouts while still computing `nutritionFeasible`; `>= 3` overlapping dietary-restricting chronic conditions -> specialist review; `diabetes_t1`/`diabetes_t2` mutual exclusion; `dash`/`favism`/`lactose_intolerance`/`offal` parity; last-protein-pillar protection; maternal `T1`/`T2`/`T3`/`breastfeeding` and senior `70+` safety floors).
-4. **Persist & Sync `unit_system` and `region_id` + Regional Hydration Bonuses:** Accept and return both camelCase (`unitSystem`, `region`) and snake_case (`unit_system`, `region_id`) across preview, commit, profile update, and hydration endpoints, applying `dailyWaterTarget()` (`+200 ml` warm climate, `+500 ml` training/cardio/gout, `+300 ml` pregnancy, `+600 ml` breastfeeding) consistently everywhere.
+4. **Persist & Sync `unit_system` and `region_id` + Scientific Adaptive Hydration (`dailyWaterTarget()`):** Accept and return both camelCase (`unitSystem`, `region`) and snake_case (`unit_system`, `region_id`) across preview, commit, profile update, and hydration endpoints, applying `dailyWaterTarget()` and `resolveRestAndWorkoutWaterTargets()` consistently everywhere (ABW for `BMI > 30`, sex/senior/CKD base `35`/`33`/`30 ml/kg`, activity `+350`/`+500 ml`, duration-scaled workout `+350`/`+500`/`+700 ml` + intensity-weighted cardio capped at `1200 ml`/`250 ml` CKD + `10,000+` steps `+250 ml`, diet bonuses keto `+500`/high_protein `+300`/low_carb `+250`/plant-forward `+150`, clinical/maternal bonuses gout `+500`/diabetes `+250`/IBS `+150`/pregnancy `+300`/breastfeeding `+600`, warm climate `egypt`/`gulf` `+200 ml`, clamped `2.0..5.0 L`, `2.5 L` CKD `clinicianGuided: true`, `3.5 L` senior `70+`).
 5. **Structured `calibrationMetadata`:** Return additive `calibrationMetadata` (`calibrationReasons`, `adjustedCalories`, `adjustedMacros`, `protectedJoints`, `activeProteinPillars`) on plan previews, generations, renewals, weekly check-ins, and adaptive calibrations to power `SpecialistPlanPreparationCard`.
 6. **Postman Retired:** Do **NOT** update `postman/*`, run `npm run postman:generate`, or publish Postman collections going forward; keep `contracts/openapi.yaml`, `contracts/error-codes.json`, and `contracts/coaching-codes.json` as the canonical API contracts.
 

@@ -123,7 +123,7 @@ test('KMM Error Contract: pure English error catalog, source audit, and live HTT
       'sports.mjs',
       'diet-patterns.mjs',
       'planner-core.mjs',
-      'workout-engine.mjs',
+      'clinical-constants.mjs',
     ].map(f => resolve(f));
 
     for (const file of [...serverFiles, ...sharedFiles]) {

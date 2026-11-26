@@ -4,8 +4,9 @@ import {settingsActions,applySettingsCommand} from './coaching-settings.mjs';
 import {handleCoachingCommand,currentFeedback} from '../coaching-journey.mjs';
 import {usesKg} from '../exercise-load.mjs';
 import {clockNow,isoNow,clockDate,clockTimeZone} from './clock.mjs';
-import {makeWeek,estimateNeeds,scaleSnapshot,sumSnapshots,assessDay,validatePreferences,nutritionQualityIssues,checkPlanFeasibility} from '../planner-core.mjs';
-import {DIETS,FIXED_DIET_MEALS,assertDietDay,isDietUnsafeForProfile} from '../diet-patterns.mjs';
+import {makeWeek,estimateNeeds,applyDietMacroTargets,fitMeal,planningTemplates,scaleSnapshot,sumSnapshots,assessDay,validatePreferences,nutritionQualityIssues,checkPlanFeasibility} from '../planner-core.mjs';
+import {DIETS,FIXED_DIET_MEALS,assertDietDay,isDietUnsafeForProfile,normalizeFastingPreset} from '../diet-patterns.mjs';
+import {CLINICAL_CONSTANTS} from '../clinical-constants.mjs';
 import {EXCLUSIONS} from '../planner-exclusions.mjs';
 import {catalog,workoutPlan,workoutSafetyIssues,exerciseAlternatives,muscleRegions,weeklySetTotals,scheduledSessions,estimatedSessionMinutes,isFriendlyForInjuries} from './workouts.mjs';
 import {recovery,accountRecovery,calorieReview,progression,hasPerformanceDrop,workoutProgressionSummary} from './recovery.mjs';
@@ -13,8 +14,8 @@ import {library,activePlan,foodCommand,replaceMeal,plannedEnergyForDate,dayTotal
 import {ensureTrainingState,forkWorkout,expectedExercises,sessionCompletion,reconcileSessions} from './training-state.mjs';
 import {volumeReview} from './training-review.mjs';
 import {nutritionEvidenceKey,matchingNutritionDecline} from '../nutrition-decisions.mjs';
-import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,SUPPORTED_LOCALES,SUPPORTED_WELLNESS_CONDITIONS,MATERNAL_STATUSES,needsHealthConfirmation,hasActiveParqRedFlag,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES,isPregnantStatus,minSafeEnergyFloor,computeAgeFromBirthDate,resolveProfileBirthDateAndAge,effectiveProfileWithLiveAge,hasConflictingDiabetesConditions,hasMultiConditionClinicalReview,assertNoConflictingDiabetes,resolveUnitSystemInput,resolveRegionInput,computeActiveProteinPillars,evaluateClinicalSafetyGate,buildCalibrationMetadata,buildSpecialistHighlights} from '../coaching-shared.mjs';
-import {saveCustomRecipe,deleteCustomRecipe,logCardioSession,deleteCardioSession,dailyCardioMinutes,updateCycleSettings,logCycleEntry} from './wellness-tools.mjs';
+import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,SUPPORTED_LOCALES,normalizeLocale,SUPPORTED_WELLNESS_CONDITIONS,MATERNAL_STATUSES,needsHealthConfirmation,hasActiveParqRedFlag,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES,isPregnantStatus,minSafeEnergyFloor,computeAgeFromBirthDate,resolveProfileBirthDateAndAge,effectiveProfileWithLiveAge,hasConflictingDiabetesConditions,hasMultiConditionClinicalReview,assertNoConflictingDiabetes,resolveUnitSystemInput,resolveRegionInput,computeActiveProteinPillars,evaluateClinicalSafetyGate,buildCalibrationMetadata,buildSpecialistHighlights} from '../coaching-shared.mjs';
+import {saveCustomRecipe,deleteCustomRecipe,logCardioSession,deleteCardioSession,dailyCardioMinutes,updateCycleSettings,logCycleEntry,computeCycleState} from './wellness-tools.mjs';
 import {apiError} from '../coaching-error.mjs';
 
 const userTz=s=>s?.profile?.timezone||clockTimeZone()||'Africa/Cairo';
@@ -56,31 +57,107 @@ export function normalize(s){
 }
 export function dailyWaterTarget(s,date=userToday(s)){
  const w=Number(s?.profile?.weight)||75;
- const baseMl=Math.round(w*35);
- const activityMl=s?.profile?.activity==='moderate'?350:s?.profile?.activity==='active'?500:0;
+ const h=Number(s?.profile?.height);
+ const hasHeight=Number.isFinite(h)&&h>=120&&h<=230;
+ const bmi=hasHeight?w/((h/100)**2):null;
+ const effectiveWeight=(hasHeight&&bmi>30)?(24*((h/100)**2)+0.35*(w-24*((h/100)**2))):w;
+ const age=Number(s?.profile?.age);
+ const seniorMode=Boolean(s?.profile?.seniorMode||(Number.isFinite(age)&&age>=70));
+ const diseases=Array.isArray(s?.profile?.diseases)?s.profile.diseases:[];
+ const isKidney=diseases.includes('kidney')||diseases.includes('kidney_disease');
+ const hasGout=diseases.includes('gout');
+ const hasDiabetes=diseases.some(d=>['diabetes','diabetes_t1','diabetes_t2'].includes(d));
+ const hasIbs=diseases.includes('ibs');
+ const baseMlPerKg=(isKidney||seniorMode)?30:(s?.profile?.sex==='female'?33:35);
+ const baseMl=Math.round(effectiveWeight*baseMlPerKg);
+ const activityMl=isKidney?0:(s?.profile?.activity==='moderate'?350:s?.profile?.activity==='active'?500:0);
  const weekday=new Date(date+'T12:00:00Z').getUTCDay();
  const externalDays=Array.isArray(s?.profile?.externalTrainingDays)?s.profile.externalTrainingDays:[];
- const isWorkoutDay=scheduledSessions(s,date,1).some(x=>x.date===date)||(s?.sessions||[]).some(x=>x.date===date&&x.status!=='missed')||externalDays.includes(weekday);
- const isCardioHydrationDay=!isWorkoutDay&&dailyCardioMinutes(s,date)>=30;
- const trainingMl=(isWorkoutDay||isCardioHydrationDay)?500:0;
+ const schedMatch=scheduledSessions(s,date,1).find(x=>x.date===date)||null;
+ const loggedSess=(s?.sessions||[]).find(x=>x.date===date&&x.status!=='missed')||null;
+ const isWorkoutDay=Boolean(schedMatch||loggedSess||externalDays.includes(weekday));
+ const sessionMins=Number(loggedSess?.duration||schedMatch?.estimatedMinutes||s?.onboarding?.workoutPrefs?.sessionDuration||s?.profile?.sessionDuration||45);
+ const rawTrainingMl=!isWorkoutDay?0:isKidney?250:sessionMins<=30?350:sessionMins>=61?700:500;
+ const dayCardio=(s?.cardioLogs||[]).filter(c=>c.date===date);
+ const totalCardioMins=dayCardio.reduce((sum,c)=>sum+Number(c.durationMinutes||0),0);
+ const cardioWeightedMl=Math.round(dayCardio.reduce((sum,c)=>{
+  const rate=c.intensity==='vigorous'?11:c.intensity==='low'?5:8;
+  return sum+Number(c.durationMinutes||0)*rate;
+ },0)/50)*50;
+ const rawCardioMl=totalCardioMins<15?0:isKidney?Math.min(250,cardioWeightedMl):(!isWorkoutDay&&totalCardioMins>=30?Math.max(500,Math.min(900,cardioWeightedMl)):Math.min(900,cardioWeightedMl));
+ const exerciseCap=isKidney?250:1200;
+ const trainingMl=Math.min(rawTrainingMl,exerciseCap);
+ const cardioMl=Math.min(rawCardioMl,Math.max(0,exerciseCap-trainingMl));
+ const daySteps=(s?.activityLogs||[]).filter(a=>a.date===date).reduce((mx,a)=>Math.max(mx,Number(a.steps||0)),0);
+ const stepsMl=(!isKidney&&cardioMl===0&&daySteps>=10000)?250:0;
+ const diet=String(s?.preferences?.diet||s?.profile?.dietType||'balanced').toLowerCase();
+ const dietMl=isKidney?0:(diet==='keto'?500:diet==='high_protein'?300:diet==='low_carb'?250:['vegan','vegetarian','mediterranean','dash'].includes(diet)?150:0);
  const maternal=s?.profile?.maternalStatus||'none';
  const maternalMl=isPregnantStatus(maternal)?300:maternal==='breastfeeding'?600:0;
- const diseases=Array.isArray(s?.profile?.diseases)?s.profile.diseases:[];
- const goutMl=diseases.includes('gout')?500:0;
+ const goutMl=(!isKidney&&hasGout)?500:0;
+ const clinicalMl=isKidney?0:((hasDiabetes?250:0)+(hasIbs?150:0));
  const region=s?.preferences?.region||s?.profile?.region||s?.profile?.region_id||'egypt';
- const warmClimateMl=['egypt','gulf'].includes(region)?200:0;
- const totalBonusMl=activityMl+trainingMl+maternalMl+goutMl+warmClimateMl;
+ const warmClimateMl=(!isKidney&&['egypt','gulf'].includes(region))?200:0;
+ const isRamadanActive=Boolean(s?.ramadanMode?.enabled&&!(s.ramadanMode.endDate&&date>s.ramadanMode.endDate));
+ const isFastingActive=diet==='intermittent_fasting'||Boolean(s?.fastingState?.mode&&!['off','none'].includes(s.fastingState.mode));
+ const totalBonusMl=activityMl+trainingMl+cardioMl+stepsMl+dietMl+clinicalMl+maternalMl+goutMl+warmClimateMl;
  const ml=baseMl+totalBonusMl;
- const liters=Math.max(2.0,Math.min(5.0,Math.round((ml/1000)*10)/10));
- const targetCups=Math.round((liters*1000)/250);
+ const maxLiters=isKidney?2.5:seniorMode?3.5:5.0;
+ const liters=Math.max(2.0,Math.min(maxLiters,Math.round((ml/1000)*10)/10));
+ const targetMl=Math.round(liters*1000);
+ const targetCups=Math.round(targetMl/250);
+ const boostMl=trainingMl+cardioMl+stepsMl;
+ const boostReason=(trainingMl>0&&cardioMl>0)?'workout_and_cardio':trainingMl>0?'workout':cardioMl>0?'cardio':stepsMl>0?'steps':'none';
+ const guidanceCodes=[];
+ if(isKidney)guidanceCodes.push('HYDRATION_KIDNEY_CLINICIAN_LIMIT');
+ if(seniorMode)guidanceCodes.push('HYDRATION_SENIOR_SAFETY_CAP');
+ if(maternalMl>0)guidanceCodes.push('MATERNAL_HYDRATION_BONUS');
+ if(goutMl>0)guidanceCodes.push('GOUT_HYDRATION_BONUS');
+ if(!isKidney&&hasDiabetes)guidanceCodes.push('DIABETES_HYDRATION_BONUS');
+ if(!isKidney&&hasIbs)guidanceCodes.push('IBS_HYDRATION_BONUS');
+ if(dietMl>0){
+  if(diet==='keto')guidanceCodes.push('KETO_HYDRATION_BONUS');
+  else if(diet==='high_protein')guidanceCodes.push('HIGH_PROTEIN_HYDRATION_BONUS');
+  else if(diet==='low_carb')guidanceCodes.push('LOW_CARB_HYDRATION_BONUS');
+  else guidanceCodes.push('HIGH_FIBER_HYDRATION_BONUS');
+ }
+ if(warmClimateMl>0)guidanceCodes.push('WARM_CLIMATE_HYDRATION_BONUS');
+ if(trainingMl>0)guidanceCodes.push('HIGHLIGHT_TRAINING_HYDRATION_BOOST');
+ if(cardioMl>0)guidanceCodes.push('CARDIO_HYDRATION_BONUS');
+ if(stepsMl>0)guidanceCodes.push('HIGH_STEPS_HYDRATION_BONUS');
+ if(isRamadanActive)guidanceCodes.push('HYDRATION_RAMADAN_PACING');
+ else if(isFastingActive)guidanceCodes.push('HYDRATION_FASTING_PACING');
  return {
   liters,
+  targetMl,
   targetCups,
   isWorkoutDay,
+  isCardioDay:cardioMl>0,
+  boostMl,
+  boostReason,
+  clinicianGuided:isKidney,
   region,
   region_id:region,
-  bonuses:{baseMl,activityMl,trainingMl,maternalMl,goutMl,warmClimateMl,totalBonusMl}
+  guidanceCodes,
+  bonuses:{baseMl,activityMl,trainingMl,cardioMl,stepsMl,dietMl,clinicalMl,maternalMl,goutMl,warmClimateMl,totalBonusMl}
  };
+}
+export function resolveRestAndWorkoutWaterTargets(state,date=userToday(state)){
+ const weekday=new Date(date+'T12:00:00Z').getUTCDay();
+ const baseProfile={...(state?.profile||{})};
+ const restDayWaterTarget=dailyWaterTarget({
+  ...state,
+  profile:{...baseProfile,externalTrainingDays:[]},
+  workoutPlan:null,
+  sessions:[]
+ },date);
+ const workoutDayWaterTarget=dailyWaterTarget({
+  ...state,
+  profile:{...baseProfile,externalTrainingDays:[weekday]},
+  workoutPlan:null,
+  sessions:[]
+ },date);
+ return {restDayWaterTarget,workoutDayWaterTarget};
 }
 function discardPending(s){for(const a of s.adaptations)if(a.status==='pending')a.status='superseded';}
 
@@ -88,7 +165,7 @@ function defaultTimezoneForRegion(region){
  return ({egypt:'Africa/Cairo',gulf:'Asia/Riyadh',levant:'Asia/Amman',maghreb:'Africa/Casablanca'})[region]||'Africa/Cairo';
 }
 function defaultLocaleForRegion(region){
- return ({gulf:'ar-SA',levant:'ar-JO',maghreb:'ar-MA'})[region]||'ar-EG';
+ return normalizeLocale(({gulf:'ar-SA',levant:'ar-JO',maghreb:'ar-MA'})[region]||'ar-EG','ar')||'ar';
 }
 function resolveEatingStart(d){
  if(d.ifStartHour!=null){
@@ -97,26 +174,9 @@ function resolveEatingStart(d){
  }
  return d.eatingStart||'12:00';
 }
-function applyDietMacroPreview(targets,dietType,weight){
- const round1=x=>Math.round(x*10)/10;
- const t={...targets};
- if(dietType==='high_protein'){
-  const weightBasis=t.effective_weight??Number(weight);
-  const maxFactor=t.max_protein_factor??1.8;
-  const resolvedFactor=Math.min(maxFactor,Math.max(t.protein_factor||1.6,1.6));
-  t.protein=round1(weightBasis*resolvedFactor);
-  t.protein_factor=resolvedFactor;
-  t.carbs=round1(Math.max(0,t.energy-t.protein*4-t.fat*9)/4);
- }else if(dietType==='low_carb'){
-  t.carbs=100;
-  t.fat=round1(Math.max(0,t.energy-t.protein*4-400)/9);
-  t.carb_target_scope='Total carbohydrates capped at <= 130 g/day (not a ketogenic plan).';
- }else if(dietType==='keto'){
-  t.carbs=30;
-  t.fat=round1(Math.max(0,t.energy-t.protein*4-120)/9);
-  t.carb_target_scope='Target 30 g total carbohydrates (strict ceiling <= 50 g/day; total carbs, not net carbs).';
- }
- return t;
+function applyDietMacroPreview(targets,dietType,profileOrWeight){
+ const prof=profileOrWeight&&typeof profileOrWeight==='object'?profileOrWeight:{weight:profileOrWeight};
+ return applyDietMacroTargets(targets,dietType,prof);
 }
 
 function parseOptionalParqRedFlag(d){
@@ -152,10 +212,37 @@ function buildNutritionPrefs(d,declaredDiseases,region,unitSystem='metric'){
  const baseProteins=dietType==='vegan'?['legumes','nuts']:dietType==='vegetarian'?['legumes','eggs','dairy','nuts']:['legumes','eggs','dairy','chicken','fish','meat','nuts'];
  const proteins=declaredDiseases.includes('lactose_intolerance')?baseProteins.filter(p=>p!=='dairy'):baseProteins;
  const eatingStart=resolveEatingStart(d);
+ const rawIfPreset=d.ifPreset??d.fastingPreset??d.fasting;
+ let resolvedFasting=fixed?.fasting||'none';
+ let resolvedIfPreset=null;
+ if(dietType==='intermittent_fasting'){
+  const parsed=normalizeFastingPreset(rawIfPreset,'16_8');
+  if(!parsed){
+   throw apiError('FASTING_WINDOW_INVALID','ifPreset must be one of 12_12, 14_10, 16_8, or 18_6.',{
+    status:400,
+    fieldErrors:[{field:'ifPreset',code:'FASTING_WINDOW_INVALID',message:'Invalid intermittent fasting preset.'}]
+   });
+  }
+  resolvedFasting=parsed.fasting;
+  resolvedIfPreset=parsed.preset;
+ }else if(rawIfPreset!=null&&rawIfPreset!==''&&rawIfPreset!=='none'&&rawIfPreset!=='off'){
+  const parsed=normalizeFastingPreset(rawIfPreset,null);
+  if(!parsed){
+   throw apiError('FASTING_WINDOW_INVALID','ifPreset must be one of 12_12, 14_10, 16_8, or 18_6.',{
+    status:400,
+    fieldErrors:[{field:'ifPreset',code:'FASTING_WINDOW_INVALID',message:'Invalid intermittent fasting preset.'}]
+   });
+  }
+  resolvedFasting=parsed.fasting;
+  resolvedIfPreset=parsed.preset;
+ }
  return {
   diet:dietType,
-  fasting:fixed?.fasting||'none',
+  fasting:resolvedFasting,
+  ...(resolvedIfPreset?{ifPreset:resolvedIfPreset}:{}),
   eatingStart,
+  carbCycling:d.carbCycling===true,
+  batchPrepMode:d.batchPrepMode===true,
   region,
   region_id:region,
   unitSystem,
@@ -170,12 +257,12 @@ function buildNutritionPrefs(d,declaredDiseases,region,unitSystem='metric'){
 }
 
 function buildHydrationCalibrationReasons(waterTarget,dietType){
- const reasons=[];
- if(waterTarget?.bonuses?.warmClimateMl>0)reasons.push('WARM_CLIMATE_HYDRATION_BONUS');
- if(waterTarget?.bonuses?.goutMl>0)reasons.push('GOUT_HYDRATION_BONUS');
- if(waterTarget?.bonuses?.maternalMl>0)reasons.push('MATERNAL_HYDRATION_BONUS');
+ const reasons=[...(waterTarget?.guidanceCodes||[])];
+ if(waterTarget?.bonuses?.warmClimateMl>0&&!reasons.includes('WARM_CLIMATE_HYDRATION_BONUS'))reasons.push('WARM_CLIMATE_HYDRATION_BONUS');
+ if(waterTarget?.bonuses?.goutMl>0&&!reasons.includes('GOUT_HYDRATION_BONUS'))reasons.push('GOUT_HYDRATION_BONUS');
+ if(waterTarget?.bonuses?.maternalMl>0&&!reasons.includes('MATERNAL_HYDRATION_BONUS'))reasons.push('MATERNAL_HYDRATION_BONUS');
  if(dietType==='dash')reasons.push('DASH_SODIUM_CEILING');
- return reasons;
+ return [...new Set(reasons)];
 }
 
 export function previewPlan(d={}){
@@ -232,7 +319,7 @@ export function previewPlan(d={}){
   fastingAcknowledged:dietType==='intermittent_fasting'
  };
  const baseTargets=estimateNeeds(previewProfile);
- const targets=applyDietMacroPreview(baseTargets,dietType,weight);
+ const targets=applyDietMacroPreview(baseTargets,dietType,previewProfile);
  const currWeekday=new Date(currDate+'T12:00:00Z').getUTCDay();
  const injuries=Array.isArray(normalized.injuries)?canonicalInjuries(clean(normalized.injuries)):[];
  const level=normalized.fitnessLevel||'beginner',loc=normalized.workoutLocation||'gym_only';
@@ -291,11 +378,12 @@ export function previewPlan(d={}){
    }
   }
  }
- const baseWaterProfile={weight,activity:normalized.activity||normalized.dailyActivity||'light',maternalStatus,diseases:declaredDiseases};
- const mockState={profile:{...baseWaterProfile,externalTrainingDays:resolvedWorkoutDays,region},preferences:{region},sessions:[],workoutPlan:null};
+ const baseWaterProfile={weight,height,sex:normalized.sex,age,seniorMode,activity:normalized.activity||normalized.dailyActivity||'light',maternalStatus,diseases:declaredDiseases,sessionDuration:normalized.sessionDuration??45};
+ const waterPrefs={region,diet:dietType};
+ const waterOnboarding={workoutPrefs:{sessionDuration:normalized.sessionDuration??45}};
+ const mockState={profile:{...baseWaterProfile,externalTrainingDays:resolvedWorkoutDays,region},preferences:waterPrefs,onboarding:waterOnboarding,sessions:[],workoutPlan:null};
  const waterTarget=dailyWaterTarget(mockState,currDate);
- const restDayWaterTarget=dailyWaterTarget({profile:{...baseWaterProfile,externalTrainingDays:[],region},preferences:{region},sessions:[],workoutPlan:null},currDate);
- const workoutDayWaterTarget=dailyWaterTarget({profile:{...baseWaterProfile,externalTrainingDays:[currWeekday],region},preferences:{region},sessions:[],workoutPlan:null},currDate);
+ const {restDayWaterTarget,workoutDayWaterTarget}=resolveRestAndWorkoutWaterTargets(mockState,currDate);
  const activeProteinPillars=computeActiveProteinPillars(dietType,declaredDiseases,prefs.excludedGroups);
  if(normalized.serviceTrack!=='workouts_only'){
   if(activeProteinPillars.length===0){
@@ -424,7 +512,7 @@ export function generate(s,d,seed=crypto.randomUUID()){
  const bmi=weight/((height/100)**2);if(bmi<12.5||bmi>65)throw apiError('BMI_OUT_OF_RANGE','Calculated BMI is outside the standard CuraFit Specialist Team planning range (12.5..65).',{status:400});if(bmi<18.5&&d.goal==='lose')throw apiError('WEIGHT_LOSS_UNDERWEIGHT_UNSAFE','Weight loss plans are not suitable when current BMI is below 18.5.',{status:400});
  const timezone=d.timezone?String(d.timezone).trim():defaultTimezoneForRegion(region);
  if(!validTimeZone(timezone))throw apiError('INVALID_TIMEZONE','Invalid IANA timezone identifier.',{status:400});
- const locale=d.locale&&SUPPORTED_LOCALES.has(d.locale)?d.locale:defaultLocaleForRegion(region);
+ const locale=(d.locale!=null&&String(d.locale).trim()!==''?normalizeLocale(d.locale,null):null)||defaultLocaleForRegion(region);
  let cleanName=String(d.name??s.profile?.name??'').trim();
  if(d.name!==undefined&&d.name!==null&&String(d.name).trim()!==''){
   if(cleanName.length<2||cleanName.length>50||!/\p{L}/u.test(cleanName)||!/^[\p{L}\p{N}\s'-]+$/u.test(cleanName))throw apiError('INVALID_PROFILE_NAME','Profile name must be 2 to 50 valid characters.',{status:400});
@@ -453,6 +541,8 @@ export function generate(s,d,seed=crypto.randomUUID()){
   externalTrainingDays,
   allowZeroExternalTraining:d.serviceTrack==='nutrition_only',
   diseases:declaredDiseases,
+  carbCycling:d.carbCycling===true,
+  batchPrepMode:d.batchPrepMode===true,
   ketoAcknowledged:d.dietType==='keto',
   fastingAcknowledged:d.dietType==='intermittent_fasting'
  };
@@ -488,6 +578,7 @@ export function generate(s,d,seed=crypto.randomUUID()){
  const workoutPrefs={weekdayConvention:'js_sunday_0',fitnessLevel:level,selectedWorkoutDays:wp?.days.map(x=>x.dayIndex)||externalTrainingDays,workoutDaysCount:wp?.days.length||externalTrainingDays.length,workoutSplitPreference:wp?d.workoutSplitPreference??'auto':'auto',workoutLocation:loc,dayLocations:wp?Object.fromEntries(wp.days.map(day=>[day.dayIndex,day.location])):{},homeEquipment:normEquip,sessionDuration:wp?d.sessionDuration??45:45,injuries:rawInjuries.length?rawInjuries:['none'],healthConfirmed:d.healthConfirmed===true||parqRedFlag===false,...(typeof parqRedFlag==='boolean'?{parqRedFlag}:{}),externalTrainingDays};
  s.onboarding={serviceTrack:d.serviceTrack,workoutPrefs,isAuthenticated:true,...(journeyStartedOn?{journeyStartedOn}:{})};ensureTrainingState(s);
  const waterSnapshot=dailyWaterTarget(s,startLocalDate);
+ const {restDayWaterTarget:genRestWater,workoutDayWaterTarget:genWorkoutWater}=resolveRestAndWorkoutWaterTargets(s,startLocalDate);
  const calibrationMetadata=buildCalibrationMetadata({
   calibrationReasons:[
    ...(plan?.targets?.noteCodes||[]),
@@ -519,17 +610,25 @@ export function generate(s,d,seed=crypto.randomUUID()){
   serviceTrack:d.serviceTrack,
   workoutDaysCount:d.serviceTrack==='nutrition_only'?externalTrainingDays.length:(wp?.days?.length||externalTrainingDays.length),
   region,
-  restDayWaterTarget:waterSnapshot,
-  workoutDayWaterTarget:{...waterSnapshot,bonuses:{...(waterSnapshot.bonuses||{}),trainingMl:(wp?.days?.length||externalTrainingDays.length)>0?500:0}},
+  restDayWaterTarget:genRestWater,
+  workoutDayWaterTarget:genWorkoutWater,
   warningCodes:[...(plan?.targets?.noteCodes||[]),...(wp?.warningCodes||[])]
  });
  s.lastCalibrationMetadata=calibrationMetadata;
  s.lastSpecialistHighlights=specialistHighlights;
  if(plan){plan.created_at=isoNow();plan.effective_from=startLocalDate;plan.calibrationMetadata=calibrationMetadata;plan.specialistHighlights=specialistHighlights;s.plans.push(plan);s.active_plan_id=plan.id;}else s.active_plan_id=null;
  if(prefs.diet==='intermittent_fasting'){
+  const ifSpec=normalizeFastingPreset(prefs.ifPreset??prefs.fasting,'16_8');
   const [hh,mm]=prefs.eatingStart.split(':').map(Number);
-  const endH=(hh+8)%24;
-  s.fastingState={...(s.fastingState||{}),mode:'if_16_8',windowStart:prefs.eatingStart,windowEnd:`${String(endH).padStart(2,'0')}:${String(mm).padStart(2,'0')}`};
+  const endH=(hh+ifSpec.windowHours)%24;
+  s.fastingState={
+   ...(s.fastingState||{}),
+   mode:`if_${ifSpec.preset}`,
+   preset:ifSpec.preset,
+   windowHours:ifSpec.windowHours,
+   windowStart:prefs.eatingStart,
+   windowEnd:`${String(endH).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
+  };
  }
  s.nutritionContextStartedOn=startLocalDate;s.lastReview=null;s.sessionAdjustment=null;discardPending(s);return s;
 }
@@ -560,27 +659,50 @@ export function review(s){
  const averageWeight=targetWeights.length?targetWeights.reduce((n,w)=>n+w.kg,0)/targetWeights.length:null;
  const reached=!s.profile.recomposition&&targetWeights.length>=3&&s.profile.targetWeight&&((s.profile.goal==='lose'&&averageWeight<=s.profile.targetWeight)||(['gain','muscle_gain'].includes(s.profile.goal)&&averageWeight>=s.profile.targetWeight));
  const minFloor=minSafeEnergyFloor(s.profile);
- if(plan&&ready.status==='ready'&&reached){
+ const isNutritionOnly=s.onboarding?.serviceTrack==='nutrition_only';
+ const nutritionRecoveryOk=ready.status==='ready'||(isNutritionOnly&&ready.status!=='stop'&&ready.reasonCode!=='ILLNESS_HOLD'&&ready.reasonCode!=='RED_FLAGS_STOP');
+ const cycleState=computeCycleState(s,clockNow());
+ const deficitAnchor=contextStart||s.onboarding?.journeyStartedOn||null;
+ const deficitDays=deficitAnchor&&validDate(deficitAnchor)
+  ?Math.max(0,Math.floor((Date.parse(currDate+'T12:00:00Z')-Date.parse(deficitAnchor+'T12:00:00Z'))/86400000))
+  :0;
+ const dietBreakSuggested=Boolean(
+  plan&&
+  s.profile?.goal==='lose'&&
+  !s.profile?.recomposition&&
+  deficitDays>=CLINICAL_CONSTANTS.DIET_BREAK_DAYS_THRESHOLD&&
+  !s.adaptations.some(a=>a.kind==='maintenance'&&a.status==='accepted'&&Date.parse(a.at)>=clockNow()-CLINICAL_CONSTANTS.DIET_BREAK_DAYS_THRESHOLD*86400000)
+ );
+ const dietBreakSuggestion=dietBreakSuggested?{
+  suggested:true,
+  weeksInDeficit:Math.floor(deficitDays/7),
+  reasonCode:'DIET_BREAK_8W_SUGGESTED',
+  message:`You have sustained a fat-loss phase for ${Math.floor(deficitDays/7)} weeks; consider a structured 1-2 week maintenance diet break to support metabolic and appetite recovery.`
+ }:null;
+ if(plan&&nutritionRecoveryOk&&reached){
   nutrition={action:'propose',reasonCode:'GOAL_WEIGHT_REACHED_MAINTENANCE',reviewScope:'system_generated_guidance',reason:`Your 7-day average weight (${Math.round(averageWeight*10)/10} kg) has reached your target weight; we propose transitioning to a maintenance plan.`};
   if(matchingNutritionDecline(s,clockNow(),tz,'maintenance'))nutrition={...nutrition,action:'hold',reasonCode:'MAINTENANCE_ADVICE_DECLINED',reason:'Your choice to decline the maintenance transition is saved. Your goal remains unchanged until new data arrives.'};
-  else proposals.push({kind:'maintenance',averageWeight,...nutrition,nutritionEvidence:nutritionEvidenceKey(s,clockNow(),tz),expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
+  else{
+   const refMs=ready.asOf?Date.parse(ready.asOf):(s.checkins.at(-1)?.at?Date.parse(s.checkins.at(-1).at):clockNow());
+   proposals.push({kind:'maintenance',averageWeight,...nutrition,nutritionEvidence:nutritionEvidenceKey(s,clockNow(),tz),expiresAt:new Date(Math.min(clockNow()+86400000,refMs+86400000)).toISOString()});
+  }
  }
- else if(plan&&ready.status==='ready'&&s.lastVolumeChange&&clockNow()-s.lastVolumeChange<14*86400000){
+ else if(plan&&nutritionRecoveryOk&&s.lastVolumeChange&&clockNow()-s.lastVolumeChange<14*86400000){
   nutrition={action:'hold',reasonCode:'COOLDOWN_14D',reviewScope:'system_generated_guidance',reason:'Monitoring your response to a recent training volume adjustment; at least 14 days are required before proposing a calorie change.'};
  }
- else if(plan&&ready.status==='ready'){
-  nutrition=calorieReview(contextWeights,contextFood,s.profile.recomposition?'recomposition':s.profile.goal,Number(plan.targets.energy),clockNow(),s.lastCalorieChange||0,tz);
+ else if(plan&&nutritionRecoveryOk){
+  nutrition=calorieReview(contextWeights,contextFood,s.profile.recomposition?'recomposition':s.profile.goal,Number(plan.targets.energy),clockNow(),s.lastCalorieChange||0,tz,cycleState);
   if(contextStart)nutrition.contextStartedOn=contextStart;
   const perfDrop=hasPerformanceDrop(s.workoutLogs,clockNow(),tz);
   if(nutrition.action==='propose'&&nutrition.delta<0&&isPregnantStatus(s.profile.maternalStatus))nutrition={...nutrition,action:'hold',reasonCode:'MATERNAL_CALORIE_CUT_BLOCKED',reason:'Calorie reductions are disabled during pregnancy for maternal safety.'};
   if(nutrition.action==='propose'&&nutrition.delta<0&&perfDrop)nutrition={...nutrition,action:'hold',reasonCode:'PERFORMANCE_DROP_CALORIE_CUT_HOLD',reason:'Training performance declined recently; calories are held steady to protect lean mass and recovery instead of cutting further.'};
   const feedback=currentFeedback(s,'nutrition',currDate);
-  if(nutrition.action==='propose'&&nutrition.delta<0&&(feedback?.hunger>=4||feedback?.energy<=2&&feedback?.energy!=null))nutrition={...nutrition,action:'hold',reasonCode:'APPETITE_ENERGY_REVIEW_REQUIRED',reason:'High hunger or low energy was recently logged; calories are held steady pending follow-up instead of reducing right now.'};
+  if(nutrition.action==='propose'&&nutrition.delta<0&&(feedback?.hunger>=4||(feedback?.energy<=2&&feedback?.energy!=null)))nutrition={...nutrition,action:'hold',reasonCode:'APPETITE_ENERGY_REVIEW_REQUIRED',reason:'High hunger or low energy was recently logged; calories are held steady pending follow-up instead of reducing right now.'};
   if(nutrition.action==='propose'&&matchingNutritionDecline(s,clockNow(),tz,'calories'))nutrition={...nutrition,action:'hold',reasonCode:'CALORIE_ADVICE_DECLINED',reason:'Your previous choice to decline a calorie change is saved; your plan was not modified.'};
   if(nutrition.action==='propose'){
    const requestedEnergy=Number(plan.targets.energy)+nutrition.delta;
    if(requestedEnergy<minFloor)nutrition={...nutrition,action:'hold',reasonCode:'MIN_SAFE_ENERGY_FLOOR_HOLD',minEnergyFloor:minFloor,reason:`Calories were held at the safe planning floor (${minFloor} kcal) instead of reducing further.`};
-   else if(requestedEnergy>4200)nutrition={...nutrition,action:'hold',reasonCode:'MAX_SAFE_ENERGY_CEILING_HOLD',maxEnergyCeiling:4200,reason:'Calories were held at the safe planning ceiling (4200 kcal).'};
+   else if(requestedEnergy>CLINICAL_CONSTANTS.MAX_ENERGY_CEILING)nutrition={...nutrition,action:'hold',reasonCode:'MAX_SAFE_ENERGY_CEILING_HOLD',maxEnergyCeiling:CLINICAL_CONSTANTS.MAX_ENERGY_CEILING,reason:`Calories were held at the safe planning ceiling (${CLINICAL_CONSTANTS.MAX_ENERGY_CEILING} kcal).`};
    else try{
     validateEnergyChange(s,requestedEnergy,nutrition.delta);
     retargetPlan(structuredClone(plan),requestedEnergy,s.preferences,dateOffset(currDate,1),s.profile);
@@ -588,6 +710,9 @@ export function review(s){
    }
    catch(error){if(error instanceof TypeError||error instanceof ReferenceError)throw error;nutrition={...nutrition,action:'hold',reasonCode:'PLAN_CONSTRAINTS_ADJUSTMENT_HOLD',reason:'Current calories were kept because the proposed change could not satisfy your dietary, macro, or exclusion constraints.'};}
   }
+ }
+ if(dietBreakSuggestion){
+  nutrition={...nutrition,dietBreakSuggestion};
  }
  const volume=volumeReview(s,ready,clockNow());
  if(!proposals.length&&volume.action==='propose')proposals.push({...volume,expiresAt:new Date(Math.min(clockNow()+86400000,Date.parse(ready.asOf||s.checkins.at(-1)?.at)+86400000)).toISOString()});
@@ -606,6 +731,7 @@ export function review(s){
  const reviewCalReasons=[
   ...(proposals.length?proposals.map(p=>p.reasonCode).filter(Boolean):[]),
   ...(nutrition?.reasonCode?[nutrition.reasonCode]:[]),
+  ...(dietBreakSuggestion?[dietBreakSuggestion.reasonCode]:[]),
   ...(volume?.reasonCode?[volume.reasonCode]:[]),
   ...buildHydrationCalibrationReasons(wTarget,s.preferences?.diet||'balanced')
  ];
@@ -625,21 +751,71 @@ export function review(s){
  });
  s.lastCalibrationMetadata=reviewCalibrationMetadata;
  const recoveryAdvice={status:acceptedRecovery?'active':declinedRecovery?'declined':needsRecoveryAdvice?'pending':'not_needed',evidenceAt:ready.asOf||null,planId:s.workoutPlan?.id||null,expiresAt:acceptedRecovery?currentAdjustment.expiresAt:declinedRecovery?declinedRecovery.expiresAt:proposals.find(a=>a.kind==='recovery')?.expiresAt||null};
- s.lastReview={at:isoNow(),reviewScope:'system_generated_guidance',reasonCode:proposals.length?proposals[0].reasonCode||'ADAPTATION_PROPOSED':acceptedRecovery?'RECOVERY_ADJUSTMENT_ACTIVE':declinedRecovery?'RECOVERY_ADVICE_DECLINED':nutrition.reasonCode||'NO_CHANGE_NEEDED',recovery:ready.status,recoveryAdvice,nutrition,volume,hydration:{avgCups,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,loggedDays:recentWater.length,reason:hydrationReason},workoutInsights,workout:{partial:sessions.filter(x=>x.status==='partial').length,completed:sessions.filter(x=>x.status==='completed').length,missed:sessions.filter(x=>x.status==='missed').length},calibrationMetadata:reviewCalibrationMetadata,message:proposals.length?'A new CuraFit Specialist Team recommendation is ready for your review and approval.':acceptedRecovery?'Your approved temporary set reduction is currently active.':declinedRecovery?'Your choice to decline the set reduction is saved; your plan was not modified.':'No plan adjustment is proposed based on current evidence; review coverage and readiness details below.'};
+ s.lastReview={at:isoNow(),reviewScope:'system_generated_guidance',reasonCode:proposals.length?proposals[0].reasonCode||'ADAPTATION_PROPOSED':acceptedRecovery?'RECOVERY_ADJUSTMENT_ACTIVE':declinedRecovery?'RECOVERY_ADVICE_DECLINED':nutrition.reasonCode||'NO_CHANGE_NEEDED',recovery:ready.status,recoveryAdvice,nutrition,...(dietBreakSuggestion?{dietBreakSuggestion}:{}),volume,hydration:{avgCups,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,loggedDays:recentWater.length,reason:hydrationReason},workoutInsights,workout:{partial:sessions.filter(x=>x.status==='partial').length,completed:sessions.filter(x=>x.status==='completed').length,missed:sessions.filter(x=>x.status==='missed').length},calibrationMetadata:reviewCalibrationMetadata,message:proposals.length?'A new CuraFit Specialist Team recommendation is ready for your review and approval.':acceptedRecovery?'Your approved temporary set reduction is currently active.':declinedRecovery?'Your choice to decline the set reduction is saved; your plan was not modified.':'No plan adjustment is proposed based on current evidence; review coverage and readiness details below.'};
  return s;
 }
 export function retargetPlan(plan,energy,prefs,effective,profile=null){
+ const effectiveProfile=profile||plan.profile||{};
  const factor=energy/Number(plan.targets.energy),previous=structuredClone(plan.targets);
  plan.targets.energy=energy;plan.targets.protein=previous.protein;
  const fatShare=Number(previous.fat)*9/Math.max(1,Number(previous.energy)-Number(previous.protein)*4);
  plan.targets.fat=Math.round(Math.max(0,(energy-plan.targets.protein*4)*fatShare)/9);
  plan.targets.carbs=Math.round(Math.max(0,energy-plan.targets.protein*4-plan.targets.fat*9)/4);
+ const templateMap=new Map();
+ for(const t of library.templates||[])templateMap.set(t.id,t);
+ try{
+  for(const t of planningTemplates(library,prefs||{diet:'balanced',region:'egypt'},true,effectiveProfile))templateMap.set(t.id,t);
+ }catch{}
+ const hasGlycemic=Array.isArray(effectiveProfile?.diseases)&&effectiveProfile.diseases.some(d=>['diabetes','diabetes_t1','diabetes_t2','insulin_resistance','pcos'].includes(d));
+ const fitOpts={
+  capProtein:Boolean(effectiveProfile?.diseases?.includes('kidney')||effectiveProfile?.diseases?.includes('gout')),
+  reduceCarbs:Boolean(hasGlycemic&&!['keto','low_carb'].includes(prefs?.diet||'balanced'))
+ };
  for(const day of plan.days){
   day.targets||=structuredClone(previous);
   if(day.date<effective)continue;
+  // Validate existing stored day snapshots before template refit so corrupted/violating legacy plans fail safely
+  assertDietDay(day.meals.map(m=>m.snapshot),prefs.diet,day.targets,effectiveProfile);
+  if(nutritionQualityIssues(sumSnapshots(day.meals.map(m=>m.snapshot)),day.targets).length){
+   throw apiError('ENERGY_CHANGE_TARGETS_UNMET','Proposed calorie change cannot satisfy minimum protein or nutrition targets.',{status:400});
+  }
   day.targets=structuredClone(plan.targets);
-  for(const meal of day.meals){meal.id=crypto.randomUUID();meal.target_energy*=factor;meal.snapshot=scaleSnapshot(meal.snapshot,factor);}
-  assertDietDay(day.meals.map(m=>m.snapshot),prefs.diet,plan.targets,profile||plan.profile);
+  for(const meal of day.meals){
+   meal.id=crypto.randomUUID();
+   const nextMealEnergy=Math.max(1,Math.round(Number(meal.target_energy||meal.snapshot?.values?.energy||300)*factor*10)/10);
+   const fixedMealProtein=Number(meal.target_protein??meal.snapshot?.values?.protein??0);
+   meal.target_energy=nextMealEnergy;
+   meal.target_protein=fixedMealProtein;
+   const tpl=meal.snapshot?.template_id?templateMap.get(meal.snapshot.template_id):null;
+   if(tpl){
+    meal.snapshot=fitMeal(tpl,nextMealEnergy,fixedMealProtein,library,fitOpts);
+   }else{
+    meal.snapshot=scaleSnapshot(meal.snapshot,factor);
+   }
+  }
+  const mains=day.meals.filter(m=>m.slot!=='snack');
+  if(mains.length){
+   for(let pass=0;pass<3;pass++){
+    const cur=sumSnapshots(day.meals.map(m=>m.snapshot)).values;
+    const eGap=day.targets.energy-Number(cur.energy);
+    const pGap=day.targets.protein-Number(cur.protein);
+    if(Math.abs(eGap)<day.targets.energy*0.02&&Math.abs(pGap)<day.targets.protein*0.025)break;
+    for(const m of mains){
+     const tpl=m.snapshot?.template_id?templateMap.get(m.snapshot.template_id):null;
+     if(!tpl)continue;
+     const nextE=Math.max(1,Number(m.snapshot.values.energy)+eGap/mains.length);
+     const nextP=Math.max(1,Number(m.snapshot.values.protein)+pGap/mains.length);
+     const candidate=fitMeal(tpl,nextE,nextP,library,fitOpts);
+     const nextSnaps=day.meals.map(x=>x===m?candidate:x.snapshot);
+     try{assertDietDay(nextSnaps,prefs.diet,day.targets,effectiveProfile);}catch{continue;}
+     const curErr=Math.abs(Number(cur.energy)-day.targets.energy)/Math.max(1,day.targets.energy)+Math.abs(Number(cur.protein)-day.targets.protein)/Math.max(1,day.targets.protein)*2;
+     const nextSum=sumSnapshots(nextSnaps).values;
+     const nextErr=Math.abs(Number(nextSum.energy)-day.targets.energy)/Math.max(1,day.targets.energy)+Math.abs(Number(nextSum.protein)-day.targets.protein)/Math.max(1,day.targets.protein)*2;
+     if(nextErr<curErr)m.snapshot=candidate;
+    }
+   }
+  }
+  assertDietDay(day.meals.map(m=>m.snapshot),prefs.diet,plan.targets,effectiveProfile);
   day.summary=sumSnapshots(day.meals.map(m=>m.snapshot));if(nutritionQualityIssues(day.summary,day.targets).length)throw apiError('ENERGY_CHANGE_TARGETS_UNMET','Proposed calorie change cannot satisfy minimum protein or nutrition targets.',{status:400});
  }
  plan.warnings=plan.days.flatMap(d=>{const messages=assessDay(d.summary,d.targets||plan.targets);return messages.length?[{date:d.date,messages}]:[];});
@@ -736,6 +912,7 @@ export function command(input,action,p){
   });
   const renewTrack=s.onboarding?.serviceTrack||'nutrition_and_workouts';
   const renewTrainDays=renewTrack==='nutrition_only'?(s.profile?.externalTrainingDays?.length||0):(s.workoutPlan?.days?.length||s.profile?.workoutDays?.length||0);
+  const {restDayWaterTarget:renewRestWater,workoutDayWaterTarget:renewWorkoutWater}=resolveRestAndWorkoutWaterTargets(s,currDate);
   const renewHighlights=buildSpecialistHighlights({
    maternalStatus:s.profile?.maternalStatus||'none',
    seniorMode:Boolean(s.profile?.seniorMode),
@@ -750,8 +927,8 @@ export function command(input,action,p){
    serviceTrack:renewTrack,
    workoutDaysCount:renewTrainDays,
    region:s.preferences?.region||s.profile?.region||'egypt',
-   restDayWaterTarget:renewWater,
-   workoutDayWaterTarget:{...renewWater,bonuses:{...(renewWater.bonuses||{}),trainingMl:renewTrainDays>0?500:0}},
+   restDayWaterTarget:renewRestWater,
+   workoutDayWaterTarget:renewWorkoutWater,
    warningCodes:next.targets?.noteCodes||[]
   });
   next.calibrationMetadata=renewCalMeta;
@@ -774,7 +951,7 @@ export function command(input,action,p){
   const existing=(s.waterLogs||[]).find(x=>x.date===date);
   const cups=p.addCups!=null?Math.max(0,Math.min(30,(existing?.cups||0)+integer(p.addCups,-10,20,'addCups'))):integer(p.cups,0,30,'cups');
   s.waterLogs=(s.waterLogs||[]).filter(x=>x.date!==date);
-  s.waterLogs.push({date,cups,liters:Math.round(cups*0.25*100)/100,targetCups:target.targetCups,targetLiters:target.liters,at:isoNow()});
+  s.waterLogs.push({date,cups,liters:Math.round(cups*0.25*100)/100,targetCups:target.targetCups,targetLiters:target.liters,targetMl:target.targetMl,clinicianGuided:Boolean(target.clinicianGuided),at:isoNow()});
  }else if(action==='food'){
   const date=dateForLog(p.date,s),plan=activePlan(s);if(s.foodEntries.some(e=>e.date===date))throw apiError('DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION','This day has detailed food entries; use food_complete instead.',{status:400});
   const energy=number(p.energy,0,10000,'energy'),complete=boolean(p.complete,'complete'),plannedEnergy=plannedEnergyForDate(s,date);
@@ -814,11 +991,11 @@ export function command(input,action,p){
    s.sessions.push(autoSess);
   }
   reconcileSessions(s);
-  if(workoutSafetyIssues(s).length){delete exercise.suggestedKg;delete exercise.progressionReason;return s;}
+  if(workoutSafetyIssues(s).length){delete exercise.suggestedKg;delete exercise.suggestedRepMin;delete exercise.progressionReason;return s;}
   const ready=accountRecovery(s,clockNow(),tz);const localBlocked=muscleRegions(exercise).some(r=>['caution','hold'].includes(ready.muscles[r]?.status));
   const next=progression({...exercise,planId:s.workoutPlan.id},s.workoutLogs,{...ready,progressionAllowed:ready.progressionAllowed&&!needsHealthConfirmation(s)&&!needsScheduleConfirmation(s)&&!localBlocked&&date===currDate});
-  delete exercise.suggestedKg;delete exercise.progressionReason;
-  if(next.action==='increase'){exercise.suggestedKg=next.kg;exercise.progressionReason=next.reason;exercise.suggestionAt=isoNow();}
+  delete exercise.suggestedKg;delete exercise.suggestedRepMin;delete exercise.progressionReason;
+  if(next.action==='increase'){exercise.suggestedKg=next.kg;exercise.suggestedRepMin=next.nextTargetReps??exercise.repMin;exercise.progressionReason=next.reason;exercise.suggestionAt=isoNow();}
  }else if(action==='ad_hoc_exercise'){
   const ex=catalog.exercises.find(e=>e.id===p.exerciseId);
   if(!ex||!Array.isArray(p.sets)||p.sets.length<1||p.sets.length>15)throw apiError('AD_HOC_EXERCISE_INVALID','Ad-hoc exercise payload requires a valid catalog exerciseId and 1 to 15 performed sets.',{status:400});
@@ -874,6 +1051,16 @@ export function command(input,action,p){
    s.profile.region_id=nextRegion;
    if(s.preferences){s.preferences.region=nextRegion;s.preferences.region_id=nextRegion;}
   }
+  if(p.carbCycling!==undefined){
+   const cc=boolean(p.carbCycling,'carbCycling');
+   s.profile.carbCycling=cc;
+   if(s.preferences)s.preferences.carbCycling=cc;
+  }
+  if(p.batchPrepMode!==undefined){
+   const bp=boolean(p.batchPrepMode,'batchPrepMode');
+   s.profile.batchPrepMode=bp;
+   if(s.preferences)s.preferences.batchPrepMode=bp;
+  }
  }else if(action==='comeback_restart'){
   const modeToTier=p.mode==='7d_ramp'?'detrained_14d_plus':p.mode==='24h_deload'?'medium_7_13d':null;
   const tier=p.tier||modeToTier||'medium_7_13d';
@@ -919,6 +1106,7 @@ export function command(input,action,p){
    });
    const cbTrack=s.onboarding?.serviceTrack||'nutrition_and_workouts';
    const cbTrainDays=cbTrack==='nutrition_only'?(s.profile?.externalTrainingDays?.length||0):(s.workoutPlan?.days?.length||s.profile?.workoutDays?.length||0);
+   const {restDayWaterTarget:cbRestWater,workoutDayWaterTarget:cbWorkoutWater}=resolveRestAndWorkoutWaterTargets(s,currDate);
    const cbHighlights=buildSpecialistHighlights({
     maternalStatus:s.profile?.maternalStatus||'none',
     seniorMode:Boolean(s.profile?.seniorMode),
@@ -933,8 +1121,8 @@ export function command(input,action,p){
     serviceTrack:cbTrack,
     workoutDaysCount:cbTrainDays,
     region:s.preferences?.region||s.profile?.region||'egypt',
-    restDayWaterTarget:cbWater,
-    workoutDayWaterTarget:{...cbWater,bonuses:{...(cbWater.bonuses||{}),trainingMl:cbTrainDays>0?500:0}},
+    restDayWaterTarget:cbRestWater,
+    workoutDayWaterTarget:cbWorkoutWater,
     warningCodes:next.targets?.noteCodes||[]
    });
    next.calibrationMetadata=cbCalMeta;
@@ -1051,8 +1239,17 @@ export function command(input,action,p){
   }else{
    const startStr=s.preferences?.eatingStart||'12:00';
    const [hh,mm]=startStr.split(':').map(Number);
-   const endStr=`${String((hh+8)%24).padStart(2,'0')}:${String(mm||0).padStart(2,'0')}`;
-   s.fastingState={...(s.fastingState||{}),mode:s.preferences?.diet==='intermittent_fasting'?'if_16_8':'off',windowStart:startStr,windowEnd:endStr};
+   const savedIf=normalizeFastingPreset(s.preferences?.ifPreset??s.preferences?.fasting,'16_8');
+   const wh=savedIf?.windowHours||8;
+   const endStr=`${String((hh+wh)%24).padStart(2,'0')}:${String(mm||0).padStart(2,'0')}`;
+   s.fastingState={
+    ...(s.fastingState||{}),
+    mode:s.preferences?.diet==='intermittent_fasting'?`if_${savedIf.preset}`:'off',
+    preset:s.preferences?.diet==='intermittent_fasting'?savedIf.preset:null,
+    windowHours:s.preferences?.diet==='intermittent_fasting'?wh:null,
+    windowStart:startStr,
+    windowEnd:endStr
+   };
   }
  }else if(action==='body_measurement'){
   const date=dateForLog(p.date||currDate,s);
@@ -1157,7 +1354,10 @@ export function command(input,action,p){
   if(workoutSafetyIssues(s).length&&a.kind!=='schedule')throw apiError('ADAPTATION_UNSAFE_WORKOUT','Resolve excluded exercises in your workout plan before accepting adaptations.',{status:400});
   const currentRecovery=accountRecovery(s,clockNow(),tz);
   if(a.kind==='recovery'&&!['caution','high'].includes(currentRecovery.status))throw apiError('ADAPTATION_RECOVERY_STALE','Recovery check-in has expired or no longer supports this deload proposal; run review again.',{status:400});
-  if(['weekly_volume','calories','maintenance'].includes(a.kind)&&currentRecovery.status!=='ready')throw apiError('ADAPTATION_NEEDS_FRESH_RECOVERY','Accepting this adaptation requires a fresh ready recovery check-in.',{status:400});
+  const isNutritionOnlyAdapt=s.onboarding?.serviceTrack==='nutrition_only';
+  const nutritionAdaptRecoveryOk=currentRecovery.status==='ready'||(isNutritionOnlyAdapt&&currentRecovery.status!=='stop'&&currentRecovery.reasonCode!=='ILLNESS_HOLD'&&currentRecovery.reasonCode!=='RED_FLAGS_STOP');
+  if(a.kind==='weekly_volume'&&currentRecovery.status!=='ready')throw apiError('ADAPTATION_NEEDS_FRESH_RECOVERY','Accepting this adaptation requires a fresh ready recovery check-in.',{status:400});
+  if(['calories','maintenance'].includes(a.kind)&&!nutritionAdaptRecoveryOk)throw apiError('ADAPTATION_NEEDS_FRESH_RECOVERY','Accepting this adaptation requires a fresh ready recovery check-in.',{status:400});
   if(a.kind==='weekly_volume'){
    const valid=volumeReview(s,currentRecovery,clockNow());if(valid.action!=='propose'||valid.exerciseId!==a.exerciseId||valid.dayIndex!==a.dayIndex)throw apiError('ADAPTATION_VOLUME_NO_LONGER_SUPPORTED','Current recovery or performance evidence no longer supports volume progression.',{status:400});
   }
@@ -1327,8 +1527,8 @@ export function progressSummary(s){
   reviewScope:'system_generated_guidance',
   weightTrend:{measurements14d:w14.length,previous7dCount:prev7.length,current7dCount:curr7.length,previous7dAvgKg:prevAvg,current7dAvgKg:currAvg,weeklyChangePct,note:'Adaptive nutrition evaluates 7-day rolling averages across two weeks rather than single daily scale fluctuations.'},
   foodCompleteness:{completeDays14d:completeFood14,adherentCompleteDays14d:adherentCompleteFood14,requiredDays14d:10,sufficientForCalorieReview:adherentCompleteFood14>=10&&prev7.length>=3&&curr7.length>=3},
-  hydration:{todayCups:todayWater?.cups||0,targetCups:wTarget.targetCups,todayLiters:Math.round((todayWater?.cups||0)*0.25*100)/100,targetLiters:wTarget.liters,isWorkoutDay:wTarget.isWorkoutDay,loggedDays14d:water14.length,adherentDays14d:water14.filter(x=>x.cups>=Math.ceil((x.targetCups||wTarget.targetCups)*0.8)).length},
-  hydrationSummary:{todayCups:todayWater?.cups||0,targetCups:wTarget.targetCups,todayLiters:Math.round((todayWater?.cups||0)*0.25*100)/100,targetLiters:wTarget.liters,isWorkoutDay:wTarget.isWorkoutDay,loggedDays14d:water14.length,adherentDays14d:water14.filter(x=>x.cups>=Math.ceil((x.targetCups||wTarget.targetCups)*0.8)).length},
+  hydration:{todayCups:todayWater?.cups||0,targetCups:wTarget.targetCups,todayLiters:Math.round((todayWater?.cups||0)*0.25*100)/100,targetLiters:wTarget.liters,targetMl:wTarget.targetMl,isWorkoutDay:wTarget.isWorkoutDay,boostMl:wTarget.boostMl,boostReason:wTarget.boostReason,clinicianGuided:wTarget.clinicianGuided,guidanceCodes:wTarget.guidanceCodes,bonuses:wTarget.bonuses,loggedDays14d:water14.length,adherentDays14d:water14.filter(x=>x.cups>=Math.ceil((x.targetCups||wTarget.targetCups)*0.8)).length},
+  hydrationSummary:{todayCups:todayWater?.cups||0,targetCups:wTarget.targetCups,todayLiters:Math.round((todayWater?.cups||0)*0.25*100)/100,targetLiters:wTarget.liters,targetMl:wTarget.targetMl,isWorkoutDay:wTarget.isWorkoutDay,boostMl:wTarget.boostMl,boostReason:wTarget.boostReason,clinicianGuided:wTarget.clinicianGuided,guidanceCodes:wTarget.guidanceCodes,bonuses:wTarget.bonuses,loggedDays14d:water14.length,adherentDays14d:water14.filter(x=>x.cups>=Math.ceil((x.targetCups||wTarget.targetCups)*0.8)).length},
   workoutSummary:{completed14d:sessions14.filter(x=>x.status==='completed').length,partial14d:sessions14.filter(x=>x.status==='partial').length,missed14d:sessions14.filter(x=>x.status==='missed').length,performanceDrop:perfDrop,insights:workoutInsights}
  };
 }

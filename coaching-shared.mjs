@@ -1,4 +1,5 @@
 import { apiError, hasArabicText } from './coaching-error.mjs';
+import { CLINICAL_CONSTANTS } from './clinical-constants.mjs';
 
 // Canonical workout injury IDs; short mobile keys normalize cleanly for policy lookup.
 export const SUPPORTED_WORKOUT_INJURIES = Object.freeze([
@@ -37,7 +38,8 @@ export const MUSCLE_REGIONS = {
 export const FOCUS_LABELS = {
   full_body: 'Full Body', upper: 'Upper Body', lower: 'Lower Body',
   push: 'Push', pull: 'Pull', legs: 'Legs', chest: 'Chest',
-  back: 'Back', shoulders: 'Shoulders', arms: 'Arms', core: 'Core'
+  back: 'Back', shoulders: 'Shoulders', arms: 'Arms', core: 'Core',
+  chest_tri: 'Chest & Triceps', back_bi: 'Back & Biceps', shoulders_core: 'Shoulders & Core'
 };
 export const SLOTS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
 export const SUPPORTED_TIMEZONES = new Set([
@@ -46,8 +48,16 @@ export const SUPPORTED_TIMEZONES = new Set([
   'Africa/Casablanca', 'Africa/Tunis', 'Africa/Algiers', 'Europe/London', 'UTC'
 ]);
 export const SUPPORTED_LOCALES = new Set([
-  'en', 'ar', 'ar-EG', 'ar-SA', 'ar-AE', 'ar-KW', 'ar-QA', 'ar-BH', 'ar-OM', 'ar-JO', 'ar-LB', 'ar-MA', 'ar-TN', 'ar-DZ'
+  'en', 'en-US', 'en-GB', 'en-AU', 'en-CA',
+  'ar', 'ar-EG', 'ar-SA', 'ar-AE', 'ar-KW', 'ar-QA', 'ar-BH', 'ar-OM', 'ar-JO', 'ar-LB', 'ar-MA', 'ar-TN', 'ar-DZ'
 ]);
+export function normalizeLocale(raw, fallback = null) {
+  if (typeof raw !== 'string') return fallback;
+  const cleaned = raw.trim().replace(/_/g, '-');
+  if (!cleaned || cleaned.length > 32) return fallback;
+  const match = /^(en|ar)(?:-[A-Za-z0-9]{2,8})*$/i.exec(cleaned);
+  return match ? match[1].toLowerCase() : fallback;
+}
 export const SUPPORTED_REGIONS = Object.freeze(['egypt', 'gulf', 'levant', 'maghreb']);
 export const COUNTRY_TO_REGION = Object.freeze({
   EG: 'egypt',
@@ -67,9 +77,9 @@ export function isPregnantStatus(maternalStatus) {
 
 export function minSafeEnergyFloor(profile = {}) {
   const maternal = profile?.maternalStatus || 'none';
-  if (isPregnantStatus(maternal)) return 1800;
-  if (maternal === 'breastfeeding') return 1600;
-  return profile?.sex === 'female' ? 1200 : 1500;
+  if (isPregnantStatus(maternal)) return CLINICAL_CONSTANTS.MIN_ENERGY_FLOOR_PREGNANT;
+  if (maternal === 'breastfeeding') return CLINICAL_CONSTANTS.MIN_ENERGY_FLOOR_BREASTFEEDING;
+  return profile?.sex === 'female' ? CLINICAL_CONSTANTS.MIN_ENERGY_FLOOR_FEMALE : CLINICAL_CONSTANTS.MIN_ENERGY_FLOOR_MALE;
 }
 
 function fieldKey(label) {
@@ -598,7 +608,7 @@ export function buildSpecialistHighlights({
       domain: 'clinical',
       priority: 1,
       code: 'PLAN_PREGNANCY_T2_CALIBRATION',
-      message: 'Second-trimester pregnancy nutrition active: +340 kcal daily allowance and elevated protein applied.'
+      message: `Second-trimester pregnancy nutrition active: +${CLINICAL_CONSTANTS.PREGNANCY_T2_EXTRA_KCAL} kcal daily allowance and elevated protein applied.`
     });
   } else if (maternalStatus === 'pregnant_t3') {
     push({
@@ -606,7 +616,7 @@ export function buildSpecialistHighlights({
       domain: 'clinical',
       priority: 1,
       code: 'PLAN_PREGNANCY_T3_CALIBRATION',
-      message: 'Third-trimester pregnancy nutrition active: +452 kcal daily allowance and elevated protein applied.'
+      message: `Third-trimester pregnancy nutrition active: +${CLINICAL_CONSTANTS.PREGNANCY_T3_EXTRA_KCAL} kcal daily allowance and elevated protein applied.`
     });
   } else if (maternalStatus === 'breastfeeding') {
     push({
@@ -614,7 +624,7 @@ export function buildSpecialistHighlights({
       domain: 'clinical',
       priority: 1,
       code: 'PLAN_BREASTFEEDING_CALIBRATION',
-      message: 'Breastfeeding nutrition active: +400 kcal allowance and elevated protein applied to support lactation.'
+      message: `Breastfeeding nutrition active: +${CLINICAL_CONSTANTS.BREASTFEEDING_EXTRA_KCAL} kcal allowance and elevated protein applied to support lactation.`
     });
   }
 
@@ -624,7 +634,7 @@ export function buildSpecialistHighlights({
       domain: 'nutrition',
       priority: 1,
       code: 'PLAN_PREGNANCY_FOOD_SAFETY',
-      message: 'Pregnancy food safety active: organ meats such as liver are excluded to avoid excess vitamin A, and minimum carbohydrate intake is maintained.'
+      message: `Pregnancy food safety active: organ meats (liver) are excluded, tuna is capped at <= ${CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_WEEKLY_SERVINGS} servings/week for mercury safety, choose pasteurized dairy and thoroughly cooked proteins, and minimum carbohydrate intake is maintained.`
     });
     if (trains) {
       push({
@@ -650,12 +660,13 @@ export function buildSpecialistHighlights({
   // Priority 2: Medical conditions & dietary exclusions
   const hasGlycemic = ['diabetes', 'diabetes_t1', 'diabetes_t2', 'diabetes_type1', 'diabetes_type2', 'insulin_resistance', 'pcos'].some(d => diseaseSet.has(d));
   if (hasGlycemic) {
+    const carbPct = Math.round(CLINICAL_CONSTANTS.DIABETES_MAX_CARB_SHARE * 100);
     push({
       id: 'diabetes_sugar_filter',
       domain: 'nutrition',
       priority: 2,
       code: 'HIGHLIGHT_DIABETES_SUGAR_FILTER',
-      message: 'Glycemic control active: dates, honey, added sugars, and high-glycemic spikes are filtered out and carbs are capped at 40% of calories.'
+      message: `Glycemic control active: dates, honey, added sugars, and high-glycemic spikes are filtered out and carbs are capped at ${carbPct}% of calories.`
     });
     if (trains && ['diabetes', 'diabetes_t1', 'diabetes_t2', 'diabetes_type1', 'diabetes_type2'].some(d => diseaseSet.has(d))) {
       push({
@@ -674,8 +685,8 @@ export function buildSpecialistHighlights({
       domain: 'nutrition',
       priority: 2,
       code: 'PLAN_HYPERTENSION_SODIUM_CEILING',
-      params: [1500],
-      message: 'Hypertension safety applied: sodium is limited to 1500 mg/day and high-sodium options are filtered.'
+      params: [CLINICAL_CONSTANTS.HYPERTENSION_SODIUM_LIMIT_MG],
+      message: `Hypertension safety applied: sodium is limited to ${CLINICAL_CONSTANTS.HYPERTENSION_SODIUM_LIMIT_MG} mg/day and high-sodium options are filtered.`
     });
     if (trains) {
       push({
@@ -694,7 +705,7 @@ export function buildSpecialistHighlights({
       domain: 'clinical',
       priority: 2,
       code: 'PLAN_KIDNEY_PROTEIN_CAP',
-      message: 'Protein conservatively capped at <= 1.1 g/kg for kidney condition support and total training volume is moderated.'
+      message: `Clinician-guided kidney support active: protein capped at <= ${CLINICAL_CONSTANTS.PROTEIN_CAP_KIDNEY} g/kg, sodium capped at <= ${CLINICAL_CONSTANTS.CKD_SODIUM_LIMIT_MG} mg/day, high-potassium/phosphorus foods filtered, and training volume moderated.`
     });
   }
 
@@ -704,7 +715,7 @@ export function buildSpecialistHighlights({
       domain: 'clinical',
       priority: 2,
       code: 'PLAN_GOUT_PROTEIN_CAP',
-      message: 'Protein capped at <= 1.4 g/kg with red-meat avoidance for gout management and elevated hydration.'
+      message: `Protein capped at <= ${CLINICAL_CONSTANTS.PROTEIN_CAP_GOUT} g/kg with high-purine organ meats, red meat, tuna, and salmon excluded for gout management and elevated hydration.`
     });
   }
 
@@ -877,6 +888,16 @@ export function buildSpecialistHighlights({
   }
 
   // Priority 5: Hydration & climate adjustments
+  const isKidney = diseaseSet.has('kidney') || diseaseSet.has('kidney_disease');
+  if (isKidney) {
+    push({
+      id: 'hydration_kidney_clinician',
+      domain: 'hydration',
+      priority: 2,
+      code: 'HYDRATION_KIDNEY_CLINICIAN_LIMIT',
+      message: 'Kidney hydration safety active: daily water target is capped conservatively; follow your physician\'s personalized fluid limit.'
+    });
+  }
   if (pregnant || maternalStatus === 'breastfeeding') {
     push({
       id: 'hydration_maternal',
@@ -886,7 +907,7 @@ export function buildSpecialistHighlights({
       message: 'Maternal hydration bonus (+300 ml pregnancy / +600 ml breastfeeding) applied.'
     });
   }
-  if (diseaseSet.has('gout')) {
+  if (!isKidney && diseaseSet.has('gout')) {
     push({
       id: 'hydration_gout',
       domain: 'hydration',
@@ -895,7 +916,7 @@ export function buildSpecialistHighlights({
       message: 'Gout support hydration bonus (+500 ml) applied.'
     });
   }
-  if (['egypt', 'gulf'].includes(String(region || '').toLowerCase())) {
+  if (!isKidney && ['egypt', 'gulf'].includes(String(region || '').toLowerCase())) {
     push({
       id: 'hydration_warm_climate',
       domain: 'hydration',
@@ -904,8 +925,34 @@ export function buildSpecialistHighlights({
       message: 'Regional warm-climate hydration bonus (+200 ml) applied.'
     });
   }
+  const restGuides = new Set(restDayWaterTarget?.guidanceCodes || []);
+  if (!isKidney && restGuides.has('KETO_HYDRATION_BONUS')) {
+    push({
+      id: 'hydration_keto',
+      domain: 'hydration',
+      priority: 5,
+      code: 'KETO_HYDRATION_BONUS',
+      message: 'Keto hydration bonus (+500 ml) applied to replenish glycogen-linked fluid and electrolyte loss.'
+    });
+  } else if (!isKidney && restGuides.has('HIGH_PROTEIN_HYDRATION_BONUS')) {
+    push({
+      id: 'hydration_high_protein',
+      domain: 'hydration',
+      priority: 5,
+      code: 'HIGH_PROTEIN_HYDRATION_BONUS',
+      message: 'High-protein hydration bonus (+300 ml) applied to support protein metabolism.'
+    });
+  } else if (!isKidney && restGuides.has('LOW_CARB_HYDRATION_BONUS')) {
+    push({
+      id: 'hydration_low_carb',
+      domain: 'hydration',
+      priority: 5,
+      code: 'LOW_CARB_HYDRATION_BONUS',
+      message: 'Low-carb hydration bonus (+250 ml) applied to support fluid balance.'
+    });
+  }
   const trainingMl = Number(workoutDayWaterTarget?.bonuses?.trainingMl || 0);
-  if (trains && trainingMl > 0) {
+  if (trains && trainingMl > 0 && !isKidney) {
     push({
       id: 'hydration_training_boost',
       domain: 'hydration',

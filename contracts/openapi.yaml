@@ -1060,6 +1060,10 @@ paths:
                 goal: { type: string, enum: [lose, maintain, gain, muscle_gain] }
                 serviceTrack: { type: string, enum: [nutrition_only, workouts_only, nutrition_and_workouts] }
                 dietType: { type: string, enum: [balanced, high_protein, low_carb, intermittent_fasting, mediterranean, dash, keto, vegetarian, vegan] }
+                ifPreset: { type: string, enum: [12_12, 14_10, 16_8, 18_6], description: Intermittent fasting preset when dietType is intermittent_fasting (defaults to 16_8). }
+                ifStartHour: { type: integer, minimum: 6, maximum: 16, description: Eating window start hour (06:00..16:00) for intermittent fasting. }
+                carbCycling: { type: boolean, description: Optional opt-in carb cycling (+10% calories/carbs on training days, -5% on rest days, preserving daily protein). }
+                batchPrepMode: { type: boolean, description: Optional batch meal preparation preference. }
                 excludedGroups: { type: array, items: { type: string } }
                 diseases: { type: array, items: { type: string } }
                 injuries: { type: array, items: { type: string } }
@@ -1312,7 +1316,7 @@ paths:
   /v1/foods/barcode/{ean}:
     get:
       operationId: lookupBarcode
-      summary: Look up packaged food by EAN/UPC barcode (local D1 cache + OpenFoodFacts fallback; Pro-gated when enforcement is enabled)
+      summary: Look up packaged food by EAN/UPC barcode (local D1 cache + OpenFoodFacts fallback; Free tier includes 3 daily scans before 402 PRO_ENTITLEMENT_REQUIRED)
       parameters:
         - name: ean
           in: path
@@ -1336,7 +1340,7 @@ paths:
   /v1/foods/barcode:
     post:
       operationId: submitBarcode
-      summary: Submit a user-contributed barcode nutrition item (Pro-gated when enforcement is enabled)
+      summary: Submit a user-contributed barcode nutrition item (counts toward Free tier 3 daily barcode scans before 402 PRO_ENTITLEMENT_REQUIRED)
       requestBody:
         required: true
         content:
@@ -2256,6 +2260,18 @@ components:
                   type: [object, "null"]
                 onboardingCompleted:
                   type: boolean
+                daysSinceStart:
+                  type: integer
+                  description: Whole days elapsed since journeyStartedOn (or nutritionContextStartedOn).
+                batchPrepMode:
+                  type: boolean
+                  description: Whether batch meal preparation preference is enabled.
+                discreetMode:
+                  type: boolean
+                  description: Whether discreet cycle awareness display mode is enabled.
+                proImpact:
+                  type: object
+                  description: Aggregate longitudinal progress metrics (streakDays, foodDaysLogged, workoutsCompleted, weightsLogged, plansGenerated, adaptationsAccepted).
                 serviceTrack:
                   type: [string, "null"]
                 consents:
@@ -2270,7 +2286,7 @@ components:
                   items: { type: object }
                 todaySummary:
                   type: object
-                  description: Includes today food, water, weight, activity, recovery, workout session, fastingState, and ramadanMode.
+                  description: Includes today nutrition (energy, protein, carbs, fat, fiber, and targets), server-authoritative hydration (targetCups, targetLiters, targetMl, boostMl, boostReason, clinicianGuided, guidanceCodes, bonuses, weeklyTargets), weight, activity, cardio, recovery, workout session, fastingState, ramadanMode, seasonalContext, cycleState, and maternalContext.
                 streakSummary:
                   type: object
                 engagementState:
@@ -2285,6 +2301,7 @@ components:
                   items: { type: object }
                 entitlements:
                   type: object
+                  description: Active tier, features (including unlimited standard_plan_renewals for Free), and quotas (barcodeScansDailyLimit/Remaining = 3/day, mealCaptureMonthly = 3/month, specialistConsultationMonthly = 5/month, plus backward-compatible aliases).
                 notificationPreferences:
                   type: object
     CoachingFeedbackPayload:

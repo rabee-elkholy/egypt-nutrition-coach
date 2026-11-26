@@ -8,7 +8,7 @@ const prefs={diet:'balanced',region:'egypt',budget:'medium',meals:4,proteins:['l
 for(const seed of ['long-horizon-renewal-57','long-horizon-renewal-control'])test('renewed generation fits the accepted target directly: '+seed,()=>{
  const unchanged=JSON.stringify({profile,prefs});
  const plan=makeWeek(profile,prefs,library,'2026-12-19',seed,1663);
- assert.equal(plan.targets.energy,1663);assert.equal(plan.targets.protein,128);
+ assert.equal(plan.targets.energy,1663);assert.equal(plan.targets.protein,144);
  assert.deepEqual(independentPlanIssues(plan,library),[]);assert.equal(JSON.stringify({profile,prefs}),unchanged);
  assert.equal(plan.targets.energy_change,Math.round((1663-plan.targets.tdee)*10)/10);
 });

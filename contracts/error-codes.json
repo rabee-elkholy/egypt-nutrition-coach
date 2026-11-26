@@ -1910,6 +1910,22 @@
         "injuries"
       ],
       "retryable": false
+    },
+    "KIDNEY_SODIUM_LIMIT_EXCEEDED": {
+      "httpStatus": 400,
+      "message": "Plan exceeds the 2000mg daily sodium limit required for kidney support or lacks sodium measurements.",
+      "params": [
+        "limitMg"
+      ],
+      "retryable": false
+    },
+    "CHOLESTEROL_SATURATED_FAT_EXCEEDED": {
+      "httpStatus": 400,
+      "message": "Plan exceeds the 8% daily saturated fat ceiling required for cholesterol management.",
+      "params": [
+        "maxSatSharePct"
+      ],
+      "retryable": false
     }
   }
 }

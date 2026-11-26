@@ -13,6 +13,7 @@
     "skipLibCheck": true
   },
   "files": [
+    "clinical-constants.mjs",
     "coaching-time.mjs",
     "types/coaching.d.ts",
     "coaching-evidence.mjs",

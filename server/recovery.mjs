@@ -108,7 +108,7 @@ export function workoutProgressionSummary(workoutPlan,logs=[],now=clockNow(),tz=
  if(readyForNextLoad.length)parts.push(`Next load suggestions pending readiness (${readyForNextLoad.map(x=>`${x.name} -> ${x.suggestedKg} kg`).join(', ')})`);
  return {loadIncreases,loadDecreases,repIncreases,readyForNextLoad,summaryText:parts.length?parts.join(' | '):'No comparable progression change yet; continue logging load and reps.'};
 }
-export function calorieReview(weights,foodDays,goal,energy,now=clockNow(),lastChange=0,tz=clockTimeZone()){
+export function calorieReview(weights,foodDays,goal,energy,now=clockNow(),lastChange=0,tz=clockTimeZone(),cycleState=null){
  const end=localDate(now,tz),start=dateOffset(end,-13),middle=dateOffset(end,-6);
  if(lastChange&&now-lastChange<14*DAY)return {action:'hold',reasonCode:'COOLDOWN_14D',reviewScope:'system_generated_guidance',reason:'Monitoring your response to the last adjustment; at least 14 days are required before proposing another calorie change.'};
  const recent=[...new Map(weights.filter(x=>x.date>=start&&x.date<=end&&Number.isFinite(x.kg)).map(x=>[x.date,x])).values()];
@@ -126,6 +126,9 @@ export function calorieReview(weights,foodDays,goal,energy,now=clockNow(),lastCh
  if(['maintain','recomposition'].includes(goal))delta=rate<-.5?1:rate>.5?-1:0;
  if(!delta)return {action:'hold',reasonCode:'TREND_ON_TRACK',reviewScope:'system_generated_guidance',reason:`Your 2-week weight trend (${rate.toFixed(2)}%/week) is within the expected target range; no calorie adjustment is needed.`,rate,coverage};
  const step=delta*Math.min(150,Math.floor(energy*.05));
+ if(step<0&&cycleState?.enabled&&cycleState?.waterRetentionLikely===true){
+  return {action:'hold',reasonCode:'CYCLE_RETENTION_HOLD',reviewScope:'system_generated_guidance',rate,coverage,cyclePhase:cycleState.phase||null,reason:'Late-luteal or menstrual cycle phase with likely temporary water retention detected; calorie reductions are held steady until fluid balance normalizes.'};
+ }
  return {action:'propose',reasonCode:step<0?'CALORIE_DEFICIT_STEP':'CALORIE_SURPLUS_STEP',reviewScope:'system_generated_guidance',delta:step,rate,coverage,previous7dAvgKg:prev7AvgKg,current7dAvgKg:curr7AvgKg,reason:step<0?`Based on adherent food logs and a ${rate.toFixed(2)}%/week weight trend, we propose a modest ${Math.abs(step)} kcal daily reduction.`:`Based on adherent food logs and a ${rate.toFixed(2)}%/week weight trend, we propose a modest +${step} kcal daily increase.`};
 }
 export function progression(exercise,logs,readiness){
@@ -136,10 +139,13 @@ export function progression(exercise,logs,readiness){
  if(!last.every(l=>{const ws=workingSetsOf(l.sets);return ws.length>=exercise.sets&&ws.every(s=>!s.pain&&s.reps>=exercise.repMax&&s.rir!=null&&s.rir>=exercise.rir);}))return {action:'hold',reasonCode:'REP_OR_RIR_THRESHOLD_NOT_MET',reason:'Reach the top of the prescribed rep range at or above target RIR across two sessions before increasing weight.'};
  const kg=workingSetsOf(last[1].sets)[0].kg;
  if(!last.every(l=>workingSetsOf(l.sets).every(s=>s.kg===kg)))return {action:'hold',reasonCode:'UNIFORM_LOAD_REQUIRED',reason:'Complete all working sets at the same load across two sessions before increasing weight.'};
- const increment=last[1].increment??2.5;
  const allowsLoad=usesKg(exercise)||(exercise.supportsAddedWeight&&kg>0);
  if(!allowsLoad)return {action:'hold',reasonCode:'BODYWEIGHT_PROGRESSION_REPS_ONLY',reason:'Progress bodyweight movements through additional reps and tempo control.'};
- if(!increment||!kg||increment>kg*.05)return {action:'hold',reasonCode:'VALID_INCREMENT_REQUIRED',reason:'Current weight increment exceeds conservative progression bounds (<= 5%); build reps and control first.'};
- const nextKg=Math.max(0,kg+(exercise.loadMode==='assisted'?-increment:increment));
- return {action:'increase',reasonCode:'DOUBLE_PROGRESSION_READY',kg:nextKg,reason:`Target reps achieved cleanly across two consecutive sessions; consider progressing to ${nextKg} kg if technique and recovery feel solid.`};
+ const defaultStep=kg<=10?1:kg<=15?2:kg<=50?2.5:Math.max(2.5,Math.round((kg*0.025)/2.5)*2.5);
+ const maxStep=kg<=15?2:kg<=50?2.5:Math.max(2.5,Math.round((kg*0.05)/0.5)*0.5);
+ const increment=last[1].increment??defaultStep;
+ if(!increment||!kg||increment<=0||increment>maxStep)return {action:'hold',reasonCode:'VALID_INCREMENT_REQUIRED',reason:'Current weight increment exceeds conservative progression bounds for this load tier; build reps and control first.'};
+ const nextKg=Math.max(0,Math.round((kg+(exercise.loadMode==='assisted'?-increment:increment))*100)/100);
+ const nextTargetReps=exercise.repMin??8;
+ return {action:'increase',reasonCode:'DOUBLE_PROGRESSION_READY',kg:nextKg,nextTargetReps,reason:`Target reps achieved cleanly across two consecutive sessions; consider progressing to ${nextKg} kg starting at ${nextTargetReps} reps if technique and recovery feel solid.`};
 }

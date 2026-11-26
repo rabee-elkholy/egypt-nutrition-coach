@@ -126,6 +126,7 @@ export function computeStreakAndEngagement(s, now = clockNow()) {
       todayQualified
     },
     engagementState: {
+      daysSinceStart,
       daysSinceLastLog,
       lastLoggedAt: lastLoggedDate ? `${lastLoggedDate}T12:00:00.000Z` : null,
       weeklyCheckinDue,

@@ -325,6 +325,29 @@ export function evaluateCardioSafetyCaution(s, modality) {
   };
 }
 
+export function evaluateCardioInterference(s, date, intensity, modality) {
+  if (intensity !== 'vigorous') return null;
+  const days = s?.workoutPlan?.days;
+  if (!Array.isArray(days) || !days.length || !validDate(date)) return null;
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const isLowerDay = (d) =>
+    ['lower', 'legs', 'full_body'].includes(d.focus) ||
+    (d.exercises || []).some((e) => ['squat', 'hinge', 'lunge'].includes(e.pattern));
+  const sameDay = days.find((d) => d.dayIndex === weekday && isLowerDay(d));
+  const adjacentDay = !sameDay
+    ? days.find((d) => (d.dayIndex === (weekday + 1) % 7 || d.dayIndex === (weekday + 6) % 7) && isLowerDay(d))
+    : null;
+  if (!sameDay && !adjacentDay) return null;
+  const overlapType = sameDay ? 'same_day_leg_session' : 'adjacent_day_leg_session';
+  return {
+    code: 'CARDIO_LEG_DAY_INTERFERENCE_NOTE',
+    params: { date, modality, intensity, overlapType },
+    message: sameDay
+      ? 'Vigorous cardio logged on the same day as a lower-body strength session; consider spacing sessions by at least 6 hours or lowering impact to protect strength and recovery.'
+      : 'Vigorous cardio logged adjacent to a lower-body strength session; monitor leg freshness and consider low-impact aerobic work if soreness rises.'
+  };
+}
+
 export function logCardioSession(s, p = {}) {
   const date = logDateFor(s, p?.date);
   const modality = typeof p?.modality === 'string' ? p.modality.trim() : '';
@@ -385,6 +408,7 @@ export function logCardioSession(s, p = {}) {
     ? caloriesKcal
     : estimateCardioKcal(modality, intensity, durNum, Number(s?.profile?.weight) || 75);
   const safetyCaution = evaluateCardioSafetyCaution(s, modality);
+  const interferenceNote = evaluateCardioInterference(s, date, intensity, modality);
   const now = isoNow();
   const record = {
     id: existing?.id || (typeof p?.id === 'string' && p.id.trim() ? p.id.trim().slice(0, 80) : crypto.randomUUID()),
@@ -399,6 +423,7 @@ export function logCardioSession(s, p = {}) {
     externalRecordId,
     notes,
     safetyCaution,
+    ...(interferenceNote ? { interferenceNote } : {}),
     at: existing?.at || now,
     updatedAt: now
   };

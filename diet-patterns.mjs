@@ -1,5 +1,6 @@
 import {apiError} from './coaching-error.mjs';
 import {isPregnantStatus} from './coaching-shared.mjs';
+import {CLINICAL_CONSTANTS} from './clinical-constants.mjs';
 export const DIETS={
   balanced:'نظام متوازن مناسب لهدفي',
   low_carb:'قليل الكربوهيدرات (Low Carb)',
@@ -28,7 +29,7 @@ export const DIET_INFO={
   intermittent_fasting:{fit:'لو بتحب تصوم 16 ساعة وتاكل في نافذة 8 ساعات بدون حرمان من نوعيات الأكل.',benefit:'يثبت الوجبات على وجبتين رئيسيتين وسناك في مواعيد منتظمة لتقليل الجوع.',limit:'اختار ساعة بداية أول وجبة تناسب يومك؛ غير مناسب للحوامل أو المرضعات أو السكري.'},
   mediterranean:{fit:'لو بتحب البقول والخضار والسمك وزيت الزيتون والحبوب الكاملة.',benefit:'نمط عالمي ممتاز لصحة القلب والشبع غني بالألياف والدهون الصحية.',limit:'يستبدل العيش البلدي والأرز الأبيض بالحبوب الكاملة والبرغل والفريك.'},
   dash:{fit:'لو عايز تضبط ضغط الدم وتقلل الصوديوم وتزود البوتاسيوم والخضار.',benefit:'مصمم لدعم صحة القلب والأوعية الدموية بحد صوديوم منخفض.',limit:'تجنب المخللات والجبن المالحة وقلل ملح الطعام المضاف.'},
-  high_protein:{fit:'لو بتتمرن مقاومة أو عايز ترفع الشبع وتحافظ على الكتلة العضلية.',benefit:'يرفع البروتين اليومي إلى 1.6–1.8 جم لكل كجم موزعًا على 3 وجبات وسناك.',limit:'اشرب مية كفاية على مدار اليوم.'},
+  high_protein:{fit:'لو بتتمرن مقاومة أو عايز ترفع الشبع وتحافظ على الكتلة العضلية.',benefit:'يرفع البروتين اليومي إلى 1.8–2.0 جم لكل كجم موزعًا على 3 وجبات وسناك.',limit:'اشرب مية كفاية على مدار اليوم.'},
   low_carb:{fit:'لو عايز تقلل النشويات وتنزل المياه المحتبسة من غير تقييد الكيتو الشديد.',benefit:'يحدد الكربوهيدرات بحد أقصى 130 جم يوميًا مع تركيز على البروتين والخضار.',limit:'مثالي لمقاومة الإنسولين وتكيس المبايض والتنشيف.'},
   vegetarian:{fit:'لو مش بتاكل لحوم أو فراخ أو سمك، لكن بتاكل بيض ومنتجات ألبان.',benefit:'يعتمد على البيض والجبنة القريش والزبادي اليوناني والبقوليات والمكسرات.',limit:'نوّع بين البيض والألبان والبقول لضمان تكامل الأحماض الأمينية.'},
   vegan:{fit:'لو مش بتاكل أي منتجات حيوانية نهائيًا.',benefit:'يعتمد على البقول والحبوب الكاملة والمكسرات والطحينة والخضار والفاكهة.',limit:'يُنصح بمتابعة فيتامين B12 والحديد.'},
@@ -60,13 +61,27 @@ export function medicalContraindicatedKeys(profile={}){
   const diseases=new Set(Array.isArray(profile.diseases)?profile.diseases:[]);
   const out=new Set();
   if(diseases.has('gout')){
-    for(const k of ['liver','shrimp','lamb','beef','shawarma_beef','fava'])out.add(k);
+    for(const k of ['liver','shrimp','lamb','beef','shawarma_beef','fava','tuna','salmon'])out.add(k);
   }
   if(diseases.has('ibs')){
-    for(const k of ['fava','kidney','whitebeans','chickpeas','falafel','cabbage','onion','garlic','mushrooms','cauliflower'])out.add(k);
+    for(const k of [
+      'fava','kidney','whitebeans','chickpeas','lentils','falafel',
+      'cabbage','onion','garlic','mushrooms','cauliflower',
+      'apple','pear','watermelon','mango','honey',
+      'milk','wholemilk','yogurt','greekyogurt',
+      'bread','wholebread','toast','pasta','bulgur','couscous','tabbouleh','fattoush'
+    ])out.add(k);
   }
   if(diseases.has('hypertension')){
     for(const k of ['feta','bread','shawarma_chicken','shawarma_beef','tabbouleh','fattoush','babaghanouj'])out.add(k);
+  }
+  if(diseases.has('kidney')){
+    for(const k of [
+      'feta','mozzarella','shrimp','liver','tuna','salmon',
+      'tahini','peanutbutter','peanuts','almonds','cashews','walnuts',
+      'dates','spinach','avocado','whitebeans','falafel',
+      'bread','shawarma_chicken','shawarma_beef','tabbouleh','fattoush','babaghanouj'
+    ])out.add(k);
   }
   if(diseases.has('lactose_intolerance')){
     for(const k of ['milk','wholemilk','yogurt','greekyogurt','cottage','feta','mozzarella'])out.add(k);
@@ -104,18 +119,22 @@ export function isDietUnsafeForProfile(diet, profile={}){
   return false;
 }
 
-export function dietTemplates(base,lib,diet='balanced',region='egypt'){
+export function dietTemplates(base,lib,diet='balanced',region='egypt',profile=null){
   if(['balanced','intermittent_fasting','high_protein','vegetarian','vegan'].includes(diet)){
     return [...base,...(diet==='vegan'?soyMenus(lib,region):[])].filter(t=>t.items.every(p=>dietIngredientAllowed(lib.ingredients[p.key],diet)));
   }
   if(diet==='low_carb'){
     const lowCarbBase=base.filter(t=>t.items.every(p=>['egg','friedegg','eggwhite','cottage','feta','mozzarella','yogurt','greekyogurt','chicken','chickenboiled','chickenthigh','turkey','shawarma_chicken','shawarma_beef','fish','seabass','tuna','salmon','shrimp','beef','lamb','liver','olive','tahini','peanuts','almonds','walnuts','cashews','peanutbutter','avocado','cucumber','lettuce','tomato','tomatocooked','spinach','broccoli','zucchini','pepper','lemon','parsley','onion','garlic','eggplant','greenbeans','cabbage','okra','carrot','carrotcooked','babaghanouj','tabbouleh','apple','strawberry','guava','pear','melon','watermelon'].includes(p.key)));
-    return [...dietTemplates(base,lib,'keto',region),...lowCarbBase];
+    return [...dietTemplates(base,lib,'keto',region,profile),...lowCarbBase];
   }
   if(['mediterranean','dash'].includes(diet)){
+    const avoidBulgur=Boolean(profile?.diseases?.some(d=>d==='celiac'||d==='ibs'));
+    const useBulgur=!avoidBulgur&&Boolean(lib.ingredients.bulgur&&regionAllowsKey(lib.ingredients.bulgur,region));
+    const grainKey=useBulgur?'bulgur':'brownrice';
+    const grainLabel=useBulgur?'بالبرغل':'بالأرز البني';
     return base.map(t=>{
-      const replace=k=>({bread:'wholebread',rice:lib.ingredients.bulgur&&regionAllowsKey(lib.ingredients.bulgur,region)?'bulgur':'brownrice'}[k]||k);
-      const name=s=>s.replace(/عيش بلدي/g,'عيش قمح كامل').replace(/رز أبيض|بالرز|ورز|رز/g,'بالبرغل');
+      const replace=k=>({bread:'wholebread',rice:grainKey}[k]||k);
+      const name=s=>s.replace(/عيش بلدي/g,'عيش قمح كامل').replace(/رز أبيض|بالرز|ورز|رز/g,grainLabel);
       const items=t.items.map(p=>({...p,key:replace(p.key)}));
       return {...t,id:'med-'+t.id,name:name(t.name),dish_family:t.dish_family,items,component_definitions:t.component_definitions?.map(c=>({...c,name:name(c.name)}))};
     }).filter(t=>t.items.every(p=>dietIngredientAllowed(lib.ingredients[p.key],diet)));
@@ -126,34 +145,38 @@ export function dietTemplates(base,lib,diet='balanced',region='egypt'){
     if(parts.some(([,,rows])=>rows.some(([k])=>!has(k))))return null;
     const items=parts.flatMap(([partName,role,rows],n)=>rows.map(([key,grams,max])=>({key,grams:String(grams),max_g:max??lib.ingredients[key].max_g,min_g:key==='olive'?5:1,component_id:'k'+n})));
     const rank={low:1,medium:2,high:3};const tier=Object.keys(rank).find(x=>rank[x]===Math.max(...items.map(p=>rank[lib.ingredients[p.key].budget_tier])));
-    return {id:'keto-'+id,name,meal_slots:slots,regions:[region],budget_tier:tier,dish_family:id,items,component_definitions:parts.map(([name,role],n)=>({id:'k'+n,name,role})),editorial_policy_version:'diet-patterns-2',notes:'تجميعة كيتو محسوبة من المكونات المرجعية.'};
+    return {id:'keto-'+id,name,meal_slots:slots,regions:[region],budget_tier:tier,dish_family:id,items,component_definitions:parts.map(([name,role],n)=>({id:'k'+n,name,role})),editorial_policy_version:'diet-patterns-3',notes:'تجميعة كيتو محسوبة من المكونات المرجعية.'};
   };
   const salad=['سلطة بزيت الزيتون','side',[['cucumber',70,90],['lettuce',50,70],['olive',20,55]]];
   const choices=[];
-  // New economical recipes use a separately sourced cooking oil; do not
-  // relabel olive oil or silently replace ingredients in existing recipes.
-  if(has('sunfloweroil'))for(const [key,name,veg] of [
-    ['eggs-cottage','بيض مسلوق وجبنة قريش وسلطة','cucumber'],
-    ['eggs-spinach','بيض مسلوق وجبنة قريش وسبانخ','spinach'],
-    ['eggs-zucchini','بيض مسلوق وجبنة قريش وكوسة','zucchini']
+  // Budget-friendly keto dishes using realistic culinary fats (tahini, peanuts, peanut butter, whole eggs, and modest <=22g cooking oil) kept <=11g carbs per meal so 4-5 meal days stay strictly <=50g/day while scaling cleanly to 2900+ kcal.
+  for(const [key,name,veg] of [
+    ['eggs-cottage','بيض مسلوق وجبنة قريش بالطحينة وسلطة','cucumber'],
+    ['eggs-spinach','بيض مسلوق وجبنة قريش بالطحينة وسبانخ','spinach'],
+    ['eggs-zucchini','بيض مسلوق وجبنة قريش بالطحينة وكوسة','zucchini']
   ])choices.push(make('budget-'+key,name,['breakfast','lunch','dinner'],[
-    ['بيض وجبنة قريش','main',[['egg',150,220],['cottage',140,250]]],
-    ['خضار بكمية زيت محسوبة','side',[[veg,70,120],['sunfloweroil',25,35]]],
-    ['طحينة بالليمون','side',[['tahini',15,30],['lemon',10,15]]]
+    ['بيض وجبنة قريش','main',[['egg',180,300],['cottage',70,150]]],
+    ['خضار سوتيه بزيت طبخ محسوب','side',[[veg,50,80],...(has('sunfloweroil')?[['sunfloweroil',10,22]]:[])]],
+    ['طحينة بالليمون','side',[['tahini',15,30],['lemon',5,10]]]
   ]));
-  if(has('sunfloweroil'))choices.push(make('budget-cottage-snack','جبنة قريش وخيار وفول سوداني',['snack'],[
-    ['جبنة قريش','main',[['cottage',100,180]]],['خيار','side',[['cucumber',70,90]]],
-    ['فول سوداني','other',[['peanuts',20,35]]],['زيت محسوب مع الجبنة','side',[['sunfloweroil',10,15]]]
+  choices.push(make('budget-cottage-snack','جبنة قريش وخيار وفول سوداني وطحينة',['snack'],[
+    ['جبنة قريش','main',[['cottage',60,120]]],['خيار','side',[['cucumber',40,70]]],
+    ['فول سوداني وطحينة','other',[['peanuts',15,28],['tahini',10,20]]]
   ]));
-  if(has('sunfloweroil'))for(const [veg,label] of [['cucumber','خيار'],['spinach','سبانخ'],['zucchini','كوسة']]){
-    choices.push(make('budget-eggs-'+veg,'بيض مسلوق وجبنة قريش مع '+label,['breakfast','lunch','dinner'],[
-      ['بيض وجبنة قريش','main',[['egg',180,220],['cottage',160,250]]],
-      [label+' بكمية زيت محسوبة','side',[[veg,70,100],['sunfloweroil',30,35]]]
+  choices.push(make('budget-egg-tahini-snack','بيض مسلوق مع طحينة وخيار',['snack'],[
+    ['بيض مسلوق','main',[['egg',120,220]]],['خيار بزيت طبخ خفيف','side',[['cucumber',40,60],...(has('sunfloweroil')?[['sunfloweroil',8,16]]:[])]],
+    ['طحينة','other',[['tahini',15,28]]]
+  ]));
+  for(const [veg,label] of [['cucumber','خيار'],['spinach','سبانخ'],['zucchini','كوسة']]){
+    choices.push(make('budget-eggs-'+veg,'بيض عيون وجبنة قريش وفول سوداني و'+label,['breakfast','lunch','dinner'],[
+      ['بيض عيون وجبنة قريش','main',[['friedegg',180,300],['cottage',60,140]]],
+      [label+' بزيت طبخ محسوب','side',[[veg,50,80],...(has('sunfloweroil')?[['sunfloweroil',10,22]]:[])]],
+      ['فول سوداني محمص','other',[['peanuts',15,30]]]
     ]));
-    choices.push(make('budget-eggs-whites-'+veg,'بيض وبياض بيض مع جبنة قريش و'+label,['breakfast','lunch','dinner'],[
-      ['بيض وبياض بيض مطهو','main',[['egg',150,220],['eggwhite',100,180],['cottage',70,100]]],
-      [label+' بكمية زيت محسوبة','side',[[veg,70,100],['sunfloweroil',30,35]]],
-      ['فول سوداني','other',[['peanuts',25,35]]]
+    choices.push(make('budget-eggs-whites-'+veg,'بيض وبياض بيض مع زبدة فول سوداني و'+label,['breakfast','lunch','dinner'],[
+      ['بيض وبياض بيض مطهو','main',[['egg',180,300],['eggwhite',70,140]]],
+      [label+' بزيت طبخ محسوب','side',[[veg,50,80],...(has('sunfloweroil')?[['sunfloweroil',10,22]]:[])]],
+      ['زبدة فول سوداني','other',[['peanutbutter',15,30]]]
     ]));
   }
   for(const [key,name]of [['egg','بيض مسلوق'],['friedegg','بيض عيون']]){
@@ -223,9 +246,38 @@ export function assertDietDay(snapshots,diet,targets=null,profile=null){
   if(['vegetarian','vegan','mediterranean','dash','keto'].includes(diet) && snapshots.some(s=>s.ingredients.some(i=>!i.key || !dietIngredientAllowed({...i,values:i.values_per_100g},diet))))throw apiError('MEAL_VIOLATES_DIET_OR_UNVERIFIED','Meal does not comply with diet rules or contains unverified ingredients.',{status:400});
   if(diet==='high_protein'&&targets&&snapshots.reduce((s,x)=>s+Number(x.values.protein),0)<targets.protein*.8)throw apiError('HIGH_PROTEIN_TARGET_UNMET','Meals fall below the minimum protein threshold for high_protein diet.',{status:400});
   const hasHypertension=Boolean(profile?.diseases?.includes('hypertension')||targets?.medical_conditions?.includes('hypertension'));
+  const hasKidney=Boolean(profile?.diseases?.includes('kidney')||targets?.medical_conditions?.includes('kidney'));
+  const hasCholesterol=Boolean(profile?.diseases?.includes('cholesterol')||targets?.medical_conditions?.includes('cholesterol'));
+  const getSodium=s=>s.values.sodium!=null&&Number.isFinite(Number(s.values.sodium))&&Number(s.values.sodium)>=0?Number(s.values.sodium):null;
+  if(hasKidney){
+    if(snapshots.some(s=>getSodium(s)==null)||snapshots.reduce((s,x)=>s+getSodium(x),0)>CLINICAL_CONSTANTS.CKD_SODIUM_LIMIT_MG){
+      throw apiError('KIDNEY_SODIUM_LIMIT_EXCEEDED',`Plan exceeds the ${CLINICAL_CONSTANTS.CKD_SODIUM_LIMIT_MG}mg daily sodium limit required for kidney support or lacks sodium measurements.`,{status:400,params:{limitMg:CLINICAL_CONSTANTS.CKD_SODIUM_LIMIT_MG}});
+    }
+  }
   if(diet==='dash'||hasHypertension){
-    const getSodium=s=>s.values.sodium!=null&&Number.isFinite(Number(s.values.sodium))&&Number(s.values.sodium)>=0?Number(s.values.sodium):null;
-    if(snapshots.some(s=>getSodium(s)==null)||snapshots.reduce((s,x)=>s+getSodium(x),0)>2300)throw apiError('DASH_SODIUM_LIMIT_EXCEEDED','Plan exceeds the 2300mg daily sodium limit required for DASH diet or lacks sodium measurements.',{status:400});
+    if(snapshots.some(s=>getSodium(s)==null)||snapshots.reduce((s,x)=>s+getSodium(x),0)>CLINICAL_CONSTANTS.DASH_SODIUM_LIMIT_MG){
+      throw apiError('DASH_SODIUM_LIMIT_EXCEEDED',`Plan exceeds the ${CLINICAL_CONSTANTS.DASH_SODIUM_LIMIT_MG}mg daily sodium limit required for DASH diet or lacks sodium measurements.`,{status:400,params:{limitMg:CLINICAL_CONSTANTS.DASH_SODIUM_LIMIT_MG}});
+    }
+  }
+  if(hasCholesterol){
+    const dayEnergy=snapshots.reduce((sum,s)=>sum+Number(s.values?.energy||0),0);
+    const getSat=s=>{
+      const raw=s.values?.saturated??s.estimated_values?.saturated;
+      return raw!=null&&Number.isFinite(Number(raw))&&Number(raw)>=0?Number(raw):null;
+    };
+    const allHaveSat=snapshots.every(s=>getSat(s)!=null);
+    if(dayEnergy>0&&allHaveSat){
+      const satTotal=snapshots.reduce((sum,s)=>sum+getSat(s),0);
+      if(satTotal*9>dayEnergy*CLINICAL_CONSTANTS.CHOLESTEROL_MAX_SAT_FAT_SHARE+0.5){
+        throw apiError('CHOLESTEROL_SATURATED_FAT_EXCEEDED','Plan exceeds the 8% daily saturated fat ceiling required for cholesterol management.',{status:400,params:{maxSatSharePct:Math.round(CLINICAL_CONSTANTS.CHOLESTEROL_MAX_SAT_FAT_SHARE*100)}});
+      }
+    }
+  }
+  if(isPregnantStatus(medicalProfile.maternalStatus)){
+    const tunaGrams=snapshots.flatMap(s=>s.ingredients||[]).filter(i=>i.key==='tuna').reduce((sum,i)=>sum+Number(i.grams||0),0);
+    if(tunaGrams>CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_DAILY_G){
+      throw apiError('MEAL_EXCLUDED_BY_HEALTH_CONDITION','Daily tuna portion exceeds pregnancy mercury safety cap; changes were not saved.',{status:400});
+    }
   }
   if(!['keto','low_carb'].includes(diet))return;
   if(snapshots.some(s=>s.values.carbs==null||s.carb_ids.length!==1||s.carb_ids[0]!=='fdc:1005'))throw apiError('KETO_CARB_DEFINITION_REQUIRED','Keto diet verification requires consistent total-carbohydrate (fdc:1005) definitions.',{status:400});
@@ -235,14 +287,36 @@ export function assertDietDay(snapshots,diet,targets=null,profile=null){
   if(targets&&(energy<targets.energy*.85||energy>targets.energy*1.15||total('protein')<targets.protein*.8||(diet==='keto'&&total('fat')*9/energy<.52)))throw apiError('LIBRARY_INSUFFICIENT_FOR_DIET_GOALS','Food catalog cannot satisfy calorie, protein, or macro goals under current diet exclusions.',{status:400});
 }
 
-export const FASTING={none:'بدون صيام متقطع','12':'12 ساعة صيام / 12 ساعة أكل','14':'14 ساعة صيام / 10 ساعات أكل','16':'16 ساعة صيام / 8 ساعات أكل'};
+export const FASTING={
+  none:'بدون صيام متقطع',
+  '12':'12 ساعة صيام / 12 ساعة أكل',
+  '14':'14 ساعة صيام / 10 ساعات أكل',
+  '16':'16 ساعة صيام / 8 ساعات أكل',
+  '18':'18 ساعة صيام / 6 ساعات أكل'
+};
+export const IF_PRESET_MAP=Object.freeze({
+  '12_12':{preset:'12_12',fasting:'12',fastHours:12,windowHours:12},
+  '12':{preset:'12_12',fasting:'12',fastHours:12,windowHours:12},
+  '14_10':{preset:'14_10',fasting:'14',fastHours:14,windowHours:10},
+  '14':{preset:'14_10',fasting:'14',fastHours:14,windowHours:10},
+  '16_8':{preset:'16_8',fasting:'16',fastHours:16,windowHours:8},
+  '16':{preset:'16_8',fasting:'16',fastHours:16,windowHours:8},
+  '18_6':{preset:'18_6',fasting:'18',fastHours:18,windowHours:6},
+  '18':{preset:'18_6',fasting:'18',fastHours:18,windowHours:6}
+});
+export function normalizeFastingPreset(raw,fallback='16_8'){
+  if(raw==null||raw===''||raw==='none'||raw==='off')return fallback?IF_PRESET_MAP[fallback]||IF_PRESET_MAP['16_8']:null;
+  const key=String(raw).trim().toLowerCase().replace(/^if_/,'').replace(/[:/]/g,'_');
+  return IF_PRESET_MAP[key]||null;
+}
 export function fastingTimes(prefs,count){
-  const mode=prefs.diet==='intermittent_fasting'?(prefs.fasting&&prefs.fasting!=='none'?prefs.fasting:'16'):(prefs.fasting??'none');
-  if(!Object.hasOwn(FASTING,mode))throw apiError('FASTING_WINDOW_INVALID','Invalid fasting mode or eating window start time (eating window must fit within the same day).',{status:400});
-  if(mode==='none')return [];
+  const rawMode=prefs.diet==='intermittent_fasting'?(prefs.fasting&&prefs.fasting!=='none'?prefs.fasting:'16'):(prefs.fasting??'none');
+  const mapped=rawMode==='none'?'none':(normalizeFastingPreset(rawMode,null)?.fasting??rawMode);
+  if(!Object.hasOwn(FASTING,mapped))throw apiError('FASTING_WINDOW_INVALID','Invalid fasting mode or eating window start time (eating window must fit within the same day).',{status:400});
+  if(mapped==='none')return [];
   const startStr=prefs.eatingStart||(prefs.diet==='intermittent_fasting'?'12:00':'');
   if(!/^\d{2}:\d{2}$/.test(startStr))throw apiError('FASTING_WINDOW_INVALID','Invalid fasting mode or eating window start time (eating window must fit within the same day).',{status:400});
-  const [h,m]=startStr.split(':').map(Number),start=h*60+m,window=(24-Number(mode))*60;
+  const [h,m]=startStr.split(':').map(Number),start=h*60+m,window=(24-Number(mapped))*60;
   if(h>23||m>59||start+window>1440)throw apiError('FASTING_WINDOW_INVALID','Invalid fasting mode or eating window start time (eating window must fit within the same day).',{status:400});
   return Array.from({length:count},(_,i)=>{const t=Math.round(start+i*(window-30)/Math.max(1,count-1));return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0')});
 }

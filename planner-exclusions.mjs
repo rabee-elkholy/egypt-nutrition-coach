@@ -29,15 +29,15 @@ export const EXCLUSIONS = [
     "legumes",
     "كل البقوليات",
     "البروتين والبقول",
-    ["fava", "lentils", "chickpeas", "kidney", "whitebeans", "soybeans"],
-    ["فول", "عدس", "حمص", "فاصوليا", "beans", "lentils", "chickpeas"],
+    ["fava", "lentils", "chickpeas", "kidney", "whitebeans", "soybeans", "peas"],
+    ["فول", "عدس", "حمص", "فاصوليا", "بسله", "بازلاء", "beans", "lentils", "chickpeas", "peas"],
   ),
   row(
     "fava",
     "الفول",
     "البروتين والبقول",
-    ["fava"],
-    ["فول", "fava", "broad beans"],
+    ["fava", "falafel"],
+    ["فول", "طعميه", "فلافل", "fava", "broad beans", "falafel"],
   ),
   row("lentils", "العدس", "البروتين والبقول", ["lentils"], ["عدس", "lentils"]),
   row("soy", "الصويا", "البروتين والبقول", ["soybeans"], ["صويا", "فول صويا", "soy", "soybeans"]),
@@ -301,9 +301,10 @@ export const EXCLUSIONS = [
 ];
 // Explicit mapping of regional library keys to existing taste groups.
 const extraKeys = {
-  legumes: ["falafel"],
+  legumes: ["falafel", "peas"],
+  fava: ["falafel"],
   chicken: ["turkey", "shawarma_chicken"],
-  meat: ["lamb", "shawarma_beef"],
+  meat: ["lamb", "shawarma_beef", "liver"],
   offal: ["liver"],
   fish: ["tuna", "salmon"],
   dairy: ["greekyogurt", "wholemilk", "mozzarella"],
@@ -360,10 +361,17 @@ EXCLUSIONS.push(
   row("avocado", "الأفوكادو", "الفاكهة", ["avocado"], ["افوكادو", "avocado"]),
   row("gluten", "الجلوتين والقمح", "النشويات", ["bread", "wholebread", "toast", "pasta", "bulgur", "couscous", "tabbouleh", "fattoush"], ["جلوتين", "قمح", "gluten", "wheat"]),
   row("tree_nuts", "المكسرات الشجرية", "المكسرات والإضافات", ["almonds", "walnuts", "cashews"], ["مكسرات", "لوز", "عين جمل", "كاجو", "tree nuts"]),
-  row("red_meat", "اللحوم الحمراء", "البروتين والبقول", ["beef", "lamb", "shawarma_beef"], ["لحم", "لحوم", "beef", "lamb", "red meat"]),
+  row("red_meat", "اللحوم الحمراء", "البروتين والبقول", ["beef", "lamb", "shawarma_beef", "liver"], ["لحم", "لحوم", "كبده", "beef", "lamb", "liver", "red meat"]),
   row("poultry", "الدواجن", "البروتين والبقول", ["chicken", "chickenthigh", "chickenboiled", "turkey", "shawarma_chicken"], ["فراخ", "دجاج", "ديك رومي", "poultry", "chicken", "turkey"]),
   row("spicy", "الأطعمة الحارة", "المكسرات والإضافات", [], ["حار", "شطة", "فلفل حار", "spicy", "chili"])
 );
+export const EXCLUSION_CROSS_CONTACT_WARNINGS = Object.freeze({
+  gluten: Object.freeze({
+    keys: Object.freeze(["oats"]),
+    code: "GLUTEN_OATS_CROSS_CONTACT_WARNING",
+    message: "Oats are naturally gluten-free but frequently processed on shared equipment; choose certified gluten-free oats when avoiding gluten."
+  })
+});
 export function expandedKeys(p) {
   return [
     ...new Set([

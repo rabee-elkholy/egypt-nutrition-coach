@@ -1,5 +1,5 @@
 import {clockNow,isoNow} from './clock.mjs';
-import {localDate,dateForLog,validTimeZone,plainRecord,boolean,number,integer,SUPPORTED_LOCALES} from '../coaching-shared.mjs';
+import {localDate,dateForLog,validTimeZone,plainRecord,boolean,number,integer,normalizeLocale} from '../coaching-shared.mjs';
 import {apiError} from '../coaching-error.mjs';
 export const settingsActions=new Set(['timezone','notification_preferences','steps','activity']);
 export function applySettingsCommand(s,action,p){
@@ -17,8 +17,9 @@ export function applySettingsCommand(s,action,p){
    s.profile.timezone=nextTz;
   }
   if(hasLocale){
-   const loc=String(p.locale).trim();
-   if(!SUPPORTED_LOCALES.has(loc))throw apiError('INVALID_LOCALE','Unsupported locale code.',{status:400,params:{locale:loc},fieldErrors:[{field:'locale',code:'INVALID_LOCALE',message:'Unsupported locale code.'}]});
+   const rawLoc=String(p.locale).trim();
+   const loc=normalizeLocale(rawLoc,null);
+   if(!loc)throw apiError('INVALID_LOCALE','Unsupported locale code.',{status:400,params:{locale:rawLoc},fieldErrors:[{field:'locale',code:'INVALID_LOCALE',message:'Unsupported locale code.'}]});
    s.profile.locale=loc;
   }
   if(nextTz!==previousTz)s.history.push({kind:'timezone_change',at:isoNow(),from:previousTz,to:nextTz});

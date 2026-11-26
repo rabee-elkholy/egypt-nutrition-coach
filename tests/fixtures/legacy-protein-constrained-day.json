@@ -5,12 +5,12 @@
     "training_days": 5,
     "training_calorie_scope": "النشاط المختار يشمل تمرينك؛ لا نضيف سعرات التمرين مرة ثانية.",
     "energy": 2220,
-    "protein": 159.7,
-    "protein_factor": 1.6,
+    "protein": 179.6,
+    "protein_factor": 1.8,
     "effective_weight": 99.8,
-    "max_protein_factor": 1.8,
+    "max_protein_factor": 2,
     "fat": 74,
-    "carbs": 228.8,
+    "carbs": 208.9,
     "carb_target_scope": "تقسيم استرشادي للطاقة؛ القيم الغذائية المرجعية لا تُعاد اشتقاقها بمعادلة 4/4/9",
     "bmi": 27.4,
     "ree": 2051.8,
@@ -106,11 +106,11 @@
       "parts": [
         {
           "key": "cottage",
-          "grams": "226"
+          "grams": "300"
         },
         {
           "key": "egg",
-          "grams": "200"
+          "grams": "240"
         },
         {
           "key": "olive",

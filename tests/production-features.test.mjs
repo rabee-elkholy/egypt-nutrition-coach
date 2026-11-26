@@ -825,10 +825,13 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       // Reusing same Idempotency-Key with different payload -> 409 IDEMPOTENCY_KEY_REUSED_MISMATCH
       await errJson(await postCmd(hijacker.accessToken, hRev, 'water', { cups: 5 }, { idempotencyKey: 'mismatch-key-01', minimal: true }), 409, 'IDEMPOTENCY_KEY_REUSED_MISMATCH');
 
-      // Failed renew_plan while plan is still active returns 400 PLAN_STILL_ACTIVE and MUST NOT burn free quota
+      // Failed renew_plan while plan is still active returns 400 PLAN_STILL_ACTIVE; standard weekly renewals are unlimited (null) for Free users
       await errJson(await postCmd(hijacker.accessToken, hRev, 'renew_plan', {}, { minimal: true, envExtra: { ENFORCE_PRO_ENTITLEMENTS: 'true' } }), 400, 'PLAN_STILL_ACTIVE');
       const hEnt = await okJson(await call('/v1/entitlements', { headers: hijackHdr }));
-      assert.equal(hEnt.quotas.freePlanRenewalsRemaining, 1, 'Failed renew_plan must not consume free renewal quota');
+      assert.equal(hEnt.quotas.freePlanRenewalsRemaining, null, 'Standard weekly renewals are unlimited for Free users');
+      assert.equal(hEnt.quotas.barcodeScansDailyLimit, 3);
+      assert.equal(hEnt.quotas.mealCaptureMonthly?.limit, 3);
+      assert.equal(hEnt.quotas.specialistConsultationMonthly?.limit, 5);
 
       // Voluntary replace_exercise free quota: 2 swaps/week succeed, 3rd returns 402 PRO_ENTITLEMENT_REQUIRED
       const hDay = hGen.workoutPlan.days[0];
@@ -976,8 +979,12 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
         goal: 'maintain', serviceTrack: 'nutrition_only', overwriteExisting: false, healthConfirmed: true,
       }), 409, 'PROFILE_ALREADY_EXISTS');
 
-      // 10d. Consistent Pro gating for Free user vs Free features (pantry & ramadan)
+      // 10d. Consistent Pro gating for Free user vs Free features (pantry, ramadan & 3 daily barcode scans)
       await errJson(await call(`/v1/plans/${encodeURIComponent(p1PlanId)}/grocery-list`, { headers: p1Hdr }, enforce), 402, 'PRO_ENTITLEMENT_REQUIRED');
+      // Free users receive 3 daily barcode scans; 4th scan returns 402 PRO_ENTITLEMENT_REQUIRED
+      await okJson(await call('/v1/foods/barcode/6221000123456', { headers: p1Hdr }, enforce));
+      await okJson(await call('/v1/foods/barcode/6221000123456', { headers: p1Hdr }, enforce));
+      await okJson(await call('/v1/foods/barcode/6221000123456', { headers: p1Hdr }, enforce));
       await errJson(await call('/v1/foods/barcode/6221000123456', { headers: p1Hdr }, enforce), 402, 'PRO_ENTITLEMENT_REQUIRED');
       await errJson(await call('/v1/foods/barcode', {
         method: 'POST', headers: { ...p1Hdr, 'Content-Type': 'application/json' },

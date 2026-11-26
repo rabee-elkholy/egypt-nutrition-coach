@@ -90,9 +90,12 @@ test('legacy regional menu names match stored ingredients and generated definiti
  const all=Object.values(library.regional_menus).flat();
  for(const id of ['gulf-menu-halloumi-cottage-gulf','levant-menu-halloumi-tomato-levant'])assert.doesNotMatch(all.find(t=>t.id===id).name,/حلوم/);
  assert.doesNotMatch(all.find(t=>t.id==='levant-menu-freekeh-chicken-levant').name,/فريكة/);
- assert.doesNotMatch(all.find(t=>t.id==='maghreb-menu-harira-chickpea-meat').name,/حريرة|عدس|حمص/);
- assert.doesNotMatch(all.find(t=>t.id==='gulf-menu-masoub-fit').name,/معصوب|موز/);
- assert.doesNotMatch(all.find(t=>t.id==='levant-menu-labneh-zaatar-levant').name,/لبنة/);
+ const harira=all.find(t=>t.id==='maghreb-menu-harira-chickpea-meat');
+ assert.ok(['lentils','chickpeas','beef'].every(k=>harira.items.some(i=>i.key===k)),'harira must include lentils, chickpeas, and beef');
+ const masoub=all.find(t=>t.id==='gulf-menu-masoub-fit');
+ assert.ok(['oats','banana','dates'].every(k=>masoub.items.some(i=>i.key===k)),'masoub-fit must include oats, banana, and dates');
+ const labneh=all.find(t=>t.id==='levant-menu-labneh-zaatar-levant');
+ assert.ok(['greekyogurt','olive'].every(k=>labneh.items.some(i=>i.key===k)),'labneh-zaatar-levant must include strained greek yogurt and olive oil');
  const required={harira:['lentils','chickpeas','tomatocooked'],lablabi:['chickpeas','wholebread'],mbakbaka:['pasta','tomatocooked'],mdardara:['lentils','rice','onion']};
  for(const [id,keys] of Object.entries(required)){
   const r=REGIONAL_RECIPES.find(r=>r.id==='regional-'+(id==='mdardara'?'levant':'maghreb')+'-'+id);assert.ok(r,id);

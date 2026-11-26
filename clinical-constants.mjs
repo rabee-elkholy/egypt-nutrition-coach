@@ -1,0 +1,57 @@
+// Single source of truth for clinical nutrition, safety floor, and macro constants.
+// Pure leaf module (zero internal imports) to guarantee an acyclic server dependency graph.
+
+export const CLINICAL_CONSTANTS = Object.freeze({
+  // Daily sodium ceilings (mg/day)
+  DASH_SODIUM_LIMIT_MG: 2300,
+  HYPERTENSION_SODIUM_LIMIT_MG: 2300,
+  CKD_SODIUM_LIMIT_MG: 2000,
+
+  // CKD clinical micronutrient reference guardrails (mg/day)
+  CKD_POTASSIUM_LIMIT_MG: 2600,
+  CKD_PHOSPHORUS_LIMIT_MG: 1100,
+
+  // Cardiovascular & lipid limits
+  CHOLESTEROL_MAX_SAT_FAT_SHARE: 0.08,
+  CHOLESTEROL_FAT_SHARE: 0.25,
+  STANDARD_FAT_SHARE: 0.30,
+
+  // Glycemic carbohydrate share caps
+  DIABETES_MAX_CARB_SHARE: 0.40,
+  DIABETES_CHOLESTEROL_MAX_CARB_SHARE: 0.44,
+
+  // Maternal energy & protein calibration (IOM/WHO rounded to 10 kcal)
+  PREGNANCY_T1_EXTRA_KCAL: 0,
+  PREGNANCY_T2_EXTRA_KCAL: 340,
+  PREGNANCY_T3_EXTRA_KCAL: 450,
+  BREASTFEEDING_EXTRA_KCAL: 400,
+  BREASTFEEDING_MAX_DEFICIT_KCAL: 300,
+  PREGNANCY_MIN_CARBS_G: 175,
+  PREGNANCY_T2_EXTRA_PROTEIN_G: 15,
+  PREGNANCY_T3_EXTRA_PROTEIN_G: 25,
+  BREASTFEEDING_EXTRA_PROTEIN_G: 20,
+  PREGNANCY_TUNA_MAX_WEEKLY_SERVINGS: 2,
+  PREGNANCY_TUNA_MAX_DAILY_G: 150,
+
+  // Energy safety bounds (kcal/day)
+  MIN_ENERGY_FLOOR_PREGNANT: 1800,
+  MIN_ENERGY_FLOOR_BREASTFEEDING: 1600,
+  MIN_ENERGY_FLOOR_FEMALE: 1200,
+  MIN_ENERGY_FLOOR_MALE: 1500,
+  MAX_ENERGY_CEILING: 4200,
+  SENIOR_MAX_DEFICIT_KCAL: 400,
+  STANDARD_MAX_DEFICIT_KCAL: 500,
+
+  // Protein factors (g/kg effective weight)
+  PROTEIN_CAP_KIDNEY: 1.1,
+  PROTEIN_CAP_GOUT: 1.4,
+  PROTEIN_FACTOR_TRAINED_LOSE: 1.8,
+  PROTEIN_FACTOR_HIGH_PROTEIN_MIN: 1.8,
+  PROTEIN_FACTOR_HIGH_PROTEIN_MAX: 2.0,
+  PROTEIN_MAX_STANDARD: 2.0,
+
+  // Carb cycling & diet break thresholds
+  CARB_CYCLING_WORKOUT_MULTIPLIER: 1.10,
+  CARB_CYCLING_REST_MULTIPLIER: 0.95,
+  DIET_BREAK_DAYS_THRESHOLD: 56
+});

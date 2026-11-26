@@ -7,7 +7,7 @@ This document describes the production architecture for **CuraFit API v1** runni
 ## 1. Architectural Principles & Canonical Hosting Contract
 
 1. **Clean Domain Separation:**
-   - Nutrition planning and metabolic calculators (`planner-core.mjs`, `diet-patterns.mjs`, `calculator.mjs`) and training/recovery/coaching engines (`server/workouts.mjs`, `server/recovery.mjs`, `server/training-review.mjs`, `server/coaching.mjs`, `workout-engine.mjs`) operate as deterministic modules decoupled from Cloudflare HTTP transport and UI code.
+   - Nutrition planning and metabolic calculators (`planner-core.mjs`, `diet-patterns.mjs`, `clinical-constants.mjs`, `calculator.mjs`) and training/recovery/coaching engines (`server/workouts.mjs`, `server/recovery.mjs`, `server/training-review.mjs`, `server/coaching.mjs`) operate as deterministic modules decoupled from Cloudflare HTTP transport and UI code.
    - Mobile clients (KMM) never duplicate nutrition formulas, clinical exclusions, or workout progression rules locally; the backend is the single source of truth with offline caching and delta outbox synchronization.
 2. **Canonical Cloudflare Environments & Branches ([`AGENTS.md`](../AGENTS.md)):**
    - **Cloud Dev (`dev` branch):** Worker `curafit-api-dev` (`https://curafit-api-dev.egypt-nutrition-coach.workers.dev`) bound to D1 `curafit-db-dev` (`0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`, full clone of Production D1).

@@ -1,12 +1,13 @@
 import { regionalFoodTemplates } from './regional-foods.mjs';
 import { apiError } from './coaching-error.mjs';
 import { minSafeEnergyFloor, isPregnantStatus } from './coaching-shared.mjs';
-import {DIETS,FIXED_DIET_MEALS,dietIngredientAllowed,medicalContraindicatedKeys,isDietUnsafeForProfile,dietTemplates,assertDietDay,fastingTimes} from './diet-patterns.mjs';
+import { CLINICAL_CONSTANTS } from './clinical-constants.mjs';
+import {DIETS,FIXED_DIET_MEALS,dietIngredientAllowed,medicalContraindicatedKeys,isDietUnsafeForProfile,dietTemplates,assertDietDay,fastingTimes,normalizeFastingPreset} from './diet-patterns.mjs';
 import {sportsEnergy} from './sports.mjs';
 import {practicalParts,roundedHouseholdGrams} from './planner-household.mjs';
 import { aggregate, referenceTotals, estimateTotals } from "./calculator.mjs";
 import { volumeGrams } from "./portions.mjs";
-import { EXCLUSIONS, expandedKeys } from "./planner-exclusions.mjs";
+import { EXCLUSIONS, EXCLUSION_CROSS_CONTACT_WARNINGS, expandedKeys } from "./planner-exclusions.mjs";
 import { egyptianMenus, regionalMenus } from './egyptian-menu.mjs';
 import { EGYPTIAN_POLICY_VERSION, egyptianBreadChoice, egyptianSlotPool,
   egyptianMealFamily, egyptianMealName } from "./egyptian-meals.mjs";
@@ -153,9 +154,9 @@ export function estimateNeeds(input) {
   const pace = (maternalStatus === 'breastfeeding' && input.goal === 'lose') ? 'slow' : rawPace;
   let change = 0;
   if(input.goal === 'lose'){
-    const maxDeficit = seniorMode ? 400 : 500;
+    const maxDeficit = seniorMode ? CLINICAL_CONSTANTS.SENIOR_MAX_DEFICIT_KCAL : CLINICAL_CONSTANTS.STANDARD_MAX_DEFICIT_KCAL;
     change = -Math.min(tdee * {slow:.1, moderate:.15, fast:.2}[pace], maxDeficit);
-    if (seniorMode) addNote("PLAN_SENIOR_DEFICIT_CAP", "Senior safety mode (70+): daily calorie deficit capped at -400 kcal.");
+    if (seniorMode) addNote("PLAN_SENIOR_DEFICIT_CAP", `Senior safety mode (70+): daily calorie deficit capped at -${CLINICAL_CONSTANTS.SENIOR_MAX_DEFICIT_KCAL} kcal.`);
   }
   else if(input.goal === 'muscle_gain'&&(input.recomposition||(input.targetWeight!=null&&Math.abs(Number(input.targetWeight)-weight)<0.5))){change=0;addNote("PLAN_RECOMPOSITION_MAINTENANCE", 'Body recomposition starts at maintenance calories with progressive resistance training.');}
   else if(input.goal === 'muscle_gain')change=Math.min(tdee*{slow:.05,moderate:.08,fast:.1}[pace],250);
@@ -164,18 +165,18 @@ export function estimateNeeds(input) {
 
   // Maternal adjustments (never stack weight-gain surplus on top of trimester energy add-ons)
   if (maternalStatus === "pregnant_t1") {
-    change = 0;
+    change = CLINICAL_CONSTANTS.PREGNANCY_T1_EXTRA_KCAL;
     addNote("PLAN_PREGNANCY_T1_CALIBRATION", "First-trimester pregnancy calibration applied (maintenance baseline, calorie deficits disabled).");
   } else if (maternalStatus === "pregnant_t2" || maternalStatus === "pregnant") {
-    change = 340;
-    addNote("PLAN_PREGNANCY_T2_CALIBRATION", "Second-trimester pregnancy calibration applied (+340 kcal/day, deficits and extra gain surplus disabled).");
+    change = CLINICAL_CONSTANTS.PREGNANCY_T2_EXTRA_KCAL;
+    addNote("PLAN_PREGNANCY_T2_CALIBRATION", `Second-trimester pregnancy calibration applied (+${CLINICAL_CONSTANTS.PREGNANCY_T2_EXTRA_KCAL} kcal/day, deficits and extra gain surplus disabled).`);
   } else if (maternalStatus === "pregnant_t3") {
-    change = 450;
-    addNote("PLAN_PREGNANCY_T3_CALIBRATION", "Third-trimester pregnancy calibration applied (+450 kcal/day, deficits and extra gain surplus disabled).");
+    change = CLINICAL_CONSTANTS.PREGNANCY_T3_EXTRA_KCAL;
+    addNote("PLAN_PREGNANCY_T3_CALIBRATION", `Third-trimester pregnancy calibration applied (+${CLINICAL_CONSTANTS.PREGNANCY_T3_EXTRA_KCAL} kcal/day, deficits and extra gain surplus disabled).`);
   } else if (maternalStatus === "breastfeeding") {
-    const boundedOffset = input.goal === "lose" ? Math.max(-300, change) : change;
-    change = boundedOffset + 400;
-    addNote("PLAN_BREASTFEEDING_CALIBRATION", "Breastfeeding calibration applied (+400 kcal baseline, max deficit -300 kcal/day).");
+    const boundedOffset = input.goal === "lose" ? Math.max(-CLINICAL_CONSTANTS.BREASTFEEDING_MAX_DEFICIT_KCAL, change) : change;
+    change = boundedOffset + CLINICAL_CONSTANTS.BREASTFEEDING_EXTRA_KCAL;
+    addNote("PLAN_BREASTFEEDING_CALIBRATION", `Breastfeeding calibration applied (+${CLINICAL_CONSTANTS.BREASTFEEDING_EXTRA_KCAL} kcal baseline, max deficit -${CLINICAL_CONSTANTS.BREASTFEEDING_MAX_DEFICIT_KCAL} kcal/day).`);
   }
 
   let energy = Math.round((tdee + change) / 10) * 10;
@@ -187,11 +188,11 @@ export function estimateNeeds(input) {
       `Daily energy raised to the safe planning floor (${minEnergyFloor} kcal).`,
     );
   }
-  if (energy > 4200) {
-    energy = 4200;
+  if (energy > CLINICAL_CONSTANTS.MAX_ENERGY_CEILING) {
+    energy = CLINICAL_CONSTANTS.MAX_ENERGY_CEILING;
     addNote(
       "PLAN_MAX_ENERGY_CEILING_APPLIED",
-      'Daily energy capped at the safe planning ceiling (4200 kcal).',
+      `Daily energy capped at the safe planning ceiling (${CLINICAL_CONSTANTS.MAX_ENERGY_CEILING} kcal).`,
     );
   }
 
@@ -208,9 +209,11 @@ export function estimateNeeds(input) {
 
   let factor =
     trainingDays > 0
-      ? input.goal === "maintain"
-        ? 1.4
-        : 1.6
+      ? input.goal === "lose"
+        ? CLINICAL_CONSTANTS.PROTEIN_FACTOR_TRAINED_LOSE
+        : input.goal === "maintain"
+          ? 1.4
+          : 1.6
       : input.goal === "lose"
         ? 1.4
         : input.goal === "muscle_gain"
@@ -222,24 +225,29 @@ export function estimateNeeds(input) {
   if (seniorMode) factor = Math.max(factor, 1.2);
   if (maternalStatus !== "none") factor = Math.max(factor, 1.4);
   if (isPregnantStatus(maternalStatus)) {
-    addNote("PLAN_PREGNANCY_FOOD_SAFETY", "Pregnancy nutrition safety active: organ meats (liver) and unsafe calorie cuts are excluded.");
+    addNote("PLAN_PREGNANCY_FOOD_SAFETY", `Pregnancy nutrition safety active: organ meats (liver) and unsafe calorie cuts are excluded, tuna is capped at <= ${CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_WEEKLY_SERVINGS} servings/week, and pasteurized dairy with thorough cooking is advised.`);
+    addNote("PLAN_PREGNANCY_MERCURY_PASTEURIZATION_NOTE", "Limit tuna to at most 2 servings per week for mercury safety, use pasteurized dairy only, and cook meats and eggs thoroughly.");
   }
   if (diseases.has("gout")) {
-    factor = Math.min(factor, 1.4);
-    addNote("PLAN_GOUT_PROTEIN_CAP", "Protein capped at 1.4 g/kg and high-purine red meats/offal excluded for gout.");
+    factor = Math.min(factor, CLINICAL_CONSTANTS.PROTEIN_CAP_GOUT);
+    addNote("PLAN_GOUT_PROTEIN_CAP", `Protein capped at ${CLINICAL_CONSTANTS.PROTEIN_CAP_GOUT} g/kg and high-purine red meats, offal, tuna, and salmon excluded for gout.`);
   }
   if (diseases.has("kidney")) {
-    factor = Math.min(factor, 1.1);
-    addNote("PLAN_KIDNEY_PROTEIN_CAP", "Protein conservatively capped at <= 1.1 g/kg for kidney condition support.");
+    factor = Math.min(factor, CLINICAL_CONSTANTS.PROTEIN_CAP_KIDNEY);
+    addNote("PLAN_KIDNEY_PROTEIN_CAP", `Clinician-guided kidney support: protein capped at <= ${CLINICAL_CONSTANTS.PROTEIN_CAP_KIDNEY} g/kg, sodium <= ${CLINICAL_CONSTANTS.CKD_SODIUM_LIMIT_MG} mg/day, and high-potassium/phosphorus foods filtered.`);
   }
   if (diseases.has("ibs")) {
-    addNote("PLAN_IBS_EXCLUSIONS_ACTIVE", "Heavy legumes, cabbage, and raw alliums excluded for IBS comfort.");
+    addNote("PLAN_IBS_EXCLUSIONS_ACTIVE", "Low-FODMAP exclusions active (high-FODMAP legumes, dairy, wheat, high-fructose fruits, cabbage, and alliums excluded for IBS comfort).");
   }
   if (diseases.has("hypertension")) {
-    addNote("PLAN_HYPERTENSION_SODIUM_CEILING", "Low-sodium ceiling and high-sodium cheese exclusions enabled for blood pressure support.");
+    addNote("PLAN_HYPERTENSION_SODIUM_CEILING", `Low-sodium ceiling (<= ${CLINICAL_CONSTANTS.HYPERTENSION_SODIUM_LIMIT_MG} mg/day) and high-sodium cheese exclusions enabled for blood pressure support.`);
+  }
+  if (diseases.has("cholesterol")) {
+    addNote("PLAN_CHOLESTEROL_SAT_FAT_CAP", `Cholesterol safety active: saturated fat capped at <= ${Math.round(CLINICAL_CONSTANTS.CHOLESTEROL_MAX_SAT_FAT_SHARE * 100)}% of daily energy and high-saturated-fat cuts excluded.`);
   }
   if (diseases.has("celiac")) {
     addNote("PLAN_CELIAC_GLUTEN_EXCLUSION", "Gluten-containing grains and breads are excluded for celiac safety.");
+    addNote(EXCLUSION_CROSS_CONTACT_WARNINGS.gluten.code, EXCLUSION_CROSS_CONTACT_WARNINGS.gluten.message);
   }
   if (diseases.has("favism")) {
     addNote("PLAN_FAVISM_EXCLUSION", "Fava beans and falafel are excluded for favism (G6PD) safety.");
@@ -248,20 +256,26 @@ export function estimateNeeds(input) {
     addNote("PLAN_LACTOSE_EXCLUSION", "Dairy products are excluded for lactose intolerance comfort.");
   }
 
-  let fatShare = diseases.has("cholesterol") ? 0.25 : 0.3;
-  const maternalProteinAddon = maternalStatus === "pregnant_t2" || maternalStatus === "pregnant" ? 15 : maternalStatus === "pregnant_t3" ? 25 : maternalStatus === "breastfeeding" ? 20 : 0;
+  let fatShare = diseases.has("cholesterol") ? CLINICAL_CONSTANTS.CHOLESTEROL_FAT_SHARE : CLINICAL_CONSTANTS.STANDARD_FAT_SHARE;
+  const maternalProteinAddon = maternalStatus === "pregnant_t2" || maternalStatus === "pregnant"
+    ? CLINICAL_CONSTANTS.PREGNANCY_T2_EXTRA_PROTEIN_G
+    : maternalStatus === "pregnant_t3"
+      ? CLINICAL_CONSTANTS.PREGNANCY_T3_EXTRA_PROTEIN_G
+      : maternalStatus === "breastfeeding"
+        ? CLINICAL_CONSTANTS.BREASTFEEDING_EXTRA_PROTEIN_G
+        : 0;
   let proteinGrams = round(effectiveWeight * factor + (diseases.has("kidney") ? 0 : maternalProteinAddon));
   let fatGrams = round((energy * fatShare) / 9);
   let carbGrams = round(Math.max(0, energy - proteinGrams * 4 - fatGrams * 9) / 4);
 
   if (diseases.has("diabetes") || diseases.has("diabetes_t1") || diseases.has("diabetes_t2") || diseases.has("insulin_resistance") || diseases.has("pcos")) {
-    const maxCarbShare = diseases.has("cholesterol") ? 0.44 : 0.38;
-    const minCarbGrams = isPregnantStatus(maternalStatus) ? 175 : 0;
+    const maxCarbShare = diseases.has("cholesterol") ? CLINICAL_CONSTANTS.DIABETES_CHOLESTEROL_MAX_CARB_SHARE : CLINICAL_CONSTANTS.DIABETES_MAX_CARB_SHARE;
+    const minCarbGrams = isPregnantStatus(maternalStatus) ? CLINICAL_CONSTANTS.PREGNANCY_MIN_CARBS_G : 0;
     const targetCarbCap = Math.max(minCarbGrams, (energy * maxCarbShare) / 4);
     if (carbGrams > targetCarbCap) {
       carbGrams = round(targetCarbCap);
       const remaining = Math.max(0, energy - carbGrams * 4);
-      const maxProtFactor = diseases.has("kidney") ? 1.1 : diseases.has("gout") ? 1.4 : 1.8;
+      const maxProtFactor = diseases.has("kidney") ? CLINICAL_CONSTANTS.PROTEIN_CAP_KIDNEY : diseases.has("gout") ? CLINICAL_CONSTANTS.PROTEIN_CAP_GOUT : 1.8;
       const minSafeProt = proteinGrams;
       const targetProtCap = effectiveWeight * maxProtFactor + (diseases.has("kidney") ? 0 : maternalProteinAddon);
       const idealProt = Math.max(minSafeProt, Math.min(targetProtCap, (remaining * 0.45) / 4));
@@ -275,7 +289,7 @@ export function estimateNeeds(input) {
       } else {
         fatGrams = round(rawFatGrams);
       }
-      addNote("PLAN_GLYCEMIC_CARB_CALIBRATION", "Carbohydrate share calibrated to ~38% of daily energy for glycemic support.");
+      addNote("PLAN_GLYCEMIC_CARB_CALIBRATION", `Carbohydrate share calibrated to ~${Math.round(maxCarbShare * 100)}% of daily energy for glycemic support.`);
     }
   }
 
@@ -337,7 +351,12 @@ export function estimateNeeds(input) {
     }
   }
 
-  const maxProteinFactor = diseases.has("kidney") ? 1.1 : diseases.has("gout") ? 1.4 : 1.8;
+  const maxProteinFactor = diseases.has("kidney")
+    ? CLINICAL_CONSTANTS.PROTEIN_CAP_KIDNEY
+    : diseases.has("gout")
+      ? CLINICAL_CONSTANTS.PROTEIN_CAP_GOUT
+      : CLINICAL_CONSTANTS.PROTEIN_MAX_STANDARD;
+  const clinicianGuided = diseases.has("kidney");
 
   return {
     training_days: trainingDays,
@@ -350,6 +369,7 @@ export function estimateNeeds(input) {
     protein_factor: factor,
     effective_weight: round(effectiveWeight, 2),
     max_protein_factor: maxProteinFactor,
+    ...(clinicianGuided ? { clinician_guided: true, clinicianGuided: true } : {}),
     fat: fatGrams,
     carbs: carbGrams,
     carb_target_scope:
@@ -418,6 +438,12 @@ export function validatePreferences(p, library) {
   const region = p.region ?? "egypt";
   if (!Object.hasOwn(REGIONS, region))
     throw apiError("INVALID_REGION", "region must be a supported regional catalog selection.", { status: 400 });
+  const normalizedIf = diet === "intermittent_fasting"
+    ? normalizeFastingPreset(p.ifPreset ?? p.fastingPreset ?? p.fasting, "16_8")
+    : (p.fasting && p.fasting !== "none" ? normalizeFastingPreset(p.fasting, null) : null);
+  if (diet === "intermittent_fasting" && !normalizedIf) {
+    throw apiError("FASTING_WINDOW_INVALID", "Invalid fasting mode or eating window start time (eating window must fit within the same day).", { status: 400 });
+  }
   const result = {
     ...p,
     diet,
@@ -425,10 +451,13 @@ export function validatePreferences(p, library) {
     meals: mealsCount,
     ...(diet === "intermittent_fasting"
       ? {
-          fasting: p.fasting && p.fasting !== "none" ? p.fasting : "16",
+          fasting: normalizedIf.fasting,
+          ifPreset: normalizedIf.preset,
           eatingStart: p.eatingStart || "12:00",
         }
-      : {}),
+      : normalizedIf
+        ? { fasting: normalizedIf.fasting, ifPreset: normalizedIf.preset }
+        : {}),
     excludedKeys: [...new Set(excludedKeys)],
     excludedFoodIds: [...new Set(excludedFoodIds)],
     excludedGroups: [...new Set(excludedGroups)],
@@ -545,14 +574,41 @@ export function planningTemplates(lib, prefs, includeRegional = true, profile = 
   if (region === 'egypt') {
     base = egyptianMenus(lib);
   } else if (['gulf', 'levant', 'maghreb'].includes(region)) {
-    const regMenus = lib.regional_menus?.[region] || regionalMenus(lib, region);
+    const regMenus = regionalMenus(lib, region);
     base = [...regMenus, ...lib.templates.filter(t => regionAllows(t, region))];
   } else {
     base = lib.templates;
   }
-  const strictSodium = prefs.diet === 'dash' || Boolean(profile?.diseases?.includes('hypertension'));
+  const strictSodium = prefs.diet === 'dash' || Boolean(profile?.diseases?.includes('hypertension') || profile?.diseases?.includes('kidney'));
   base = [...base, ...(!includeRegional || strictSodium ? [] : regionalFoodTemplates(lib, region))];
-  return dietTemplates(base, lib, prefs.diet ?? 'balanced', region);
+  return dietTemplates(base, lib, prefs.diet ?? 'balanced', region, profile);
+}
+export function applyDietMacroTargets(baseTargets, dietType = 'balanced', profile = {}) {
+  const targets = { ...baseTargets };
+  if (dietType === 'high_protein') {
+    const weightBasis = targets.effective_weight ?? Number(profile?.weight || 75);
+    const maxFactor = targets.max_protein_factor ?? CLINICAL_CONSTANTS.PROTEIN_MAX_STANDARD;
+    const isActiveOrCutting = (targets.training_days || 0) > 0 || ['lose', 'muscle_gain'].includes(profile?.goal);
+    const desiredHighFactor = isActiveOrCutting
+      ? CLINICAL_CONSTANTS.PROTEIN_FACTOR_HIGH_PROTEIN_MAX
+      : CLINICAL_CONSTANTS.PROTEIN_FACTOR_HIGH_PROTEIN_MIN;
+    const energyCappedFactor = targets.energy > 0
+      ? Math.max(1.4, Math.floor(((targets.energy * 0.42) / 4 / Math.max(1, weightBasis)) * 10) / 10)
+      : desiredHighFactor;
+    const resolvedFactor = Math.min(maxFactor, Math.max(targets.protein_factor || CLINICAL_CONSTANTS.PROTEIN_FACTOR_HIGH_PROTEIN_MIN, Math.min(desiredHighFactor, energyCappedFactor)));
+    targets.protein = round(weightBasis * resolvedFactor);
+    targets.protein_factor = resolvedFactor;
+    targets.carbs = round(Math.max(0, targets.energy - targets.protein * 4 - targets.fat * 9) / 4);
+  } else if (dietType === 'low_carb') {
+    targets.carbs = 100;
+    targets.fat = round(Math.max(0, targets.energy - targets.protein * 4 - 400) / 9);
+    targets.carb_target_scope = 'Total carbohydrates capped at <= 130 g/day (not a ketogenic plan).';
+  } else if (dietType === 'keto') {
+    targets.carbs = 30;
+    targets.fat = round(Math.max(0, targets.energy - targets.protein * 4 - 120) / 9);
+    targets.carb_target_scope = 'Target 30 g total carbohydrates (strict ceiling <= 50 g/day; total carbs, not net carbs).';
+  }
+  return targets;
 }
 function ingredientIdentity(snapshot) {
   if (!snapshot.ingredients?.length) return null;
@@ -571,24 +627,17 @@ export function mealAvailability(prefs, lib, profile = null) {
 }
 export function checkPlanFeasibility(profile, prefs, lib, seed = 'preview') {
   const p = validatePreferences(prefs, lib);
-  const targets = estimateNeeds(profile);
+  const targets = applyDietMacroTargets(estimateNeeds(profile), p.diet, profile);
   const slots = daySlots(p.meals, p.diet);
-  if (p.diet === 'high_protein') {
-    const weightBasis = targets.effective_weight ?? Number(profile.weight);
-    const maxFactor = targets.max_protein_factor ?? 1.8;
-    const resolvedFactor = Math.min(maxFactor, Math.max(targets.protein_factor || 1.6, 1.6));
-    targets.protein = round(weightBasis * resolvedFactor);
-    targets.protein_factor = resolvedFactor;
-    targets.carbs = round(Math.max(0, targets.energy - targets.protein * 4 - targets.fat * 9) / 4);
-  }
-  if (p.diet === 'low_carb') {
-    targets.carbs = 100;
-    targets.fat = round(Math.max(0, targets.energy - targets.protein * 4 - 400) / 9);
-  }
-  if (p.diet === 'keto') {
-    targets.carbs = 30;
-    targets.fat = round(Math.max(0, targets.energy - targets.protein * 4 - 120) / 9);
-  }
+  const hasKidney = Boolean(profile?.diseases?.includes('kidney'));
+  const hasHypertension = Boolean(profile?.diseases?.includes('hypertension'));
+  const hasCholesterol = Boolean(profile?.diseases?.includes('cholesterol'));
+  const sodiumLimitMg = hasKidney ? CLINICAL_CONSTANTS.CKD_SODIUM_LIMIT_MG : (p.diet === 'dash' || hasHypertension) ? CLINICAL_CONSTANTS.DASH_SODIUM_LIMIT_MG : null;
+  const satLimitFor = (energy) => energy * CLINICAL_CONSTANTS.CHOLESTEROL_MAX_SAT_FAT_SHARE;
+  const snapSatKcal = (snap) => {
+    const raw = snap?.values?.saturated ?? snap?.estimated_values?.saturated;
+    return raw != null && Number.isFinite(Number(raw)) ? Number(raw) * 9 : 0;
+  };
   const tryFeasible = (includeRegional) => {
     const pool = preparePool(lib, p, profile, includeRegional, seed);
     for (const slot of slots) {
@@ -625,12 +674,20 @@ export function checkPlanFeasibility(profile, prefs, lib, seed = 'preview') {
         const renalPenalty = fitOpts.capProtein && v.protein != null
           ? Math.max(0, Number(v.protein) - protein * 1.12) / Math.max(10, protein) * 2.5
           : 0;
-        const score = (Math.abs(Number(v.energy) - desired) / desired) * 5 + (Math.abs(protein - Number(v.protein)) / Math.max(1, protein)) * 1.5 + glycemicPenalty + renalPenalty;
+        const satPenalty = hasCholesterol
+          ? Math.max(0, snapSatKcal(snapshot) - satLimitFor(desired)) / Math.max(10, satLimitFor(desired)) * 3.0
+          : 0;
+        const score = (Math.abs(Number(v.energy) - desired) / desired) * 5 + (Math.abs(protein - Number(v.protein)) / Math.max(1, protein)) * 1.5 + glycemicPenalty + renalPenalty + satPenalty;
         return { t, snapshot, score };
       }).filter((a) => {
-        if (p.diet === 'dash' || profile?.diseases?.includes('hypertension')) {
+        if (sodiumLimitMg != null) {
           const sod = a.snapshot.values.sodium;
-          return sod != null && Number(sod) <= 2300 * slot.share;
+          const usedSod = meals.reduce((s, m) => s + Number(m.snapshot.values.sodium || 0), 0);
+          return sod != null && (usedSod + Number(sod) <= sodiumLimitMg) && Number(sod) <= sodiumLimitMg * slot.share * 1.35;
+        }
+        if (hasCholesterol) {
+          const usedSat = meals.reduce((s, m) => s + snapSatKcal(m.snapshot), 0);
+          if (usedSat + snapSatKcal(a.snapshot) > satLimitFor(targets.energy) + 0.5) return false;
         }
         if (p.diet === 'keto' || p.diet === 'low_carb') {
           const maxCarbs = p.diet === 'keto' ? 50 : 130;
@@ -666,9 +723,10 @@ export function checkPlanFeasibility(profile, prefs, lib, seed = 'preview') {
           const nextP = Math.max(m.target_protein, Number(m.snapshot.values.protein) + pGap / mains.length);
           const next = fitMeal(template, nextE, nextP, lib, fitOpts);
           const nextSnaps = meals.map(x => x === m ? next : x.snapshot);
-          const dashOk = (p.diet !== 'dash' && !profile?.diseases?.includes('hypertension')) || (sumSnapshots(nextSnaps).values.sodium != null && Number(sumSnapshots(nextSnaps).values.sodium) <= 2300);
+          const dashOk = sodiumLimitMg == null || (sumSnapshots(nextSnaps).values.sodium != null && Number(sumSnapshots(nextSnaps).values.sodium) <= sodiumLimitMg);
+          const cholOk = !hasCholesterol || nextSnaps.reduce((s, sn) => s + snapSatKcal(sn), 0) <= satLimitFor(Number(sumSnapshots(nextSnaps).values.energy || targets.energy)) + 0.5;
           const carbOk = !['keto', 'low_carb'].includes(p.diet) || Number(sumSnapshots(nextSnaps).values.carbs ?? 0) <= (p.diet === 'keto' ? 50 : 130);
-          if (nutritionObjective(sumSnapshots(nextSnaps), targets) < nutritionObjective(sumSnapshots(meals.map(x => x.snapshot)), targets) && dashOk && carbOk) {
+          if (nutritionObjective(sumSnapshots(nextSnaps), targets) < nutritionObjective(sumSnapshots(meals.map(x => x.snapshot)), targets) && dashOk && cholOk && carbOk) {
             m.snapshot = next;
           }
         }
@@ -1077,14 +1135,14 @@ export function makeWeek(profile, prefs, lib, startDate, seed = "1", acceptedEne
   throw lastError;
 }
 function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, includeRegional = true) {
-  const targets = estimateNeeds(profile),
-    p = validatePreferences(prefs, lib),
+  let targets = estimateNeeds(profile);
+  const p = validatePreferences(prefs, lib),
     slots = daySlots(p.meals, p.diet);
   // Internal renewal target: fit source portions to the accepted energy while
   // preserving protein, instead of scaling a newly generated higher-energy week.
   if(acceptedEnergy!=null){
     const before=targets.energy;
-    targets.energy=finite(acceptedEnergy,minSafeEnergyFloor(profile),4200,'adjustedEnergy');
+    targets.energy=finite(acceptedEnergy,minSafeEnergyFloor(profile),CLINICAL_CONSTANTS.MAX_ENERGY_CEILING,'adjustedEnergy');
     targets.fat=round(targets.fat*targets.energy/before);
     targets.carbs=round(Math.max(0,targets.energy-targets.protein*4-targets.fat*9)/4);
     targets.energy_change=round(targets.energy-targets.tdee);
@@ -1094,19 +1152,13 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
       targets.forecast={...f,daily_energy_delta:targets.energy_change,weekly_rate_kg:targets.energy_change<0?-weekly:weekly,estimated_weeks_min:center?Math.max(1,Math.floor(center*.85)):0,estimated_weeks_max:Math.ceil(center*1.25)};
     }
   }
-  if(p.diet==='high_protein'){
-    const weightBasis=targets.effective_weight??Number(profile.weight);
-    const maxFactor=targets.max_protein_factor??1.8;
-    const resolvedFactor=Math.min(maxFactor,Math.max(targets.protein_factor||1.6,1.6));
-    targets.protein=round(weightBasis*resolvedFactor);
-    targets.protein_factor=resolvedFactor;
-    targets.carbs=round(Math.max(0,targets.energy-targets.protein*4-targets.fat*9)/4);
-  }
-  if(p.diet==='low_carb'){targets.carbs=100;targets.fat=round(Math.max(0,targets.energy-targets.protein*4-400)/9);targets.carb_target_scope='Total carbohydrates capped at <= 130 g/day (not a ketogenic plan).';}
   if(p.diet==='keto'){
     if(profile.ketoAcknowledged!==true || isDietUnsafeForProfile('keto', profile))throw apiError('KETO_REQUIRES_CONFIRMATION','Keto diet requires explicit acknowledgment and is blocked with contraindicated medical conditions.',{status:400});
-    targets.carbs=30;targets.fat=round(Math.max(0,targets.energy-targets.protein*4-120)/9);
-    targets.carb_target_scope='Target 30 g total carbohydrates (strict ceiling <= 50 g/day; total carbs, not net carbs).';
+  }
+  targets = applyDietMacroTargets(targets, p.diet, profile);
+  if((p.excludedGroups||[]).includes('gluten') && !(targets.noteCodes||[]).includes(EXCLUSION_CROSS_CONTACT_WARNINGS.gluten.code)){
+    targets.notes=[...(targets.notes||[]),EXCLUSION_CROSS_CONTACT_WARNINGS.gluten.message];
+    targets.noteCodes=[...(targets.noteCodes||[]),EXCLUSION_CROSS_CONTACT_WARNINGS.gluten.code];
   }
   if((p.fasting&&p.fasting!=='none')||p.diet==='intermittent_fasting'){
     if(isDietUnsafeForProfile('intermittent_fasting', profile)||(p.diet!=='intermittent_fasting'&&profile.fastingAcknowledged!==true))throw apiError('FASTING_REQUIRES_CONFIRMATION','Intermittent fasting requires explicit acknowledgment and is blocked with contraindicated conditions.',{status:400});
@@ -1135,26 +1187,67 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
   );
 
   const hasGlycemic = Array.isArray(profile?.diseases) && profile.diseases.some(d => ['diabetes', 'diabetes_t1', 'diabetes_t2', 'insulin_resistance', 'pcos'].includes(d));
+  const hasKidney = Boolean(profile?.diseases?.includes('kidney'));
+  const hasHypertension = Boolean(profile?.diseases?.includes('hypertension'));
+  const hasCholesterol = Boolean(profile?.diseases?.includes('cholesterol'));
+  const isPregnant = isPregnantStatus(profile?.maternalStatus);
+  const sodiumLimitMg = hasKidney ? CLINICAL_CONSTANTS.CKD_SODIUM_LIMIT_MG : (p.diet === 'dash' || hasHypertension) ? CLINICAL_CONSTANTS.DASH_SODIUM_LIMIT_MG : null;
+  const satLimitFor = (energy) => energy * CLINICAL_CONSTANTS.CHOLESTEROL_MAX_SAT_FAT_SHARE;
+  const snapSatKcal = (snap) => {
+    const raw = snap?.values?.saturated ?? snap?.estimated_values?.saturated;
+    return raw != null && Number.isFinite(Number(raw)) ? Number(raw) * 9 : 0;
+  };
+  const carbCyclingEnabled = Boolean(
+    (profile?.carbCycling === true || p?.carbCycling === true) &&
+    (targets.training_days || 0) > 0 &&
+    (targets.training_days || 0) < 7 &&
+    !['keto', 'low_carb'].includes(p.diet) &&
+    !isPregnant
+  );
+  if (carbCyclingEnabled) {
+    targets.carb_cycling = true;
+    if (!(targets.noteCodes || []).includes('PLAN_CARB_CYCLING_ACTIVE')) {
+      targets.notes = [...(targets.notes || []), 'Carb cycling active: +10% calories/carbs on training days and -5% on rest days while preserving daily protein targets.'];
+      targets.noteCodes = [...(targets.noteCodes || []), 'PLAN_CARB_CYCLING_ACTIVE'];
+    }
+  }
   const fitOpts = {
     capProtein: Boolean(profile?.diseases?.includes('kidney') || profile?.diseases?.includes('gout')),
     reduceCarbs: Boolean(hasGlycemic && !['keto', 'low_carb'].includes(p.diet))
   };
+  let tunaMealsUsed = 0;
 
   for (let day = 0; day < 7; day++) {
     const isWorkoutDay = workoutDayIndices.has(new Date(addDays(startDate, day) + "T12:00:00Z").getUTCDay()) && (targets.training_days || 0) > 0;
+    const dayTargets = copy(targets);
+    if (carbCyclingEnabled) {
+      const mult = isWorkoutDay ? CLINICAL_CONSTANTS.CARB_CYCLING_WORKOUT_MULTIPLIER : CLINICAL_CONSTANTS.CARB_CYCLING_REST_MULTIPLIER;
+      const cycledEnergy = Math.max(
+        minSafeEnergyFloor(profile),
+        Math.min(CLINICAL_CONSTANTS.MAX_ENERGY_CEILING, Math.round((targets.energy * mult) / 10) * 10)
+      );
+      dayTargets.energy = cycledEnergy;
+      dayTargets.protein = targets.protein;
+      dayTargets.fat = targets.fat;
+      dayTargets.carbs = round(Math.max(0, cycledEnergy - dayTargets.protein * 4 - dayTargets.fat * 9) / 4);
+      dayTargets.carb_cycling_day_type = isWorkoutDay ? 'high_carb_training' : 'lower_carb_rest';
+    }
     const meals = [];
     const chosen = new Set(),
       chosenProteins = new Set(),
       chosenMains = new Set();
     for (const slot of slots) {
       let slotShare = slot.share;
-      const desired = targets.energy * slotShare,
-        protein = targets.protein * slotShare;
+      const desired = dayTargets.energy * slotShare,
+        protein = dayTargets.protein * slotShare;
       const mainIdentity = t => t.dish_family || (t.component_definitions
         ? t.items.filter(i => t.component_definitions.some(c => c.id === i.component_id && c.role === 'main'))
           .filter(i => lib.ingredients[i.key].role === 'protein').map(i => i.key).sort().join('|')
         : '');
-      const eligibleSlotPool = egyptianSlotPool(pool, p.region, slot.slot);
+      const rawEligibleSlotPool = egyptianSlotPool(pool, p.region, slot.slot);
+      const eligibleSlotPool = isPregnant && tunaMealsUsed >= CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_WEEKLY_SERVINGS
+        ? rawEligibleSlotPool.filter(t => !t.items.some(i => i.key === 'tuna'))
+        : rawEligibleSlotPool;
       let slotPool = eligibleSlotPool;
       if (slot.slot !== 'snack') {
         const different = slotPool.filter(t => !chosenMains.has(mainIdentity(t)));
@@ -1176,12 +1269,15 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
             .find((i) => i.role === "protein")?.protein_group;
           const isAnimalMain = ["chicken", "meat", "fish"].includes(family);
           const isRegionalMenu = Boolean(t.component_definitions && t.dish_family);
-          const slotCarbCap = targets.carbs * slot.share;
+          const slotCarbCap = dayTargets.carbs * slot.share;
           const glycemicPenalty = fitOpts.reduceCarbs && v.carbs != null
             ? Math.max(0, Number(v.carbs) - slotCarbCap * 1.1) / Math.max(10, slotCarbCap) * 2.5
             : 0;
           const renalPenalty = fitOpts.capProtein && v.protein != null
             ? Math.max(0, Number(v.protein) - protein * 1.12) / Math.max(10, protein) * 2.5
+            : 0;
+          const satPenalty = hasCholesterol
+            ? Math.max(0, snapSatKcal(snapshot) - satLimitFor(desired)) / Math.max(10, satLimitFor(desired)) * 3.0
             : 0;
           const score =
             (Math.abs(Number(v.energy) - desired) / desired) * 5 +
@@ -1189,6 +1285,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
               1.5 +
             glycemicPenalty +
             renalPenalty +
+            satPenalty +
             (counts.get(egyptianMealFamily(t, lib, p.region)) || 0) * 0.35 +
             (chosen.has(t.id) ? 2 : 0) +
             (templateCounts.get(t.id) || 0) * 0.2 +
@@ -1202,9 +1299,19 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
           return { t, snapshot, score, family };
         })
         .filter(a=>{
-          if (p.diet === 'dash' || profile?.diseases?.includes('hypertension')) {
+          if (sodiumLimitMg != null) {
             const sod = a.snapshot.values.sodium;
-            return sod != null && Number(sod) <= 2300 * slot.share;
+            const usedSod = meals.reduce((s, m) => s + Number(m.snapshot.values.sodium || 0), 0);
+            if (sod == null || usedSod + Number(sod) > sodiumLimitMg || Number(sod) > sodiumLimitMg * slot.share * 1.35) return false;
+          }
+          if (hasCholesterol) {
+            const usedSat = meals.reduce((s, m) => s + snapSatKcal(m.snapshot), 0);
+            if (usedSat + snapSatKcal(a.snapshot) > satLimitFor(dayTargets.energy) + 0.5) return false;
+          }
+          if (isPregnant) {
+            const mealTunaG = (a.snapshot.ingredients || []).filter(i => i.key === 'tuna').reduce((s, i) => s + Number(i.grams || 0), 0);
+            const usedTunaG = meals.flatMap(m => m.snapshot.ingredients || []).filter(i => i.key === 'tuna').reduce((s, i) => s + Number(i.grams || 0), 0);
+            if (mealTunaG > 0 && (tunaMealsUsed >= CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_WEEKLY_SERVINGS || usedTunaG + mealTunaG > CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_DAILY_G)) return false;
           }
           if (p.diet === 'keto' || p.diet === 'low_carb') {
             const maxCarbs = p.diet === 'keto' ? 50 : 130;
@@ -1222,6 +1329,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
       if(!candidates.length&&slotPool.length<eligibleSlotPool.length)candidates=rankCandidates(eligibleSlotPool);
       if(!candidates.length)throw planCoverageError('NO_CANDIDATE_WITHIN_DIET_LIMITS','No candidate satisfies diet rules for this meal slot with your current preferences.');
       const best = candidates[0];
+      if (isPregnant && (best.snapshot.ingredients || []).some(i => i.key === 'tuna')) tunaMealsUsed += 1;
       const mealFamily = egyptianMealFamily(best.t, lib, p.region);
       counts.set(mealFamily, (counts.get(mealFamily) || 0) + 1);
       chosen.add(best.t.id);
@@ -1250,22 +1358,23 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
     if (mains.length) {
       for(let pass=0;pass<3;pass++) {
         const curSum = sumSnapshots(meals.map(m=>m.snapshot)).values;
-        const gap = targets.energy - Number(curSum.energy);
-        const pGap = Math.max(0, targets.protein - Number(curSum.protein));
-        if(Math.abs(gap)<targets.energy*.02 && pGap < 4)break;
+        const gap = dayTargets.energy - Number(curSum.energy);
+        const pGap = Math.max(0, dayTargets.protein - Number(curSum.protein));
+        if(Math.abs(gap)<dayTargets.energy*.02 && pGap < 4)break;
         for(const m of mains) {
           const template=pool.find(t=>t.id===m.snapshot.template_id);
           if(!template)continue;
           const nextE = Math.max(1, Number(m.snapshot.values.energy) + gap / mains.length);
           const nextP = Math.max(m.target_protein, Number(m.snapshot.values.protein) + pGap / mains.length);
           const next=fitMeal(template, nextE, nextP, lib, fitOpts);
-          const currentTotal=Number(sumSnapshots(meals.map(x=>x.snapshot)).values.energy);
-          const nextTotal=currentTotal-Number(m.snapshot.values.energy)+Number(next.values.energy);
-          const dashOk = (p.diet!=='dash' && !profile?.diseases?.includes('hypertension')) || (sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium != null && Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.sodium)<=2300);
-          const carbOk = !['keto','low_carb'].includes(p.diet) || Number(sumSnapshots(meals.map(x=>x===m?next:x.snapshot)).values.carbs ?? 0)<=(p.diet==='keto'?50:130);
+          const nextSnaps=meals.map(x=>x===m?next:x.snapshot);
+          const nextSummary=sumSnapshots(nextSnaps);
+          const dashOk = sodiumLimitMg == null || (nextSummary.values.sodium != null && Number(nextSummary.values.sodium)<=sodiumLimitMg);
+          const cholOk = !hasCholesterol || nextSnaps.reduce((s,sn)=>s+snapSatKcal(sn),0)<=satLimitFor(Number(nextSummary.values.energy||dayTargets.energy))+0.5;
+          const tunaOk = !isPregnant || nextSnaps.flatMap(sn=>sn.ingredients||[]).filter(i=>i.key==='tuna').reduce((s,i)=>s+Number(i.grams||0),0)<=CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_DAILY_G;
+          const carbOk = !['keto','low_carb'].includes(p.diet) || Number(nextSummary.values.carbs ?? 0)<=(p.diet==='keto'?50:130);
           const currentSummary=sumSnapshots(meals.map(x=>x.snapshot));
-          const nextSummary=sumSnapshots(meals.map(x=>x===m?next:x.snapshot));
-          if(nutritionObjective(nextSummary,targets)<nutritionObjective(currentSummary,targets) && dashOk && carbOk) {
+          if(nutritionObjective(nextSummary,dayTargets)<nutritionObjective(currentSummary,dayTargets) && dashOk && cholOk && tunaOk && carbOk) {
             m.snapshot=next;
           }
         }
@@ -1276,33 +1385,33 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
     // Allow bounded improvements across the whole day. Two swaps could reject
     // a feasible four-meal day before the remaining meals were repaired.
     const repairBudget=meals.length*2;
-    for(let repair=0;repair<repairBudget&&needsNutritionImprovement(sumSnapshots(meals.map(m=>m.snapshot)),targets);repair++){
+    for(let repair=0;repair<repairBudget&&needsNutritionImprovement(sumSnapshots(meals.map(m=>m.snapshot)),dayTargets);repair++){
       const currentSummary=sumSnapshots(meals.map(m=>m.snapshot));
-      let best=null,current=repairObjective(currentSummary,targets);
-      const gap=Math.max(0,targets.protein-Number(currentSummary.values.protein));
-      for(const meal of meals)for(const template of pool.filter(t=>t.meal_slots.includes(meal.slot)))for(const desiredEnergy of new Set([meal.target_energy,Math.max(1,targets.energy-Number(currentSummary.values.energy)+Number(meal.snapshot.values.energy))])){
+      let best=null,current=repairObjective(currentSummary,dayTargets);
+      const gap=Math.max(0,dayTargets.protein-Number(currentSummary.values.protein));
+      for(const meal of meals)for(const template of pool.filter(t=>t.meal_slots.includes(meal.slot)&&(!isPregnant||tunaMealsUsed<CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_WEEKLY_SERVINGS||!t.items.some(i=>i.key==='tuna'))))for(const desiredEnergy of new Set([meal.target_energy,Math.max(1,dayTargets.energy-Number(currentSummary.values.energy)+Number(meal.snapshot.values.energy))])){
         const desiredProtein=meal.target_protein+gap/Math.max(1,meals.length-1),key=template.id+'|repair|'+desiredEnergy+'|'+desiredProtein+(fitOpts.capProtein?'|cap':'')+(fitOpts.reduceCarbs?'|rc':'');
         if(!fitted.has(key))fitted.set(key,fitMeal(template,desiredEnergy,desiredProtein,lib,fitOpts));
         const snapshot=fitted.get(key),snapshots=meals.map(m=>m===meal?snapshot:m.snapshot);
-        try{assertDietDay(snapshots,p.diet,targets,profile);}catch{continue;}
+        try{assertDietDay(snapshots,p.diet,dayTargets,profile);}catch{continue;}
         // Never trade an already valid day for a lower-scoring invalid one.
-        if(!nutritionQualityIssues(currentSummary,targets).length&&nutritionQualityIssues(sumSnapshots(snapshots),targets).length)continue;
-        const score=repairObjective(sumSnapshots(snapshots),targets);
+        if(!nutritionQualityIssues(currentSummary,dayTargets).length&&nutritionQualityIssues(sumSnapshots(snapshots),dayTargets).length)continue;
+        const score=repairObjective(sumSnapshots(snapshots),dayTargets);
         if(score<current){best={meal,snapshot};current=score;}
       }
       if(!best)break;best.meal.snapshot=copy(best.snapshot);
     }
-    assertDietDay(meals.map(m=>m.snapshot),p.diet,targets,profile);
+    assertDietDay(meals.map(m=>m.snapshot),p.diet,dayTargets,profile);
     const summary = sumSnapshots(meals.map((m) => m.snapshot));
-    const quality=nutritionQualityIssues(summary,targets);
+    const quality=nutritionQualityIssues(summary,dayTargets);
     if(quality.length)throw planCoverageError('NUTRIENT_TARGETS_UNMET','Meal search could not meet daily calorie and protein tolerances under your constraints.');
-    const checks = assessDay(summary, targets);
+    const checks = assessDay(summary, dayTargets);
     if (checks.length)
       warnings.push({ date: addDays(startDate, day), messages: checks });
     days.push({
       date: addDays(startDate, day),
       is_workout_day: isWorkoutDay,
-      targets: copy(targets),
+      targets: copy(dayTargets),
       meals,
       summary,
     });

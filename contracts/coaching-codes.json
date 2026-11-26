@@ -1071,6 +1071,201 @@
       "severity": "info",
       "params": ["extraMl"],
       "message": "Training-day hydration boost applied: +{0} ml added on scheduled workout days."
+    },
+    "HYDRATION_KIDNEY_CLINICIAN_LIMIT": {
+      "domain": "hydration",
+      "severity": "attention",
+      "params": [],
+      "message": "Kidney hydration safety active: daily water target is capped conservatively; follow your physician's personalized fluid limit."
+    },
+    "HYDRATION_SENIOR_SAFETY_CAP": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Senior hydration guidance active: steady daily sipping with a conservative upper cap."
+    },
+    "DIABETES_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Glycemic hydration support (+250 ml) applied for steady daily fluid balance."
+    },
+    "IBS_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Digestive comfort hydration bonus (+150 ml) applied; sip steadily across the day."
+    },
+    "KETO_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Keto hydration bonus (+500 ml) applied to replenish glycogen-linked fluid and electrolyte loss."
+    },
+    "LOW_CARB_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Low-carb hydration bonus (+250 ml) applied to support fluid balance."
+    },
+    "HIGH_PROTEIN_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "High-protein hydration bonus (+300 ml) applied to support protein metabolism."
+    },
+    "HIGH_FIBER_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Plant-forward high-fiber hydration bonus (+150 ml) applied for digestive comfort."
+    },
+    "CARDIO_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": ["cardioMl"],
+      "message": "Cardio sweat-replacement hydration bonus applied for today's logged session."
+    },
+    "HIGH_STEPS_HYDRATION_BONUS": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "High-step-day hydration bonus (+250 ml) applied for 10,000+ daily steps."
+    },
+    "HYDRATION_FASTING_PACING": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Fasting hydration pacing: spread your water target steadily rather than drinking large volumes at once."
+    },
+    "HYDRATION_RAMADAN_PACING": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Ramadan hydration pacing: spread fluids steadily between Iftar and Suhoor instead of drinking large amounts at once."
+    },
+    "BRIEF_ACTION_LOG_MEAL": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Log Next Meal"
+    },
+    "BRIEF_ACTION_CONFIRM_DAY": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Confirm Food Day"
+    },
+    "BRIEF_ACTION_LOG_WEIGHT": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Log Weight"
+    },
+    "BRIEF_ACTION_RECOVERY_CHECKIN": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Recovery Check-In"
+    },
+    "BRIEF_ACTION_START_WORKOUT": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Start Workout"
+    },
+    "BRIEF_ACTION_VIEW_WORKOUT": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "View Workout Plan"
+    },
+    "BRIEF_ACTION_LOG_WATER": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Log Water"
+    },
+    "BRIEF_ACTION_RENEW_PLAN": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Renew Plan"
+    },
+    "BRIEF_ACTION_REVIEW_PROPOSAL": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Review Specialist Note"
+    },
+    "BRIEF_ACTION_SHARE_FEEDBACK": {
+      "domain": "brief",
+      "severity": "normal",
+      "params": [],
+      "message": "Share Update"
+    },
+    "BRIEF_ACTION_SAFETY_STOP": {
+      "domain": "brief",
+      "severity": "urgent",
+      "params": [],
+      "message": "Review Safety Guidance"
+    },
+    "CYCLE_RETENTION_HOLD": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [
+        "cyclePhase"
+      ],
+      "message": "Late-luteal or menstrual cycle phase with likely temporary water retention detected; calorie reductions are held steady until fluid balance normalizes."
+    },
+    "DIET_BREAK_8W_SUGGESTED": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [
+        "weeksInDeficit"
+      ],
+      "message": "You have sustained a fat-loss phase for 8+ weeks; consider a structured 1-2 week maintenance diet break to support metabolic and appetite recovery."
+    },
+    "PLAN_CARB_CYCLING_ACTIVE": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Carb cycling active: +10% calories and carbohydrates on training days and -5% on rest days while preserving daily protein targets."
+    },
+    "PLAN_CHOLESTEROL_SAT_FAT_CAP": {
+      "domain": "clinical",
+      "severity": "info",
+      "params": [],
+      "message": "Cholesterol safety active: saturated fat is capped at <= 8% of daily energy and high-saturated-fat cuts are excluded."
+    },
+    "PLAN_PREGNANCY_MERCURY_PASTEURIZATION_NOTE": {
+      "domain": "clinical",
+      "severity": "attention",
+      "params": [],
+      "message": "Limit tuna to at most 2 servings per week for mercury safety, choose pasteurized dairy only, and cook meats and eggs thoroughly."
+    },
+    "GLUTEN_OATS_CROSS_CONTACT_WARNING": {
+      "domain": "nutrition",
+      "severity": "attention",
+      "params": [],
+      "message": "Oats are naturally gluten-free but frequently processed on shared equipment; choose certified gluten-free oats when avoiding gluten."
+    },
+    "RECENT_SORENESS_TOO_HIGH": {
+      "domain": "training",
+      "severity": "info",
+      "params": [],
+      "message": "Recent muscle soreness is above 4/10; weekly set volume is held steady to prioritize recovery."
+    },
+    "CARDIO_LEG_DAY_INTERFERENCE_NOTE": {
+      "domain": "training",
+      "severity": "info",
+      "params": [
+        "date",
+        "modality",
+        "intensity",
+        "overlapType"
+      ],
+      "message": "Vigorous cardio overlaps with or sits adjacent to a lower-body strength session; consider spacing sessions by 6+ hours or choosing low-impact aerobic work to protect leg recovery."
     }
   }
 }
