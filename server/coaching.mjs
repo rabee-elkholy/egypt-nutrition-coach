@@ -972,7 +972,10 @@ export function command(input,action,p){
  }else if(action==='food'){
   const date=dateForLog(p.date,s),plan=activePlan(s);if(s.foodEntries.some(e=>e.date===date))throw apiError('DAILY_TOTAL_REQUIRES_DETAILED_CONVERSION','This day has detailed food entries; use food_complete instead.',{status:400});
   const energy=number(p.energy,0,10000,'energy'),complete=boolean(p.complete,'complete'),plannedEnergy=plannedEnergyForDate(s,date);
-  s.foodLogs=s.foodLogs.filter(x=>x.date!==date);s.foodLogs.push({date,complete,adherence:plannedEnergy?Math.max(0,Math.round(100-Math.abs(energy-plannedEnergy)/plannedEnergy*100)):null,energy,plannedEnergy,planId:plan?.id,source:'daily_total',completionPolicy:1,confirmedAt:complete?isoNow():null});
+  const protein=p.protein==null||p.protein===''?null:number(p.protein,0,600,'protein');
+  const carbs=p.carbs==null||p.carbs===''?null:number(p.carbs,0,1500,'carbs');
+  const fat=p.fat==null||p.fat===''?null:number(p.fat,0,500,'fat');
+  s.foodLogs=s.foodLogs.filter(x=>x.date!==date);s.foodLogs.push({date,complete,adherence:plannedEnergy?Math.max(0,Math.round(100-Math.abs(energy-plannedEnergy)/plannedEnergy*100)):null,energy,...(protein!=null?{protein}:{}),...(carbs!=null?{carbs}:{}),...(fat!=null?{fat}:{}),plannedEnergy,planId:plan?.id,source:'daily_total',completionPolicy:1,confirmedAt:complete?isoNow():null});
  }else if(action==='recovery'){
   for(const key of ['pain','illness','redFlags'])if(typeof p[key]!=='boolean')throw apiError('RECOVERY_FLAGS_REQUIRED','Boolean flags pain, illness, and redFlags are required for recovery check-ins.',{status:400});
   const sorenessByRegion={};for(const [key,v]of Object.entries(p.sorenessByRegion==null?{}:plainRecord(p.sorenessByRegion,'sorenessByRegion'))){if(!Object.hasOwn(MUSCLE_REGIONS,key))throw apiError('INVALID_MUSCLE_REGION',`Unknown muscle region key: ${key}.`,{status:400,params:{region:key}});sorenessByRegion[key]=number(v,0,10,'soreness');}

@@ -20,15 +20,41 @@ import { getFastingState } from './nutrition-tools.mjs';
 import { getDiningOutOptions } from './dining-out.mjs';
 import { consumeFeatureAccess, FREE_LIMITS, PRO_FAIR_USE_LIMITS } from './subscriptions.mjs';
 
-const FORBIDDEN_VOICE_RE = /\b(AI|AI Coach|Smart Coach|automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b|\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/i;
+const FORBIDDEN_VOICE_RE = /\b(AI|AI Coach|Smart Coach|Smart|automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b|\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/i;
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 function sanitizeSpecialistCopy(text) {
   return String(text || '')
     .replace(/\bAI Coach\b/gi, 'CuraFit Specialist Team')
     .replace(/\bSmart Coach\b/gi, 'CuraFit Specialist Team')
     .replace(/\bAI\b/gi, 'Specialist')
+    .replace(/\bSmart\b/gi, 'tailored')
     .replace(/\b(automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b/gi, 'personalized')
     .replace(/\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/g, 'المختص');
+}
+
+function bytesToBase64(bytes) {
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+function detectImageMimeType(bytes, declaredType = '') {
+  if (bytes && bytes.length >= 12) {
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+    if (
+      bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+    ) return 'image/webp';
+  }
+  const norm = String(declaredType || '').toLowerCase().split(';')[0].trim();
+  if (norm === 'image/png' || norm === 'image/webp' || norm === 'image/jpeg') return norm;
+  if (norm === 'image/jpg') return 'image/jpeg';
+  return 'image/jpeg';
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +335,8 @@ export async function parseMealCapture(db, env, s, userId, request, bodyOrNull =
 
   let payload = bodyOrNull;
   let hasImageBytes = false;
+  let multipartBase64 = '';
+  let multipartMimeType = '';
   const ct = request.headers.get('Content-Type') || '';
   if (!payload && /^multipart\/form-data/i.test(ct)) {
     const form = await request.formData();
@@ -319,6 +347,10 @@ export async function parseMealCapture(db, env, s, userId, request, bodyOrNull =
         throw apiError('PHOTO_TOO_LARGE', 'Meal capture image exceeds the 2 MB limit.', { status: 413, params: { maxBytes: 2 * 1024 * 1024 } });
       }
       hasImageBytes = buf.byteLength >= 32;
+      if (hasImageBytes) {
+        multipartMimeType = detectImageMimeType(buf, file.type || '');
+        multipartBase64 = bytesToBase64(buf);
+      }
     }
     payload = {
       inputType: String(form.get('inputType') || 'photo'),
@@ -336,17 +368,24 @@ export async function parseMealCapture(db, env, s, userId, request, bodyOrNull =
     ? String(payload.inputType || 'text').toLowerCase()
     : 'text';
   const textInput = String(payload.text || payload.transcript || payload.caption || '').trim();
-  const imageBase64 = typeof payload.imageBase64 === 'string' ? payload.imageBase64.trim() : '';
-  const hasPhotoPayload = hasImageBytes || imageBase64.length >= 64;
+  const rawJsonImage = typeof payload.imageBase64 === 'string' ? payload.imageBase64.trim() : '';
+  const dataUriMatch = rawJsonImage.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,/i);
+  const jsonMimeType = dataUriMatch
+    ? (dataUriMatch[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : dataUriMatch[1].toLowerCase())
+    : (typeof payload.mimeType === 'string' ? detectImageMimeType(null, payload.mimeType) : 'image/jpeg');
+  const cleanJsonBase64 = rawJsonImage.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '');
+  const resolvedImageBase64 = multipartBase64 || cleanJsonBase64;
+  const resolvedMimeType = multipartMimeType || jsonMimeType || 'image/jpeg';
+  const hasPhotoPayload = hasImageBytes || cleanJsonBase64.length >= 64;
 
   // Validate food recognition BEFORE burning Free or Pro Fair-Use quota
   let groundedItems = parseFreeTextToGroundedItems(textInput);
 
-  // Optional live Vision/LLM provider when configured & photo provided without text caption
-  if (!groundedItems.length && inputType === 'photo' && hasPhotoPayload && env?.GEMINI_API_KEY) {
+  // Optional live Vision provider (Gemini 2.5 Flash) when configured & photo provided without text caption
+  if (!groundedItems.length && inputType === 'photo' && hasPhotoPayload && resolvedImageBase64 && env?.GEMINI_API_KEY) {
     try {
       const res = await fetchWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -354,12 +393,12 @@ export async function parseMealCapture(db, env, s, userId, request, bodyOrNull =
             contents: [{
               parts: [
                 { text: 'Identify visible foods and approximate gram weights in this meal photo as a short comma-separated list (e.g. "150g grilled chicken, 150g white rice"). If no food is visible reply "no food".' },
-                ...(imageBase64 ? [{ inline_data: { mime_type: 'image/jpeg', data: imageBase64.replace(/^data:image\/\w+;base64,/, '') } }] : [])
+                { inline_data: { mime_type: resolvedMimeType, data: resolvedImageBase64 } }
               ]
             }]
           })
         },
-        6000
+        8000
       );
       if (res.ok) {
         const gJson = await res.json();
@@ -522,8 +561,10 @@ export async function consultSpecialistTeam(db, env, s, userId, body = {}, now =
   const suggestedActions = [];
   let reply = '';
 
-  // HARD CLINICAL GUARDRAILS (checked before any coaching advice or optional LLM call)
+  // HARD CLINICAL GUARDRAILS (checked before any coaching advice or optional Gemini consultation call)
+  let guardrailHandled = false;
   if (URGENT_SYMPTOM_RE.test(rawMessage)) {
+    guardrailHandled = true;
     safetyNoticeTriggered = true;
     safetyFlagCodes.push('URGENT_MEDICAL_ESCALATION');
     reply = replyInArabic
@@ -531,6 +572,7 @@ export async function consultSpecialistTeam(db, env, s, userId, body = {}, now =
       : 'Please stop all physical exertion immediately and seek prompt evaluation from a licensed physician or urgent medical care for symptoms such as chest pain, fainting, severe dizziness, or shortness of breath. Your CuraFit Specialist Team cannot diagnose urgent medical symptoms.';
     suggestedActions.push({ label: 'Log Recovery Check-In', route: 'coach/recovery_checkin' });
   } else if (MEDICATION_DOSING_RE.test(rawMessage)) {
+    guardrailHandled = true;
     safetyNoticeTriggered = true;
     safetyFlagCodes.push('MEDICATION_BOUNDARY_REFUSAL');
     reply = replyInArabic
@@ -538,12 +580,14 @@ export async function consultSpecialistTeam(db, env, s, userId, body = {}, now =
       : 'Your CuraFit Specialist Team cannot recommend, adjust, or prescribe medication or insulin dosages. Please contact your treating physician or clinical pharmacist directly before changing any medication schedule.';
     suggestedActions.push({ label: 'Export Clinical Summary', route: 'account/clinical_summary' });
   } else if (CRISIS_ED_RE.test(rawMessage)) {
+    guardrailHandled = true;
     safetyNoticeTriggered = true;
     safetyFlagCodes.push('EATING_DISORDER_CRISIS_SUPPORT');
     reply = replyInArabic
       ? 'سلامتك وصحتك أولًا دائمًا. CuraFit لا يدعم أبدًا التجويع أو القيء المتعمّد أو الأنظمة القاسية. يرجى التواصل مع طبيب مختص أو جهة دعم صحي موثوقة للحصول على رعاية طبية دافئة ومختصة.'
       : 'Your wellbeing comes first. CuraFit never supports extreme fasting, purging, or starvation practices. Please reach out to a qualified healthcare professional or local support helpline for compassionate medical care.';
   } else if (ready.status === 'stop' && (specialist.role === 'training_captain' || TRAINING_INTENT_RE.test(rawMessage))) {
+    guardrailHandled = true;
     safetyNoticeTriggered = true;
     safetyFlagCodes.push('RED_FLAGS_STOP_ACTIVE');
     reply = replyInArabic
@@ -551,11 +595,13 @@ export async function consultSpecialistTeam(db, env, s, userId, body = {}, now =
       : 'Your latest recovery check-in shows an active safety stop. Your Training Captain advises complete rest from resistance or strenuous exercise until a licensed physician evaluates your symptoms and clears you to resume.';
     suggestedActions.push({ label: 'Review Safety Guidance', route: 'coach/recovery_checkin' });
   } else if (EXTREME_CUT_RE.test(rawMessage)) {
+    guardrailHandled = true;
     reply = replyInArabic
       ? `أخصائي التغذية يحمي استمرارية نتائجك: نلتزم بالحد الأدنى الآمن للسعرات (${floor} سعرة/يوم) ونقترح تعديلات متوازنة لا تتجاوز 5% (بحد أقصى 150 سعرة) بعد 14 يومًا من التسجيل المنتظم ومتوسط الوزن الأسبوعي. يمكنك مراجعة أدلتك داخل صفحة مراجعة المختصين.`
       : `Your Nutrition Specialist protects sustainable progress: CuraFit enforces a safe clinical calorie floor (${floor} kcal/day) and only proposes bounded <= 5% (max 150 kcal) adjustments after 14 days of adherent logging and 7-day rolling weight trends. You can review your live evidence inside Coach Review without risking metabolic fatigue.`;
     suggestedActions.push({ label: 'Run Specialist Review', route: 'coach/review' });
   } else if ((isPregnantStatus(s?.profile?.maternalStatus) || s?.profile?.maternalStatus === 'breastfeeding') && /\b(keto|fast(ing)?|cut\s*calories|lose\s*weight)\b|كيتو|صيام|تنزيل\s*وزن/i.test(rawMessage)) {
+    guardrailHandled = true;
     safetyNoticeTriggered = true;
     safetyFlagCodes.push('MATERNAL_SAFETY_BOUNDARY');
     reply = replyInArabic
@@ -601,6 +647,78 @@ export async function consultSpecialistTeam(db, env, s, userId, body = {}, now =
       : `${reviewReason}${cycleNote} Stay consistent with daily logging and reach out whenever your schedule changes.`;
     suggestedActions.push({ label: 'Open Coach Hub', route: 'coach/hub' });
     suggestedActions.push({ label: 'Do Recovery Check-In', route: 'coach/recovery_checkin' });
+  }
+
+  // Optional live Gemini 2.5 Flash grounded specialist reply (only AFTER hard clinical guardrails pass)
+  if (!guardrailHandled && env?.GEMINI_API_KEY) {
+    try {
+      let recentThread = [];
+      try {
+        const histRes = await db.prepare(
+          'SELECT role, content FROM coaching_ai_messages WHERE user_id=? AND thread_id=? ORDER BY created_at DESC LIMIT 6'
+        ).bind(userId, threadId).all();
+        recentThread = (histRes?.results || []).reverse().map(r => ({
+          role: r.role === 'user' ? 'member' : 'specialist',
+          content: String(r.content || '').slice(0, 350)
+        }));
+      } catch {}
+
+      const groundingSnapshot = {
+        specialistRole: specialist.role,
+        specialistTitle: specialist.titleEn,
+        replyLanguage: replyInArabic ? 'Arabic' : 'English',
+        remainingKcal,
+        targetKcal: Math.round(targetKcal),
+        remainingProtein,
+        targetProtein: Math.round(targetProtein),
+        safeCalorieFloorKcal: floor,
+        diseases,
+        excludedGroups: excluded,
+        injuries,
+        maternalStatus: s?.profile?.maternalStatus || 'none',
+        seniorMode: Boolean(s?.profile?.seniorMode || Number(s?.profile?.age) >= 70),
+        recovery: {
+          status: ready.status,
+          sleepHours: ready.latestCheckin?.sleepHours ?? null,
+          fatigue: ready.latestCheckin?.fatigue ?? null
+        },
+        cycle: cycleState?.enabled ? { phase: cycleState.phase, waterRetentionLikely: Boolean(cycleState.waterRetentionLikely) } : null,
+        fasting: fastingState?.mode && fastingState.mode !== 'off'
+          ? { mode: fastingState.mode, phase: fastingState.phase, ramadanActive: Boolean(fastingState.ramadanMode?.enabled) }
+          : null,
+        recentThread
+      };
+
+      const promptText = [
+        `You are the ${specialist.titleEn} on the CuraFit Specialist Team.`,
+        `Reply strictly in ${replyInArabic ? 'clear, warm Arabic' : 'clear, warm English'} in 2 to 4 concise practical sentences.`,
+        'Ground your response exclusively in the provided D1 member snapshot and thread context.',
+        'Hard safety rules: NEVER mention AI, Smart, Automated, Algorithm, Engine, Bot, or LLM; NEVER recommend or adjust medications or insulin doses; NEVER advise calories below safeCalorieFloorKcal; NEVER ignore declared diseases, allergies, exclusions, injuries, maternal status, fasting phase, or recovery status.',
+        `Member D1 Grounding Snapshot (JSON): ${JSON.stringify(groundingSnapshot)}`,
+        `Member message: ${rawMessage}`
+      ].join('\n');
+
+      const gRes = await fetchWithTimeout(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }],
+            generationConfig: { temperature: 0.35, maxOutputTokens: 320 }
+          })
+        },
+        8000
+      );
+      if (gRes.ok) {
+        const gJson = await gRes.json();
+        const candidate = String(gJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        const cleaned = sanitizeSpecialistCopy(candidate).slice(0, 1200);
+        if (cleaned.length >= 20 && !FORBIDDEN_VOICE_RE.test(cleaned) && !MEDICATION_DOSING_RE.test(cleaned)) {
+          reply = cleaned;
+        }
+      }
+    } catch {}
   }
 
   // Final brand-voice safety pass — guaranteed zero AI/bot/automated/engine wording

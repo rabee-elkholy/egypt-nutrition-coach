@@ -170,9 +170,9 @@ test('Backend Wave 2: End-to-End Verification (KAN-116, 119, 121, 123, 120, 124,
 
     // 1. D1 Migration 0007 + MENA Supermarket Barcode Seed + Capabilities (KAN-116)
     await t.test('KAN-116: D1 0007 MENA barcode seed (>= 300 SKUs), capabilities version fields, and bootstrap Wave 2 fields', async () => {
-      const countRow = await db.prepare("SELECT COUNT(*) AS n FROM food_barcodes WHERE provenance='verified_brand'").first();
+      const countRow = await db.prepare("SELECT COUNT(*) AS n FROM food_barcodes WHERE provenance='seeded_reference'").first();
       assert.ok(Number(countRow?.n || 0) >= 300, `Expected >= 300 seeded MENA barcode SKUs, got ${countRow?.n}`);
-      const sampleRow = await db.prepare("SELECT barcode, name_en FROM food_barcodes WHERE provenance='verified_brand' LIMIT 1").first();
+      const sampleRow = await db.prepare("SELECT barcode, name_en FROM food_barcodes WHERE provenance='seeded_reference' LIMIT 1").first();
       assert.ok(sampleRow?.barcode);
 
       const caps = await okJson(await call('/v1/capabilities'));
@@ -187,7 +187,7 @@ test('Backend Wave 2: End-to-End Verification (KAN-116, 119, 121, 123, 120, 124,
       const u = await createUser('Karim Hassan', 'dev-kan116', baseDraft);
       const bc = await okJson(await call(`/v1/foods/barcode/${sampleRow.barcode}`, { headers: u.headers }));
       assert.equal(bc.barcode, sampleRow.barcode);
-      assert.equal(bc.provenance, 'verified_brand');
+      assert.equal(bc.provenance, 'seeded_reference');
 
       // dashboardDensity persistence + validation
       await errJson(await cmd(u, 'profile_update', { dashboardDensity: 'ultra' }), 400, 'VALIDATION_ERROR');

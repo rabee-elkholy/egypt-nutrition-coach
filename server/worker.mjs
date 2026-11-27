@@ -114,6 +114,16 @@ async function isHealthConsentWithdrawn(db,userId){
  }
 }
 
+async function checkEndpointIdempotency(db,user,reqKey,digest,reqId,statusCode=200){
+ if(reqKey==null)return null;
+ const trimmed=String(reqKey).trim();
+ if(!trimmed||trimmed.length>100)return errorJson('Idempotency-Key header (1..100 characters) is required when provided.',400,reqId,{code:'IDEMPOTENCY_KEY_REQUIRED'});
+ const prior=await db.prepare('SELECT digest,response FROM coaching_requests WHERE user_id=? AND request_key=?').bind(user,trimmed).first();
+ if(!prior)return null;
+ if(prior.digest!==digest)return errorJson('Idempotency-Key was already used with a different request payload.',409,reqId,{code:'IDEMPOTENCY_KEY_REUSED_MISMATCH'});
+ return json({...JSON.parse(prior.response),replayed:true},statusCode,{'Idempotency-Replayed':'true'},reqId);
+}
+
 async function hydrateAuthPayloadAvatar(payload,origin,env){
  if(!payload?.user?.avatarUrl||!payload?.user?.userId)return payload;
  const signed=await signAvatarUrlIfNeeded(origin,payload.user.avatarUrl,payload.user.userId,env);
@@ -544,6 +554,7 @@ export default {async fetch(request,env){
 
   // Visual Photo Difference Analysis (KAN-122) — registered BEFORE wildcard /v1/progress/photos/{photoId}
   if(request.method==='POST'&&url.pathname==='/v1/progress/photos/analyze-diff'){
+   if(await isHealthConsentWithdrawn(env.DB,user))return errorJson('Active health_data_processing consent is required for personalized progress photo analysis.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
@@ -602,17 +613,23 @@ export default {async fetch(request,env){
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   const retDigest=await canonicalCommandDigest({action:'retention_intent',payload:body});
+   const headerRetKey=request.headers.get('Idempotency-Key');
+   const retReplay=await checkEndpointIdempotency(env.DB,user,headerRetKey,retDigest,reqId,200);
+   if(retReplay)return retReplay;
    const next=structuredClone(s);
    const retRes=await recordRetentionIntent(env.DB,next,user,body,env);
    for(const a of next.adaptations||[])if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
    next.revision=s.revision+1;
-   const retKey=request.headers.get('Idempotency-Key')||`retention-${retRes.intentId}`;
-   await saveAccount(env.DB,user,next,s.revision,{key:retKey,digest:await canonicalCommandDigest({action:'retention_intent',payload:body}),action:'retention_intent',payload:body,previousState:s});
-   return json({...retRes,revision:next.revision},200,{},reqId);
+   const retKey=(headerRetKey&&headerRetKey.trim())||`retention-${retRes.intentId}`;
+   const retResp={...retRes,revision:next.revision};
+   await saveAccount(env.DB,user,next,s.revision,{key:retKey,digest:retDigest,action:'retention_intent',payload:body,previousState:s,responseOverride:retResp});
+   return json(retResp,200,{},reqId);
   }
 
   // CuraFit Specialist Meal Capture (KAN-61) — JSON (up to 2.5 MB) or multipart/form-data
   if(request.method==='POST'&&(url.pathname==='/v1/nutrition/meal-parse'||url.pathname==='/v1/nutrition/ai-parse')){
+   if(await isHealthConsentWithdrawn(env.DB,user))return errorJson('Active health_data_processing consent is required for personalized meal analysis.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
    const ct=request.headers.get('Content-Type')||'';
    let parsedBody=null;
    if(/^application\/json(?:\s*;|$)/i.test(ct)){
@@ -625,6 +642,7 @@ export default {async fetch(request,env){
 
   // 3-Specialist Interactive Care Room (KAN-84)
   if(request.method==='POST'&&(url.pathname==='/v1/coaching/consultation'||url.pathname==='/v1/coaching/chat')){
+   if(await isHealthConsentWithdrawn(env.DB,user))return errorJson('Active health_data_processing consent is required for specialist care consultations.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
@@ -639,6 +657,7 @@ export default {async fetch(request,env){
 
   // Dining-Out Concierge (KAN-119)
   if(request.method==='GET'&&url.pathname==='/v1/nutrition/dining-out-options'){
+   if(await isHealthConsentWithdrawn(env.DB,user))return errorJson('Active health_data_processing consent is required for clinical dining-out guidance.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
    const ent=await resolveEntitlements(env.DB,s,user,currDate,env);
    return json(getDiningOutOptions(s,{
     date:url.searchParams.get('date')||currDate,
@@ -648,9 +667,14 @@ export default {async fetch(request,env){
    }),200,{},reqId);
   }
   if(request.method==='POST'&&url.pathname==='/v1/nutrition/dining-out-log'){
+   if(await isHealthConsentWithdrawn(env.DB,user))return errorJson('Active health_data_processing consent is required for clinical dining-out logging and rebalancing.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
    const body=JSON.parse(await requestJson(request));
    if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   const dDigest=await canonicalCommandDigest({action:'dining_out_log',payload:body});
+   const headerDKey=request.headers.get('Idempotency-Key');
+   const dReplay=await checkEndpointIdempotency(env.DB,user,headerDKey,dDigest,reqId,201);
+   if(dReplay)return dReplay;
    const next=structuredClone(s);
    const logged=applyDiningOutLog(next,body);
    if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'&&body.rebalanceRestOfDay===true){
@@ -660,10 +684,11 @@ export default {async fetch(request,env){
    if(next.lastReview)next.lastReview.auto=true;
    reconcileCoaching(next,clockNow());
    next.revision=s.revision+1;
-   const dKey=request.headers.get('Idempotency-Key')||`dining-${crypto.randomUUID()}`;
-   await saveAccount(env.DB,user,next,s.revision,{key:dKey,digest:await canonicalCommandDigest({action:'dining_out_log',payload:body}),action:'dining_out_log',payload:body,previousState:s});
+   const dKey=(headerDKey&&headerDKey.trim())||`dining-${crypto.randomUUID()}`;
+   const baseResp={revision:next.revision,...logged};
+   await saveAccount(env.DB,user,next,s.revision,{key:dKey,digest:dDigest,action:'dining_out_log',payload:body,previousState:s,responseOverride:{...baseResp,newlyUnlockedBadges:[]}});
    const badgeEval=await syncAndEvaluateBadges(env.DB,next,user,clockNow()).catch(()=>({newlyUnlockedBadges:[]}));
-   return json({revision:next.revision,...logged,newlyUnlockedBadges:badgeEval.newlyUnlockedBadges},201,{},reqId);
+   return json({...baseResp,newlyUnlockedBadges:badgeEval.newlyUnlockedBadges},201,{},reqId);
   }
 
   // KAN-121: Pro Impact Ledger & Clinical Summary DTO
@@ -671,6 +696,7 @@ export default {async fetch(request,env){
    return json(await computeProImpactLedger(env.DB,s,user,env,clockNow()),200,{},reqId);
   }
   if(request.method==='GET'&&url.pathname==='/v1/account/clinical-summary'){
+   if(await isHealthConsentWithdrawn(env.DB,user))return errorJson('Active health_data_processing consent is required to generate clinical summary reports.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
    if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
     await requireProOrConsumeQuota(env.DB,s,user,{feature:'clinical_summary_pdf'},env);
    }
@@ -782,21 +808,28 @@ export default {async fetch(request,env){
 
   // KAN-124: 1-Tap Travel/Hotel Session Override & Muscle Recovery Heatmap
   if(request.method==='POST'&&url.pathname==='/v1/workouts/session-override-today'){
+   if(await isHealthConsentWithdrawn(env.DB,user))return errorJson('Active health_data_processing consent is required for personalized workout session overrides.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   const oDigest=await canonicalCommandDigest({action:'session_override_today',payload:body});
+   const headerOKey=request.headers.get('Idempotency-Key');
+   const oReplay=await checkEndpointIdempotency(env.DB,user,headerOKey,oDigest,reqId,200);
+   if(oReplay)return oReplay;
    if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
     await requireProOrConsumeQuota(env.DB,s,user,{feature:'travel_session_override'},env);
    }
-   const body=JSON.parse(await requestJson(request));
-   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
    const next=structuredClone(s);
    const override=createTodaySessionOverride(next,body,clockNow());
    for(const a of next.adaptations||[])if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
    next.revision=s.revision+1;
-   const oKey=request.headers.get('Idempotency-Key')||`override-${override.id}`;
-   await saveAccount(env.DB,user,next,s.revision,{key:oKey,digest:await canonicalCommandDigest({action:'session_override_today',payload:body}),action:'session_override_today',payload:body,previousState:s});
-   return json({...override,revision:next.revision},200,{},reqId);
+   const oKey=(headerOKey&&headerOKey.trim())||`override-${override.id}`;
+   const overrideResp={...override,revision:next.revision};
+   await saveAccount(env.DB,user,next,s.revision,{key:oKey,digest:oDigest,action:'session_override_today',payload:body,previousState:s,responseOverride:overrideResp});
+   return json(overrideResp,200,{},reqId);
   }
   if(request.method==='GET'&&url.pathname==='/v1/workouts/muscle-status'){
+   if(await isHealthConsentWithdrawn(env.DB,user))return errorJson('Active health_data_processing consent is required for personalized muscle recovery status.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
    if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
     await requireProOrConsumeQuota(env.DB,s,user,{feature:'muscle_heatmap'},env);
    }

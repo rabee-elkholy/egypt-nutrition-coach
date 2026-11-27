@@ -225,7 +225,7 @@ async function hasWellnessTables(db){
  return result?.total===3;
 }
 
-export async function saveAccount(db,user,state,previousRevision,{key,digest,action,payload={},previousState=null,claimSource=null}){
+export async function saveAccount(db,user,state,previousRevision,{key,digest,action,payload={},previousState=null,claimSource=null,responseOverride=null}){
  const refs=new Map((state.planRefs||[]).map(p=>[p.id,p]));
  for(const p of state.plans)refs.set(p.id,reference(p));
  state.planRefs=[...refs.values()];
@@ -271,7 +271,7 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
  if(new TextEncoder().encode(body).length>1500000)throw apiError('STORAGE_LIMIT_REACHED','Account history reached storage capacity; export your data before adding new logs.',{status:413});
 
  const deltas=deriveSyncDeltas(state,action,payload,nowIso,previousState);
- const receipt=JSON.stringify({revision:state.revision,at:nowIso,action,affected:deltas});
+ const receipt=responseOverride!=null?JSON.stringify(responseOverride):JSON.stringify({revision:state.revision,at:nowIso,action,affected:deltas});
 
  const sourceGuard=claimSource?" WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM coaching_auth_sessions WHERE user_id=? AND session_id='__claimed__')":" WHERE 1";
  const closedGuard=normalizedReady?" AND NOT EXISTS(SELECT 1 FROM coaching_auth_sessions WHERE user_id=? AND session_id IN ('__deleted__','__claimed__') AND revoked_at IS NOT NULL)":'';

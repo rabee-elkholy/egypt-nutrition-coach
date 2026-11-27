@@ -11,11 +11,61 @@ import {
   isPregnantStatus
 } from '../coaching-shared.mjs';
 import { apiError } from '../coaching-error.mjs';
+import { fetchWithTimeout } from './external-crypto.mjs';
 import { workingSetsOf } from './training-state.mjs';
 import { consumeFeatureAccess, FREE_LIMITS, PRO_FAIR_USE_LIMITS } from './subscriptions.mjs';
 
 const VALID_POSES = new Set(['front', 'side', 'back']);
 const MIN_DAYS_BETWEEN_PHOTOS = 7;
+const GEMINI_VISION_MODEL = 'gemini-2.5-flash';
+const VALID_COMPARABILITY_SCORES = new Set(['high', 'moderate', 'low']);
+const VALID_COMPARABILITY_NOTES = new Set([
+  'PHOTO_FRAMING_CONSISTENT',
+  'PHOTO_LIGHTING_MISMATCH',
+  'PHOTO_DISTANCE_MISMATCH',
+  'PHOTO_ANGLE_MISMATCH',
+  'PHOTO_LOOSE_CLOTHING_DETECTED',
+  'PHOTO_SHORT_INTERVAL_WINDOW'
+]);
+const VALID_REGIONS = new Set(['upper_body', 'midsection', 'lower_body', 'posture']);
+const FORBIDDEN_VISUAL_COPY_RE = /\b(AI|AI Coach|Smart Coach|Smart|automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM|DEXA|body\s*fat\s*%|body\s*fat\s*percentage|beauty\s*score|attractiveness|ugly|flabby|chubby|gross|disgusting|\d+\s*\/\s*10)\b|\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/i;
+
+function sanitizeVisualCopy(text) {
+  return String(text || '')
+    .replace(/\bAI Coach\b/gi, 'CuraFit Specialist Team')
+    .replace(/\bSmart Coach\b/gi, 'CuraFit Specialist Team')
+    .replace(/\bAI\b/gi, 'Specialist')
+    .replace(/\bSmart\b/gi, 'tailored')
+    .replace(/\b(automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b/gi, 'personalized')
+    .replace(/\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/g, 'المختص')
+    .trim();
+}
+
+function bytesToBase64(bytes) {
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+function detectPhotoMimeType(bytes, declaredType = '', key = '') {
+  if (bytes && bytes.length >= 12) {
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+    if (
+      bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+    ) return 'image/webp';
+  }
+  const norm = String(declaredType || '').toLowerCase().split(';')[0].trim();
+  if (norm === 'image/png' || norm === 'image/webp' || norm === 'image/jpeg') return norm;
+  if (norm === 'image/jpg') return 'image/jpeg';
+  if (/\.png$/i.test(key)) return 'image/png';
+  if (/\.webp$/i.test(key)) return 'image/webp';
+  return 'image/jpeg';
+}
 
 function estimateNavyBodyFatPct(profile, measurement) {
   if (!profile || !measurement) return null;
@@ -202,51 +252,151 @@ export async function analyzeProgressPhotoDiff(db, env, s, userId, body = {}, no
     ((waistDeltaCm != null && waistDeltaCm <= -1.5) || (strengthVolumeDeltaPct != null && strengthVolumeDeltaPct >= 10))
   );
 
-  // 7. Calm Specialist Observations (zero body shaming, zero DEXA claims, zero AI wording)
-  const visualObservations = [];
-  if (clinicalMode === 'maternity_timeline') {
-    visualObservations.push(
-      { region: 'posture', summaryCode: 'MATERNITY_TIMELINE_MILESTONE', summary: `Celebrating ${daysBetween} days of your maternity journey with gentle posture and daily nourishment focus.` },
-      { region: 'midsection', summaryCode: 'MATERNITY_SUPPORTIVE_CARE', summary: 'Aesthetic fat-loss critique is paused during pregnancy; focus remains on comfortable movement, hydration, and maternal nutrition.' }
-    );
-  } else if (clinicalMode === 'wellness_only') {
-    visualObservations.push(
-      { region: 'posture', summaryCode: 'WELLNESS_POSTURE_STABILITY', summary: 'Comparison focuses on upright posture, steady strength capacity, and consistent nourishment rather than weight loss.' },
-      { region: 'upper_body', summaryCode: 'WELLNESS_STRENGTH_FOCUS', summary: 'Maintain balanced protein intake and comfortable resistance sessions to support long-term vitality.' }
-    );
-  } else if (comparabilityScore === 'low') {
-    visualObservations.push(
-      { region: 'posture', summaryCode: 'VISUAL_LOW_COMPARABILITY_TIP', summary: 'Lighting, distance, angle, or loose clothing varied between these photos. Retake under matching light and framing so your specialists can assess subtle visual changes reliably.' }
-    );
-  } else {
-    visualObservations.push(
-      {
-        region: 'upper_body',
-        summaryCode: strengthVolumeDeltaPct != null && strengthVolumeDeltaPct >= 10 ? 'VISUAL_UPPER_BODY_STRENGTH_GAIN' : 'VISUAL_UPPER_BODY_STEADY',
-        summary: strengthVolumeDeltaPct != null && strengthVolumeDeltaPct >= 10
-          ? `Upper-body training volume rose by +${strengthVolumeDeltaPct}% across these ${daysBetween} days, supporting fuller shoulder and upper-back tone.`
-          : `Upper-body symmetry appears steady across ${daysBetween} days; progressive compound sets will continue refining upper-body definition.`
-      },
-      {
-        region: 'midsection',
-        summaryCode: recompositionDetected ? 'VISUAL_RECOMPOSITION_MIDSECTION' : (waistDeltaCm != null && waistDeltaCm < 0 ? 'VISUAL_MIDSECTION_TAPERING' : 'VISUAL_MIDSECTION_STEADY'),
-        summary: recompositionDetected
-          ? 'Body recomposition signal detected: waist measurements or strength capacity improved while scale weight remained steady.'
-          : (waistDeltaCm != null && waistDeltaCm < 0
-            ? `Logged waist tape decreased by ${Math.abs(waistDeltaCm)} cm alongside consistent nutrition habits.`
-            : 'Midsection framing looks consistent; pair photo reviews with morning tape measurements under identical lighting.')
-      },
-      {
-        region: 'lower_body',
-        summaryCode: 'VISUAL_LOWER_BODY_FOUNDATION',
-        summary: 'Lower-body stance and leg stability remain balanced across the comparison window.'
-      },
-      {
-        region: 'posture',
-        summaryCode: 'VISUAL_POSTURE_ALIGNMENT',
-        summary: 'Maintain relaxed shoulders and neutral spinal alignment during check-in captures to track posture improvements clearly.'
+  // 7. Optional Gemini 2.5 Flash Vision comparison when R2 objects + GEMINI_API_KEY + standard clinicalMode + explicit consent are active
+  let visualObservations = [];
+  let analysisSource = 'metrics_correlation';
+  const locale = normalizeLocale(String(body?.locale || profile.locale || 'en'), 'en') || 'en';
+
+  if (
+    clinicalMode === 'standard' &&
+    env?.GEMINI_API_KEY &&
+    env?.CURAFIT_MEDIA_BUCKET &&
+    beforePhoto.r2_object_key &&
+    afterPhoto.r2_object_key
+  ) {
+    try {
+      const [beforeObj, afterObj] = await Promise.all([
+        env.CURAFIT_MEDIA_BUCKET.get(beforePhoto.r2_object_key),
+        env.CURAFIT_MEDIA_BUCKET.get(afterPhoto.r2_object_key)
+      ]);
+      if (beforeObj && afterObj) {
+        const [beforeBytes, afterBytes] = await Promise.all([
+          beforeObj.arrayBuffer().then(b => new Uint8Array(b)),
+          afterObj.arrayBuffer().then(b => new Uint8Array(b))
+        ]);
+        const MAX_VISION_BYTES = 5 * 1024 * 1024;
+        if (
+          beforeBytes.byteLength >= 32 && beforeBytes.byteLength <= MAX_VISION_BYTES &&
+          afterBytes.byteLength >= 32 && afterBytes.byteLength <= MAX_VISION_BYTES
+        ) {
+          const beforeMime = detectPhotoMimeType(beforeBytes, beforeObj.httpMetadata?.contentType, beforePhoto.r2_object_key);
+          const afterMime = detectPhotoMimeType(afterBytes, afterObj.httpMetadata?.contentType, afterPhoto.r2_object_key);
+          const metricsCtx = {
+            pose: beforePhoto.pose,
+            daysBetween,
+            weightDeltaKg,
+            waistDeltaCm,
+            strengthVolumeDeltaPct,
+            adherencePct,
+            recompositionDetected
+          };
+          const visionPrompt = [
+            'You are the CuraFit Specialist Team reviewing two progress photos (Photo 1 = before, Photo 2 = after) alongside logged member metrics.',
+            'Evaluate real visual comparability (lighting, camera distance, angle, clothing fit) and provide calm, respectful, objective observations.',
+            'Strict ethical rules: NEVER estimate DEXA or body-fat percentage from photos; NEVER give numeric attractiveness/beauty scores (no X/10); NEVER use body-shaming words; NEVER mention AI, Smart, Automated, Algorithm, Engine, Bot, or LLM.',
+            `Logged D1 Metrics (JSON): ${JSON.stringify(metricsCtx)}`,
+            'Respond ONLY as valid JSON matching this schema:',
+            '{"comparabilityScore":"high"|"moderate"|"low","comparabilityNoteCodes":["PHOTO_FRAMING_CONSISTENT"|"PHOTO_LIGHTING_MISMATCH"|"PHOTO_DISTANCE_MISMATCH"|"PHOTO_ANGLE_MISMATCH"|"PHOTO_LOOSE_CLOTHING_DETECTED"|"PHOTO_SHORT_INTERVAL_WINDOW"],"visualObservations":[{"region":"upper_body"|"midsection"|"lower_body"|"posture","summaryCode":"VISUAL_SPECIALIST_OBSERVATION","summary":"calm objective sentence in English"}]}'
+          ].join('\n');
+
+          const gRes = await fetchWithTimeout(
+            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_VISION_MODEL}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    { text: visionPrompt },
+                    { inline_data: { mime_type: beforeMime, data: bytesToBase64(beforeBytes) } },
+                    { inline_data: { mime_type: afterMime, data: bytesToBase64(afterBytes) } }
+                  ]
+                }],
+                generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 512 }
+              })
+            },
+            10000
+          );
+          if (gRes.ok) {
+            const gJson = await gRes.json();
+            const rawText = String(gJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+            const parsed = JSON.parse(rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
+            const cleanObs = Array.isArray(parsed?.visualObservations)
+              ? parsed.visualObservations
+                  .filter(o => o && VALID_REGIONS.has(String(o.region || '')) && typeof o.summary === 'string')
+                  .map(o => ({
+                    region: String(o.region),
+                    summaryCode: /^[A-Z][A-Z0-9_]{2,60}$/.test(String(o.summaryCode || '')) ? String(o.summaryCode) : 'VISUAL_SPECIALIST_OBSERVATION',
+                    summary: sanitizeVisualCopy(o.summary).slice(0, 320)
+                  }))
+                  .filter(o => o.summary.length >= 12 && !FORBIDDEN_VISUAL_COPY_RE.test(o.summary))
+                  .slice(0, 4)
+              : [];
+            if (cleanObs.length >= 2) {
+              if (VALID_COMPARABILITY_SCORES.has(parsed?.comparabilityScore)) {
+                comparabilityScore = parsed.comparabilityScore;
+              }
+              if (Array.isArray(parsed?.comparabilityNoteCodes)) {
+                const validNotes = parsed.comparabilityNoteCodes.filter(c => VALID_COMPARABILITY_NOTES.has(c));
+                if (validNotes.length) {
+                  comparabilityNoteCodes.splice(0, comparabilityNoteCodes.length, ...new Set(validNotes));
+                }
+              }
+              visualObservations = cleanObs;
+              analysisSource = 'vision_and_metrics';
+            }
+          }
+        }
       }
-    );
+    } catch {}
+  }
+
+  // Honest deterministic metric-grounded fallback (zero fabricated visual claims, zero body shaming, zero DEXA claims)
+  if (!visualObservations.length) {
+    if (clinicalMode === 'maternity_timeline') {
+      visualObservations.push(
+        { region: 'posture', summaryCode: 'MATERNITY_TIMELINE_MILESTONE', summary: `Celebrating ${daysBetween} days of your maternity journey with gentle posture and daily nourishment focus.` },
+        { region: 'midsection', summaryCode: 'MATERNITY_SUPPORTIVE_CARE', summary: 'Aesthetic fat-loss critique is paused during pregnancy; focus remains on comfortable movement, hydration, and maternal nutrition.' }
+      );
+    } else if (clinicalMode === 'wellness_only') {
+      visualObservations.push(
+        { region: 'posture', summaryCode: 'WELLNESS_POSTURE_STABILITY', summary: 'Comparison focuses on upright posture, steady strength capacity, and consistent nourishment rather than weight loss.' },
+        { region: 'upper_body', summaryCode: 'WELLNESS_STRENGTH_FOCUS', summary: 'Maintain balanced protein intake and comfortable resistance sessions to support long-term vitality.' }
+      );
+    } else if (comparabilityScore === 'low') {
+      visualObservations.push(
+        { region: 'posture', summaryCode: 'VISUAL_LOW_COMPARABILITY_TIP', summary: 'Lighting, distance, angle, or loose clothing varied between these photos. Retake under matching light and framing so your specialists can assess subtle visual changes reliably.' }
+      );
+    } else {
+      visualObservations.push(
+        {
+          region: 'upper_body',
+          summaryCode: strengthVolumeDeltaPct != null && strengthVolumeDeltaPct >= 10 ? 'VISUAL_UPPER_BODY_STRENGTH_GAIN' : 'VISUAL_UPPER_BODY_STEADY',
+          summary: strengthVolumeDeltaPct != null && strengthVolumeDeltaPct >= 10
+            ? `Logged training volume rose by +${strengthVolumeDeltaPct}% across these ${daysBetween} days; compare shoulder and upper-back photos side-by-side under consistent lighting.`
+            : `Side-by-side ${daysBetween}-day check-in recorded from your logged metrics; pair these photos with progressive upper-body strength logs over the next 4 weeks.`
+        },
+        {
+          region: 'midsection',
+          summaryCode: recompositionDetected ? 'VISUAL_RECOMPOSITION_MIDSECTION' : (waistDeltaCm != null && waistDeltaCm < 0 ? 'VISUAL_MIDSECTION_TAPERING' : 'VISUAL_MIDSECTION_STEADY'),
+          summary: recompositionDetected
+            ? 'Body recomposition signal detected from logged records: waist measurements or strength capacity improved while scale weight remained steady.'
+            : (waistDeltaCm != null && waistDeltaCm < 0
+              ? `Logged waist tape decreased by ${Math.abs(waistDeltaCm)} cm alongside consistent nutrition habits across ${daysBetween} days.`
+              : `No waist tape shift is logged across these ${daysBetween} days; pair side-by-side photo checks with morning tape measurements under identical lighting.`)
+        },
+        {
+          region: 'lower_body',
+          summaryCode: 'VISUAL_LOWER_BODY_FOUNDATION',
+          summary: `Review your lower-body check-in photos side-by-side alongside your ${daysBetween}-day training progression logs.`
+        },
+        {
+          region: 'posture',
+          summaryCode: 'VISUAL_POSTURE_ALIGNMENT',
+          summary: 'Keep relaxed shoulders, matched camera distance, and neutral spinal alignment during check-in captures so future side-by-side reviews stay consistent.'
+        }
+      );
+    }
   }
 
   const nextFourWeeksFocus = clinicalMode === 'maternity_timeline'
@@ -269,9 +419,9 @@ export async function analyzeProgressPhotoDiff(db, env, s, userId, body = {}, no
 
   const analysisId = `pan_${crypto.randomUUID()}`;
   const createdAt = isoNow();
-  const locale = normalizeLocale(String(body?.locale || profile.locale || 'en'), 'en') || 'en';
   const result = {
     analysisId,
+    analysisSource,
     beforePhotoId: beforePhoto.photo_id,
     afterPhotoId: afterPhoto.photo_id,
     pose: beforePhoto.pose,

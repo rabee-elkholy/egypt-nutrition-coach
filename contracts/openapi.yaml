@@ -1950,6 +1950,12 @@ paths:
     post:
       operationId: logDiningOutOption
       summary: Log a selected dining-out option and optionally rebalance remaining meals of the day
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Optional idempotency key (1..100 characters) to safely replay duplicate requests without double logging
+          schema: { type: string, minLength: 1, maxLength: 100 }
       requestBody:
         required: true
         content:
@@ -1965,7 +1971,7 @@ paths:
                 rebalanceRestOfDay: { type: boolean }
       responses:
         "201":
-          description: Dining-out meal logged
+          description: Dining-out meal logged (or idempotently replayed with Idempotency-Replayed header)
           content:
             application/json:
               schema:
@@ -1976,6 +1982,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Active health_data_processing consent required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
   /v1/coaching/consultation:
     post:
       operationId: consultSpecialistTeam
@@ -2082,6 +2096,12 @@ paths:
     post:
       operationId: recordRetentionIntent
       summary: Record Pause Plan, Maintenance Mode, or transparent store cancel intent with mandatory Apple/Google billing disclosure
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Optional idempotency key (1..100 characters) to safely replay duplicate requests
+          schema: { type: string, minLength: 1, maxLength: 100 }
       requestBody:
         required: true
         content:
@@ -2099,6 +2119,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
   /v1/account/clinical-summary:
     get:
       operationId: getClinicalSummaryReport
@@ -2513,6 +2535,12 @@ paths:
     post:
       operationId: createTodaySessionOverride
       summary: Generate an injury-safe ephemeral travel/hotel/dumbbell session override for today without mutating permanent gym split (Pro-gated)
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Optional idempotency key (1..100 characters) to safely replay duplicate override requests
+          schema: { type: string, minLength: 1, maxLength: 100 }
       requestBody:
         required: true
         content:
@@ -2537,11 +2565,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Blocked while RED_FLAG_STOP_ACTIVE
+          description: Blocked while RED_FLAG_STOP_ACTIVE or when health_data_processing consent is withdrawn
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
   /v1/workouts/muscle-status:
     get:
       operationId: getMuscleRecoveryHeatmap

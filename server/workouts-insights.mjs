@@ -125,11 +125,12 @@ export function computeWorkoutPrs(s, { since = null, exerciseId = null } = {}) {
     };
 
     if (bestWeightInSession != null) {
-      const improved = rec.heaviestWeightKg == null
-        ? true
-        : (isAssisted ? bestWeightInSession < rec.heaviestWeightKg : bestWeightInSession > rec.heaviestWeightKg);
+      const isBaseline = rec.heaviestWeightKg == null;
+      const improved = !isBaseline && (isAssisted ? bestWeightInSession < rec.heaviestWeightKg : bestWeightInSession > rec.heaviestWeightKg);
       if (improved) {
         pushEvent('weight', bestWeightInSession, rec.heaviestWeightKg, bestWeightReps);
+      }
+      if (isBaseline || improved) {
         rec.heaviestWeightKg = bestWeightInSession;
       }
     }

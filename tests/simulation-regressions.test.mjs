@@ -8,10 +8,12 @@ import { runScheduledNotifications } from '../server/push.mjs';
 import { evaluateProactiveSpecialistNote } from '../proactive-notes.mjs';
 import { computeChallengeDayScore } from '../server/progress-analytics.mjs';
 import { workoutPlan } from '../server/workouts.mjs';
+import { computeWorkoutPrs } from '../server/workouts-insights.mjs';
+import { computeProImpactLedger } from '../server/retention.mjs';
 import { makeWeek } from '../planner-core.mjs';
 import library from '../data/planning-library.json' with { type: 'json' };
 
-const FORBIDDEN_VOICE_RE = /\b(AI|AI Coach|Smart Coach|automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b|\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/i;
+const FORBIDDEN_VOICE_RE = /\b(AI|AI Coach|Smart Coach|Smart|automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b|\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/i;
 
 const TEST_ENV = {
   AUTH_JWT_SECRET: 'simulation-regressions-secret-key-256-bits',
@@ -66,8 +68,8 @@ test('Simulation Regressions (Layers 1-3): proactive micro-notes, dual referral 
     const signer = await createOidcSigner();
     let seq = 0;
 
-    const call = async (path, opts = {}, nowMs = null) => {
-      const env = { ...TEST_ENV, OAUTH_GOOGLE_JWKS_JSON: signer.jwksJson, CURAFIT_MEDIA_BUCKET: bucket, DB: db };
+    const call = async (path, opts = {}, nowMs = null, envExtra = {}) => {
+      const env = { ...TEST_ENV, OAUTH_GOOGLE_JWKS_JSON: signer.jwksJson, CURAFIT_MEDIA_BUCKET: bucket, ...envExtra, DB: db };
       const req = new Request(`https://curafit-api-dev.egypt-nutrition-coach.workers.dev${path}`, opts);
       const exec = () => cloudflareEntry.fetch(req, env, { waitUntil() {} });
       return nowMs != null ? withClock(nowMs, exec) : exec();
@@ -256,6 +258,330 @@ test('Simulation Regressions (Layers 1-3): proactive micro-notes, dual referral 
       });
       for (const d of wp.days) {
         assert.ok(d.exercises.length >= 2 && d.exercises.length <= 4, `Expected 2-4 exercises on day ${d.dayIndex}, got ${d.exercises.length}`);
+      }
+    });
+
+    await t.test('5. [P0] Meal Capture multipart encodes real Base64 + real MIME type to gemini-2.5-flash', async () => {
+      const u = await createUser('Vision User', 'dev-vis-1', {
+        age: 30, weight: 80, height: 178, sex: 'male', goal: 'lose', targetWeight: 75, serviceTrack: 'nutrition_only'
+      });
+      const pngBytes = new Uint8Array(48);
+      pngBytes.set([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52], 0);
+      const expectedB64 = Buffer.from(pngBytes).toString('base64');
+      const form = new FormData();
+      form.append('inputType', 'photo');
+      form.append('file', new File([pngBytes], 'plate.png', { type: 'image/png' }));
+
+      const origFetch = globalThis.fetch;
+      let capturedUrl = '';
+      let capturedBody = null;
+      globalThis.fetch = async (url, init) => {
+        const uStr = String(url);
+        if (uStr.includes('generativelanguage.googleapis.com')) {
+          capturedUrl = uStr;
+          capturedBody = JSON.parse(String(init?.body || '{}'));
+          return new Response(JSON.stringify({
+            candidates: [{
+              content: {
+                parts: [{
+                  text: '180g grilled chicken, 150g white rice'
+                }]
+              }
+            }]
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return origFetch(url, init);
+      };
+      try {
+        const res = await call('/v1/nutrition/meal-parse', {
+          method: 'POST',
+          headers: { Authorization: u.headers.Authorization },
+          body: form
+        }, Date.parse('2026-11-12T12:00:00Z'), { GEMINI_API_KEY: 'test-gemini-key' });
+        assert.equal(res.status, 200);
+        const data = (await res.json()).data;
+        assert.ok(capturedUrl.includes('models/gemini-2.5-flash:generateContent'), `Expected gemini-2.5-flash, got ${capturedUrl}`);
+        const inlinePart = capturedBody?.contents?.[0]?.parts?.find(p => p.inline_data);
+        assert.equal(inlinePart?.inline_data?.mime_type, 'image/png');
+        assert.equal(inlinePart?.inline_data?.data, expectedB64);
+        assert.ok(data.items.some(i => /chicken/i.test(i.label)), `Expected grounded chicken item, got ${JSON.stringify(data.items)}`);
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+
+    await t.test('6. [P0] Care Room & Photo Diff grounded gemini-2.5-flash, guardrail precedence, DEXA rejection & honest fallback', async () => {
+      const nowMs = Date.parse('2026-11-20T12:00:00Z');
+      const u = await createUser('Care Vision User', 'dev-cv-1', {
+        age: 31, weight: 78, height: 176, sex: 'male', goal: 'lose', targetWeight: 72,
+        diseases: ['hypertension'], injuries: ['knee'], serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true
+      }, Date.parse('2026-11-01T12:00:00Z'));
+      await call('/v1/account/consents', { method: 'POST', headers: u.headers, body: JSON.stringify({ consentType: 'visual_progress_analysis', version: '1.0', accepted: true }) }, nowMs);
+      const pngBytes = new Uint8Array(48);
+      pngBytes.set([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52], 0);
+      const k1 = `photos/${u.userId}/before.png`;
+      const k2 = `photos/${u.userId}/after.png`;
+      await bucket.put(k1, pngBytes, { httpMetadata: { contentType: 'image/png' } });
+      await bucket.put(k2, pngBytes, { httpMetadata: { contentType: 'image/png' } });
+      await db.batch([
+        db.prepare('INSERT INTO coaching_progress_photos(user_id,photo_id,date,pose,r2_object_key,weight_kg_snapshot,created_at) VALUES(?,?,?,?,?,?,?)').bind(u.userId, 'cv_p1', '2026-11-01', 'front', k1, 78, '2026-11-01T12:00:00Z'),
+        db.prepare('INSERT INTO coaching_progress_photos(user_id,photo_id,date,pose,r2_object_key,weight_kg_snapshot,created_at) VALUES(?,?,?,?,?,?,?)').bind(u.userId, 'cv_p2', '2026-11-20', 'front', k2, 75.5, '2026-11-20T12:00:00Z')
+      ]);
+
+      const origFetch = globalThis.fetch;
+      let geminiCalls = 0;
+      let lastCarePrompt = '';
+      let photoMode = 'valid';
+      globalThis.fetch = async (url, init) => {
+        const uStr = String(url);
+        if (uStr.includes('generativelanguage.googleapis.com')) {
+          geminiCalls++;
+          const body = JSON.parse(String(init?.body || '{}'));
+          const promptText = body?.contents?.[0]?.parts?.[0]?.text || '';
+          if (promptText.includes('Member D1 Grounding Snapshot')) {
+            lastCarePrompt = promptText;
+            return new Response(JSON.stringify({
+              candidates: [{ content: { parts: [{ text: 'Smart AI plan update: Focus on lean grilled chicken and low-sodium salads today while protecting your knee.' }] } }]
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+          // Photo diff vision mock
+          const imgParts = (body?.contents?.[0]?.parts || []).filter(p => p.inline_data);
+          assert.equal(imgParts.length, 2, 'Expected both R2 photos passed to Gemini Vision');
+          const visionPayload = photoMode === 'valid'
+            ? {
+                comparabilityScore: 'moderate',
+                comparabilityNoteCodes: ['PHOTO_LIGHTING_MISMATCH'],
+                visualObservations: [
+                  { region: 'midsection', summaryCode: 'VISUAL_SPECIALIST_OBSERVATION', summary: 'Midsection silhouette appears noticeably tighter alongside the 2.5 kg reduction.' },
+                  { region: 'upper_body', summaryCode: 'VISUAL_SPECIALIST_OBSERVATION', summary: 'Upper-body shoulder line looks slightly more defined despite mild lighting differences.' }
+                ]
+              }
+            : {
+                comparabilityScore: 'high',
+                comparabilityNoteCodes: ['PHOTO_FRAMING_CONSISTENT'],
+                visualObservations: [
+                  { region: 'midsection', summaryCode: 'VISUAL_SPECIALIST_OBSERVATION', summary: 'Estimated 14% body fat (DEXA equivalent) and 9/10 physique.' }
+                ]
+              };
+          return new Response(JSON.stringify({
+            candidates: [{ content: { parts: [{ text: JSON.stringify(visionPayload) }] } }]
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return origFetch(url, init);
+      };
+      try {
+        // 6a. Hard Clinical Guardrail blocks Gemini call completely
+        const redRes = await call('/v1/coaching/consultation', {
+          method: 'POST', headers: u.headers,
+          body: JSON.stringify({ message: 'I have severe chest pain and dizziness right now', threadId: 't-care' })
+        }, nowMs, { GEMINI_API_KEY: 'test-gemini-key' });
+        assert.equal(redRes.status, 200);
+        const redData = (await redRes.json()).data;
+        assert.equal(redData.safetyNoticeTriggered, true);
+        assert.ok(redData.safetyFlagCodes.length >= 1, `Expected safetyFlagCodes, got ${JSON.stringify(redData.safetyFlagCodes)}`);
+        assert.equal(geminiCalls, 0, 'Hard clinical guardrail must bypass Gemini call');
+
+        // 6b. Grounded Care Room call passes D1 snapshot & thread history and strips forbidden voice words
+        const careRes = await call('/v1/coaching/consultation', {
+          method: 'POST', headers: u.headers,
+          body: JSON.stringify({ message: 'What should I eat for dinner tonight?', threadId: 't-care' })
+        }, nowMs, { GEMINI_API_KEY: 'test-gemini-key' });
+        assert.equal(careRes.status, 200);
+        const careData = (await careRes.json()).data;
+        assert.equal(geminiCalls, 1);
+        assert.ok(lastCarePrompt.includes('hypertension') && lastCarePrompt.includes('knee'), 'Expected D1 clinical context grounded in Care Room prompt');
+        assert.ok(!FORBIDDEN_VOICE_RE.test(careData.reply), `Forbidden word leaked in Care Room reply: ${careData.reply}`);
+
+        // 6c. Photo Diff with R2 + Gemini Vision -> vision_and_metrics
+        const diffOkRes = await call('/v1/progress/photos/analyze-diff', {
+          method: 'POST', headers: u.headers,
+          body: JSON.stringify({ beforePhotoId: 'cv_p1', afterPhotoId: 'cv_p2', pose: 'front' })
+        }, nowMs, { GEMINI_API_KEY: 'test-gemini-key' });
+        assert.equal(diffOkRes.status, 201);
+        const diffOk = (await diffOkRes.json()).data;
+        assert.equal(diffOk.analysisSource, 'vision_and_metrics');
+        assert.equal(diffOk.comparabilityScore, 'moderate');
+        assert.ok(diffOk.comparabilityNoteCodes.includes('PHOTO_LIGHTING_MISMATCH'));
+        assert.ok(!FORBIDDEN_VOICE_RE.test(JSON.stringify(diffOk)));
+
+        // 6d. Photo Diff rejects DEXA/body-fat% hallucinations and falls back honestly to metrics_correlation
+        photoMode = 'forbidden_dexa';
+        const diffFallbackRes = await call('/v1/progress/photos/analyze-diff', {
+          method: 'POST', headers: u.headers,
+          body: JSON.stringify({ beforePhotoId: 'cv_p1', afterPhotoId: 'cv_p2', pose: 'front' })
+        }, nowMs, { GEMINI_API_KEY: 'test-gemini-key' });
+        assert.equal(diffFallbackRes.status, 201);
+        const diffFallback = (await diffFallbackRes.json()).data;
+        assert.equal(diffFallback.analysisSource, 'metrics_correlation');
+        assert.ok(!/DEXA|body fat|9\/10/i.test(JSON.stringify(diffFallback)));
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+
+    await t.test('7. [P0] Zero Week-1 baseline weight PR & seeded_reference MENA barcode provenance', async () => {
+      const baseOnly = computeWorkoutPrs({
+        workoutPlan: { days: [{ dayIndex: 1, exercises: [{ id: 'Barbell_Bench_Press_-_Medium_Grip', name: 'Bench Press', loadMode: 'external' }] }] },
+        workoutLogs: [
+          { date: '2026-11-02', exerciseId: 'Barbell_Bench_Press_-_Medium_Grip', sets: [{ kg: 60, reps: 10, setType: 'working' }], at: '2026-11-02T12:00:00Z' }
+        ]
+      });
+      assert.equal(baseOnly.items.length, 0, 'First session baseline must emit 0 PRs');
+      assert.equal(baseOnly.summaryByExercise['Barbell_Bench_Press_-_Medium_Grip'].heaviestWeightKg, 60);
+
+      const progressed = computeWorkoutPrs({
+        workoutPlan: { days: [{ dayIndex: 1, exercises: [{ id: 'Barbell_Bench_Press_-_Medium_Grip', name: 'Bench Press', loadMode: 'external' }] }] },
+        workoutLogs: [
+          { date: '2026-11-02', exerciseId: 'Barbell_Bench_Press_-_Medium_Grip', sets: [{ kg: 60, reps: 10, setType: 'working' }], at: '2026-11-02T12:00:00Z' },
+          { date: '2026-11-09', exerciseId: 'Barbell_Bench_Press_-_Medium_Grip', sets: [{ kg: 65, reps: 10, setType: 'working' }], at: '2026-11-09T12:00:00Z' }
+        ]
+      });
+      const weightPr = progressed.items.find(x => x.prType === 'weight');
+      assert.ok(weightPr, 'Second heavier session should emit weight PR');
+      assert.equal(weightPr.value, 65);
+      assert.equal(weightPr.previousValue, 60);
+
+      const badVerified = await db.prepare("SELECT COUNT(*) AS c FROM food_barcodes WHERE provenance='verified_brand' AND submitted_by_user_id IS NULL").first();
+      const seededRef = await db.prepare("SELECT COUNT(*) AS c FROM food_barcodes WHERE provenance='seeded_reference'").first();
+      assert.equal(Number(badVerified?.c || 0), 0, 'Synthetic MENA barcodes must not be labeled verified_brand');
+      assert.ok(Number(seededRef?.c || 0) >= 600, `Expected >= 600 seeded_reference MENA barcodes, got ${seededRef?.c}`);
+    });
+
+    await t.test('8. [P1] Pro Impact Ledger 30d window scoping, zero double-counting, protein adherence & realistic time saved', async () => {
+      const nowMs = Date.parse('2026-11-30T12:00:00Z');
+      const ledger = await computeProImpactLedger(db, {
+        profile: { timezone: 'Africa/Cairo', weight: 80, height: 178, sex: 'male', age: 30 },
+        onboarding: { journeyStartedOn: '2026-09-01' },
+        active_plan_id: 'p3',
+        planRefs: [
+          { id: 'p0', created_at: '2026-09-01T12:00:00Z', start_date: '2026-09-01', protein: 140, reason: 'Initial plan' },
+          { id: 'p1', created_at: '2026-10-10T12:00:00Z', start_date: '2026-10-10', protein: 140, reason: 'Weekly renewal' },
+          { id: 'p2', created_at: '2026-11-15T12:00:00Z', start_date: '2026-11-15', protein: 140, reason: 'Accepted calorie adaptation' },
+          { id: 'p3', created_at: '2026-11-22T12:00:00Z', start_date: '2026-11-22', protein: 140, reason: 'Weekly renewal' }
+        ],
+        adaptations: [
+          { id: 'a-old', kind: 'calories', status: 'accepted', decidedAt: '2026-10-05T12:00:00Z' },
+          { id: 'a-new', kind: 'calories', status: 'accepted', decidedAt: '2026-11-15T12:00:00Z' }
+        ],
+        foodLogs: [
+          { date: '2026-11-28', energy: 2100, protein: 138, complete: true, mode: 'daily_total' },
+          { date: '2026-11-29', energy: 2050, complete: true, mode: 'entries' }
+        ],
+        foodEntries: [
+          { id: 'fe1', date: '2026-11-29', slot: 'lunch', source: 'dining_out', snapshot: { values: { energy: '900', protein: '130' } } }
+        ],
+        waterLogs: [{ date: '2026-11-29', cups: 12, targetCups: 12 }],
+        sessions: [{ date: '2026-11-29', status: 'completed' }],
+        history: [{ kind: 'meal_replace', at: '2026-11-28T12:00:00Z' }]
+      }, 'impact-test-user', TEST_ENV, nowMs);
+
+      assert.equal(ledger.cycleDays, 30);
+      // Only a-new (1) + p3 weekly renewal (1) = 2 (a-old & p1 outside 30d; p2 deduplicated with a-new!)
+      assert.equal(ledger.calibrationsApplied, 2, `Expected 2 scoped non-double-counted calibrations, got ${ledger.calibrationsApplied}`);
+      assert.equal(ledger.proteinAdherencePct, 100);
+      assert.equal(ledger.sessionsCompleted, 1);
+      assert.ok(ledger.estimatedMinutesSaved >= 50, `Expected realistic time saved >= 50m, got ${ledger.estimatedMinutesSaved}`);
+    });
+
+    await t.test('9. [P2] Wave 2 health consent lock (403) & Idempotency-Key replay/mismatch on dining-out-log, retention-intent & session-override-today', async () => {
+      const nowMs = Date.parse('2026-11-15T12:00:00Z');
+      const u = await createUser('Guard Idem User', 'dev-gid-1', {
+        age: 30, weight: 80, height: 176, sex: 'male', goal: 'lose', targetWeight: 74,
+        serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true
+      }, nowMs);
+      const dStr = '2026-11-15';
+      const opts = (await (await call(`/v1/nutrition/dining-out-options?category=grill&date=${dStr}`, { headers: u.headers }, nowMs)).json()).data;
+      const optId = opts.options[0].id;
+
+      // 9a. dining-out-log Idempotency-Key replay & 409 mismatch
+      const dKey = `idem-dining-${crypto.randomUUID()}`;
+      const d1Res = await call('/v1/nutrition/dining-out-log', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': dKey },
+        body: JSON.stringify({ optionId: optId, date: dStr, slot: 'dinner' })
+      }, nowMs);
+      assert.equal(d1Res.status, 201);
+      const d1 = (await d1Res.json()).data;
+      const d2Res = await call('/v1/nutrition/dining-out-log', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': dKey },
+        body: JSON.stringify({ optionId: optId, date: dStr, slot: 'dinner' })
+      }, nowMs);
+      assert.equal(d2Res.status, 201);
+      assert.equal(d2Res.headers.get('Idempotency-Replayed'), 'true');
+      const d2 = (await d2Res.json()).data;
+      assert.equal(d2.revision, d1.revision);
+      assert.equal(d2.replayed, true);
+      const dMis = await call('/v1/nutrition/dining-out-log', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': dKey },
+        body: JSON.stringify({ optionId: optId, date: dStr, slot: 'lunch' })
+      }, nowMs);
+      assert.equal(dMis.status, 409);
+      assert.equal((await dMis.json()).error.code, 'IDEMPOTENCY_KEY_REUSED_MISMATCH');
+
+      // 9b. retention-intent Idempotency-Key replay & 409 mismatch
+      const rKey = `idem-ret-${crypto.randomUUID()}`;
+      const r1Res = await call('/v1/subscriptions/retention-intent', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': rKey },
+        body: JSON.stringify({ intent: 'pause_14d', reasonCode: 'travel' })
+      }, nowMs);
+      assert.equal(r1Res.status, 200);
+      const r1 = (await r1Res.json()).data;
+      const r2Res = await call('/v1/subscriptions/retention-intent', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': rKey },
+        body: JSON.stringify({ intent: 'pause_14d', reasonCode: 'travel' })
+      }, nowMs);
+      assert.equal(r2Res.status, 200);
+      assert.equal(r2Res.headers.get('Idempotency-Replayed'), 'true');
+      assert.equal((await r2Res.json()).data.revision, r1.revision);
+      const rMis = await call('/v1/subscriptions/retention-intent', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': rKey },
+        body: JSON.stringify({ intent: 'pause_30d', reasonCode: 'travel' })
+      }, nowMs);
+      assert.equal(rMis.status, 409);
+      assert.equal((await rMis.json()).error.code, 'IDEMPOTENCY_KEY_REUSED_MISMATCH');
+
+      // 9c. session-override-today Idempotency-Key replay & 409 mismatch
+      const oKey = `idem-ovr-${crypto.randomUUID()}`;
+      const o1Res = await call('/v1/workouts/session-override-today', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': oKey },
+        body: JSON.stringify({ mode: 'bodyweight_hotel', durationMin: 30, date: dStr })
+      }, nowMs);
+      assert.equal(o1Res.status, 200);
+      const o1 = (await o1Res.json()).data;
+      const o2Res = await call('/v1/workouts/session-override-today', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': oKey },
+        body: JSON.stringify({ mode: 'bodyweight_hotel', durationMin: 30, date: dStr })
+      }, nowMs);
+      assert.equal(o2Res.status, 200);
+      assert.equal(o2Res.headers.get('Idempotency-Replayed'), 'true');
+      assert.equal((await o2Res.json()).data.revision, o1.revision);
+      const oMis = await call('/v1/workouts/session-override-today', {
+        method: 'POST', headers: { ...u.headers, 'Idempotency-Key': oKey },
+        body: JSON.stringify({ mode: 'dumbbell_only', durationMin: 30, date: dStr })
+      }, nowMs);
+      assert.equal(oMis.status, 409);
+      assert.equal((await oMis.json()).error.code, 'IDEMPOTENCY_KEY_REUSED_MISMATCH');
+
+      // 9d. Withdraw health_data_processing consent -> 403 HEALTH_CONSENT_REQUIRED on all 8 Wave 2 health routes
+      const withdraw = await call('/v1/account/consents', {
+        method: 'POST', headers: u.headers,
+        body: JSON.stringify({ consentType: 'health_data_processing', version: '1.0', accepted: false })
+      }, nowMs);
+      assert.equal(withdraw.status, 200);
+
+      const gatedCalls = [
+        ['/v1/progress/photos/analyze-diff', { method: 'POST', headers: u.headers, body: JSON.stringify({ beforePhotoId: 'a', afterPhotoId: 'b', pose: 'front' }) }],
+        ['/v1/nutrition/meal-parse', { method: 'POST', headers: u.headers, body: JSON.stringify({ inputType: 'text', text: '100g chicken' }) }],
+        ['/v1/coaching/consultation', { method: 'POST', headers: u.headers, body: JSON.stringify({ message: 'Can I eat rice?' }) }],
+        ['/v1/nutrition/dining-out-options', { headers: u.headers }],
+        ['/v1/nutrition/dining-out-log', { method: 'POST', headers: u.headers, body: JSON.stringify({ optionId: optId, date: dStr }) }],
+        ['/v1/account/clinical-summary', { headers: u.headers }],
+        ['/v1/workouts/session-override-today', { method: 'POST', headers: u.headers, body: JSON.stringify({ mode: 'bodyweight_hotel', durationMin: 30 }) }],
+        ['/v1/workouts/muscle-status', { headers: u.headers }]
+      ];
+      for (const [path, init] of gatedCalls) {
+        const res = await call(path, init, nowMs);
+        assert.equal(res.status, 403, `Expected 403 HEALTH_CONSENT_REQUIRED on ${path}, got ${res.status}`);
+        assert.equal((await res.json()).error.code, 'HEALTH_CONSENT_REQUIRED');
       }
     });
   } finally {

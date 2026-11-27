@@ -9,7 +9,7 @@ import {
 } from '../coaching-shared.mjs';
 import { apiError } from '../coaching-error.mjs';
 import { dailyWaterTarget } from './coaching.mjs';
-import { activePlan } from './food.mjs';
+import { activePlan, dayTotals } from './food.mjs';
 import { computeWorkoutPrs } from './workouts-insights.mjs';
 import { computeProgressAnalytics } from './progress-analytics.mjs';
 import { resolveEntitlements } from './subscriptions.mjs';
@@ -66,13 +66,22 @@ export async function computeProImpactLedger(db, s, userId, env = null, now = cl
     sumQuotaByKey(db, userId, 'barcode_scan')
   ]);
 
-  const recentFood = (s?.foodLogs || []).filter(f => f.date >= windowStart && f.date <= today && Number(f.energy || 0) > 0);
-  const planProtein = Number(activePlan(s)?.targets?.protein || 0);
-  const proteinAdherentDays = recentFood.filter(f => {
-    if (f.protein == null) return false;
-    return planProtein > 0 ? Number(f.protein) >= planProtein * 0.85 : Number(f.protein) >= 60;
-  }).length;
-  const proteinAdherencePct = recentFood.length ? Math.round((proteinAdherentDays / recentFood.length) * 100) : 0;
+  const foodDatesInWindow = new Set([
+    ...(s?.foodLogs || []).filter(f => f.date >= windowStart && f.date <= today && Number(f.energy || 0) > 0).map(f => f.date),
+    ...(s?.foodEntries || []).filter(e => e.date >= windowStart && e.date <= today).map(e => e.date)
+  ]);
+  const activeRef = (s?.planRefs || []).find(r => r.id === s?.active_plan_id) || (s?.planRefs || []).at(-1) || null;
+  const planProtein = Number(activePlan(s)?.targets?.protein || activeRef?.protein || 0);
+  let proteinAdherentDays = 0;
+  for (const d of foodDatesInWindow) {
+    const fLog = (s?.foodLogs || []).find(x => x.date === d);
+    const diary = dayTotals(s, d);
+    const dayProtein = diary.totals?.protein != null ? Number(diary.totals.protein) : (fLog?.protein != null ? Number(fLog.protein) : null);
+    if (dayProtein != null && (planProtein > 0 ? dayProtein >= planProtein * 0.85 : dayProtein >= 60)) {
+      proteinAdherentDays++;
+    }
+  }
+  const proteinAdherencePct = foodDatesInWindow.size ? Math.round((proteinAdherentDays / foodDatesInWindow.size) * 100) : 0;
 
   const recentWater = (s?.waterLogs || []).filter(w => w.date >= windowStart && w.date <= today);
   const waterAdherentDays = recentWater.filter(w => {
@@ -88,18 +97,67 @@ export async function computeProImpactLedger(db, s, userId, env = null, now = cl
   const prs = computeWorkoutPrs(s, { since: windowStart });
   const prsAchieved = prs.items.length;
 
-  const acceptedAdaptations = (s?.adaptations || []).filter(a => a.status === 'accepted').length;
-  const weeklyCheckins = (s?.coachingFeedback || []).length;
-  const calibrationsApplied = acceptedAdaptations + Math.min(weeklyCheckins, 52) + Math.max(0, (s?.planRefs?.length || 1) - 1);
+  const dateFromIsoOrStr = val => {
+    if (!val) return null;
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    const ms = Date.parse(val);
+    return Number.isFinite(ms) ? localDate(ms, tz) : null;
+  };
+  const inWindow = d => Boolean(d && d >= windowStart && d <= today);
+
+  // Calibrations strictly scoped to [windowStart, today] with ZERO double-counting between acceptedAdaptations and planRefs
+  const acceptedAdaptationsInWindow = (s?.adaptations || []).filter(a => {
+    if (a.status !== 'accepted') return false;
+    const d = dateFromIsoOrStr(a.decidedAt || a.resolvedAt || a.updatedAt || a.createdAt || a.at);
+    return inWindow(d);
+  });
+  const acceptedCalorieDates = new Set(
+    acceptedAdaptationsInWindow
+      .filter(a => ['calories', 'maintenance'].includes(a.kind))
+      .map(a => dateFromIsoOrStr(a.decidedAt || a.resolvedAt || a.updatedAt || a.createdAt || a.at))
+      .filter(Boolean)
+  );
+  const weeklyCheckinsInWindow = (s?.coachingFeedback || []).filter(f => inWindow(f.date)).length;
+
+  const uniquePlansById = new Map();
+  for (const r of s?.planRefs || []) if (r?.id) uniquePlansById.set(r.id, r);
+  for (const p of s?.plans || []) {
+    if (p?.id && !uniquePlansById.has(p.id)) {
+      uniquePlansById.set(p.id, { id: p.id, start_date: p.start_date, created_at: p.created_at, reason: p.changeReason || 'Initial plan' });
+    }
+  }
+  const orderedPlans = [...uniquePlansById.values()].sort((a, b) => String(a.created_at || a.start_date || '').localeCompare(String(b.created_at || b.start_date || '')));
+  const initialPlanId = orderedPlans[0]?.id || null;
+  const plansInWindow = orderedPlans.filter(p => inWindow(dateFromIsoOrStr(p.created_at || p.start_date)));
+  const nonAdaptationRenewalsInWindow = plansInWindow.filter(p => {
+    if (p.id === initialPlanId) return false;
+    const reason = String(p.reason || '');
+    const pDate = dateFromIsoOrStr(p.created_at || p.start_date);
+    if (/adapt|retarget|calorie|maintenance|post_feast/i.test(reason)) return false;
+    if (pDate && acceptedCalorieDates.has(pDate)) return false;
+    return true;
+  }).length;
+  const calibrationsApplied = acceptedAdaptationsInWindow.length + weeklyCheckinsInWindow + nonAdaptationRenewalsInWindow;
 
   const checkedGroceries = Object.values(s?.groceryChecks || {}).filter(v => v?.checked).length;
   const batchPrepBonusMin = (s?.preferences?.batchPrepMode || s?.profile?.batchPrepMode) ? 45 : 0;
+  const mealSwapsInWindow = (s?.foodEntries || []).filter(e =>
+    e.date >= windowStart && e.date <= today && (e.fromPantry === true || e.source === 'dining_out' || e.source === 'pantry')
+  ).length + (s?.history || []).filter(h =>
+    h.kind === 'meal_replace' && inWindow(dateFromIsoOrStr(h.at))
+  ).length;
+  const weeklyPlanTimeSavedMin = Math.min(plansInWindow.length, 5) * 20;
+  const adaptivePlanTimeSavedMin = acceptedAdaptationsInWindow.length * 12;
+  const swapTimeSavedMin = Math.min(mealSwapsInWindow, 30) * 5;
   const estimatedMinutesSaved = Math.round(
     mealCapturesCount * 2.5 +
     barcodeScansCount * 1.5 +
     specialistConsultationsCount * 4 +
     checkedGroceries * 1.5 +
-    batchPrepBonusMin
+    batchPrepBonusMin +
+    weeklyPlanTimeSavedMin +
+    adaptivePlanTimeSavedMin +
+    swapTimeSavedMin
   );
 
   let renewalReminderEligible = false;

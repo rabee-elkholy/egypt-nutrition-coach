@@ -607,8 +607,8 @@ await withClock(baseNowMs, async () => {
 });
 
 summary.durationMs = Math.round(performance.now() - t0);
-await mkdir('C:/Users/rabee/.gemini/antigravity/brain/7b05a7a5-e9de-4fbc-82da-b678f358ca91/scratch', { recursive: true });
-await writeFile('C:/Users/rabee/.gemini/antigravity/brain/7b05a7a5-e9de-4fbc-82da-b678f358ca91/scratch/layer1_report.json', JSON.stringify(summary, null, 2));
+await mkdir('outputs', { recursive: true });
+await writeFile('outputs/layer1_report.json', JSON.stringify(summary, null, 2));
 
 console.log(JSON.stringify({
   totalCases: summary.totalCases,

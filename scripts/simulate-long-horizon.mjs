@@ -56,21 +56,21 @@ async function createOidcSigner(kid = 'sim2-k1') {
 const signer = await createOidcSigner('sim2-google-k1');
 const diaryMarkdown = ['# CuraFit Layer 3 Specialist Diary & Pro-Value Transcripts\n'];
 const report = { startedAt: new Date().toISOString(), journeys: [], passCount: 0, failCount: 0 };
-const SCRATCH_DIR = 'C:/Users/rabee/.gemini/antigravity/brain/7b05a7a5-e9de-4fbc-82da-b678f358ca91/scratch';
+const OUT_DIR = 'outputs';
 const batchArg = process.argv.find(a => a.startsWith('--batch='));
 const activeBatch = batchArg ? batchArg.slice('--batch='.length) : null;
 const shouldRun = name => activeBatch === name;
 
 if (!activeBatch) {
   const execFileAsync = promisify(execFile);
-  await mkdir(SCRATCH_DIR, { recursive: true });
+  await mkdir(OUT_DIR, { recursive: true });
   const runBatchProc = async b => {
     const { stdout, stderr } = await execFileAsync(process.execPath, ['scripts/simulate-long-horizon.mjs', `--batch=${b}`], {
       maxBuffer: 20 * 1024 * 1024
     }).catch(err => ({ stdout: err.stdout || '', stderr: err.stderr || '', code: err.code || 1 }));
     if (stdout) process.stdout.write(stdout);
     if (stderr) process.stderr.write(stderr);
-    return JSON.parse(await readFile(`${SCRATCH_DIR}/layer2_part_${b}.json`, 'utf8'));
+    return JSON.parse(await readFile(`${OUT_DIR}/layer2_part_${b}.json`, 'utf8'));
   };
 
   // Interleave heavy and light batches with clean cooldowns so Windows ephemeral ports (TIME_WAIT) drain cleanly
@@ -94,11 +94,11 @@ if (!activeBatch) {
   }
   report.journeys.sort((a, b) => a.id.localeCompare(b.id));
   for (const b of canonicalOrder) {
-    await rm(`${SCRATCH_DIR}/layer2_part_${b}.json`, { force: true });
+    await rm(`${OUT_DIR}/layer2_part_${b}.json`, { force: true });
   }
   report.finishedAt = new Date().toISOString();
-  await writeFile(`${SCRATCH_DIR}/layer2_report.json`, JSON.stringify(report, null, 2));
-  await writeFile(`${SCRATCH_DIR}/specialist_diary_audit.md`, diaryMarkdown.join('\n'));
+  await writeFile(`${OUT_DIR}/layer2_report.json`, JSON.stringify(report, null, 2));
+  await writeFile(`${OUT_DIR}/specialist_diary_audit.md`, diaryMarkdown.join('\n'));
   console.log(`\n=== LAYER 2 SUMMARY: ${report.passCount}/${report.journeys.length} PASSED, ${report.failCount} FAILED ===`);
   if (report.failCount > 0) process.exit(1);
   process.exit(0);
@@ -251,10 +251,19 @@ async function createRuntime() {
     }, nowMs, envExtra, false, receipt);
   }
 
-  async function logPlannedFoodOrTotal(u, date, nowMs, energy = null, envExtra = {}, receipt = true) {
+  async function logPlannedFoodOrTotal(u, date, nowMs, energy = null, envExtra = {}, receipt = true, useEntries = false) {
     const activePlan = u.state?.plans?.find(p => p.id === u.state.active_plan_id);
-    const targetE = energy ?? activePlan?.days?.find(d => d.date === date)?.targets?.energy ?? activePlan?.targets?.energy ?? 2000;
-    return cmd(u, 'food', { date, energy: Math.round(targetE), complete: true }, nowMs, envExtra, false, receipt);
+    const planDay = activePlan?.days?.find(d => d.date === date);
+    if (useEntries && planDay?.meals?.length && energy == null) {
+      await cmd(u, 'food_entry_batch', {
+        date,
+        items: planDay.meals.map(m => ({ slot: m.slot, source: 'planned', mealId: m.id, quantity: 1 }))
+      }, nowMs, envExtra, false, receipt);
+      return cmd(u, 'food_complete', { date, complete: true }, nowMs, envExtra, false, receipt);
+    }
+    const targetE = energy ?? planDay?.targets?.energy ?? activePlan?.targets?.energy ?? 2000;
+    const targetP = planDay?.targets?.protein ?? activePlan?.targets?.protein ?? 120;
+    return cmd(u, 'food', { date, energy: Math.round(targetE), protein: Math.round(targetP), complete: true }, nowMs, envExtra, false, receipt);
   }
 
   async function performScheduledWorkoutIfAny(u, date, nowMs, kg = 60, reps = 12, increment = null, envExtra = {}, fullSession = false) {
@@ -377,16 +386,27 @@ if (shouldRun('b1')) await withRuntime(rt => runJourney('J01', '[120d] Gym Fat-L
         await r.logHealthyRecovery(u, date, now);
         await r.cmd(u, 'water', { date, cups: 12 }, now, {}, false, true);
         if (d === 35) {
-          const planE = u.state.plans.find(p => p.id === u.state.active_plan_id)?.days.find(x => x.date === date)?.targets?.energy || startKcal;
-          await r.cmd(u, 'food', { date, energy: Math.round(planE + 900), complete: true }, now, {}, false, true);
+          const planDay = u.state.plans.find(p => p.id === u.state.active_plan_id)?.days.find(x => x.date === date);
+          const planE = planDay?.targets?.energy || startKcal;
+          const planP = planDay?.targets?.protein || startProt;
+          await r.cmd(u, 'food', { date, energy: Math.round(planE + 900), protein: Math.round(planP), complete: true }, now, {}, false, true);
           const spread = await r.cmd(u, 'post_feast_rebalance', { date, mode: 'gentle_spread', excessKcal: 900 }, now, { ENFORCE_PRO_ENTITLEMENTS: 'true' });
           assert.equal(spread.postFeastSpread.mode, 'gentle_spread');
         } else {
-          await r.logPlannedFoodOrTotal(u, date, now);
+          await r.logPlannedFoodOrTotal(u, date, now, null, {}, true, d % 7 === 2);
         }
         const loadKg = d <= 20 ? 40 : d <= 45 ? 42.5 : d <= 80 ? 70 : 75;
-        const wo = await r.performScheduledWorkoutIfAny(u, date, now, loadKg, 12, d <= 45 ? 2.5 : 5);
-        if (wo && d > 85) prAchieved = true;
+        const wo = await r.performScheduledWorkoutIfAny(u, date, now, loadKg, 12, d <= 45 ? 2.5 : 5, {}, d % 7 === 2 || d % 7 === 6);
+        if (d === 2 && wo) {
+          const earlyPrs = await r.okJson(await r.call('/v1/workouts/prs', { headers: u.headers }, {}, now));
+          assert.equal(earlyPrs.items.filter(x => x.prType === 'weight').length, 0, 'First baseline session must not emit fake weight PRs');
+        }
+        if (d === 85) {
+          const prsRes = await r.okJson(await r.call('/v1/workouts/prs', { headers: u.headers }, {}, now));
+          prAchieved = prsRes.items.some(x => x.prType === 'weight' && Number(x.value) >= 75);
+          const imp85 = await r.okJson(await r.call('/v1/progress/pro-impact', { headers: u.headers }, {}, now));
+          assert.ok(imp85.sessionsCompleted > 0 && imp85.proteinAdherencePct >= 80 && imp85.estimatedMinutesSaved > 0);
+        }
 
         if (d % 7 === 0) {
           await r.cmd(u, 'review', {}, now);
@@ -427,7 +447,7 @@ if (shouldRun('b2')) await withRuntime(rt => runJourney('J02', '[90d] Nutrition-
         const date = u.localDate(now);
         const kg = d <= 28 ? 74.0 : Math.max(66.5, Math.round((74.0 - (d - 28) * 0.12) * 10) / 10);
         await r.cmd(u, 'weight', { date, kg }, now, {}, false, true);
-        await r.logPlannedFoodOrTotal(u, date, now);
+        await r.logPlannedFoodOrTotal(u, date, now, null, {}, true, d % 7 === 2);
         await r.cmd(u, 'water', { date, cups: 10 }, now, {}, false, true);
         if (d % 7 === 0) {
           await r.cmd(u, 'review', {}, now);
@@ -538,9 +558,9 @@ if (shouldRun('b4')) await withRuntime(rt => runJourney('J04', '[120d] Female + 
         }
         await r.cmd(u, 'weight', { date, kg: cycleState.waterRetentionLikely ? 70.4 : 69.0 }, now, {}, false, true);
         await r.logHealthyRecovery(u, date, now);
-        await r.logPlannedFoodOrTotal(u, date, now);
+        await r.logPlannedFoodOrTotal(u, date, now, null, {}, true, d % 7 === 2);
         await r.cmd(u, 'water', { date, cups: 10 }, now, {}, false, true);
-        await r.performScheduledWorkoutIfAny(u, date, now, d > 40 ? 45 : 30, 12);
+        await r.performScheduledWorkoutIfAny(u, date, now, d > 40 ? 45 : 30, 12, null, {}, d % 7 === 2);
         if (d === 5 || d === 65) await r.cmd(u, 'body_measurement', { date, waistCm: d === 5 ? 81 : 77, hipsCm: 100, neckCm: 33 }, now, {}, false, true);
         if (d % 7 === 0) {
           await r.cmd(u, 'review', {}, now);
@@ -637,7 +657,7 @@ if (shouldRun('b6a')) {
         if (d === 15) await r.cmd(u, 'timezone', { timezone: 'Asia/Riyadh' }, now);
         if (d === 25) await r.cmd(u, 'timezone', { timezone: 'Europe/London' }, now);
         await r.logHealthyRecovery(u, date, now);
-        await r.cmd(u, 'food', { date, energy: 2100, complete: true }, now, {}, false, true);
+        await r.logPlannedFoodOrTotal(u, date, now);
         await r.cmd(u, 'water', { date, cups: 10 }, now, {}, false, true);
         if ([1, 7, 14, 25, 30].includes(d)) await r.captureDayTranscript(`J07-d${d}`, 'Persona #7: Ramadan + IF 14:10 + Travel', u, d, now, d === 25);
       }
@@ -695,29 +715,51 @@ if (shouldRun('b6b')) {
     await runJourney('J09', '[90d] Free -> Pro -> Fair-Use 429 -> Pro Impact -> Pause 14d -> Downgrade', rt, async r => {
       const u = await r.createUser('Mariam Value', 'dev-j09', { age: 28, weight: 65, height: 164, sex: 'female', goal: 'lose', targetWeight: 59, serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true }, dayMs(1));
       await r.okJson(await r.call('/v1/account/consents', { method: 'POST', headers: u.headers, body: JSON.stringify({ consentType: 'visual_progress_analysis', version: '1.0', accepted: true }) }, {}, dayMs(1)));
-      for (const d of [8, 15, 22]) await r.cmd(u, 'renew_plan', {}, dayMs(d), { ENFORCE_PRO_ENTITLEMENTS: 'true' });
-      await r.captureDayTranscript('J09-d1', 'Persona #5: Free -> Pro -> Pause -> Downgrade', u, 1, dayMs(1), false);
-      await r.captureDayTranscript('J09-d7', 'Persona #5: Free -> Pro -> Pause -> Downgrade', u, 7, dayMs(7), false);
-      await r.captureDayTranscript('J09-d14', 'Persona #5: Free -> Pro -> Pause -> Downgrade', u, 14, dayMs(14), false);
-
-      await r.grantPro(u.userId, dayMs(24), 45);
-      await r.db.batch([
-        r.db.prepare('INSERT INTO coaching_progress_photos(user_id,photo_id,date,pose,r2_object_key,weight_kg_snapshot,created_at) VALUES(?,?,?,?,?,?,?)').bind(u.userId, 'j09_p1', u.localDate(dayMs(2)), 'front', `photos/${u.userId}/p1.jpg`, 65, new Date(dayMs(2)).toISOString()),
-        r.db.prepare('INSERT INTO coaching_progress_photos(user_id,photo_id,date,pose,r2_object_key,weight_kg_snapshot,created_at) VALUES(?,?,?,?,?,?,?)').bind(u.userId, 'j09_p2', u.localDate(dayMs(24)), 'front', `photos/${u.userId}/p2.jpg`, 63, new Date(dayMs(24)).toISOString())
-      ]);
-      for (let i = 0; i < 4; i++) {
-        await r.okJson(await r.call('/v1/progress/photos/analyze-diff', { method: 'POST', headers: u.headers, body: JSON.stringify({ beforePhotoId: 'j09_p1', afterPhotoId: 'j09_p2', pose: 'front' }) }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }, dayMs(25)), 201);
+      for (let d = 1; d <= 60; d++) {
+        const now = dayMs(d);
+        const date = u.localDate(now);
+        if (d === 24) {
+          await r.grantPro(u.userId, now, 45);
+          await r.db.batch([
+            r.db.prepare('INSERT INTO coaching_progress_photos(user_id,photo_id,date,pose,r2_object_key,weight_kg_snapshot,created_at) VALUES(?,?,?,?,?,?,?)').bind(u.userId, 'j09_p1', u.localDate(dayMs(2)), 'front', `photos/${u.userId}/p1.jpg`, 65, new Date(dayMs(2)).toISOString()),
+            r.db.prepare('INSERT INTO coaching_progress_photos(user_id,photo_id,date,pose,r2_object_key,weight_kg_snapshot,created_at) VALUES(?,?,?,?,?,?,?)').bind(u.userId, 'j09_p2', date, 'front', `photos/${u.userId}/p2.jpg`, 63, new Date(now).toISOString())
+          ]);
+        }
+        await r.renewIfNeeded(u, now, { ENFORCE_PRO_ENTITLEMENTS: 'true' });
+        if (d === 40) {
+          const pauseRes = await r.okJson(await r.call('/v1/subscriptions/retention-intent', { method: 'POST', headers: u.headers, body: JSON.stringify({ intent: 'pause_14d', reasonCode: 'busy_schedule' }) }, {}, now));
+          u.rev = pauseRes.revision;
+          assert.equal(pauseRes.coachingPaused, true);
+          assert.equal(pauseRes.billingDisclosureCode, 'STORE_BILLING_MANAGED_BY_PLATFORM');
+        }
+        const kg = Math.max(61.5, Math.round((65.0 - d * 0.06) * 10) / 10);
+        await r.cmd(u, 'weight', { date, kg }, now, {}, false, true);
+        await r.logHealthyRecovery(u, date, now);
+        await r.cmd(u, 'water', { date, cups: 10 }, now, {}, false, true);
+        await r.logPlannedFoodOrTotal(u, date, now, null, {}, true, d % 5 === 1);
+        await r.performScheduledWorkoutIfAny(u, date, now, d <= 20 ? 30 : 35, 12, 2.5, {}, d % 7 === 2 || d % 7 === 6);
+        if (d === 24) {
+          await r.okJson(await r.call('/v1/nutrition/meal-parse', { method: 'POST', headers: u.headers, body: JSON.stringify({ inputType: 'text', text: '150g grilled chicken, 100g rice' }) }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }, now));
+          const dOpts = await r.okJson(await r.call(`/v1/nutrition/dining-out-options?category=grill&date=${date}`, { headers: u.headers }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }, now));
+          const dLog = await r.okJson(await r.call('/v1/nutrition/dining-out-log', { method: 'POST', headers: u.headers, body: JSON.stringify({ optionId: dOpts.options[0].id, date, slot: 'dinner', rebalanceRestOfDay: true }) }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }, now), 201);
+          u.rev = dLog.revision;
+        }
+        if (d === 25) {
+          for (let i = 0; i < 4; i++) {
+            await r.okJson(await r.call('/v1/progress/photos/analyze-diff', { method: 'POST', headers: u.headers, body: JSON.stringify({ beforePhotoId: 'j09_p1', afterPhotoId: 'j09_p2', pose: 'front' }) }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }, now), 201);
+          }
+          await r.errJson(await r.call('/v1/progress/photos/analyze-diff', { method: 'POST', headers: u.headers, body: JSON.stringify({ beforePhotoId: 'j09_p1', afterPhotoId: 'j09_p2', pose: 'front' }) }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }, now), 429, 'FAIR_USE_LIMIT_REACHED');
+          const imp25 = await r.okJson(await r.call('/v1/progress/pro-impact', { headers: u.headers }, {}, now));
+          assert.ok(imp25.sessionsCompleted > 0 && imp25.proteinAdherencePct >= 80 && imp25.estimatedMinutesSaved > 0 && imp25.calibrationsApplied > 0, `Expected rich Day-25 Pro Impact: ${JSON.stringify(imp25)}`);
+        }
+        if (d === 55) {
+          const imp55 = await r.okJson(await r.call('/v1/progress/pro-impact', { headers: u.headers }, {}, now));
+          assert.ok(imp55.sessionsCompleted > 0 && imp55.proteinAdherencePct >= 80 && imp55.estimatedMinutesSaved > 0, `Expected rich Day-55 Pro Impact: ${JSON.stringify(imp55)}`);
+        }
+        if ([1, 7, 14, 25, 30, 55, 60].includes(d)) {
+          await r.captureDayTranscript(`J09-d${d}${[25, 55].includes(d) ? '-impact' : ''}`, 'Persona #5: Free -> Pro -> Pause -> Downgrade', u, d, now, [25, 55].includes(d));
+        }
       }
-      await r.errJson(await r.call('/v1/progress/photos/analyze-diff', { method: 'POST', headers: u.headers, body: JSON.stringify({ beforePhotoId: 'j09_p1', afterPhotoId: 'j09_p2', pose: 'front' }) }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }, dayMs(25)), 429, 'FAIR_USE_LIMIT_REACHED');
-      await r.captureDayTranscript('J09-d25-impact', 'Persona #5: Free -> Pro -> Pause -> Downgrade', u, 25, dayMs(25), true);
-      await r.captureDayTranscript('J09-d30', 'Persona #5: Free -> Pro -> Pause -> Downgrade', u, 30, dayMs(30), false);
-
-      const pauseRes = await r.okJson(await r.call('/v1/subscriptions/retention-intent', { method: 'POST', headers: u.headers, body: JSON.stringify({ intent: 'pause_14d', reasonCode: 'busy_schedule' }) }, {}, dayMs(40)));
-      u.rev = pauseRes.revision;
-      assert.equal(pauseRes.coachingPaused, true);
-      assert.equal(pauseRes.billingDisclosureCode, 'STORE_BILLING_MANAGED_BY_PLATFORM');
-      await r.captureDayTranscript('J09-d55-impact', 'Persona #5: Free -> Pro -> Pause -> Downgrade', u, 55, dayMs(55), true);
-      await r.captureDayTranscript('J09-d60', 'Persona #5: Free -> Pro -> Pause -> Downgrade', u, 60, dayMs(60), false);
 
       await r.revokePro(u.userId, dayMs(75));
       const analyses = await r.okJson(await r.call('/v1/progress/photos/analyses', { headers: u.headers }, { ENFORCE_PRO_ENTITLEMENTS: 'true' }, dayMs(75)));
@@ -862,11 +904,42 @@ if (shouldRun('b8')) {
       const wkAvg = plan.days.reduce((s, d) => s + Number(d.targets.energy), 0) / 7;
       const pctDrift = Math.abs(wkAvg - plan.targets.energy) / plan.targets.energy;
       assert.ok(pctDrift <= 0.02, `Carb cycling weekly avg drifted ${Math.round(pctDrift * 1000) / 10}%`);
-      await r.cmd(u, 'recovery', { date: u.localDate(dayMs(20)), sleepHours: 5.5, sleepQuality: 2, fatigue: 5, stress: 4, soreness: 6, pain: false, illness: false, redFlags: false }, dayMs(20));
-      await r.cmd(u, 'review', {}, dayMs(20));
+      // Progressive overload 100 -> 140 -> 180kg on a weighted primary lift across 6 weekly sessions
+      const heavyDay = u.state.workoutPlan.days.find(d => d.exercises.some(e => e.loadMode === 'external' || e.supportsAddedWeight));
+      const heavyEx = heavyDay.exercises.find(e => e.loadMode === 'external' || e.supportsAddedWeight);
+      let firstDayNum = 1;
+      while (new Date(`${u.localDate(dayMs(firstDayNum))}T12:00:00Z`).getUTCDay() !== heavyDay.dayIndex) firstDayNum++;
+      const progressionLoads = [100, 100, 140, 140, 180, 180];
+      let sawOverloadSuggestionAbove100 = false;
+      for (let i = 0; i < progressionLoads.length; i++) {
+        const dNum = firstDayNum + i * 7;
+        const now = dayMs(dNum);
+        const date = u.localDate(now);
+        const load = progressionLoads[i];
+        await r.logHealthyRecovery(u, date, now);
+        const woRes = await r.cmd(u, 'workout', {
+          date, dayIndex: heavyDay.dayIndex, exerciseId: heavyEx.id, increment: 5,
+          ...(heavyEx.laterality === 'unilateral' ? { bothSides: true } : {}),
+          sets: Array.from({ length: heavyEx.sets || 3 }, () => ({ kg: load, reps: heavyEx.repMax, rir: heavyEx.rir ?? 2 }))
+        }, now);
+        await r.cmd(u, 'session', { date, dayIndex: heavyDay.dayIndex, status: 'completed', duration: 60, rpe: 8 }, now, {}, false, true);
+        if (i === 0) {
+          const basePrs = await r.okJson(await r.call('/v1/workouts/prs', { headers: u.headers }, {}, now));
+          assert.equal(basePrs.items.filter(x => x.exerciseId === heavyEx.id && x.prType === 'weight').length, 0, 'Baseline 100kg session must not emit weight PR');
+        }
+        const updatedEx = woRes.workoutPlan.days.find(d => d.dayIndex === heavyDay.dayIndex)?.exercises.find(e => e.id === heavyEx.id);
+        if (updatedEx?.suggestedKg && Number(updatedEx.suggestedKg) > 100) sawOverloadSuggestionAbove100 = true;
+      }
+      const heavyPrs = await r.okJson(await r.call('/v1/workouts/prs', { headers: u.headers }, {}, dayMs(firstDayNum + 42)));
+      const weightPrValues = heavyPrs.items.filter(x => x.exerciseId === heavyEx.id && x.prType === 'weight').map(x => Number(x.value));
+      assert.ok(sawOverloadSuggestionAbove100, 'Expected progressive overload suggestedKg > 100kg');
+      assert.ok(weightPrValues.includes(140) && weightPrValues.includes(180), `Expected 140kg & 180kg weight PRs, got ${JSON.stringify(weightPrValues)}`);
+
+      await r.cmd(u, 'recovery', { date: u.localDate(dayMs(50)), sleepHours: 5.5, sleepQuality: 2, fatigue: 5, stress: 4, soreness: 6, pain: false, illness: false, redFlags: false }, dayMs(50));
+      await r.cmd(u, 'review', {}, dayMs(50));
       const recAdapt = u.state.adaptations?.find(a => a.status === 'pending' && a.kind === 'recovery');
       assert.ok(recAdapt);
-      return { weeklyAvgEnergy: Math.round(wkAvg), baseTarget: plan.targets.energy, driftPct: Math.round(pctDrift * 1000) / 10 };
+      return { weeklyAvgEnergy: Math.round(wkAvg), baseTarget: plan.targets.energy, driftPct: Math.round(pctDrift * 1000) / 10, weightPrValues };
     });
 
     await runJourney('J17', '[90d] Underweight (BMI 17.2, gain, 5 meals) -> Block Lose & Wellness-Only Diff', rt, async r => {
@@ -910,7 +983,16 @@ if (shouldRun('b8')) {
       await r.cmd(u, 'review', {}, dayMs(21));
       assert.equal(u.state.lastReview.nutrition.reasonCode, 'INSUFFICIENT_EVIDENCE_COVERAGE');
       assert.equal(u.state.plans.find(p => p.id === u.state.active_plan_id).targets.energy, initE);
-      return { reasonCode: u.state.lastReview.nutrition.reasonCode };
+      // Verify 1-day gap auto-freeze: log Day 22, skip Day 23, log Day 24
+      await r.renewIfNeeded(u, dayMs(22));
+      await r.logPlannedFoodOrTotal(u, u.localDate(dayMs(22)), dayMs(22));
+      await r.cmd(u, 'water', { date: u.localDate(dayMs(22)), cups: 10 }, dayMs(22), {}, false, true);
+      await r.logPlannedFoodOrTotal(u, u.localDate(dayMs(24)), dayMs(24));
+      await r.cmd(u, 'water', { date: u.localDate(dayMs(24)), cups: 10 }, dayMs(24), {}, false, true);
+      const boot24 = await r.okJson(await r.call('/v1/bootstrap', { headers: u.headers }, {}, dayMs(24)));
+      assert.equal(boot24.streakSummary.autoApplied, true, 'Expected 1-day gap auto-freeze to activate');
+      assert.ok(boot24.streakSummary.autoAppliedFreezes.includes(u.localDate(dayMs(23))), `Expected ${u.localDate(dayMs(23))} in autoAppliedFreezes`);
+      return { reasonCode: u.state.lastReview.nutrition.reasonCode, autoAppliedFreezes: boot24.streakSummary.autoAppliedFreezes };
     });
 
     await runJourney('J20', '[90d] Track Switcher (nutrition_only -> both -> workouts_only -> both)', rt, async r => {
@@ -927,17 +1009,28 @@ if (shouldRun('b8')) {
     });
 
     await runJourney('J21', '[60d] Imperial Units (lb/in) + English + Levant & Maghreb', rt, async r => {
-      const u = await r.createUser('Kareem Levant', 'dev-j21', {
+      const uLev = await r.createUser('Kareem Levant', 'dev-j21-lev', {
         age: 31, weight: 80, height: 178, sex: 'male', goal: 'lose', targetWeight: 74,
         unitSystem: 'imperial', region: 'levant', locale: 'en-US', timezone: 'Asia/Amman',
         serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [0, 2, 4], healthConfirmed: true
       }, dayMs(1));
-      assert.equal(u.state.profile.unitSystem, 'imperial');
-      assert.equal(u.state.profile.locale, 'en');
-      assert.equal(u.state.preferences.region, 'levant');
-      const enPush = formatPushNotification('daily_checkin_reminder', { locale: 'en', userName: 'Kareem Levant' });
-      assert.ok(enPush.body.startsWith('Kareem, ') && !ARABIC_RE.test(enPush.body));
-      return { unitSystem: u.state.profile.unitSystem, locale: u.state.profile.locale };
+      const uMag = await r.createUser('Amine Maghreb', 'dev-j21-mag', {
+        age: 29, weight: 76, height: 176, sex: 'male', goal: 'maintain',
+        unitSystem: 'imperial', region: 'maghreb', locale: 'en-US', timezone: 'Africa/Casablanca',
+        serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [1, 3, 5], healthConfirmed: true
+      }, dayMs(1));
+      assert.equal(uLev.state.profile.unitSystem, 'imperial');
+      assert.equal(uLev.state.profile.locale, 'en');
+      assert.equal(uLev.state.preferences.region, 'levant');
+      assert.equal(uMag.state.profile.unitSystem, 'imperial');
+      assert.equal(uMag.state.profile.locale, 'en');
+      assert.equal(uMag.state.preferences.region, 'maghreb');
+      assert.ok(uMag.state.plans[0].days.length === 7 && uLev.state.plans[0].days.length === 7);
+      const enPushLev = formatPushNotification('daily_checkin_reminder', { locale: 'en', userName: 'Kareem Levant' });
+      const enPushMag = formatPushNotification('daily_checkin_reminder', { locale: 'en', userName: 'Amine Maghreb' });
+      assert.ok(enPushLev.body.startsWith('Kareem, ') && !ARABIC_RE.test(enPushLev.body));
+      assert.ok(enPushMag.body.startsWith('Amine, ') && !ARABIC_RE.test(enPushMag.body));
+      return { regionsVerified: ['levant', 'maghreb'], unitSystem: 'imperial', locale: 'en' };
     });
 
     await runJourney('J22', '[90d] Hybrid Athlete (4 gym days + 3 cardio 60m) -> Leg-Day Interference + 1200ml Cap', rt, async r => {
@@ -945,13 +1038,23 @@ if (shouldRun('b8')) {
         age: 26, weight: 76, height: 178, sex: 'male', goal: 'maintain',
         fitnessLevel: 'intermediate', serviceTrack: 'nutrition_and_workouts', selectedWorkoutDays: [0, 1, 3, 4], healthConfirmed: true
       }, dayMs(1));
-      const date = u.localDate(dayMs(2));
-      await r.cmd(u, 'cardio_log', { date, modality: 'running', durationMinutes: 60, intensity: 'vigorous' }, dayMs(2), {}, false, true);
-      await r.logHealthyRecovery(u, date, dayMs(2));
-      const wTarget = (await r.okJson(await r.call(`/v1/water-logs?date=${date}`, { headers: u.headers }, {}, dayMs(2)))).dateTarget;
+      const lowerDay = u.state.workoutPlan.days.find(d =>
+        ['lower', 'legs', 'full_body'].includes(d.focus) ||
+        (d.exercises || []).some(e => ['squat', 'hinge', 'lunge'].includes(e.pattern))
+      );
+      assert.ok(lowerDay, 'Expected at least one lower-body workout day in 4-day split');
+      let legDayNum = 1;
+      while (new Date(`${u.localDate(dayMs(legDayNum))}T12:00:00Z`).getUTCDay() !== lowerDay.dayIndex) legDayNum++;
+      const legDate = u.localDate(dayMs(legDayNum));
+      await r.cmd(u, 'cardio_log', { date: legDate, modality: 'running', durationMinutes: 60, intensity: 'vigorous' }, dayMs(legDayNum));
+      const cardioRec = (u.state.cardioLogs || []).find(c => c.date === legDate);
+      assert.equal(cardioRec?.interferenceNote?.code, 'CARDIO_LEG_DAY_INTERFERENCE_NOTE');
+      assert.equal(cardioRec?.interferenceNote?.params?.overlapType, 'same_day_leg_session');
+      await r.logHealthyRecovery(u, legDate, dayMs(legDayNum));
+      const wTarget = (await r.okJson(await r.call(`/v1/water-logs?date=${legDate}`, { headers: u.headers }, {}, dayMs(legDayNum)))).dateTarget;
       assert.ok(wTarget.boostMl <= 1200);
-      await r.cmd(u, 'review', {}, dayMs(2));
-      return { exerciseBoostMl: wTarget.boostMl, isCardioDay: wTarget.isCardioDay };
+      await r.cmd(u, 'review', {}, dayMs(legDayNum));
+      return { legDate, interferenceCode: cardioRec.interferenceNote.code, exerciseBoostMl: wTarget.boostMl, isCardioDay: wTarget.isCardioDay };
     });
 
     await runJourney('J23', '[90d] Postpartum + Diastasis Recti + Breastfeeding Safety', rt, async r => {
@@ -975,12 +1078,29 @@ if (shouldRun('b8')) {
         serviceTrack: 'nutrition_only'
       }, dayMs(1));
       await r.grantPro(u.userId, dayMs(1), 60);
+      const bannedKeys = new Set(['fava', 'falafel', 'milk', 'wholemilk', 'yogurt', 'greekyogurt', 'cottage', 'feta', 'mozzarella', 'shrimp', 'almonds', 'peanuts', 'walnuts', 'cashews', 'bread', 'wholebread', 'toast', 'pasta', 'bulgur', 'couscous']);
       for (const d of u.state.plans[0].days) {
         for (const m of d.meals) {
           for (const i of m.snapshot.ingredients || []) {
-            assert.ok(!['fava', 'falafel', 'milk', 'wholemilk', 'yogurt', 'greekyogurt', 'cottage', 'feta', 'mozzarella', 'shrimp', 'almonds', 'peanuts', 'walnuts', 'cashews', 'bread', 'pasta'].includes(i.key), `Allergy leak: ${i.key}`);
+            assert.ok(!bannedKeys.has(i.key), `Plan allergy leak: ${i.key}`);
           }
         }
+      }
+      const pantryRes = await r.okJson(await r.call('/v1/pantry/alternatives', {
+        method: 'POST', headers: u.headers,
+        body: JSON.stringify({ selectedIngredients: ['chicken', 'rice', 'tomato', 'fava', 'milk', 'shrimp', 'almonds', 'oats'], slot: 'lunch' })
+      }, {}, dayMs(2)));
+      for (const item of pantryRes.items || []) {
+        for (const k of item.matchedIngredientKeys || []) assert.ok(!bannedKeys.has(k), `Pantry allergy leak: ${k}`);
+      }
+      const sampleMealId = u.state.plans[0].days[0].meals[1]?.id || u.state.plans[0].days[0].meals[0].id;
+      const altRes = await r.okJson(await r.call(`/v1/meal-alternatives?mealId=${encodeURIComponent(sampleMealId)}`, { headers: u.headers }, {}, dayMs(2)));
+      for (const alt of altRes.items || []) {
+        for (const ing of alt.snapshot?.ingredients || []) assert.ok(!bannedKeys.has(ing.key), `Meal-alternatives allergy leak: ${ing.key}`);
+      }
+      const groceryRes = await r.okJson(await r.call(`/v1/plans/${u.state.active_plan_id}/grocery-list`, { headers: u.headers }, {}, dayMs(2)));
+      for (const cat of groceryRes.categories || []) {
+        for (const gi of cat.items || []) assert.ok(!bannedKeys.has(gi.ingredientKey), `Grocery-list allergy leak: ${gi.ingredientKey}`);
       }
       const dining = await r.okJson(await r.call('/v1/nutrition/dining-out-options?category=grill', { headers: u.headers }, {}, dayMs(2)));
       for (const o of dining.options) assert.ok(!/(fattoush|pita|bread|halloumi|fava|falafel|shrimp|almond)/i.test(o.nameEn));
@@ -989,7 +1109,12 @@ if (shouldRun('b8')) {
       assert.ok(parsedOats.clinicalWarnings.some(w => w.code === 'MEAL_CAPTURE_SEAFOOD_ALERT'));
       assert.ok(parsedOats.clinicalWarnings.some(w => w.code === 'MEAL_CAPTURE_NUT_ALLERGY_ALERT'));
       assert.ok(parsedOats.clinicalWarnings.some(w => w.code === 'MEAL_CAPTURE_DAIRY_ALERT'));
-      return { warningsTriggered: parsedOats.clinicalWarnings.map(w => w.code) };
+      return {
+        pantrySafeCount: (pantryRes.items || []).length,
+        mealAlternativesSafeCount: (altRes.items || []).length,
+        groceryTotalItems: groceryRes.totalItemsCount,
+        warningsTriggered: parsedOats.clinicalWarnings.map(w => w.code)
+      };
     });
 
     await runJourney('J25', '[Stress / Cron] 100 Users x 24h Across 6 Timezones + Quiet Hours + Provider Outage Resilience', rt, async r => {
@@ -1056,9 +1181,9 @@ if (shouldRun('b8')) {
   }
 }
 
-await mkdir(SCRATCH_DIR, { recursive: true });
+await mkdir(OUT_DIR, { recursive: true });
 await writeFile(
-  `${SCRATCH_DIR}/layer2_part_${activeBatch}.json`,
+  `${OUT_DIR}/layer2_part_${activeBatch}.json`,
   JSON.stringify({ ...report, diaryLines: diaryMarkdown.slice(1) }, null, 2)
 );
 if (report.failCount > 0) process.exitCode = 1;
