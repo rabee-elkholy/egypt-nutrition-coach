@@ -37,7 +37,7 @@ export const empty=()=>({
  foodFavorites:[],groceryChecks:{},fastingState:{mode:'off',phase:'eating',windowStart:'12:00',windowEnd:'20:00',startedAt:null,targetEndAt:null,streakDays:0},
  ramadanMode:{enabled:false,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false,endDate:null},
  bodyMeasurements:[],streakFreezes:[],flexEvents:[],openWorkoutSessions:[],todayWorkoutOverrides:{},coachingPause:null,
- notificationPreferences:{dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,mealReminders:false,fastingReminder:false,ramadanSuhoorReminder:false,exemptSuhoorFromQuietHours:false,streakSaverReminder:true,challengeNotifications:true,preferredWorkoutReminderMinutesBefore:30,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app']},
+ notificationPreferences:{dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,mealReminders:false,fastingReminder:false,ramadanSuhoorReminder:false,exemptSuhoorFromQuietHours:false,streakSaverReminder:true,challengeNotifications:true,specialistNotesReminder:true,preferredWorkoutReminderMinutesBefore:30,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app']},
  entitlements:{tier:'free',status:'none',features:[...DEFAULT_FREE_FEATURES],updatedAt:null}
 });
 const clean=a=>a==null?[]:stringList(a,'selections').filter(x=>x!=='none');
@@ -48,7 +48,7 @@ export function normalize(s){
  if(s.coachingPause===undefined)s.coachingPause=null;
  s.fastingState||={mode:'off',phase:'eating',windowStart:'12:00',windowEnd:'20:00',startedAt:null,targetEndAt:null,streakDays:0};
  s.ramadanMode||={enabled:false,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false,endDate:null};
- s.notificationPreferences={dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,mealReminders:false,fastingReminder:false,ramadanSuhoorReminder:false,exemptSuhoorFromQuietHours:false,streakSaverReminder:true,challengeNotifications:true,preferredWorkoutReminderMinutesBefore:30,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app'],...(s.notificationPreferences||{})};
+ s.notificationPreferences={dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,mealReminders:false,fastingReminder:false,ramadanSuhoorReminder:false,exemptSuhoorFromQuietHours:false,streakSaverReminder:true,challengeNotifications:true,specialistNotesReminder:true,preferredWorkoutReminderMinutesBefore:30,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app'],...(s.notificationPreferences||{})};
  s.entitlements||={tier:'free',status:'none',features:[...DEFAULT_FREE_FEATURES],updatedAt:null};
  s.schemaVersion=3;
  let reopened=false;
@@ -79,8 +79,10 @@ export function dailyWaterTarget(s,date=userToday(s)){
  const externalDays=Array.isArray(s?.profile?.externalTrainingDays)?s.profile.externalTrainingDays:[];
  const schedMatch=scheduledSessions(s,date,1).find(x=>x.date===date)||null;
  const loggedSess=(s?.sessions||[]).find(x=>x.date===date&&x.status!=='missed')||null;
- const isWorkoutDay=Boolean(schedMatch||loggedSess||externalDays.includes(weekday));
- const sessionMins=Number(loggedSess?.duration||schedMatch?.estimatedMinutes||s?.onboarding?.workoutPrefs?.sessionDuration||s?.profile?.sessionDuration||45);
+ const openSess=(s?.openWorkoutSessions||[]).find(x=>x.date===date)||null;
+ const overrideSess=s?.todayWorkoutOverrides?.[date]||null;
+ const isWorkoutDay=Boolean(schedMatch||loggedSess||openSess||overrideSess||externalDays.includes(weekday));
+ const sessionMins=Number(loggedSess?.duration||openSess?.durationMin||overrideSess?.durationMin||schedMatch?.estimatedMinutes||s?.onboarding?.workoutPrefs?.sessionDuration||s?.profile?.sessionDuration||45);
  const rawTrainingMl=!isWorkoutDay?0:isKidney?250:sessionMins<=30?350:sessionMins>=61?700:500;
  const dayCardio=(s?.cardioLogs||[]).filter(c=>c.date===date);
  const totalCardioMins=dayCardio.reduce((sum,c)=>sum+Number(c.durationMinutes||0),0);
@@ -199,6 +201,9 @@ function buildNutritionPrefs(d,declaredDiseases,region,unitSystem='metric'){
    fieldErrors:[{field:'dietType',code:'INVALID_DIET_TYPE',message:'Selected dietType is not supported.'}]
   });
  }
+ const ALLERGY_ALIAS_MAP={nut_allergy:'nuts',lactose:'dairy',lactose_intolerance:'dairy',wheat:'gluten',celiac:'gluten',seafood:'fish',fava_beans:'fava',favism:'fava'};
+ const rawAllergies=clean(d.allergies).map(x=>String(x).toLowerCase());
+ const mappedAllergies=rawAllergies.map(x=>ALLERGY_ALIAS_MAP[x]||x).filter(id=>EXCLUSIONS.some(g=>g.id===id));
  const rawExcluded=clean(d.excludedGroups).map(x=>x.toLowerCase());
  if(rawExcluded.some(id=>!EXCLUSIONS.some(g=>g.id===id))){
   throw apiError('INVALID_EXCLUDED_INGREDIENTS','excludedKeys or excludedGroups contains an unknown entry.',{
@@ -209,6 +214,7 @@ function buildNutritionPrefs(d,declaredDiseases,region,unitSystem='metric'){
  const fixed=FIXED_DIET_MEALS[dietType];
  const excludedGroups=[...new Set([
   ...rawExcluded,
+  ...mappedAllergies,
   ...(declaredDiseases.includes('favism')?['fava']:[]),
   ...(declaredDiseases.includes('lactose_intolerance')?['dairy','milk','yogurt','cheese']:[]),
   ...(declaredDiseases.includes('celiac')?['gluten']:[])
@@ -257,7 +263,8 @@ function buildNutritionPrefs(d,declaredDiseases,region,unitSystem='metric'){
   proteins,
   excludedKeys:[],
   excludedFoodIds:[],
-  excludedGroups
+  excludedGroups,
+  ...(rawAllergies.length?{allergies:rawAllergies}:{})
  };
 }
 
@@ -517,7 +524,12 @@ export function generate(s,d,seed=crypto.randomUUID()){
  const bmi=weight/((height/100)**2);if(bmi<12.5||bmi>65)throw apiError('BMI_OUT_OF_RANGE','Calculated BMI is outside the standard CuraFit Specialist Team planning range (12.5..65).',{status:400});if(bmi<18.5&&d.goal==='lose')throw apiError('WEIGHT_LOSS_UNDERWEIGHT_UNSAFE','Weight loss plans are not suitable when current BMI is below 18.5.',{status:400});
  const timezone=d.timezone?String(d.timezone).trim():defaultTimezoneForRegion(region);
  if(!validTimeZone(timezone))throw apiError('INVALID_TIMEZONE','Invalid IANA timezone identifier.',{status:400});
- const locale=(d.locale!=null&&String(d.locale).trim()!==''?normalizeLocale(d.locale,null):null)||defaultLocaleForRegion(region);
+ let locale=defaultLocaleForRegion(region);
+ if(d.locale!=null&&String(d.locale).trim()!==''){
+  const parsedLocale=normalizeLocale(d.locale,null);
+  if(!parsedLocale)throw apiError('INVALID_LOCALE','Unsupported locale code.',{status:400,params:{locale:String(d.locale).trim()},fieldErrors:[{field:'locale',code:'INVALID_LOCALE',message:'Unsupported locale code.'}]});
+  locale=parsedLocale;
+ }
  let cleanName=String(d.name??s.profile?.name??'').trim();
  if(d.name!==undefined&&d.name!==null&&String(d.name).trim()!==''){
   if(cleanName.length<2||cleanName.length>50||!/\p{L}/u.test(cleanName)||!/^[\p{L}\p{N}\s'-]+$/u.test(cleanName))throw apiError('INVALID_PROFILE_NAME','Profile name must be 2 to 50 valid characters.',{status:400});
@@ -1098,9 +1110,7 @@ export function command(input,action,p){
     reason:'Gentle comeback ramp-in is active (0.8x working sets) to rebuild momentum safely.'
    };
   }
-  if(p.reason!=null){
-   s.history.push({kind:'comeback_restart',at:isoNow(),tier,reason:String(p.reason).trim().slice(0,200)});
-  }
+   s.history.push({kind:'comeback_restart',at:isoNow(),tier,...(p.reason!=null?{reason:String(p.reason).trim().slice(0,200)}:{})});
   const shouldRenew=p.renewMealPlan===true||p.renewPlan===true;
   if(shouldRenew&&activePlan(s)){
    const current=activePlan(s);
@@ -1249,7 +1259,8 @@ export function command(input,action,p){
   const diseases=new Set(s.profile.diseases||[]);
   const highRisk=isPregnantStatus(s.profile.maternalStatus)||s.profile.maternalStatus==='breastfeeding'||diseases.has('diabetes')||diseases.has('diabetes_t1')||diseases.has('diabetes_t2')||diseases.has('kidney');
   if(enabled&&highRisk&&p.medicalClearanceAcknowledged!==true)throw apiError('RAMADAN_MEDICAL_CLEARANCE_REQUIRED','Confirm medical clearance before enabling Ramadan fasting mode with declared high-risk conditions.',{status:400});
-  s.ramadanMode={enabled,iftarTime,suhoorCutoffTime,workoutTiming,medicalClearanceAcknowledged:p.medicalClearanceAcknowledged===true,endDate};
+  const startDate=enabled?(p.startDate&&validDate(p.startDate)?p.startDate:(s.ramadanMode?.enabled&&s.ramadanMode?.startDate?s.ramadanMode.startDate:currDate)):null;
+  s.ramadanMode={enabled,iftarTime,suhoorCutoffTime,workoutTiming,medicalClearanceAcknowledged:p.medicalClearanceAcknowledged===true,startDate,endDate};
   if(enabled){
    s.fastingState={...(s.fastingState||{}),mode:'ramadan',windowStart:iftarTime,windowEnd:suhoorCutoffTime};
   }else{

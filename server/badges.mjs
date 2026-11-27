@@ -1,7 +1,7 @@
 // KAN-123 (US-PRG-09) & KAN-90/120: Unified 24-Badge Discipline Mastery Vault & Non-Punitive Mastery Rank
 import { clockNow, isoNow, clockTimeZone } from './clock.mjs';
 import { localDate, dateOffset, validDate, localTimeParts } from '../coaching-shared.mjs';
-import { computeStreakAndEngagement } from './progress-analytics.mjs';
+import { computeStreakAndEngagement, computeChallengeDayScore } from './progress-analytics.mjs';
 import { computeWorkoutPrs } from './workouts-insights.mjs';
 import { dailyWaterTarget } from './coaching.mjs';
 import { activePlan } from './food.mjs';
@@ -99,7 +99,7 @@ export function computeMasteryRank(points) {
   };
 }
 
-async function fetchSocialBadgeMetrics(db, userId, today = null) {
+async function fetchSocialBadgeMetrics(db, userId, today = null, s = null) {
   const out = {
     publicCompleted: 0,
     friendHighScoreCount: 0,
@@ -120,14 +120,26 @@ async function fetchSocialBadgeMetrics(db, userId, today = null) {
     const joinedPub = await db.prepare('SELECT COUNT(*) AS n FROM challenge_participations WHERE user_id=?').bind(userId).first().catch(() => null);
     out.socialOptedIn = Number(fcCount?.n || 0) > 0 || Number(pcCount?.n || 0) > 0 || Number(joinedPub?.n || 0) > 0 || out.cheersSent > 0;
 
-    // Count completed or ended friend challenges where user had active membership
+    // Count completed/ended friend challenges where user achieved >= 80% normalized score (KAN-123 C2)
     const refDay = today || localDate(clockNow(), 'Africa/Cairo');
-    const endedFc = await db.prepare(
-      `SELECT COUNT(*) AS n FROM friend_challenge_members m
+    const endedRes = await db.prepare(
+      `SELECT c.id, c.metric_type, c.start_date, c.end_date FROM friend_challenge_members m
        JOIN friend_challenges c ON c.id = m.challenge_id
        WHERE m.user_id=? AND m.left_at IS NULL AND (c.status='completed' OR c.end_date < ?)`
-    ).bind(userId, refDay).first().catch(() => null);
-    out.friendHighScoreCount = Number(endedFc?.n || 0);
+    ).bind(userId, refDay).all().catch(() => null);
+    let highCount = 0;
+    for (const fc of endedRes?.results || []) {
+      if (!s) { highCount++; continue; }
+      const endBound = refDay < fc.end_date ? refDay : fc.end_date;
+      let sum = 0;
+      let days = 0;
+      for (let d = fc.start_date; d <= endBound && days < 31; d = dateOffset(d, 1)) {
+        sum += computeChallengeDayScore(s, fc.metric_type, d);
+        days++;
+      }
+      if (days > 0 && Math.round(sum / days) >= 80) highCount++;
+    }
+    out.friendHighScoreCount = highCount;
   } catch {}
   return out;
 }
@@ -149,11 +161,17 @@ function computeRawBadgeProgress(s, socialMetrics, now = clockNow()) {
   for (const x of s.cardioLogs || []) if (x.date && Number(x.durationMinutes || 0) >= 20) activityDates.add(x.date);
 
   const sortedAct = [...activityDates].filter(validDate).sort();
-  let comebackCount = (s.history || []).filter(h => h.kind === 'comeback_restart').length;
+  const gapWindows = [];
   for (let i = 1; i < sortedAct.length; i++) {
     const gap = Math.floor((Date.parse(`${sortedAct[i]}T12:00:00Z`) - Date.parse(`${sortedAct[i - 1]}T12:00:00Z`)) / 86400000);
-    if (gap >= 7) comebackCount++;
+    if (gap >= 7) gapWindows.push({ start: sortedAct[i - 1], end: dateOffset(sortedAct[i], 2) });
   }
+  const explicitComebacks = (s.history || []).filter(h => h.kind === 'comeback_restart').filter(h => {
+    const hDate = h.at ? localDate(Date.parse(h.at), tz) : null;
+    if (!hDate || !validDate(hDate)) return true;
+    return !gapWindows.some(w => hDate >= w.start && hDate <= w.end);
+  }).length;
+  const comebackCount = gapWindows.length + explicitComebacks;
 
   // Nutrition Mastery metrics
   const completeFoodByWeek = new Map();
@@ -269,13 +287,25 @@ function computeRawBadgeProgress(s, socialMetrics, now = clockNow()) {
     }
   }
   const restorativeSleepWeeks = [...sleepWeeks.values()].filter(n => n >= 5).length;
-  const weeklyAuditsCount = (s.coachingFeedback || []).length + (s.lastWeeklyCheckinAt ? 1 : 0);
+  const auditDates = new Set();
+  for (const f of s.coachingFeedback || []) {
+    if (f?.date && validDate(f.date)) auditDates.add(f.date);
+  }
+  if (s.lastWeeklyCheckinAt && Number.isFinite(Date.parse(s.lastWeeklyCheckinAt))) {
+    auditDates.add(localDate(Date.parse(s.lastWeeklyCheckinAt), tz));
+  }
+  const weeklyAuditsCount = auditDates.size;
   const specialistSyncCount =
     (s.adaptations || []).filter(a => ['accepted', 'rejected'].includes(a.status)).length +
     (s.coachingCases || []).filter(c => ['accepted', 'resolved', 'declined'].includes(c.status)).length;
 
-  // Ramadan qualifying days
-  const ramadanDays = s.ramadanMode?.enabled ? sortedAct.filter(d => !s.ramadanMode.endDate || d <= s.ramadanMode.endDate).length : 0;
+  // Ramadan qualifying days (bounded to startDate..endDate so pre-Ramadan logs never pre-unlock on Day 1)
+  const ramadanDays = s.ramadanMode?.enabled
+    ? sortedAct.filter(d =>
+        (!s.ramadanMode.startDate || d >= s.ramadanMode.startDate) &&
+        (!s.ramadanMode.endDate || d <= s.ramadanMode.endDate)
+      ).length
+    : 0;
 
   return {
     progressByBadge: {
@@ -314,7 +344,7 @@ function computeRawBadgeProgress(s, socialMetrics, now = clockNow()) {
 export async function syncAndEvaluateBadges(db, s, userId, now = clockNow()) {
   const track = s?.onboarding?.serviceTrack || 'nutrition_and_workouts';
   const tz = s?.profile?.timezone || clockTimeZone() || 'Africa/Cairo';
-  const socialMetrics = await fetchSocialBadgeMetrics(db, userId, localDate(now, tz));
+  const socialMetrics = await fetchSocialBadgeMetrics(db, userId, localDate(now, tz), s);
   const { progressByBadge, qualifyingDaysTotal, weeklyAuditsCount, challengesCompletedTotal } = computeRawBadgeProgress(s, socialMetrics, now);
 
   const storedMap = new Map();

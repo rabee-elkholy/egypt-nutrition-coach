@@ -8,16 +8,16 @@ This document is the authoritative end-to-end engineering workflow for **CuraFit
 
 CuraFit uses **strictly two Git branches (`dev` and `main`)** mapped 1:1 to **two Cloudflare Workers + D1 environments**, plus an optional local Miniflare server for rapid offline iteration:
 
-| Environment | Git Branch | Cloudflare Worker | Cloudflare D1 Database (`database_id`) | Base URL | Postman Environment |
-| :--- | :---: | :--- | :--- | :--- | :--- |
-| **Cloud Dev** | `dev` | `curafit-api-dev` | `curafit-db-dev` (`0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`, full clone of Prod D1) | `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` | `CuraFit — Cloud Dev` |
-| **Production** | `main` | `curafit-api` | `egypt-nutrition-coaching` (`90fa62f1-7866-4156-ac29-f0aec4814bab`) | `https://curafit-api.egypt-nutrition-coach.workers.dev` | `CuraFit — Production` |
-| **Local Dev** | `dev` | Miniflare (`npm.cmd run dev`) | Local SQLite (`.wrangler/local-d1`) | `http://127.0.0.1:8787` | `CuraFit — Local Dev` |
+| Environment | Git Branch | Cloudflare Worker | Cloudflare D1 Database (`database_id`) | Base URL |
+| :--- | :---: | :--- | :--- | :--- |
+| **Cloud Dev** | `dev` | `curafit-api-dev` | `curafit-db-dev` (`0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`, full clone of Prod D1) | `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` |
+| **Production** | `main` | `curafit-api` | `egypt-nutrition-coaching` (`90fa62f1-7866-4156-ac29-f0aec4814bab`) | `https://curafit-api.egypt-nutrition-coach.workers.dev` |
+| **Local Dev** | `dev` | Miniflare (`npm.cmd run dev`) | Local SQLite (`.wrangler/local-d1`) | `http://127.0.0.1:8787` |
 
 - **Repository Root:** `e:\Egypt_Nutrition_Local\website\dist`
 - **Remote Repository:** `https://github.com/rabee-elkholy/egypt-nutrition-coach.git`
 - **Worker Entrypoint:** `server/cloudflare-entry.mjs` (built into `dist/server/cloudflare.js` by `npm.cmd run build`)
-- **Postman Public Docs:** `https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w` (`CuraFit API v1`, `16` groups / `140` endpoints)
+- **Canonical API Specification:** `contracts/openapi.yaml` (Postman is permanently retired)
 
 ---
 
@@ -33,17 +33,16 @@ git pull --ff-only origin dev
 ```
 
 ### Phase 2 — Implement Changes & Synchronize Contracts
-Keep every API contract, error & coaching catalog, database schema, and Postman definition synchronized with code changes:
+Keep every API contract, error & coaching catalog, and database schema synchronized with code changes:
 
 1. **API Error & Coaching Codes (`100% English Contract`):**
    - Never hardcode Arabic error or coaching messages in backend endpoints (`server/*.mjs`) or shared domain modules.
    - Add or update error definitions in `contracts/error-codes.json` and coaching definitions in `contracts/coaching-codes.json` (English-only `message`, `params`).
    - Run `node scripts/sync-error-contracts.mjs` to regenerate `docs/ERROR_CODES.md` and `docs/COACHING_CODES.md` and validate zero Arabic characters.
    - KMM mobile clients localize user-facing copy on-device by `code` and `params`.
-2. **Endpoints, Request Schemas & Postman Collection:**
-   - Update `contracts/openapi.yaml` and `scripts/generate-postman.mjs` (zero Arabic text or sample values in docs/collection).
-   - Run `npm.cmd run postman:generate` to regenerate all 4 `postman/CuraFit_*.json` files and `docs/API_REFERENCE.md`.
-   - Sync updated Postman Cloud collection/requests and republish public docs (`https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`).
+2. **Endpoints & OpenAPI Contract (`contracts/openapi.yaml`):**
+   - Update `contracts/openapi.yaml` directly whenever endpoints or DTOs change (zero Arabic text or sample values).
+   - Postman is permanently retired (`postman:generate` must not be run).
 3. **Database Schema Changes (Cloudflare D1 / Drizzle):**
    - Add append-only SQL migrations in `drizzle/` (indexed by `drizzle/meta/_journal.json`). **Never edit already-applied migrations.**
    - Apply and test on `curafit-db-dev` (`npm.cmd run deploy:d1:dev`) before touching Production.
@@ -56,7 +55,7 @@ Keep every API contract, error & coaching catalog, database schema, and Postman 
    npm.cmd run build
    npm.cmd run dev
    ```
-   Test against `http://127.0.0.1:8787` using the `CuraFit — Local Dev` Postman environment.
+   Test against `http://127.0.0.1:8787` using `curl`, HTTP clients, or KMM debug builds.
 
 ### Phase 3 — Run Full Local Verification Gates
 All local checks must pass with **0 failures and 0 skipped tests** before deploying or pushing:
@@ -70,7 +69,7 @@ This executes:
 - `node scripts/check-data-manifest.mjs` (verifies food & recipe catalog counts and integrity)
 - `node scripts/build.mjs` (builds `dist/server/cloudflare.js`, `dist/server/index.js`, and migrations)
 - `scripts/quality/check-modules.mjs` & `scripts/quality/check-reference.mjs`
-- `node --test --test-concurrency=2 tests/*.test.mjs` (`306+` unit, D1/R2 API, native auth + OIDC, OpenAPI, Postman parity, and zero-Arabic doc/contract tests)
+- `node --test --test-concurrency=2 tests/*.test.mjs` (unit, D1/R2 API, native auth + OIDC, OpenAPI parity, and zero-Arabic doc/contract tests)
 
 Optional deep verification suites:
 ```powershell
@@ -94,7 +93,7 @@ git push origin dev
 ```
 Verification checklist before promotion:
 1. Wait for `.github/workflows/check.yml` (`Verify coaching engines`) on `dev` to finish with `conclusion: success`.
-2. Smoke-test changed endpoints against `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` via Postman (`CuraFit — Cloud Dev`) or KMM `debug` builds.
+2. Smoke-test changed endpoints against `https://curafit-api-dev.egypt-nutrition-coach.workers.dev` via `contracts/openapi.yaml` examples or KMM `debug` builds.
 
 ### Phase 5 — Promote to Production (`main`)
 Only promote `dev` -> `main` via **fast-forward merge** once `dev` CI and Cloud Dev checks are completely green:
@@ -128,8 +127,8 @@ Confirm `.github/workflows/check.yml` (`Verify coaching engines`) on `main` fini
 1. **Uniform KMM Envelope Only:**
    - `2xx` responses must use `{ ok: true, data, meta: { requestId, serverTime, revision? } }`.
    - `4xx`/`5xx` responses must use `{ ok: false, error: { code, message, params, fieldErrors, retryable, details? }, meta: { requestId, serverTime } }`.
-2. **Zero Arabic in Docs, Contracts, Postman, or API Errors:**
-   - All Markdown documentation (`docs/`, `postman/README.md`, `README.md`, `AGENTS.md`), OpenAPI contracts, examples, Postman collections, and `4xx`/`5xx` API error payloads must contain **zero Arabic characters**. This invariant is enforced by `tests/error-contract.test.mjs`.
+2. **Zero Arabic in Docs, Contracts, or API Errors:**
+   - All Markdown documentation (`docs/`, `README.md`, `AGENTS.md`), OpenAPI contracts, examples, and `4xx`/`5xx` API error payloads must contain **zero Arabic characters**. This invariant is enforced by `tests/error-contract.test.mjs`.
    - Note: Domain food names (`data/`, `/v1/foods`) and `200 OK` Web UI coaching content remain preserved intact for bilingual/regional UX and Web User Stories.
 3. **Protect Production & Cloud Dev Databases:**
    - **Never** wipe, reset, or replace Production D1 (`90fa62f1-7866-4156-ac29-f0aec4814bab`) or initialize an empty `curafit-db-dev` (`0a6b8bf6-8491-4ca1-95fd-e1c00430e3d0`). Keep `curafit-db-dev` populated as a production clone.

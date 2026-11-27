@@ -175,10 +175,10 @@ export function workoutPlan(draft){
    ?fullBodyOrders[focusOccurrence%fullBodyOrders.length]
    :schemes[focus];
   const targetCount=DURATION_TARGET_COUNTS[duration]||6;
-  for(const pattern of fullPatternList){
-   if(exercises.length>=targetCount)break;
+  const tryAddPattern=(pattern,recordMissing)=>{
+   if(exercises.length>=targetCount||exercises.some(e=>e.pattern===pattern))return false;
    const pool=candidates(pattern,{...draft,fitnessLevel:level},location,used,safetyProfile);
-   if(!pool.length){missing.push(pattern);continue;}
+   if(!pool.length){if(recordMissing)missing.push(pattern);return false;}
    const compound=COMPOUND_PATTERNS.has(pattern);
    const heavyCompound=HEAVY_COMPOUND_PATTERNS.has(pattern);
    let sets=level==='beginner'
@@ -205,7 +205,7 @@ export function workoutPlan(draft){
     sets=2;
     fitting=pool.filter(cand=>seconds+calcCost(cand,sets)<=duration*60);
    }
-   if(!fitting.length){missing.push(pattern);continue;}
+   if(!fitting.length){if(recordMissing)missing.push(pattern);return false;}
    let poolPick=fitting;
    if(location==='gym'&&HEAVY_COMPOUND_PATTERNS.has(pattern)){
     const externalPool=poolPick.filter(x=>x.loadMode==='external');
@@ -216,6 +216,17 @@ export function workoutPlan(draft){
    const e=poolPick[focusOccurrence%poolPick.length];
    const cost=calcCost(e,sets);
    seconds+=cost;used.push(e.id);exercises.push({...e,regions:muscleRegions(e),sets,repMin,repMax,rir,restSeconds});
+   return true;
+  };
+  for(const pattern of fullPatternList){
+   if(exercises.length>=targetCount)break;
+   tryAddPattern(pattern,true);
+  }
+  if(focus==='full_body'&&exercises.length<Math.min(2,targetCount)){
+   for(const fallbackPattern of ['horizontal_push','horizontal_pull','vertical_push','plantar_flexion','hip_extension','anti_extension','elbow_flexion','elbow_extension']){
+    if(exercises.length>=targetCount)break;
+    tryAddPattern(fallbackPattern,false);
+   }
   }
   return {dayIndex,location,focus,goalNote,exercises,missing,duration,estimatedMinutes:Math.ceil(seconds/60),isTrainingDay:true};
  });

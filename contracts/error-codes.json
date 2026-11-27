@@ -1706,14 +1706,6 @@
       "params": [],
       "message": "workoutUiMode must be simple or pro."
     },
-    "FEATURE_DEFERRED_TO_AI_PHASE": {
-      "httpStatus": 501,
-      "retryable": false,
-      "params": [
-        "feature"
-      ],
-      "message": "This CuraFit Specialist Team feature is scheduled for an upcoming release."
-    },
     "MEDICAL_DIET_CONFLICT": {
       "httpStatus": 400,
       "retryable": false,

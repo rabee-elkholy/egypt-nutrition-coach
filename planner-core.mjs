@@ -1204,10 +1204,26 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
     !['keto', 'low_carb'].includes(p.diet) &&
     !isPregnant
   );
+  let ccWorkoutMult = CLINICAL_CONSTANTS.CARB_CYCLING_WORKOUT_MULTIPLIER;
+  let ccRestMult = CLINICAL_CONSTANTS.CARB_CYCLING_REST_MULTIPLIER;
   if (carbCyclingEnabled) {
+    // Balance weekly workout vs rest multipliers so 7-day average calories remain steady around targets.energy.
+    let actualWorkoutDays = 0;
+    for (let dIdx = 0; dIdx < 7; dIdx++) {
+      if (workoutDayIndices.has(new Date(addDays(startDate, dIdx) + "T12:00:00Z").getUTCDay())) actualWorkoutDays++;
+    }
+    const nTrain = Math.max(1, Math.min(6, actualWorkoutDays || targets.training_days || 3));
+    const nRest = 7 - nTrain;
+    const desiredRestDrop = Math.min(0.15, (0.10 * nTrain) / nRest);
+    ccRestMult = Math.round((1 - desiredRestDrop) * 1000) / 1000;
+    ccWorkoutMult = Math.round((1 + (desiredRestDrop * nRest) / nTrain) * 1000) / 1000;
+    const upPct = Math.round((ccWorkoutMult - 1) * 100);
+    const downPct = Math.round((1 - ccRestMult) * 100);
     targets.carb_cycling = true;
+    targets.carb_cycling_workout_multiplier = ccWorkoutMult;
+    targets.carb_cycling_rest_multiplier = ccRestMult;
     if (!(targets.noteCodes || []).includes('PLAN_CARB_CYCLING_ACTIVE')) {
-      targets.notes = [...(targets.notes || []), 'Carb cycling active: +10% calories/carbs on training days and -5% on rest days while preserving daily protein targets.'];
+      targets.notes = [...(targets.notes || []), `Carb cycling active: +${upPct}% calories/carbs on training days and -${downPct}% on rest days to keep weekly average calories steady while preserving protein.`];
       targets.noteCodes = [...(targets.noteCodes || []), 'PLAN_CARB_CYCLING_ACTIVE'];
     }
   }
@@ -1234,7 +1250,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
     const isWorkoutDay = workoutDayIndices.has(new Date(addDays(startDate, day) + "T12:00:00Z").getUTCDay()) && (targets.training_days || 0) > 0;
     const dayTargets = copy(targets);
     if (carbCyclingEnabled) {
-      const mult = isWorkoutDay ? CLINICAL_CONSTANTS.CARB_CYCLING_WORKOUT_MULTIPLIER : CLINICAL_CONSTANTS.CARB_CYCLING_REST_MULTIPLIER;
+      const mult = isWorkoutDay ? ccWorkoutMult : ccRestMult;
       const cycledEnergy = Math.max(
         minSafeEnergyFloor(profile),
         Math.min(CLINICAL_CONSTANTS.MAX_ENERGY_CEILING, Math.round((targets.energy * mult) / 10) * 10)

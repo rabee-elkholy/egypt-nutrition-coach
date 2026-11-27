@@ -5,7 +5,7 @@ Practical integration specification for the **Kotlin Multiplatform Mobile (Andro
 - **Cloud Dev Server (`dev` branch):** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev`
 - **Production Server (`main` branch):** `https://curafit-api.egypt-nutrition-coach.workers.dev`
 - **OpenAPI 3.1 Contract:** [`contracts/openapi.yaml`](../contracts/openapi.yaml)
-- **Postman Collection & API Docs:** [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) and [`docs/API_REFERENCE.md`](API_REFERENCE.md)
+- **OpenAPI 3.1 Contract & API Docs:** [`contracts/openapi.yaml`](../contracts/openapi.yaml) and [`docs/API_REFERENCE.md`](API_REFERENCE.md) (Postman is permanently retired)
 - **Pure-English Error Codes Catalog:** [`contracts/error-codes.json`](../contracts/error-codes.json) and [`docs/ERROR_CODES.md`](ERROR_CODES.md)
 
 ---

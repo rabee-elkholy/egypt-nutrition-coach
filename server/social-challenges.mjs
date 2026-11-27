@@ -16,8 +16,8 @@ import { apiError } from '../coaching-error.mjs';
 import { loadAccount, sha256Hex } from './store.mjs';
 import { dailyWaterTarget } from './coaching.mjs';
 import { accountRecovery } from './recovery.mjs';
-import { activePlan, dayTotals } from './food.mjs';
-import { computeStreakAndEngagement } from './progress-analytics.mjs';
+import { activePlan } from './food.mjs';
+import { computeStreakAndEngagement, computeChallengeDayScore } from './progress-analytics.mjs';
 import { signAvatarUrlIfNeeded } from './media.mjs';
 import { sendFriendChallengeCheerPush } from './push.mjs';
 import { resolveEntitlements, FREE_LIMITS } from './subscriptions.mjs';
@@ -267,61 +267,7 @@ export async function getPublicChallengeProgress(db, s, userId, challengeId, now
 // 2. Private Friend Challenges — Fair Normalized Scoring (0-100%) & Zero-PII
 // ---------------------------------------------------------------------------
 
-function computeNormalizedDayScore(memberState, metricType, date) {
-  const track = memberState?.onboarding?.serviceTrack || 'nutrition_and_workouts';
-  const waterScore = () => {
-    const w = (memberState.waterLogs || []).find(x => x.date === date);
-    const tgt = w?.targetCups || dailyWaterTarget(memberState, date).targetCups;
-    if (!w || !(tgt > 0)) return 0;
-    return Math.min(100, Math.round((Number(w.cups || 0) / tgt) * 100));
-  };
-  const proteinScore = () => {
-    const planP = Number(activePlan(memberState)?.targets?.protein || 0);
-    const f = (memberState.foodLogs || []).find(x => x.date === date);
-    if (!f || f.protein == null) return 0;
-    const denom = planP > 0 ? planP : 80;
-    return Math.min(100, Math.round((Number(f.protein) / denom) * 100));
-  };
-  const workoutScore = () => {
-    const hasCompleted = (memberState.sessions || []).some(x => x.date === date && x.status === 'completed') ||
-      (memberState.openWorkoutSessions || []).some(x => x.date === date);
-    if (hasCompleted) return 100;
-    const hasPartial = (memberState.sessions || []).some(x => x.date === date && x.status === 'partial');
-    return hasPartial ? 60 : 0;
-  };
-  const stepsCardioScore = () => {
-    const mins = (memberState.cardioLogs || []).filter(c => c.date === date).reduce((sum, c) => sum + Number(c.durationMinutes || 0), 0);
-    const steps = (memberState.activityLogs || []).filter(a => a.date === date).reduce((mx, a) => Math.max(mx, Number(a.steps || 0)), 0);
-    return Math.min(100, Math.max(Math.round((mins / 30) * 100), Math.round((steps / 8000) * 100)));
-  };
-  const sleepScore = () => {
-    const c = (memberState.checkins || []).find(x => x.date === date);
-    if (!c) return 0;
-    return Number(c.sleepHours || 0) >= 7 ? 100 : Math.min(95, Math.round((Number(c.sleepHours || 0) / 7) * 100));
-  };
-
-  if (metricType === 'hydration') return waterScore();
-  if (metricType === 'protein') return proteinScore();
-  if (metricType === 'workouts') return workoutScore();
-  if (metricType === 'steps_cardio') return stepsCardioScore();
-  if (metricType === 'sleep') return sleepScore();
-
-  // all_round: fair track-normalized average so nutrition_only & both compete 100% equally!
-  const components = [waterScore()];
-  if (track !== 'workouts_only') {
-    const diary = dayTotals(memberState, date);
-    const fScore = diary.entries.length > 0 ? Math.max(proteinScore(), 80) : 0;
-    components.push(fScore);
-  }
-  if (track !== 'nutrition_only') {
-    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
-    const isTrainingDay = (memberState.workoutPlan?.days || []).some(d => d.dayIndex === weekday);
-    if (isTrainingDay) components.push(workoutScore());
-  }
-  const hasCheckin = (memberState.checkins || []).some(c => c.date === date);
-  if (hasCheckin) components.push(100);
-  return Math.round(components.reduce((sum, v) => sum + v, 0) / Math.max(1, components.length));
-}
+const computeNormalizedDayScore = computeChallengeDayScore;
 
 export async function createFriendChallenge(db, env, s, userId, body = {}, now = clockNow()) {
   const title = String(body?.title || '').trim();
@@ -916,8 +862,8 @@ export async function resolveActiveChallengeForWidget(db, s, userId, now = clock
 // ---------------------------------------------------------------------------
 
 async function grantReferralProBonus(db, userId, bonusDays = REFERRAL_BONUS_DAYS) {
-  const nowMs = Date.now();
-  const nowIso = new Date(nowMs).toISOString();
+  const nowMs = clockNow();
+  const nowIso = isoNow();
   const existing = await db.prepare(
     "SELECT external_tx_id, expires_at FROM coaching_subscriptions WHERE user_id=? AND provider='referral' ORDER BY expires_at DESC LIMIT 1"
   ).bind(userId).first().catch(() => null);
@@ -947,7 +893,7 @@ export async function getOrCreateReferralCode(db, userId) {
     await db.prepare('INSERT INTO coaching_referrals(code,referrer_user_id,created_at) VALUES(?,?,?)').bind(code, userId, nowIso).run();
     row = { code, created_at: nowIso };
   }
-  const cutoffIso = new Date(Date.now() - 365 * 86400000).toISOString();
+  const cutoffIso = new Date(clockNow() - 365 * 86400000).toISOString();
   const cnt = await db.prepare(
     'SELECT COUNT(*) AS n FROM coaching_referral_redemptions WHERE referrer_user_id=? AND granted_at >= ?'
   ).bind(userId, cutoffIso).first().catch(() => ({ n: 0 }));
@@ -991,7 +937,7 @@ export async function redeemReferralCode(db, s, userId, auth, body = {}) {
   }
 
   // 4. Rolling 12-month referrer cap (max 3)
-  const cutoffIso = new Date(Date.now() - 365 * 86400000).toISOString();
+  const cutoffIso = new Date(clockNow() - 365 * 86400000).toISOString();
   const refCountRow = await db.prepare(
     'SELECT COUNT(*) AS n FROM coaching_referral_redemptions WHERE referrer_user_id=? AND granted_at >= ?'
   ).bind(referrerUserId, cutoffIso).first();

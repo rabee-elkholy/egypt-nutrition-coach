@@ -57,7 +57,7 @@ export const DINING_OUT_DISHES = Object.freeze([
     satFatG: 3.4,
     purineHigh: false,
     glycemicLoad: 'low',
-    tags: ['chicken'],
+    tags: ['chicken', 'gluten'],
     orderingTipCode: 'DINING_TIP_SKIP_SKIN_AND_FRIES',
     orderingTipsEn: 'Request skin removed before serving, lemon-olive dressing on the side, and skip fried pita chips.'
   },
@@ -265,7 +265,7 @@ export const DINING_OUT_DISHES = Object.freeze([
     satFatG: 1.9,
     purineHigh: false,
     glycemicLoad: 'low',
-    tags: ['legumes', 'vegan', 'vegetarian', 'nuts'],
+    tags: ['legumes', 'vegan', 'vegetarian', 'nuts', 'oats'],
     orderingTipCode: 'DINING_TIP_UNSWEETENED_MILK_SWAP',
     orderingTipsEn: 'Choose unsweetened oat or almond milk and skip flavored coffee syrups.'
   },
@@ -361,7 +361,7 @@ export const DINING_OUT_DISHES = Object.freeze([
   {
     id: 'seafood_grilled_shrimp_salad',
     category: 'seafood',
-    nameEn: 'Charcoal-Grilled Shrimp Skewers with Fresh Lemon & Fattoush Salad',
+    nameEn: 'Charcoal-Grilled Shrimp Skewers with Fresh Lemon & Green Salad',
     nameAr: 'جمبري مشوي على الفحم مع ليمون وسلطة خضراء',
     estimatedKcal: 360,
     proteinG: 38,
@@ -403,7 +403,7 @@ export const DINING_OUT_DISHES = Object.freeze([
     fatG: 27,
     sodiumMg: 390,
     satFatG: 5.2,
-    purineHigh: false,
+    purineHigh: true,
     glycemicLoad: 'low',
     tags: ['fish'],
     orderingTipCode: 'DINING_TIP_OMEGA3_SALMON',
@@ -494,23 +494,24 @@ function dishAllowedForUser(dish, s) {
   if (diet === 'keto' && dish.carbsG > 22) return false;
   if (diet === 'low_carb' && dish.carbsG > 38) return false;
 
-  if ((excluded.has('gluten') || diseases.has('celiac')) && tags.has('gluten')) return false;
-  if ((excluded.has('dairy') || excluded.has('milk') || excluded.has('cheese') || diseases.has('lactose_intolerance')) && tags.has('dairy')) return false;
-  if ((excluded.has('nuts') || excluded.has('nut_allergy') || excluded.has('peanuts')) && tags.has('nuts')) return false;
+  if ((excluded.has('gluten') || diseases.has('celiac')) && (tags.has('gluten') || tags.has('oats'))) return false;
+  if ((excluded.has('dairy') || excluded.has('milk') || excluded.has('cheese') || excluded.has('yogurt') || diseases.has('lactose_intolerance')) && tags.has('dairy')) return false;
+  if ((excluded.has('nuts') || excluded.has('nut_allergy') || excluded.has('peanuts') || excluded.has('almonds') || excluded.has('tree_nuts')) && tags.has('nuts')) return false;
   if ((excluded.has('fish') || excluded.has('seafood')) && tags.has('fish')) return false;
   if (excluded.has('shellfish') && tags.has('shellfish')) return false;
   if ((excluded.has('meat') || excluded.has('red_meat')) && (tags.has('meat') || tags.has('red_meat'))) return false;
-  if (excluded.has('chicken') && tags.has('chicken')) return false;
+  if ((excluded.has('chicken') || excluded.has('poultry')) && tags.has('chicken')) return false;
   if (excluded.has('eggs') && tags.has('eggs')) return false;
   if ((excluded.has('fava') || diseases.has('favism')) && tags.has('fava')) return false;
+  if (excluded.has('legumes') && (tags.has('legumes') || tags.has('fava'))) return false;
   if (excluded.has('sesame') && tags.has('sesame')) return false;
 
   // Clinical guardrails
-  if (diseases.has('gout') && dish.purineHigh) return false;
+  if (diseases.has('gout') && (dish.purineHigh || /\b(tuna|salmon|liver|shrimp)\b/i.test(dish.nameEn || ''))) return false;
   if (diseases.has('kidney') && (dish.sodiumMg > 650 || dish.proteinG > 42)) return false;
   if ((diseases.has('hypertension') || diet === 'dash') && dish.sodiumMg > 720) return false;
   if (diseases.has('cholesterol') && dish.satFatG > 6.5) return false;
-  if ((diseases.has('diabetes') || diseases.has('diabetes_t1') || diseases.has('diabetes_t2')) && dish.carbsG > 52) return false;
+  if ((diseases.has('diabetes') || diseases.has('diabetes_t1') || diseases.has('diabetes_t2') || diseases.has('insulin_resistance') || diseases.has('pcos')) && dish.carbsG > 52) return false;
   if (diseases.has('ibs') && dish.category === 'family_feast' && dish.id === 'feast_grilled_eggplant_lentil_plate') return false;
   if (isPregnantStatus(s?.profile?.maternalStatus) && dish.tags.includes('raw')) return false;
 

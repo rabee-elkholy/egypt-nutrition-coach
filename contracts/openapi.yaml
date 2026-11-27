@@ -982,6 +982,9 @@ paths:
                   weeklyReviewReminder: { type: boolean }
                   ramadanSuhoorReminder: { type: boolean }
                   exemptSuhoorFromQuietHours: { type: boolean }
+                  streakSaverReminder: { type: boolean }
+                  challengeNotifications: { type: boolean }
+                  specialistNotesReminder: { type: boolean }
                   quietHoursStart: { type: string }
                   quietHoursEnd: { type: string }
                   cycleReminders: { type: boolean }
@@ -2741,6 +2744,10 @@ components:
           type: boolean
         requestId:
           type: string
+        proactiveMicroNote:
+          oneOf:
+            - $ref: "#/components/schemas/CoachingBriefNote"
+            - type: "null"
         notes:
           type: array
           items:

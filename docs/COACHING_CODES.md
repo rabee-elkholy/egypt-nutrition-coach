@@ -219,3 +219,7 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `MATERNITY_TIMELINE_MILESTONE` | `progress` | `normal` | — | Maternity timeline milestone celebrating steady posture, gentle mobility, and maternal nourishment. |
 | `VISUAL_LOW_COMPARABILITY_TIP` | `progress` | `attention` | — | Photo lighting, distance, or framing differed noticeably; retake under consistent lighting for clearer comparisons. |
 | `VISUAL_RECOMPOSITION_MIDSECTION` | `progress` | `normal` | — | Body recomposition signal observed: waist tape or strength volume improved while scale weight stayed steady. |
+| `PROACTIVE_NOTE_LIFECYCLE_ADJUSTED` | `followup` | `normal` | `lifecycleKind` | Your CuraFit Specialist Team updated your daily plan and recovery targets to support your current phase. |
+| `PROACTIVE_NOTE_SLEEP_LOW_3D` | `recovery` | `attention` | `avgSleepHours`, `nights` | Three consecutive nights below 6 hours of sleep were logged; prioritize recovery and submit today's Readiness Check-In. |
+| `PROACTIVE_NOTE_NEW_PR` | `training` | `normal` | `exerciseName`, `prType`, `value` | New Personal Record achieved on {exerciseName}. Consolidate clean technique before targeting your next progression step. |
+| `PROACTIVE_NOTE_PROTEIN_LOW_2D` | `nutrition` | `normal` | `avgProtein`, `targetProtein`, `swapNamesEn` | Two consecutive days landed below your protein target; consider regional budget-matched protein swaps matched to your profile. |

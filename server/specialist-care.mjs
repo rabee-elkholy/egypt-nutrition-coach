@@ -177,8 +177,8 @@ function crossCheckMealClinicalWarnings(items, s) {
 
   for (const item of items) {
     const tags = new Set(item.tags || []);
-    if ((diseases.has('celiac') || excluded.has('gluten')) && tags.has('gluten')) {
-      warnings.push({ itemLabel: item.label, code: 'MEAL_CAPTURE_CELIAC_GLUTEN_ALERT', severity: 'urgent', message: `${item.label} may contain gluten; confirm a certified gluten-free alternative before logging.` });
+    if ((diseases.has('celiac') || excluded.has('gluten')) && (tags.has('gluten') || tags.has('oats'))) {
+      warnings.push({ itemLabel: item.label, code: 'MEAL_CAPTURE_CELIAC_GLUTEN_ALERT', severity: 'urgent', message: `${item.label} may contain gluten or shared-equipment oats cross-contact; confirm a certified gluten-free alternative before logging.` });
     }
     if ((diseases.has('favism') || excluded.has('fava')) && tags.has('fava')) {
       warnings.push({ itemLabel: item.label, code: 'MEAL_CAPTURE_FAVISM_ALERT', severity: 'urgent', message: `${item.label} contains fava beans, which must be avoided for favism safety.` });
@@ -206,6 +206,37 @@ function crossCheckMealClinicalWarnings(items, s) {
     }
   }
   return warnings;
+}
+
+function inferAllergenAndClinicalTags(catItem) {
+  const tags = new Set();
+  const key = String(catItem?.planningKey || catItem?.key || catItem?.id || '').toLowerCase();
+  const hay = `${key} ${catItem?.name_en || ''} ${catItem?.name_ar || ''} ${catItem?.name || ''}`.toLowerCase();
+  const cats = (catItem?.categories || []).map(c => String(c).toLowerCase()).join(' ');
+  const combined = `${hay} ${cats}`;
+  if (/\b(milk|yogurt|cheese|dairy|feta|cottage|mozzarella|cheddar|butter|ghee|cream|whey|labneh)\b|لبن|حليب|زبادي|جبن|جبنة|قريش|قشطة|زبدة|سمن|لبنة/i.test(combined)) tags.add('dairy');
+  if (/\b(wheat|bread|toast|pasta|bulgur|couscous|gluten|freekeh|baladi|macaroni)\b|قمح|خبز|عيش|مكرونة|مكرونه|برغل|كسكسي|كسكس|فريك|جلوتين/i.test(combined)) tags.add('gluten');
+  if (/\b(oats|oatmeal)\b|شوفان/i.test(combined)) tags.add('oats');
+  if (/\b(fava|falafel|taameya|tameya)\b|فول\s*مدمس|\bفول\b|طعمية|طعميه|فلافل/i.test(combined) && !/فول\s*سوداني|peanut/i.test(combined)) {
+    tags.add('fava');
+    tags.add('legumes');
+  }
+  if (/\b(lentils?|chickpeas?|hummus|kidney\s*beans?|white\s*beans?|soy|soybeans?|lupin|peas)\b|عدس|حمص|فاصوليا|صويا|لوبيا|بسلة|بازلاء/i.test(combined)) tags.add('legumes');
+  if (/\b(almonds?|walnuts?|cashews?|pistachios?|hazelnuts?|pecans?|peanuts?|nut|nuts)\b|مكسرات|لوز|عين\s*جمل|كاجو|فستق|بندق|فول\s*سوداني/i.test(combined)) tags.add('nuts');
+  if (/\b(tahini|sesame)\b|طحينة|طحينه|سمسم/i.test(combined)) tags.add('sesame');
+  if (/\b(shrimp|prawns?|crab|lobster|shellfish|calamari|squid)\b|جمبري|روبيان|كابوريا|استاكوزا|كاليماري/i.test(combined)) {
+    tags.add('shellfish');
+    tags.add('fish');
+  }
+  if (/\b(fish|tilapia|tuna|salmon|seabass|mackerel|sardine|cod)\b|سمك|بلطي|تونة|تونه|سلمون|قاروص|سردين|ماكريل/i.test(combined)) tags.add('fish');
+  if (/\b(eggs?|eggwhite|omelet|omelette)\b|بيض|بيضة|اومليت/i.test(combined)) tags.add('eggs');
+  if (/\b(chicken|turkey|poultry|duck)\b|فراخ|دجاج|ديك\s*رومي/i.test(combined)) tags.add('chicken');
+  if (/\b(beef|lamb|mutton|veal|kofta|kebab|meat)\b|لحم|لحمة|لحمه|بقري|ضاني|كفتة|كفته|كباب/i.test(combined)) {
+    tags.add('meat');
+    tags.add('red_meat');
+  }
+  if (/\b(liver|offal|organ)\b|كبدة|كبده|كلاوي/i.test(combined)) tags.add('offal');
+  return [...tags];
 }
 
 function parseFreeTextToGroundedItems(rawText) {
@@ -254,7 +285,7 @@ function parseFreeTextToGroundedItems(rawText) {
           confidence: gMatch ? 0.91 : 0.82,
           isApproximate: Boolean(top.isApproximate) || !gMatch,
           provenanceBadge: !top.isApproximate ? 'catalog_match' : 'specialist_estimate',
-          tags: [],
+          tags: inferAllergenAndClinicalTags(top),
           nutrients: {
             energy: Math.round(Number(top.values.energy || 0) * scale),
             protein: Math.round(Number(top.values.protein || 0) * scale * 10) / 10,

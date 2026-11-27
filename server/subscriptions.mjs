@@ -611,10 +611,11 @@ export async function verifyStoreSubscription(db, env, s, userId, body = {}) {
     }
     externalTxId = String(parsed?.originalTransactionId || parsed?.transactionId || body.transactionId).trim();
     if (!productId && parsed?.productId) productId = String(parsed.productId);
-    const expMs = Number(parsed?.expiresDate || (Date.now() + 30 * 86400000));
+    const nowMs = clockNow();
+    const expMs = Number(parsed?.expiresDate || (nowMs + 30 * 86400000));
     expiresAt = new Date(expMs).toISOString();
     if (parsed?.offerType === 1 || body?.isTrial === true) { status = 'trialing'; trialUsed = 1; }
-    if (parsed?.revocationDate || expMs <= Date.now()) status = 'expired';
+    if (parsed?.revocationDate || expMs <= nowMs) status = 'expired';
   } else {
     const purchaseToken = String(body?.purchaseToken || '').trim();
     if (!purchaseToken || purchaseToken.length < 10) {
@@ -628,7 +629,7 @@ export async function verifyStoreSubscription(db, env, s, userId, body = {}) {
       const gSub = await fetchGoogleSubscriptionV2(purchaseToken, productId, env, true);
       const item = gSub?.lineItems?.[0] || {};
       if (item.productId) productId = item.productId;
-      expiresAt = item.expiryTime || new Date(Date.now() + 30 * 86400000).toISOString();
+      expiresAt = item.expiryTime || new Date(clockNow() + 30 * 86400000).toISOString();
       autoRenew = item.autoRenewingPlan?.autoRenewEnabled === false ? 0 : 1;
       const gState = String(gSub?.subscriptionState || '');
       if (gState === 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD') status = 'grace_period';
@@ -641,10 +642,11 @@ export async function verifyStoreSubscription(db, env, s, userId, body = {}) {
     } else if (env?.STRICT_STORE_VERIFICATION === 'true') {
       throw createApiError('Google Play Billing API credentials are not configured.', 503, { code: 'SERVICE_UNAVAILABLE', retryable: true });
     } else {
-      const expMs = Number(body?.expiresAtMs || (Date.now() + 30 * 86400000));
+      const nowMs = clockNow();
+      const expMs = Number(body?.expiresAtMs || (nowMs + 30 * 86400000));
       expiresAt = new Date(expMs).toISOString();
       if (body?.isTrial === true) { status = 'trialing'; trialUsed = 1; }
-      if (expMs <= Date.now()) status = 'expired';
+      if (expMs <= nowMs) status = 'expired';
     }
   }
 

@@ -1427,6 +1427,43 @@
       "severity": "normal",
       "params": [],
       "message": "Body recomposition signal observed: waist tape or strength volume improved while scale weight stayed steady."
+    },
+    "PROACTIVE_NOTE_LIFECYCLE_ADJUSTED": {
+      "domain": "followup",
+      "severity": "normal",
+      "params": [
+        "lifecycleKind"
+      ],
+      "message": "Your CuraFit Specialist Team updated your daily plan and recovery targets to support your current phase."
+    },
+    "PROACTIVE_NOTE_SLEEP_LOW_3D": {
+      "domain": "recovery",
+      "severity": "attention",
+      "params": [
+        "avgSleepHours",
+        "nights"
+      ],
+      "message": "Three consecutive nights below 6 hours of sleep were logged; prioritize recovery and submit today's Readiness Check-In."
+    },
+    "PROACTIVE_NOTE_NEW_PR": {
+      "domain": "training",
+      "severity": "normal",
+      "params": [
+        "exerciseName",
+        "prType",
+        "value"
+      ],
+      "message": "New Personal Record achieved on {exerciseName}. Consolidate clean technique before targeting your next progression step."
+    },
+    "PROACTIVE_NOTE_PROTEIN_LOW_2D": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [
+        "avgProtein",
+        "targetProtein",
+        "swapNamesEn"
+      ],
+      "message": "Two consecutive days landed below your protein target; consider regional budget-matched protein swaps matched to your profile."
     }
   }
 }

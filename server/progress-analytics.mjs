@@ -204,9 +204,10 @@ export function computeProgressAnalytics(s, { range = '30d', exerciseId = null }
     }
   }
 
+  const isPregnant = isPregnantStatus(s.profile?.maternalStatus);
   // Estimated weeks remaining to targetWeight (suppressed during pregnancy)
   let estimatedWeeksRemaining = null;
-  if (!isPregnantStatus(s.profile?.maternalStatus) && s.profile?.targetWeight != null && weightMovingAvg7d.length >= 2) {
+  if (!isPregnant && s.profile?.targetWeight != null && weightMovingAvg7d.length >= 2) {
     const latestKg = weightMovingAvg7d.at(-1).avgKg;
     const prevKg = weightMovingAvg7d[0].avgKg;
     const spanDays = Math.max(1, Math.floor((Date.parse(`${weightMovingAvg7d.at(-1).date}T12:00:00Z`) - Date.parse(`${weightMovingAvg7d[0].date}T12:00:00Z`)) / 86400000));
@@ -221,6 +222,8 @@ export function computeProgressAnalytics(s, { range = '30d', exerciseId = null }
     range: normalizedRange,
     windowStart: fromDate,
     windowEnd: today,
+    isPregnant,
+    weightLossTrajectoryHidden: isPregnant,
     weightSeries,
     weightMovingAvg7d,
     calorieAdherence,
@@ -269,16 +272,17 @@ export function computeWeeklyWrapped(s, weekEndParam = null, now = clockNow()) {
   const weightsWeek = (s.weights || []).filter(w => w.date >= weekStart && w.date <= weekEnd).sort((a, b) => a.date.localeCompare(b.date));
   const weightDeltaKg = weightsWeek.length >= 2 ? Math.round((Number(weightsWeek.at(-1).kg) - Number(weightsWeek[0].kg)) * 100) / 100 : null;
 
+  const track = s.onboarding?.serviceTrack || 'nutrition_and_workouts';
   const { streakSummary } = computeStreakAndEngagement(s, now);
   const badgesUnlocked = [];
   if (streakSummary.currentDays >= 7 || streakSummary.longestDays >= 7) badgesUnlocked.push('STREAK_7D');
   if (streakSummary.currentDays >= 14 || streakSummary.longestDays >= 14) badgesUnlocked.push('STREAK_14D');
   if (streakSummary.currentDays >= 30 || streakSummary.longestDays >= 30) badgesUnlocked.push('STREAK_30D');
   if (adherentWaterDays >= 5) badgesUnlocked.push('HYDRATION_HERO_5D');
-  if (completeFood.length >= 5) badgesUnlocked.push('CONSISTENT_LOGGER_5D');
-  if (workoutsCompleted >= 3) badgesUnlocked.push('WORKOUT_WARRIOR_3X');
-  if (newPrsCount >= 1) badgesUnlocked.push('NEW_PERSONAL_RECORD');
-  if (adherenceScorePct >= 85) badgesUnlocked.push('NUTRITION_PRECISION_85');
+  if (track !== 'workouts_only' && completeFood.length >= 5) badgesUnlocked.push('CONSISTENT_LOGGER_5D');
+  if (track !== 'nutrition_only' && workoutsCompleted >= 3) badgesUnlocked.push('WORKOUT_WARRIOR_3X');
+  if (track !== 'nutrition_only' && newPrsCount >= 1) badgesUnlocked.push('NEW_PERSONAL_RECORD');
+  if (track !== 'workouts_only' && adherenceScorePct >= 85 && (foodAdherencePct ?? 0) >= 85) badgesUnlocked.push('NUTRITION_PRECISION_85');
 
   return {
     weekStart,
@@ -294,6 +298,66 @@ export function computeWeeklyWrapped(s, weekEndParam = null, now = clockNow()) {
     weightDeltaKg,
     badgesUnlocked
   };
+}
+
+export function computeChallengeDayScore(memberState, metricType, date) {
+  const track = memberState?.onboarding?.serviceTrack || 'nutrition_and_workouts';
+  const waterScore = () => {
+    const w = (memberState.waterLogs || []).find(x => x.date === date);
+    const tgt = w?.targetCups || dailyWaterTarget(memberState, date).targetCups;
+    if (!w || !(tgt > 0)) return 0;
+    return Math.min(100, Math.round((Number(w.cups || 0) / tgt) * 100));
+  };
+  const proteinScore = () => {
+    const planP = Number(activePlan(memberState)?.targets?.protein || 0);
+    const diary = dayTotals(memberState, date);
+    const f = (memberState.foodLogs || []).find(x => x.date === date);
+    const proteinVal = f?.protein != null ? Number(f.protein) : (diary.totals?.protein != null ? Number(diary.totals.protein) : null);
+    if (proteinVal == null) return 0;
+    const denom = planP > 0 ? planP : 80;
+    return Math.min(100, Math.round((proteinVal / denom) * 100));
+  };
+  const workoutScore = () => {
+    const hasCompleted = (memberState.sessions || []).some(x => x.date === date && x.status === 'completed') ||
+      (memberState.openWorkoutSessions || []).some(x => x.date === date);
+    if (hasCompleted) return 100;
+    const hasPartial = (memberState.sessions || []).some(x => x.date === date && x.status === 'partial');
+    return hasPartial ? 60 : 0;
+  };
+  const stepsCardioScore = () => {
+    const mins = (memberState.cardioLogs || []).filter(c => c.date === date).reduce((sum, c) => sum + Number(c.durationMinutes || 0), 0);
+    const steps = (memberState.activityLogs || []).filter(a => a.date === date).reduce((mx, a) => Math.max(mx, Number(a.steps || 0)), 0);
+    return Math.min(100, Math.max(Math.round((mins / 30) * 100), Math.round((steps / 8000) * 100)));
+  };
+  const sleepScore = () => {
+    const c = (memberState.checkins || []).find(x => x.date === date);
+    if (!c) return 0;
+    return Number(c.sleepHours || 0) >= 7 ? 100 : Math.min(95, Math.round((Number(c.sleepHours || 0) / 7) * 100));
+  };
+
+  if (metricType === 'hydration') return waterScore();
+  if (metricType === 'protein') return proteinScore();
+  if (metricType === 'workouts') return workoutScore();
+  if (metricType === 'steps_cardio') return stepsCardioScore();
+  if (metricType === 'sleep') return sleepScore();
+
+  // all_round: fair track-normalized average so nutrition_only & both compete 100% equally!
+  const components = [waterScore()];
+  if (track !== 'workouts_only') {
+    const diary = dayTotals(memberState, date);
+    const fLog = (memberState.foodLogs || []).find(x => x.date === date);
+    const hasFoodLogged = diary.entries.length > 0 || Boolean(fLog?.complete || Number(fLog?.energy || 0) > 0);
+    const fScore = hasFoodLogged ? Math.max(proteinScore(), fLog?.complete ? 90 : 80) : 0;
+    components.push(fScore);
+  }
+  if (track !== 'nutrition_only') {
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const isTrainingDay = (memberState.workoutPlan?.days || []).some(d => d.dayIndex === weekday);
+    if (isTrainingDay) components.push(workoutScore());
+  }
+  const hasCheckin = (memberState.checkins || []).some(c => c.date === date);
+  if (hasCheckin) components.push(100);
+  return Math.round(components.reduce((sum, v) => sum + v, 0) / Math.max(1, components.length));
 }
 
 export function buildWidgetSnapshot(s, now = clockNow(), extras = {}) {

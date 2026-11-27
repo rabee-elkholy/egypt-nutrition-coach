@@ -1,8 +1,9 @@
+import {clockNow,isoNow} from './clock.mjs';
 import {empty,normalize} from './coaching.mjs';
 import {localDate,dateOffset} from '../coaching-shared.mjs';
 import {apiError} from '../coaching-error.mjs';
 
-const reference=p=>({id:p.id,start_date:p.start_date,end_date:p.days.at(-1)?.date,created_at:p.created_at,effective_from:p.effective_from,energy:p.targets.energy,reason:p.changeReason||'Initial plan',parent_id:p.parent_id});
+const reference=p=>({id:p.id,start_date:p.start_date,end_date:p.days.at(-1)?.date,created_at:p.created_at,effective_from:p.effective_from,energy:p.targets.energy,protein:p.targets?.protein??null,reason:p.changeReason||'Initial plan',parent_id:p.parent_id});
 
 export function canonicalJson(value){
  if(value===null||typeof value!=='object')return JSON.stringify(value);
@@ -197,7 +198,7 @@ export async function loadAccount(db,user){
 }
 
 // Diff the committed state, including indirect effects such as diary completion and auto-sessions.
-export function deriveSyncDeltas(state,action,payload={},nowIso=new Date().toISOString(),previousState={}){
+export function deriveSyncDeltas(state,action,payload={},nowIso=isoNow(),previousState={}){
  const deltas=[];
  const collections=[['foodEntries','food_entry','id'],['foodLogs','food_day','date'],['waterLogs','water_log','date'],['weights','weight_log','date'],['workoutLogs','workout_log','id'],['sessions','workout_session','id'],['checkins','recovery_checkin','date'],['activityLogs','activity_log','id'],['coachingCases','coaching_case','id'],['coachingFeedback','coaching_feedback','id'],['foodFavorites','food_favorite','id'],['bodyMeasurements','body_measurement','date'],['customRecipes','custom_recipe','id'],['cardioLogs','cardio_log','id'],['cycleLogs','cycle_log','date'],['flexEvents','flex_event','date'],['openWorkoutSessions','open_workout_session','id']];
  for(const [key,type,idKey]of collections){
@@ -238,9 +239,9 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
  const extendedReady=normalizedReady&&await hasExtendedTables(db);
  const wellnessReady=normalizedReady&&await hasWellnessTables(db);
  previousState ||= normalizedReady?await loadAccount(db,user):empty();
- const nowIso=new Date().toISOString();
+ const nowIso=isoNow();
  const tz=state.profile?.timezone||'Africa/Cairo';
- const cutoffDate=dateOffset(localDate(Date.now(),tz),-95);
+ const cutoffDate=dateOffset(localDate(clockNow(),tz),-95);
 
  const stateForAggregate={...state,_commitToken:crypto.randomUUID(),plans:[],workoutArchives:[]};
  delete stateForAggregate._syncDeltas;
@@ -387,7 +388,7 @@ export async function saveAccount(db,user,state,previousRevision,{key,digest,act
 export async function backfillAccountToNormalizedTables(db,user){
  const s=await loadAccount(db,user);
  if(!(await hasNormalizedTables(db)))return {migrated:false,reason:'normalized_tables_missing'};
- const nowIso=new Date().toISOString();
+ const nowIso=isoNow();
  const stmts=[];
  for(const e of s.foodEntries||[]){
   stmts.push(db.prepare('INSERT OR REPLACE INTO coaching_food_entries(user_id,entry_id,date,slot,source,updated_at,deleted,body) SELECT ?,?,?,?,?,?,0,? WHERE EXISTS(SELECT 1 FROM coaching_accounts WHERE user_id=? AND revision=?)').bind(user,e.id,e.date,e.slot||'snack',e.source||'manual',e.at||nowIso,JSON.stringify(e),user,s.revision));
@@ -459,7 +460,7 @@ export async function exportFullAccountData(db,user,extras={}){
  const progressPhotos=Array.isArray(extras.signedProgressPhotos)?extras.signedProgressPhotos:photosRows;
  return {
   schemaVersion:3,
-  exportedAt:new Date().toISOString(),
+  exportedAt:isoNow(),
   userId:user,
   revision:state.revision,
   profile:state.profile?{...state.profile,...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null,
@@ -518,7 +519,7 @@ export async function exportFullAccountData(db,user,extras={}){
 }
 
 export async function deleteFullAccountData(db,user){
- const nowIso=new Date().toISOString();
+ const nowIso=isoNow();
  const normalized=await hasNormalizedTables(db);
  if(!normalized)throw apiError('ACCOUNT_DELETION_MIGRATION_REQUIRED','Account deletion requires normalized session revocation tables to be migrated.',{status:503});
  const coachingReady=await hasCoachingTables(db);
@@ -560,8 +561,8 @@ export async function deleteFullAccountData(db,user){
   }
   if(wave2Tables.has('coaching_referrals'))stmts.push(db.prepare('DELETE FROM coaching_referrals WHERE referrer_user_id=?').bind(identity));
   if(wave2Tables.has('coaching_referral_redemptions')){
-   stmts.push(db.prepare("UPDATE coaching_referral_redemptions SET referrer_user_id='deleted_user' WHERE referrer_user_id=?").bind(identity));
-   stmts.push(db.prepare("UPDATE coaching_referral_redemptions SET referred_user_id='deleted_user' WHERE referred_user_id=?").bind(identity));
+   stmts.push(db.prepare("UPDATE coaching_referral_redemptions SET referrer_user_id='deleted_' || substr(id,1,24) WHERE referrer_user_id=?").bind(identity));
+   stmts.push(db.prepare("UPDATE coaching_referral_redemptions SET referred_user_id='deleted_' || substr(id,1,24) WHERE referred_user_id=?").bind(identity));
   }
  }
  if(normalized){

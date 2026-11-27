@@ -6,7 +6,7 @@ Production-grade REST API running natively on **Cloudflare Workers + Cloudflare 
 
 ## 1. Servers & Environments
 
-Switch between environments from the top-right **Environment selector** in Postman:
+Switch between environments using `contracts/openapi.yaml` servers (`curafit-api-dev`, `curafit-api`, or local Miniflare; Postman is retired):
 
 | Environment Name | `baseUrl` | Cloudflare Worker / D1 | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -28,7 +28,7 @@ Switch between environments from the top-right **Environment selector** in Postm
 ## 3. Unified Command Pipeline (`POST /v1/commands`), Revision & Idempotency
 
 All domain mutations pass through `POST /v1/commands`:
-- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Auto-generated before every Postman request. Retry with the exact same key and intent (`action` + `payload`) on network timeout even after a revision rebase.
+- **`Idempotency-Key` header (`string`, UUID, max 100 chars, required):** Client-generated UUID before every mutating command. Retry with the exact same key and intent (`action` + `payload`) on network timeout even after a revision rebase.
 - **`revision` (`integer >= 0`, required):** Must equal the server's current account revision. Mismatches return `409 REVISION_CONFLICT` with `error.params.currentRevision` and `error.details.mergeHints`.
 - **Response Mode (`?view=receipt` vs `?view=full`):** `?view=receipt` (or `Prefer: return=minimal`) returns a compact `< 2 KB` delta receipt inside `data`; `?view=full` returns the full account snapshot inside `data`.
 
@@ -53,7 +53,7 @@ Every JSON endpoint returns the canonical envelope:
 | `meta.requestId` | `string (UUID)` | Trace ID matching `X-Request-Id` header |
 | `meta.serverTime` | `string (ISO-8601)` | Server UTC timestamp |
 
-> **Coaching Codes:** All coaching briefs, agreements, readiness summaries, and eligibility reasons return canonical English text plus `code` and `params` cataloged in `contracts/coaching-codes.json` (`docs/COACHING_CODES.md`). AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are deferred to the final AI rollout phase (`501 FEATURE_DEFERRED_TO_AI_PHASE`).
+> **Coaching Codes:** All coaching briefs, agreements, readiness summaries, and eligibility reasons return canonical English text plus `code` and `params` cataloged in `contracts/coaching-codes.json` (`docs/COACHING_CODES.md`). Free-text meal logging (`POST /v1/nutrition/meal-parse`), Specialist Team check-ins (`GET /v1/coaching/brief`), and visual progress comparisons (`POST /v1/progress/photos/analyze-diff`) are live under `contracts/openapi.yaml`.
 
 ---
 
@@ -225,7 +225,7 @@ Passwordless Google Sign-In & Apple Sign-In OIDC verification on Cloudflare Work
 
 ### Sign In / Register with Google OIDC
 
-Verifies a Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (creates a new D1 user on first sign-in or signs into an existing linked account). Auto-saves tokens in Postman.
+Verifies a Google ID token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (creates a new D1 user on first sign-in or signs into an existing linked account).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -339,7 +339,7 @@ Verifies a Google ID token JWKS signature directly on Cloudflare Workers and iss
 
 ### Sign In / Register with Apple OIDC
 
-Verifies an Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (exchanging `authorizationCode` for encrypted revocation storage on first Apple login). Auto-saves tokens in Postman.
+Verifies an Apple identity token JWKS signature directly on Cloudflare Workers and issues first-party CuraFit tokens (exchanging `authorizationCode` for encrypted revocation storage on first Apple login).
 
 ### Endpoint Info
 - **Method:** `POST`
@@ -574,7 +574,7 @@ Returns authenticated caller identity, session ID, auth method, scopes, entitlem
     "userId": "user:1a2b",
     "subject": "user:1a2b",
     "sessionId": "sess_123",
-    "deviceId": "postman-prod-01",
+    "deviceId": "kmm-prod-01",
     "authMethod": "bearer_jwt",
     "isAnonymous": false,
     "scopes": [
@@ -9859,9 +9859,9 @@ Consumes one manual streak freeze token (max 1 per 7 days) alongside automatic W
 
 ---
 
-## 16. Media (R2), Push, Billing & Deferred AI Phase
+## 16. Media (R2), Push & Billing
 
-Worker-proxied HMAC-signed R2 avatars & progress photos, FCM/APNs push tokens, StoreKit/Play Billing verification & webhooks, and deferred AI phase 501 placeholders.
+Worker-proxied HMAC-signed R2 avatars & progress photos, FCM/APNs push tokens, and StoreKit/Play Billing verification & webhooks.
 
 ### Upload Profile Avatar (Multipart / Binary)
 
@@ -10292,86 +10292,5 @@ Receives Google Play Real-Time Developer Notifications.
 
 ---
 
-### AI Meal Parse (Deferred — 501)
-
-Reserved for Final AI Phase; returns 501 FEATURE_DEFERRED_TO_AI_PHASE.
-
-### Endpoint Info
-- **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/nutrition/ai-parse`
-- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/nutrition/ai-parse`
-- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/nutrition/ai-parse`
-- **Local Dev URL:** `http://127.0.0.1:8787/v1/nutrition/ai-parse`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Content-Type` | `string` | Yes | Must be application/json |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Request Body Fields
-| Field | Type | Required | Constraints / Allowed Values | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `text` | `string` | Yes | 1..500 chars | Natural language meal description. |
-
-### Request Body Example
-```json
-{
-  "text": "2 boiled eggs and brown toast"
-}
-```
-
----
-
-### AI Coach Chat (Deferred — 501)
-
-Reserved for Final AI Phase; returns 501 FEATURE_DEFERRED_TO_AI_PHASE.
-
-### Endpoint Info
-- **Method:** `POST`
-- **URL:** `{{baseUrl}}/v1/coaching/chat`
-- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/coaching/chat`
-- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/coaching/chat`
-- **Local Dev URL:** `http://127.0.0.1:8787/v1/coaching/chat`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Content-Type` | `string` | Yes | Must be application/json |
-| `Accept` | `string` | Yes | JSON response format |
-
-### Request Body Fields
-| Field | Type | Required | Constraints / Allowed Values | Description |
-| :--- | :--- | :---: | :--- | :--- |
-| `message` | `string` | Yes | 1..1000 chars | Coaching question text. |
-
-### Request Body Example
-```json
-{
-  "message": "How can I increase protein at breakfast?"
-}
-```
-
----
-
-### AI Coach Chat History (Deferred — 501)
-
-Reserved for Final AI Phase; returns 501 FEATURE_DEFERRED_TO_AI_PHASE.
-
-### Endpoint Info
-- **Method:** `GET`
-- **URL:** `{{baseUrl}}/v1/coaching/chat/history`
-- **Cloud Dev URL:** `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/coaching/chat/history`
-- **Production URL:** `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/coaching/chat/history`
-- **Local Dev URL:** `http://127.0.0.1:8787/v1/coaching/chat/history`
-- **Auth:** Required — `Authorization: Bearer {{accessToken}}` (or Web `coach_uid` cookie)
-
-### Headers
-| Header | Type | Required | Description |
-| :--- | :--- | :---: | :--- |
-| `Accept` | `string` | Yes | JSON response format |
-
----
+> Canonical OpenAPI 3.1 contract: `contracts/openapi.yaml`.
 

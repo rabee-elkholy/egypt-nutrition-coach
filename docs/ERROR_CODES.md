@@ -301,7 +301,6 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `WEBHOOK_SIGNATURE_INVALID` | `401` | No | `provider` | Store webhook signature or authorization token is invalid. |
 | `AD_HOC_EXERCISE_INVALID` | `400` | No | — | Ad-hoc exercise payload requires a valid catalog exerciseId and 1 to 15 performed sets. |
 | `INVALID_WORKOUT_UI_MODE` | `400` | No | — | workoutUiMode must be simple or pro. |
-| `FEATURE_DEFERRED_TO_AI_PHASE` | `501` | No | `feature` | This CuraFit Specialist Team feature is scheduled for an upcoming release. |
 | `MEDICAL_DIET_CONFLICT` | `400` | No | `dietType` | The selected diet pattern is contraindicated for your declared medical conditions, maternal status, or goal. |
 | `PROFILE_ALREADY_EXISTS` | `409` | No | — | An existing profile already exists on this account; pass overwriteExisting: true to replace it. |
 | `HEALTH_CONSENT_REQUIRED` | `403` | No | — | Active health_data_processing consent is required to generate plans or compute coaching reviews. |

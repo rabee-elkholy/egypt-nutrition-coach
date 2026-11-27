@@ -30,6 +30,7 @@ import {authenticateRequest,checkRateLimit} from './auth.mjs';
 import {refreshUserSession,logoutUserSession,revokeRefreshTokensForSession} from './native-auth.mjs';
 import {formatSuccessBody,formatErrorBody,createApiError,logEvent} from './logger.mjs';
 import {personalBrief} from '../personal-brief.mjs';
+import {evaluateProactiveSpecialistNote} from '../proactive-notes.mjs';
 import {localDate,dateOffset,integer,validDate,SUPPORTED_REGIONS,countryToRegion} from '../coaching-shared.mjs';
 
 const hasPushConfigured=env=>Boolean(env?.FCM_SERVICE_ACCOUNT_JSON||(env?.APNS_KEY_ID&&env?.APNS_TEAM_ID&&env?.APNS_PRIVATE_KEY&&env?.APNS_BUNDLE_ID));
@@ -870,13 +871,18 @@ export default {async fetch(request,env){
    if(url.pathname==='/v1/coaching/history')return json(paginateDateCollection(s.coachingCases||[],url),200,{},reqId);
    if(url.pathname==='/v1/coaching/brief'){
     const snapshot=present(s),notes=s.profile?personalBrief(snapshot,currDate):[];
-    const briefEtag=`W/"brief-${await sha256Hex(JSON.stringify([user,s.revision,currDate,notes]))}"`;
+    const recentPrs=s.profile&&s.onboarding?.serviceTrack!=='nutrition_only'?computeWorkoutPrs(s,{since:dateOffset(currDate,-1)}).items:[];
+    const proactiveRaw=s.profile?evaluateProactiveSpecialistNote(snapshot,currDate,clockNow(),{recentPrs}):null;
+    const briefEtag=`W/"brief-${await sha256Hex(JSON.stringify([user,s.revision,currDate,notes,proactiveRaw]))}"`;
     if(request.headers.get('If-None-Match')===briefEtag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:briefEtag,'X-Request-Id':reqId}});
-    const items=await Promise.all(notes.map(async note=>{
-     const id=await sha256Hex(JSON.stringify([user,currDate,note.role]));
+    const enrichNote=async(note,isProactive=false)=>{
+     const idKey=isProactive?[user,currDate,'proactive',note.key]:[user,currDate,note.role];
+     const id=await sha256Hex(JSON.stringify(idKey));
      return {...note,id:'brief-'+id,basedOnRevision:s.revision,relatedPlanId:note.role==='nutrition'?s.active_plan_id||null:note.role==='training'?s.workoutPlan?.id||null:null,status:'GENERATED',deliveryStatus:'NOT_MEASURED',renderingStatus:'NOT_MEASURED'};
-    }));
-    return json({apiVersion:'1',viewKind:'on_demand_coaching_brief',date:currDate,timezone:tz,revision:s.revision,generatedAt:snapshot.serverNow,requiresOnboarding:!s.profile,notes:items,requestId:reqId},200,{ETag:briefEtag},reqId);
+    };
+    const items=await Promise.all(notes.map(n=>enrichNote(n,false)));
+    const proactiveMicroNote=proactiveRaw?await enrichNote(proactiveRaw,true):null;
+    return json({apiVersion:'1',viewKind:'on_demand_coaching_brief',date:currDate,timezone:tz,revision:s.revision,generatedAt:snapshot.serverNow,requiresOnboarding:!s.profile,proactiveMicroNote,notes:items,requestId:reqId},200,{ETag:briefEtag},reqId);
    }
    if(url.pathname==='/v1/food-diary'){
     const from=url.searchParams.get('from');
@@ -1126,6 +1132,9 @@ export default {async fetch(request,env){
   await saveAccount(env.DB,user,next,s.revision,{key,digest:intentDigest,action:body.action,payload:body.payload,previousState:s});
   if(body.action==='profile_update'&&body.payload?.name!==undefined&&next.profile?.name){
    await env.DB.prepare('UPDATE coaching_users SET display_name=?, updated_at=? WHERE user_id=?').bind(next.profile.name,isoNow(),user).run().catch(()=>{});
+  }
+  if(['timezone','generate','profile_update'].includes(body.action)&&next.profile?.timezone){
+   await env.DB.prepare('UPDATE coaching_push_tokens SET timezone=?, locale=COALESCE(?,locale), updated_at=? WHERE user_id=?').bind(next.profile.timezone,next.profile.locale||null,isoNow(),user).run().catch(()=>{});
   }
   const badgeEval=await syncAndEvaluateBadges(env.DB,next,user,clockNow()).catch(()=>({newlyUnlockedBadges:[]}));
 

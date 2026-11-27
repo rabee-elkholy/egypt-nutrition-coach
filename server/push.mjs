@@ -5,9 +5,12 @@
 
 import { fetchWithTimeout, getGoogleServiceAccountToken, signEs256Jwt } from './external-crypto.mjs';
 import { createApiError, logEvent } from './logger.mjs';
-import { isoNow } from './clock.mjs';
-import { localTimeParts, validTimeZone, normalizeLocale } from '../coaching-shared.mjs';
+import { isoNow, clockNow } from './clock.mjs';
+import { localTimeParts, validTimeZone, normalizeLocale, dateOffset } from '../coaching-shared.mjs';
 import { computeStreakAndEngagement } from './progress-analytics.mjs';
+import { getFastingState } from './nutrition-tools.mjs';
+import { computeWorkoutPrs } from './workouts-insights.mjs';
+import { evaluateProactiveSpecialistNote, localizedSwapNamesAr } from '../proactive-notes.mjs';
 
 const PUSH_FETCH_TIMEOUT_MS = 6000;
 
@@ -38,7 +41,7 @@ export function isTimeInSpan(hhmm, start, end) {
   return cur >= s || cur < e;
 }
 
-export function isFastingFoodHydrationSuppressed(account, hhmm, today) {
+export function isFastingFoodHydrationSuppressed(account, hhmm, today, nowMs = clockNow()) {
   if (!account || !hhmm) return false;
   const ramadanActive = Boolean(
     account.ramadanMode?.enabled &&
@@ -50,7 +53,7 @@ export function isFastingFoodHydrationSuppressed(account, hhmm, today) {
     // Suppress food & hydration reminders throughout Ramadan daylight fasting hours
     if (isTimeInSpan(hhmm, suhoor, iftar)) return true;
   }
-  const fs = account.fastingState || {};
+  const fs = account.profile ? getFastingState(account, nowMs) : (account.fastingState || {});
   if (fs.phase === 'fasting') return true;
   const isIf = account.preferences?.diet === 'intermittent_fasting' || (typeof fs.mode === 'string' && fs.mode.startsWith('if_'));
   if (isIf && fs.windowStart && fs.windowEnd && !isTimeInSpan(hhmm, fs.windowStart, fs.windowEnd)) {
@@ -185,6 +188,46 @@ export function formatPushNotification(trigger, { locale = 'en', userName = '', 
         body: senderFirstName
           ? `${arGreeting}أرسل لك ${senderFirstName} تحية تشجيع في تحدي CuraFit!`
           : `${arGreeting}أرسل لك صديقك تحية تشجيع في تحدي CuraFit!`
+      }
+    },
+    proactive_pr_celebration: {
+      en: {
+        title: 'New Training Milestone!',
+        body: `${enGreeting}your strength captain celebrated your new ${params?.exerciseName || 'exercise'} personal record. Tap to see your next target.`
+      },
+      ar: {
+        title: 'إنجاز تدريبي جديد!',
+        body: `${arGreeting}كابتن التدريب يهنئك برقم قياسي جديد في ${params?.exerciseName || 'التمرين'}. افتح التطبيق لمعرفة هدفك القادم.`
+      }
+    },
+    proactive_sleep_recovery: {
+      en: {
+        title: 'CuraFit Specialist Team Recovery Note',
+        body: `${enGreeting}after 3 short nights of sleep, your follow-up specialist suggests a calm Readiness Check-In and steady pacing today.`
+      },
+      ar: {
+        title: 'ملاحظة تعافٍ من فريق مختصي CuraFit',
+        body: `${arGreeting}بعد 3 ليالٍ من قلة النوم، يقترح أخصائي المتابعة تسجيل جهوزيتك اليوم وتخفيف الضغط التدريبي بهدوء.`
+      }
+    },
+    proactive_protein_swaps: {
+      en: {
+        title: 'Protein Target Support Note',
+        body: `${enGreeting}your nutrition specialist picked 2 regional protein swaps (${Array.isArray(params?.swapNamesEn) && params.swapNamesEn.length ? params.swapNamesEn.join(' / ') : 'inside your plan'}) to help anchor today's protein.`
+      },
+      ar: {
+        title: 'دعم سريع لهدف البروتين',
+        body: `${arGreeting}أخصائي التغذية جهّز لك بديلين مناسبين لميزانيتك (${(() => { const arNames = localizedSwapNamesAr(params?.swapKeys); return arNames.length ? arNames.join(' / ') : (Array.isArray(params?.swapNamesAr) && params.swapNamesAr.length ? params.swapNamesAr.join(' / ') : 'داخل خطتك'); })()}) لتقريبك من هدف البروتين اليوم.`
+      }
+    },
+    proactive_lifecycle_adjusted: {
+      en: {
+        title: 'Plan Calibrated for Today',
+        body: `${enGreeting}your CuraFit specialists updated today's plan and pacing to support your current wellness phase.`
+      },
+      ar: {
+        title: 'تم تحديث خطتك لليوم',
+        body: `${arGreeting}فريق مختصي CuraFit حدّث خطتك وتوزيع يومك ليناسب مرحلتك الحالية بكل هدوء.`
       }
     }
   };
@@ -380,23 +423,26 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
     checked += rows.length;
 
     for (const row of rows) {
-      const tz = row.timezone || 'Africa/Cairo';
+      try {
+      let account = null;
+      try { account = row.body ? JSON.parse(row.body) : null; } catch {}
+      const profileTz = account?.profile?.timezone;
+      const tz = (row.timezone && validTimeZone(row.timezone)) ? row.timezone : ((profileTz && validTimeZone(profileTz)) ? profileTz : 'Africa/Cairo');
       const parts = localTimeParts(nowMs, tz);
       const hhmm = parts.time.slice(0, 5);
       const today = parts.date;
       row._localDate = today;
-      let account = null;
-      try { account = row.body ? JSON.parse(row.body) : null; } catch {}
       const prefs = account?.notificationPreferences || {};
       const channels = Array.isArray(prefs.channels) ? prefs.channels : ['in_app', 'push'];
       const pushAllowed = channels.includes('push') || !prefs.channels || prefs.channelsConfigured !== true;
       if (!pushAllowed) continue;
 
       const quiet = isWithinQuietHours(hhmm, prefs.quietHoursStart || '22:00', prefs.quietHoursEnd || '08:00');
-      const fastingSuppressed = isFastingFoodHydrationSuppressed(account, hhmm, today);
+      const fastingSuppressed = isFastingFoodHydrationSuppressed(account, hhmm, today, nowMs);
       const hour = Number(hhmm.slice(0, 2));
       const nowMins = hhmmToMinutes(hhmm);
       const triggers = [];
+      const track = account?.onboarding?.serviceTrack || 'nutrition_and_workouts';
       const ramadanActive = Boolean(
         account?.ramadanMode?.enabled &&
         !(account.ramadanMode.endDate && today > account.ramadanMode.endDate)
@@ -419,8 +465,8 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
         // 2. Daily readiness check-in reminder at 09:00 local
         if (!coachingPaused && hour === 9 && prefs.dailyReminder !== false) triggers.push({ trigger: 'daily_checkin_reminder' });
 
-        // 3. Pre-workout reminder (default 30 min before scheduled workout time)
-        if (!coachingPaused && prefs.workoutReminder !== false && hasWorkoutScheduledToday(account, today)) {
+        // 3. Pre-workout reminder (default 30 min before scheduled workout time; skipped for nutrition_only)
+        if (!coachingPaused && track !== 'nutrition_only' && prefs.workoutReminder !== false && hasWorkoutScheduledToday(account, today)) {
           const minsBefore = Number(prefs.preferredWorkoutReminderMinutesBefore || 30);
           const workoutHhmm = resolveScheduledWorkoutTimeHhmm(account, today);
           const workoutMins = hhmmToMinutes(workoutHhmm);
@@ -441,7 +487,7 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
 
         // 4. Optional meal & hydration reminders — strictly suppressed during active IF fasting or Ramadan daylight hours
         if (!coachingPaused && !fastingSuppressed) {
-          if (prefs.mealReminders === true && (hour === 13 || hour === 19)) {
+          if (track !== 'workouts_only' && prefs.mealReminders === true && (hour === 13 || hour === 19)) {
             const mWin = `${today}:${hour}`;
             if (!(await alreadyNoticed(env.DB, row.user_id, 'push_notice_meal', mWin))) {
               triggers.push({ trigger: 'meal_reminder', dedupe: ['push_notice_meal', mWin] });
@@ -495,10 +541,32 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
             }
           }
         }
+        // 8b. Proactive Milestone Specialist Micro-Notes (4 triggers, strictly Max 1/day per user)
+        if (!coachingPaused && hour === 14 && prefs.specialistNotesReminder !== false && account?.profile) {
+          if (!(await alreadyNoticed(env.DB, row.user_id, 'push_notice_proactive_specialist', today))) {
+            const recentPrs = track === 'nutrition_only' ? [] : computeWorkoutPrs(account, { since: dateOffset(today, -1) }).items;
+            const proactiveNote = evaluateProactiveSpecialistNote(account, today, nowMs, {
+              recentPrs,
+              allowFoodSwaps: !fastingSuppressed
+            });
+            if (proactiveNote) {
+              // Zero PII on OS lock screen for lifecycle note (never expose cycle/pregnancy terms on lock screen)
+              const safeParams = proactiveNote.trigger === 'proactive_lifecycle_adjusted'
+                ? { code: proactiveNote.code, deepLink: 'curafit://today' }
+                : { ...(proactiveNote.params || {}), code: proactiveNote.code, deepLink: 'curafit://today' };
+              triggers.push({
+                trigger: proactiveNote.trigger,
+                extraParams: safeParams,
+                dedupe: ['push_notice_proactive_specialist', today]
+              });
+            }
+          }
+        }
         // 9. Evening Streak Saver (20:30 local or 60 min before Quiet Hours, only when streak >= 2 and today not yet qualified)
         if (!coachingPaused && prefs.streakSaverReminder !== false && account?.profile) {
           const quietStartMins = hhmmToMinutes(prefs.quietHoursStart || '22:00') ?? (22 * 60);
-          const targetSaverMins = Math.min(20 * 60 + 30, ((quietStartMins - 60) + 1440) % 1440);
+          const defaultSaverMins = 20 * 60 + 30;
+          const targetSaverMins = quietStartMins >= 18 * 60 ? Math.min(defaultSaverMins, quietStartMins - 60) : defaultSaverMins;
           const saverHour = Math.floor(targetSaverMins / 60);
           if (hour === saverHour) {
             const { streakSummary } = computeStreakAndEngagement(account, nowMs);
@@ -539,6 +607,9 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
         } catch (err) {
           logEvent('warn', 'push_notification_failed', { trigger: item.trigger, platform: row.platform, error: err?.message || 'push_error' });
         }
+      }
+      } catch (rowErr) {
+        logEvent('warn', 'push_row_processing_failed', { platform: row.platform, error: rowErr?.message || 'row_error' });
       }
     }
   }
