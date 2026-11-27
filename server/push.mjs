@@ -65,6 +65,8 @@ export function formatPushNotification(trigger, { locale = 'en', userName = '', 
   const arGreeting = firstName ? `${firstName}، ` : '';
   const enGreeting = firstName ? `${firstName}, ` : '';
   const minsBefore = Number(params?.minutesBefore || 30);
+  const senderFirstName = extractFirstName(params?.senderFirstName || params?.senderName || '');
+  const fastingActive = params?.fastingActive === true;
 
   const messages = {
     daily_checkin_reminder: {
@@ -155,6 +157,34 @@ export function formatPushNotification(trigger, { locale = 'en', userName = '', 
       ar: {
         title: 'تذكير السحور والماء قبل الإمساك',
         body: `${arGreeting}فريق مختصي CuraFit يذكّرك بتوزيع الماء والبروتين بهدوء قبل موعد الإمساك.`
+      }
+    },
+    streak_saver_evening: {
+      en: {
+        title: 'Keep Your Gentle Streak Alive',
+        body: fastingActive
+          ? `${enGreeting}a quick 10-second readiness check-in or calm mobility log keeps your gentle streak going tonight.`
+          : `${enGreeting}a quick check-in, meal, or water log tonight keeps your gentle streak moving smoothly without pressure.`
+      },
+      ar: {
+        title: 'حافظ على استمراريتك الهادئة',
+        body: fastingActive
+          ? `${arGreeting}تسجيل سريع لجهوزيتك أو متابعتك اليومية يحافظ على سلسلتك الهادئة الليلة دون أي ضغط.`
+          : `${arGreeting}تسجيل سريع لوجبة أو كوب ماء أو متابعتك اليومية يحافظ على سلسلتك الهادئة الليلة.`
+      }
+    },
+    friend_challenge_cheer: {
+      en: {
+        title: 'Challenge Cheer Received',
+        body: senderFirstName
+          ? `${enGreeting}${senderFirstName} sent you a cheer in your CuraFit challenge!`
+          : `${enGreeting}a friend sent you a cheer in your CuraFit challenge!`
+      },
+      ar: {
+        title: 'وصلك تشجيع في التحدي',
+        body: senderFirstName
+          ? `${arGreeting}أرسل لك ${senderFirstName} تحية تشجيع في تحدي CuraFit!`
+          : `${arGreeting}أرسل لك صديقك تحية تشجيع في تحدي CuraFit!`
       }
     }
   };
@@ -382,11 +412,15 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
       }
 
       if (!quiet) {
+        const coachingPaused = Boolean(
+          account?.coachingPause?.active &&
+          (!account.coachingPause.pauseUntil || today <= account.coachingPause.pauseUntil)
+        );
         // 2. Daily readiness check-in reminder at 09:00 local
-        if (hour === 9 && prefs.dailyReminder !== false) triggers.push({ trigger: 'daily_checkin_reminder' });
+        if (!coachingPaused && hour === 9 && prefs.dailyReminder !== false) triggers.push({ trigger: 'daily_checkin_reminder' });
 
         // 3. Pre-workout reminder (default 30 min before scheduled workout time)
-        if (prefs.workoutReminder !== false && hasWorkoutScheduledToday(account, today)) {
+        if (!coachingPaused && prefs.workoutReminder !== false && hasWorkoutScheduledToday(account, today)) {
           const minsBefore = Number(prefs.preferredWorkoutReminderMinutesBefore || 30);
           const workoutHhmm = resolveScheduledWorkoutTimeHhmm(account, today);
           const workoutMins = hhmmToMinutes(workoutHhmm);
@@ -406,7 +440,7 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
         }
 
         // 4. Optional meal & hydration reminders — strictly suppressed during active IF fasting or Ramadan daylight hours
-        if (!fastingSuppressed) {
+        if (!coachingPaused && !fastingSuppressed) {
           if (prefs.mealReminders === true && (hour === 13 || hour === 19)) {
             const mWin = `${today}:${hour}`;
             if (!(await alreadyNoticed(env.DB, row.user_id, 'push_notice_meal', mWin))) {
@@ -421,7 +455,7 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
         }
 
         // 5. Coaching case follow-up due today at 10:00 local (reads normalized coaching_cases table + fallback)
-        if (hour === 10) {
+        if (!coachingPaused && hour === 10) {
           let cases = Array.isArray(account?.coachingCases) ? account.coachingCases : [];
           if (!cases.length) {
             try {
@@ -435,12 +469,12 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
           }
         }
         // 6. Weekly check-in due at 10:00 local
-        if (hour === 10 && prefs.weeklyReviewReminder !== false && account?.profile) {
+        if (!coachingPaused && hour === 10 && prefs.weeklyReviewReminder !== false && account?.profile) {
           const { engagementState } = computeStreakAndEngagement(account, nowMs);
           if (engagementState.weeklyCheckinDue) triggers.push({ trigger: 'weekly_checkin_due' });
         }
         // 7. Expired nutrition plan renewal at 11:00 local (checks planRefs since plans[] is stripped in D1 body)
-        if (hour === 11 && account?.active_plan_id) {
+        if (!coachingPaused && hour === 11 && account?.active_plan_id) {
           const activePlan = (account.plans || []).find(p => p.id === account.active_plan_id);
           const activeRef = (account.planRefs || []).find(p => p.id === account.active_plan_id);
           const endDate = activePlan?.days?.at(-1)?.date || activeRef?.end_date;
@@ -458,6 +492,28 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
             const win = String(row.trial_expires_at);
             if (!(await alreadyNoticed(env.DB, row.user_id, 'push_notice_trial_day5', win))) {
               triggers.push({ trigger: 'trial_ending_day5', dedupe: ['push_notice_trial_day5', win] });
+            }
+          }
+        }
+        // 9. Evening Streak Saver (20:30 local or 60 min before Quiet Hours, only when streak >= 2 and today not yet qualified)
+        if (!coachingPaused && prefs.streakSaverReminder !== false && account?.profile) {
+          const quietStartMins = hhmmToMinutes(prefs.quietHoursStart || '22:00') ?? (22 * 60);
+          const targetSaverMins = Math.min(20 * 60 + 30, ((quietStartMins - 60) + 1440) % 1440);
+          const saverHour = Math.floor(targetSaverMins / 60);
+          if (hour === saverHour) {
+            const { streakSummary } = computeStreakAndEngagement(account, nowMs);
+            if (!streakSummary.todayQualified && streakSummary.currentDays >= 2) {
+              if (!(await alreadyNoticed(env.DB, row.user_id, 'push_notice_streak_saver', today))) {
+                triggers.push({
+                  trigger: 'streak_saver_evening',
+                  extraParams: {
+                    fastingActive: fastingSuppressed,
+                    streakDays: streakSummary.currentDays,
+                    deepLink: 'curafit://today'
+                  },
+                  dedupe: ['push_notice_streak_saver', today]
+                });
+              }
             }
           }
         }
@@ -487,4 +543,81 @@ export async function runScheduledNotifications(env, nowMs = Date.now()) {
     }
   }
   return { checked, queued, delivered, pruned };
+}
+
+export async function sendFriendChallengeCheerPush(
+  env,
+  targetUserId,
+  { senderFirstName = '', challengeId = null, reactionCode = 'cheer', deepLink = null } = {},
+  nowMs = Date.now()
+) {
+  if (!env?.DB || !targetUserId) return { queued: 0, delivered: 0, suppressed: true };
+  let rows = [];
+  try {
+    const res = await env.DB.prepare(
+      `SELECT t.user_id, t.device_id, t.platform, t.push_token, t.locale, t.timezone, a.body
+       FROM coaching_push_tokens t
+       LEFT JOIN coaching_accounts a ON a.user_id = t.user_id
+       WHERE t.user_id = ?`
+    ).bind(targetUserId).all();
+    rows = res?.results || [];
+  } catch {
+    return { queued: 0, delivered: 0, suppressed: true };
+  }
+  if (!rows.length) return { queued: 0, delivered: 0, suppressed: false };
+
+  const authCache = {};
+  let queued = 0;
+  let delivered = 0;
+  let suppressed = false;
+
+  for (const row of rows) {
+    const tz = row.timezone || 'Africa/Cairo';
+    const parts = localTimeParts(nowMs, tz);
+    const hhmm = parts.time.slice(0, 5);
+    const today = parts.date;
+    row._localDate = today;
+    let account = null;
+    try { account = row.body ? JSON.parse(row.body) : null; } catch {}
+    const prefs = account?.notificationPreferences || {};
+    const channels = Array.isArray(prefs.channels) ? prefs.channels : ['in_app', 'push'];
+    const pushAllowed = channels.includes('push') || !prefs.channels || prefs.channelsConfigured !== true;
+    if (!pushAllowed || prefs.challengeNotifications === false) {
+      suppressed = true;
+      continue;
+    }
+    const quiet = isWithinQuietHours(hhmm, prefs.quietHoursStart || '22:00', prefs.quietHoursEnd || '08:00');
+    const ramadanActive = Boolean(
+      account?.ramadanMode?.enabled &&
+      !(account.ramadanMode.endDate && today > account.ramadanMode.endDate)
+    );
+    const ramadanDaylight = ramadanActive && isTimeInSpan(hhmm, account.ramadanMode.suhoorCutoffTime || '04:20', account.ramadanMode.iftarTime || '18:05');
+    if (quiet || ramadanDaylight) {
+      suppressed = true;
+      continue;
+    }
+    queued++;
+    try {
+      const res = await sendPushMessage(
+        row,
+        'friend_challenge_cheer',
+        env,
+        authCache,
+        {
+          senderFirstName: extractFirstName(senderFirstName),
+          reactionCode: String(reactionCode || 'cheer').slice(0, 40),
+          ...(challengeId ? { challengeId } : {}),
+          deepLink: deepLink || (challengeId ? `curafit://challenges/friends/${challengeId}` : 'curafit://challenges')
+        },
+        account
+      );
+      if (res.delivered) delivered++;
+      if (res.pruneToken) {
+        await env.DB.prepare('DELETE FROM coaching_push_tokens WHERE user_id=? AND device_id=?').bind(row.user_id, row.device_id).run();
+      }
+    } catch (err) {
+      logEvent('warn', 'push_notification_failed', { trigger: 'friend_challenge_cheer', platform: row.platform, error: err?.message || 'push_error' });
+    }
+  }
+  return { queued, delivered, suppressed };
 }

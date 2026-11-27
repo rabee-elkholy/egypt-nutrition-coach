@@ -16,6 +16,8 @@ import {volumeReview} from './training-review.mjs';
 import {nutritionEvidenceKey,matchingNutritionDecline} from '../nutrition-decisions.mjs';
 import {localDate,dateOffset,dateForLog as validateLogDate,validDate,validTimeZone,number,integer,boolean,stringList,plainRecord,MUSCLE_REGIONS,SUPPORTED_LOCALES,normalizeLocale,SUPPORTED_WELLNESS_CONDITIONS,MATERNAL_STATUSES,needsHealthConfirmation,hasActiveParqRedFlag,needsScheduleConfirmation,normalizeWeekdayDraft,canonicalInjuries,SUPPORTED_WORKOUT_INJURIES,isPregnantStatus,minSafeEnergyFloor,computeAgeFromBirthDate,resolveProfileBirthDateAndAge,effectiveProfileWithLiveAge,hasConflictingDiabetesConditions,hasMultiConditionClinicalReview,assertNoConflictingDiabetes,resolveUnitSystemInput,resolveRegionInput,computeActiveProteinPillars,evaluateClinicalSafetyGate,buildCalibrationMetadata,buildSpecialistHighlights} from '../coaching-shared.mjs';
 import {saveCustomRecipe,deleteCustomRecipe,logCardioSession,deleteCardioSession,dailyCardioMinutes,updateCycleSettings,logCycleEntry,computeCycleState} from './wellness-tools.mjs';
+import {applyDiningOutLog,applyPostFeastRebalance} from './dining-out.mjs';
+import {applyOpenWorkoutSession} from './workouts-wave2.mjs';
 import {apiError} from '../coaching-error.mjs';
 
 const userTz=s=>s?.profile?.timezone||clockTimeZone()||'Africa/Cairo';
@@ -34,17 +36,19 @@ export const empty=()=>({
  adaptations:[],history:[],coachingCases:[],coachingFeedback:[],
  foodFavorites:[],groceryChecks:{},fastingState:{mode:'off',phase:'eating',windowStart:'12:00',windowEnd:'20:00',startedAt:null,targetEndAt:null,streakDays:0},
  ramadanMode:{enabled:false,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false,endDate:null},
- bodyMeasurements:[],streakFreezes:[],
- notificationPreferences:{dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,mealReminders:false,fastingReminder:false,ramadanSuhoorReminder:false,exemptSuhoorFromQuietHours:false,preferredWorkoutReminderMinutesBefore:30,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app']},
+ bodyMeasurements:[],streakFreezes:[],flexEvents:[],openWorkoutSessions:[],todayWorkoutOverrides:{},coachingPause:null,
+ notificationPreferences:{dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,mealReminders:false,fastingReminder:false,ramadanSuhoorReminder:false,exemptSuhoorFromQuietHours:false,streakSaverReminder:true,challengeNotifications:true,preferredWorkoutReminderMinutesBefore:30,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app']},
  entitlements:{tier:'free',status:'none',features:[...DEFAULT_FREE_FEATURES],updatedAt:null}
 });
 const clean=a=>a==null?[]:stringList(a,'selections').filter(x=>x!=='none');
 export function normalize(s){
- for(const key of ['workoutPlanRefs','planRefs','foodEntries','waterLogs','weights','activityLogs','workoutLogs','sessions','foodLogs','checkins','adaptations','history','coachingCases','coachingFeedback','foodFavorites','bodyMeasurements','streakFreezes'])s[key]||=[];
+ for(const key of ['workoutPlanRefs','planRefs','foodEntries','waterLogs','weights','activityLogs','workoutLogs','sessions','foodLogs','checkins','adaptations','history','coachingCases','coachingFeedback','foodFavorites','bodyMeasurements','streakFreezes','flexEvents','openWorkoutSessions'])s[key]||=[];
  s.groceryChecks||={};
+ s.todayWorkoutOverrides||={};
+ if(s.coachingPause===undefined)s.coachingPause=null;
  s.fastingState||={mode:'off',phase:'eating',windowStart:'12:00',windowEnd:'20:00',startedAt:null,targetEndAt:null,streakDays:0};
  s.ramadanMode||={enabled:false,iftarTime:'18:05',suhoorCutoffTime:'04:20',workoutTiming:'post_iftar',medicalClearanceAcknowledged:false,endDate:null};
- s.notificationPreferences={dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,mealReminders:false,fastingReminder:false,ramadanSuhoorReminder:false,exemptSuhoorFromQuietHours:false,preferredWorkoutReminderMinutesBefore:30,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app'],...(s.notificationPreferences||{})};
+ s.notificationPreferences={dailyReminder:true,workoutReminder:true,waterReminder:true,weeklyReviewReminder:true,mealReminders:false,fastingReminder:false,ramadanSuhoorReminder:false,exemptSuhoorFromQuietHours:false,streakSaverReminder:true,challengeNotifications:true,preferredWorkoutReminderMinutesBefore:30,quietHoursStart:'22:00',quietHoursEnd:'08:00',channels:['in_app'],...(s.notificationPreferences||{})};
  s.entitlements||={tier:'free',status:'none',features:[...DEFAULT_FREE_FEATURES],updatedAt:null};
  s.schemaVersion=3;
  let reopened=false;
@@ -243,6 +247,7 @@ function buildNutritionPrefs(d,declaredDiseases,region,unitSystem='metric'){
   eatingStart,
   carbCycling:d.carbCycling===true,
   batchPrepMode:d.batchPrepMode===true,
+  dashboardDensity:['simple','pro'].includes(d.dashboardDensity)?d.dashboardDensity:'simple',
   region,
   region_id:region,
   unitSystem,
@@ -868,7 +873,7 @@ export function command(input,action,p){
  const tz=userTz(s),currDate=userToday(s);
  if(settingsActions.has(action)){const result=applySettingsCommand(s,action,p);s.lastReview=null;if(['steps','activity'].includes(action)&&p?.preservePending!==true)discardPending(s);return result;}
  if(action!=='review')s.lastReview=null;
- if(!['review','adaptation','timezone','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze'].includes(action))discardPending(s);
+ if(!['review','adaptation','timezone','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze','post_feast_rebalance','open_workout_session'].includes(action))discardPending(s);
  if(action==='confirm_schedule'){
   if(!needsScheduleConfirmation(s))throw apiError('SCHEDULE_ALREADY_CONFIRMED','Workout schedule weekday convention has already been confirmed.',{status:400});
   const map=plainRecord(p.dayMap,'dayMap'),before=s.workoutPlan;
@@ -1061,6 +1066,17 @@ export function command(input,action,p){
    s.profile.batchPrepMode=bp;
    if(s.preferences)s.preferences.batchPrepMode=bp;
   }
+  if(p.dashboardDensity!==undefined){
+   if(!['simple','pro'].includes(p.dashboardDensity))throw apiError('VALIDATION_ERROR','dashboardDensity must be simple or pro.',{status:400});
+   s.profile.dashboardDensity=p.dashboardDensity;
+   if(s.preferences)s.preferences.dashboardDensity=p.dashboardDensity;
+  }
+ }else if(action==='dining_out_log'){
+  applyDiningOutLog(s,p);
+ }else if(action==='post_feast_rebalance'){
+  applyPostFeastRebalance(s,p);
+ }else if(action==='open_workout_session'){
+  applyOpenWorkoutSession(s,p,clockNow());
  }else if(action==='comeback_restart'){
   const modeToTier=p.mode==='7d_ramp'?'detrained_14d_plus':p.mode==='24h_deload'?'medium_7_13d':null;
   const tier=p.tier||modeToTier||'medium_7_13d';

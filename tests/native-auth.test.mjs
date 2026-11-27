@@ -384,24 +384,56 @@ test('Google & Apple OIDC Authentication, D1 Sessions & Postman Collection Verif
       assert.notEqual(reReg.user.userId, reg.user.userId);
     });
 
-    await t.test('Postman collection & environments are valid v2.1, cover 100% of OpenAPI routes & 50 command actions, and execute live', async () => {
+    await t.test('OpenAPI 3.1 canonical source of truth covers all Wave 1 & Wave 2 routes and 53 command actions, and core payloads execute live', async () => {
       const col = JSON.parse(await readFile('postman/CuraFit_API.postman_collection.json', 'utf8'));
       const cloudDevEnv = JSON.parse(await readFile('postman/CuraFit_Cloud_Dev.postman_environment.json', 'utf8'));
       const prodEnv = JSON.parse(await readFile('postman/CuraFit_Production.postman_environment.json', 'utf8'));
       const localEnv = JSON.parse(await readFile('postman/CuraFit_Local_Dev.postman_environment.json', 'utf8'));
       const spec = parseYaml(await readFile('contracts/openapi.yaml', 'utf8'));
 
+      // Canonical OpenAPI 3.1.0 servers & Wave 2 route/action coverage (Postman is retired; OpenAPI is source of truth)
+      assert.equal(spec.openapi, '3.1.0');
+      const serverUrls = (spec.servers || []).map(s => s.url);
+      assert.ok(serverUrls.includes('https://curafit-api-dev.egypt-nutrition-coach.workers.dev'), 'OpenAPI must declare Cloud Dev server URL');
+      assert.ok(serverUrls.includes('https://curafit-api.egypt-nutrition-coach.workers.dev'), 'OpenAPI must declare Production server URL');
+      assert.ok(serverUrls.includes('http://127.0.0.1:8787'), 'OpenAPI must declare Local Dev server URL');
+      for (const wave2Path of [
+        '/v1/nutrition/meal-parse',
+        '/v1/nutrition/dining-out-options',
+        '/v1/nutrition/dining-out-log',
+        '/v1/coaching/consultation',
+        '/v1/coaching/consultation/history',
+        '/v1/progress/pro-impact',
+        '/v1/subscriptions/retention-intent',
+        '/v1/account/clinical-summary',
+        '/v1/badges',
+        '/v1/badges/ack',
+        '/v1/challenges/public',
+        '/v1/challenges/friends',
+        '/v1/circles',
+        '/v1/referrals/code',
+        '/v1/referrals/redeem',
+        '/v1/workouts/session-override-today',
+        '/v1/workouts/muscle-status',
+        '/v1/progress/photos/analyze-diff',
+        '/v1/progress/photos/analyses'
+      ]) {
+        assert.ok(Object.hasOwn(spec.paths, wave2Path), `OpenAPI missing Wave 2 path: ${wave2Path}`);
+      }
+      const expectedActions = spec.components.schemas.CommandRequest.properties.action.enum;
+      assert.ok(expectedActions.length >= 53, `Expected >= 53 OpenAPI command actions, got ${expectedActions.length}`);
+      for (const act of ['dining_out_log', 'post_feast_rebalance', 'open_workout_session']) {
+        assert.ok(expectedActions.includes(act), `OpenAPI missing Wave 2 command action: ${act}`);
+      }
+
       assert.equal(col.info.schema, 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json');
-      assert.ok(col.info.description.includes('https://curafit-api-dev.egypt-nutrition-coach.workers.dev'), 'Collection overview must document Cloud Dev URL');
-      assert.ok(col.info.description.includes('https://curafit-api.egypt-nutrition-coach.workers.dev'), 'Collection overview must document Production URL');
-      assert.ok(col.info.description.includes('http://127.0.0.1:8787'), 'Collection overview must document Local Dev URL');
       assert.equal(cloudDevEnv.values.find(v => v.key === 'baseUrl').value, 'https://curafit-api-dev.egypt-nutrition-coach.workers.dev');
       assert.equal(prodEnv.values.find(v => v.key === 'baseUrl').value, 'https://curafit-api.egypt-nutrition-coach.workers.dev');
       assert.equal(localEnv.values.find(v => v.key === 'baseUrl').value, 'http://127.0.0.1:8787');
 
       for (const bag of [col.variable, cloudDevEnv.values, prodEnv.values, localEnv.values]) {
         for (const removedVar of ['testEmail', 'testPassword', 'testNewPassword']) {
-          assert.equal(bag.some(v => v.key === removedVar), false, `Removed variable ${removedVar} must not remain in Postman collection/environments`);
+          assert.equal(bag.some(v => v.key === removedVar), false, `Removed variable ${removedVar} must not remain in legacy environment files`);
         }
       }
 
@@ -409,11 +441,8 @@ test('Google & Apple OIDC Authentication, D1 Sessions & Postman Collection Verif
       assert.ok(apiRefMd.includes('https://curafit-api-dev.egypt-nutrition-coach.workers.dev'), 'docs/API_REFERENCE.md must include Cloud Dev URL');
       assert.ok(apiRefMd.includes('https://curafit-api.egypt-nutrition-coach.workers.dev'), 'docs/API_REFERENCE.md must include Production URL');
       assert.ok(apiRefMd.includes('http://127.0.0.1:8787'), 'docs/API_REFERENCE.md must include Local Dev URL');
-      for (const folder of col.item) {
-        assert.ok(apiRefMd.includes(`## ${folder.name}`), `docs/API_REFERENCE.md missing folder heading: ${folder.name}`);
-      }
 
-      // Flatten all requests from folders
+      // Flatten legacy smoke fixtures for live Worker execution
       const requests = [];
       const walk = items => {
         for (const it of items || []) {
@@ -422,60 +451,13 @@ test('Google & Apple OIDC Authentication, D1 Sessions & Postman Collection Verif
         }
       };
       walk(col.item);
-      assert.equal(requests.length, 140, `Expected 140 requests in Postman collection, got ${requests.length}`);
-
-      for (const r of requests) {
-        const desc = r.request.description || '';
-        assert.ok(desc.includes('### Endpoint Info'), `Missing Endpoint Info docs on "${r.name}"`);
-        assert.ok(desc.includes('Cloud Dev URL:'), `Missing Cloud Dev URL docs on "${r.name}"`);
-        assert.ok(desc.includes('Production URL:'), `Missing Production URL docs on "${r.name}"`);
-        assert.ok(desc.includes('Local Dev URL:'), `Missing Local Dev URL docs on "${r.name}"`);
-        if (['POST', 'DELETE'].includes(r.request.method) && r.request.body?.raw) {
-          assert.ok(desc.includes('### Request Body Fields'), `Missing Request Body Fields docs on "${r.name}"`);
-        }
-      }
 
       // No unreplaced template placeholders
       const rawJson = JSON.stringify(col);
       assert.ok(!rawJson.includes('__REV__'), 'Unreplaced __REV__ placeholder');
       assert.ok(!rawJson.includes('__DAY_IDX__'), 'Unreplaced __DAY_IDX__ placeholder');
 
-      // Normalize Postman path -> OpenAPI path template to verify 100% route coverage
-      const postmanPaths = new Set();
-      const postmanActions = new Set();
-      for (const item of requests) {
-        const rawUrl = item.request.url.raw.replace('{{baseUrl}}', '').split('?')[0];
-        const normalized = rawUrl
-          .replace('/{{sampleFoodId}}', '/{id}')
-          .replace('/{{sampleCatalogExerciseId}}', '/{id}')
-          .replace('/{{activeWorkoutPlanId}}', '/{id}')
-          .replace('/{{activePlanId}}/grocery-list', '/{planId}/grocery-list')
-          .replace('/{{activePlanId}}/days/{{todayDate}}', '/{id}/days/{date}')
-          .replace('/{{activePlanId}}', '/{id}')
-          .replace('/{{sampleBarcode}}', '/{ean}')
-          .replace('/{{samplePhotoId}}', '/{photoId}')
-          .replace('/{{signedMediaToken}}', '/{token}')
-          .replace('/v1/auth/oauth/{{oauthProvider}}', '/v1/auth/oauth/{provider}');
-        postmanPaths.add(normalized);
-
-        if (rawUrl === '/v1/commands' && item.request.body?.raw) {
-          const sampleBody = item.request.body.raw
-            .replace(/\{\{revision\}\}|\{\{sampleDayIndex\}\}/g, '1')
-            .replace(/\{\{[^}]+\}\}/g, 'placeholder');
-          const parsed = JSON.parse(sampleBody);
-          postmanActions.add(parsed.action);
-        }
-      }
-
-      for (const openApiPath of Object.keys(spec.paths)) {
-        assert.ok(postmanPaths.has(openApiPath), `Postman collection is missing OpenAPI path: ${openApiPath}`);
-      }
-      const expectedActions = spec.components.schemas.CommandRequest.properties.action.enum;
-      for (const action of expectedActions) {
-        assert.ok(postmanActions.has(action), `Postman collection is missing command action: ${action}`);
-      }
-
-      // Live smoke execution of core Postman payloads against Cloudflare Worker
+      // Live smoke execution of core OIDC, Eligibility, Generate, Water, and Recipe payloads against Cloudflare Worker
       const findReq = name => requests.find(r => r.name === name);
       const vars = {
         deviceId: 'postman-smoke-1',

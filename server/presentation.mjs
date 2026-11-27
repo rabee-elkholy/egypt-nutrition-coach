@@ -104,16 +104,24 @@ export const presentBootstrap=(s,extras={})=>{
  const todayWater=(s.waterLogs||[]).find(w=>w.date===currDate);
  const latestWeight=(s.weights||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)).at(-1)||null;
  const todayActivity=selectPrimaryTodayActivity(s.activityLogs,currDate);
- const upcoming14=scheduledSessions(s,currDate,14);
- const todaySched=upcoming14.find(x=>x.date===currDate)||null;
+ const upcoming7=scheduledSessions(s,currDate,7);
+ const todaySched=upcoming7.find(x=>x.date===currDate)||null;
  const todaySess=(s.sessions||[]).find(x=>x.date===currDate)||null;
  const {streakSummary,engagementState}=computeStreakAndEngagement(s,clockNow());
  const inbox=coachingInbox(s,clockNow(),{pushConfigured:Boolean(extras.pushConfigured)});
  const unreadCoachingInboxCount=inbox.items.filter(c=>c.readStatus!=='ACKNOWLEDGED').length;
  const resolvedUnitSystem=liveProfile?.unitSystem||liveProfile?.unit_system||'metric';
  const resolvedRegion=s.preferences?.region||liveProfile?.region||liveProfile?.region_id||'egypt';
- const hydratedProfile=liveProfile?{...liveProfile,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem,region:resolvedRegion,region_id:resolvedRegion,...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
+ const hydratedProfile=liveProfile?{...liveProfile,serviceTrack:s.onboarding?.serviceTrack||null,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem,region:resolvedRegion,region_id:resolvedRegion,...(extras.signedAvatarUrl!==undefined?{avatarUrl:extras.signedAvatarUrl}:{})}:null;
  const fastingState=getFastingState(s,clockNow());
+ const {ramadanMode:fastingRamadanMode,seasonalContext:fastingSeasonalContext,...compactFastingState}=fastingState;
+ const cycleState=bootstrapCycleSummary(s,clockNow());
+ const dashboardDensity=s.preferences?.dashboardDensity||s.profile?.dashboardDensity||'simple';
+ const effectiveTargetKcal=fastingState.seasonalContext?.maintenanceTargetKcal??todayDiary.planEnergy;
+ const overBudgetByKcal=effectiveTargetKcal!=null?Math.max(0,Math.round(Number(todayDiary.totals.energy||0)-Number(effectiveTargetKcal))):0;
+ const flexDatesSet=new Set(Array.isArray(s.flexDates)?s.flexDates:[]);
+ const postFeastRecoveryAvailable=Boolean(effectiveTargetKcal!=null&&overBudgetByKcal>=400&&!flexDatesSet.has(currDate));
+ const eidFlexActive=fastingState.seasonalContext?.mode==='eid_flex';
  const hydrationBoostMl=wTarget.boostMl;
  const hydrationBoostReason=wTarget.boostReason;
  const weeklyHydrationTargets={};
@@ -166,14 +174,39 @@ export const presentBootstrap=(s,extras={})=>{
    workoutPrefs:s.onboarding.workoutPrefs||null
   }:null,
   profile:hydratedProfile,
-  preferences:s.preferences?{...s.preferences,region:resolvedRegion,region_id:resolvedRegion,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem}:null,
+  preferences:s.preferences?{...s.preferences,dashboardDensity,region:resolvedRegion,region_id:resolvedRegion,unitSystem:resolvedUnitSystem,unit_system:resolvedUnitSystem}:null,
   consents:extras.consents||[],
+  cycleState,
+  coachingPause:s.coachingPause||null,
+  todayWorkoutOverride:s.todayWorkoutOverrides?.[currDate]||null,
+  newlyUnlockedBadges:extras.newlyUnlockedBadges||[],
   eligibility:buildEligibilityStatusBlock(needsHealth,parqBlocked,needsSchedule),
   ...(calibrationMetadata?{calibrationMetadata}:{}),
   specialistHighlights,
-  activeNutritionPlanRef:plan?{id:plan.id,start_date:plan.start_date,end_date:plan.days.at(-1)?.date,effective_from:plan.effective_from,targets:plan.targets}:null,
-  activeWorkoutPlanRef:s.workoutPlan?{id:s.workoutPlan.id,version:s.workoutPlan.version,split:s.workoutPlan.split,daysCount:s.workoutPlan.days.length,weeklySets:s.workoutPlan.weeklySets,coverage:s.workoutPlan.coverage}:null,
-  scheduledSessions:upcoming14,
+  activeNutritionPlanRef:plan?{
+   id:plan.id,
+   start_date:plan.start_date,
+   end_date:plan.days.at(-1)?.date,
+   effective_from:plan.effective_from,
+   targets:plan.targets?{
+    energy:plan.targets.energy,
+    protein:plan.targets.protein,
+    carbs:plan.targets.carbs,
+    fat:plan.targets.fat,
+    ...(plan.targets.fiber!=null?{fiber:plan.targets.fiber}:{}),
+    ree:plan.targets.ree,
+    tdee:plan.targets.tdee,
+    bmi:plan.targets.bmi,
+    min_energy_floor:plan.targets.min_energy_floor,
+    energy_change:plan.targets.energy_change,
+    goal_pace:plan.targets.goal_pace,
+    senior_mode:plan.targets.senior_mode,
+    noteCodes:plan.targets.noteCodes||[],
+    ...(plan.targets.forecast?{forecast:plan.targets.forecast}:{})
+   }:null
+  }:null,
+  activeWorkoutPlanRef:s.workoutPlan?{id:s.workoutPlan.id,version:s.workoutPlan.version,split:s.workoutPlan.split,daysCount:s.workoutPlan.days.length,weeklySets:s.workoutPlan.weeklySets}:null,
+  scheduledSessions:upcoming7,
   todaySummary:{
    date:currDate,
    nutrition:{
@@ -189,16 +222,19 @@ export const presentBootstrap=(s,extras={})=>{
     targetFat:dayTargets?.fat??null,
     targetFiber:dayTargets?.fiber??(todayDiary.planEnergy?Math.max(25,Math.min(45,Math.round((todayDiary.planEnergy/1000)*14))):null),
     complete:todayDiary.complete,
-    entriesCount:todayDiary.entries.length
+    entriesCount:todayDiary.entries.length,
+    overBudgetByKcal,
+    postFeastRecoveryAvailable
    },
+   eidFlexActive,
    hydration:{cups:todayWater?.cups||0,liters:todayWater?.liters||0,targetCups:wTarget.targetCups,targetLiters:wTarget.liters,targetMl:wTarget.targetMl,boostMl:hydrationBoostMl,boostReason:hydrationBoostReason,clinicianGuided:wTarget.clinicianGuided,guidanceCodes:wTarget.guidanceCodes,region:resolvedRegion,region_id:resolvedRegion,bonuses:wTarget.bonuses,weeklyTargets:weeklyHydrationTargets},
    activity:todayActivity?{steps:todayActivity.steps,activeEnergyKcal:todayActivity.activeEnergyKcal,source:todayActivity.source,updatedAt:todayActivity.at||null}:null,
    cardio:todayCardioSummary(s,currDate),
    latestWeight,
-   fastingState,
-   ramadanMode:fastingState.ramadanMode,
-   seasonalContext:fastingState.seasonalContext,
-   cycleState:bootstrapCycleSummary(s,clockNow()),
+   fastingState:compactFastingState,
+   ramadanMode:fastingRamadanMode,
+   seasonalContext:fastingSeasonalContext,
+   cycleState,
    maternalContext,
    recovery:{status:safety.length?(ready.status==='stop'?'stop':'hold'):ready.status,reasonCode:safety.length&&ready.status!=='stop'?'WORKOUT_SAFETY_EXCLUSION_HOLD':ready.reasonCode,progressionAllowed:ready.progressionAllowed&&!parqBlocked&&!needsHealth&&!needsSchedule&&!safety.length},
    scheduledWorkout:todaySched?{...todaySched,status:todaySess?.status||'scheduled'}:null
@@ -214,7 +250,7 @@ export const presentBootstrap=(s,extras={})=>{
  };
 };
 
-export const presentReceipt=(s,action,payload={},replayed=false)=>{
+export const presentReceipt=(s,action,payload={},replayed=false,extras={})=>{
  const tz=s.profile?.timezone||'Africa/Cairo';
  const currDate=localDate(clockNow(),tz);
  const deltas=s._lastReceipt?.affected||deriveSyncDeltas(s,action,payload,isoNow());
@@ -237,6 +273,7 @@ export const presentReceipt=(s,action,payload={},replayed=false)=>{
   },
   ...(calibrationMetadata?{calibrationMetadata}:{}),
   ...(specialistHighlights?{specialistHighlights}:{}),
+  newlyUnlockedBadges:extras.newlyUnlockedBadges||[],
   affected:deltas
  };
 };

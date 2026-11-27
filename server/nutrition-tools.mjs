@@ -78,11 +78,15 @@ export function getPantryAlternatives(s, body = {}) {
 export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null, { preview = false } = {}) {
   const mode = daysScope === 'remaining' ? 'remaining' : (daysScope === '3' ? '3' : 'whole');
   const rawItems = groceryList(plan, mode, s.foodEntries || [], todayDate);
+  const batchPrepMode = Boolean(plan?.batchPrepMode || s?.preferences?.batchPrepMode || s?.profile?.batchPrepMode);
   const checks = s.groceryChecks || {};
   const buckets = new Map();
   let totalItemsCount = 0;
+  let batchConsolidatedCount = 0;
   for (const item of rawItems) {
     totalItemsCount++;
+    const isBatchPrep = batchPrepMode && (item.mealRefs?.length || 0) >= 2;
+    if (isBatchPrep) batchConsolidatedCount++;
     if (preview && totalItemsCount > 2) continue;
     const aisleKey = aisleForItem(item.ingredientKey);
     if (!buckets.has(aisleKey)) buckets.set(aisleKey, { ...AISLE_META[aisleKey], items: [] });
@@ -110,6 +114,8 @@ export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null,
       totalGrams,
       practicalQuantityLabel,
       checked: Boolean(checkRecord?.checked),
+      isBatchPrep,
+      batchMealCount: item.mealRefs?.length || 0,
       mealRefs: item.mealRefs || [],
       notes: item.notes
     });
@@ -117,6 +123,9 @@ export function getPlanGroceryList(s, plan, daysScope = 'all', todayDate = null,
   return {
     planId: plan.id,
     daysScope: daysScope === 'remaining' || daysScope === '3' || daysScope === '7' ? daysScope : 'all',
+    batchPrepMode,
+    batchConsolidatedCount,
+    batchPrepBlocks: plan?.batchPrepBlocks || [],
     preview: Boolean(preview),
     previewMode: Boolean(preview),
     totalItemsCount,

@@ -9,7 +9,7 @@ info:
     - **Authentication (Google & Apple OIDC Only + First-Party JWT/D1 Sessions):** Passwordless OIDC authentication ONLY via `POST /v1/auth/oauth/google` and `POST /v1/auth/oauth/apple`, issuing first-party HS256 JWT access tokens and rotating D1 refresh tokens managed via `POST /v1/auth/refresh`, `GET /v1/auth/session`, `POST /v1/auth/logout`, `POST /v1/auth/revoke`, `POST /v1/auth/claim-anonymous`, `GET /v1/auth/oauth/providers`, `POST /v1/auth/oauth/link`, and `DELETE /v1/auth/oauth/{provider}`. Mobile KMM clients send `Authorization: Bearer <JWT>`.
     - **Idempotency:** All `POST /v1/commands` writes require a unique `Idempotency-Key` header (UUID) and `revision` integer. Canonical JSON hashing excludes `revision` so timeout + rebase replay succeeds cleanly.
     - **Slim Responses:** Append `?view=receipt` or send `Prefer: return=minimal` on `POST /v1/commands` to receive a compact delta receipt inside `data`.
-    - **Deferred Final AI Phase:** AI routes (`POST /v1/nutrition/ai-parse`, `POST /v1/coaching/chat`, `GET /v1/coaching/chat/history`) are reserved for the final AI rollout phase and return `501 FEATURE_DEFERRED_TO_AI_PHASE`.
+    - **CuraFit Specialist Team Features (Day-1 Live):** Meal Capture (`POST /v1/nutrition/meal-parse`, alias `/v1/nutrition/ai-parse`), 3-Specialist Care Room (`POST /v1/coaching/consultation`, `GET /v1/coaching/consultation/history`, aliases `/v1/coaching/chat*`), Dining-Out Concierge, Value-Led Retention Suite, Unified 24-Badge Vault, Community & Friend Challenges, Private Accountability Circles, Referrals, Travel Workout Overrides, Muscle Heatmap, and Opt-In Visual Photo Difference Analysis are all live with clinical guardrails and Fair-Use ceilings (`429 FAIR_USE_LIMIT_REACHED`).
     - **Timezones & Dates:** Timestamps are `ISO-8601 UTC` (`YYYY-MM-DDTHH:mm:ss.sssZ`). Local calendar dates are `YYYY-MM-DD` evaluated in the user's configured IANA timezone (`Africa/Cairo`, `Asia/Riyadh`, `Asia/Dubai`, etc.).
   contact:
     name: CuraFit Platform Engineering
@@ -1853,39 +1853,783 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/nutrition/meal-parse:
+    post:
+      operationId: parseMealCapture
+      summary: Parse meal photo, Arabic/English dialect voice transcript, or text into catalog-grounded food items with clinical/allergen warnings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inputType: { type: string, enum: [text, voice, photo], default: text }
+                text: { type: string }
+                transcript: { type: string }
+                imageBase64: { type: string }
+                locale: { type: string }
+                region: { type: string }
+                slot: { type: string, enum: [breakfast, lunch, dinner, snack] }
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                inputType: { type: string, enum: [photo, voice, text] }
+                text: { type: string }
+                image: { type: string, format: binary }
+      responses:
+        "200":
+          description: Grounded meal capture items requiring user confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Free starter limit exhausted; Pro required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Food items could not be recognized (does not consume quota)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
   /v1/nutrition/ai-parse:
     post:
-      operationId: aiParseMealDeferred
-      summary: Deferred to Final AI Phase (returns 501 FEATURE_DEFERRED_TO_AI_PHASE)
+      operationId: parseMealCaptureAlias
+      summary: Backward-compatible alias for POST /v1/nutrition/meal-parse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+          multipart/form-data:
+            schema:
+              type: object
       responses:
-        "501":
-          description: Feature deferred to final AI phase
+        "200":
+          description: Grounded meal capture items requiring user confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "422":
+          description: Food items could not be recognized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/nutrition/dining-out-options:
+    get:
+      operationId: getDiningOutOptions
+      summary: Curated clinically safe dining-out meal options matched to remaining daily calories and protein
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+        - name: category
+          in: query
+          schema: { type: string, enum: [grill, shawarma, cafe, pizza, seafood, family_feast], default: grill }
+      responses:
+        "200":
+          description: Ranked safe restaurant options with ordering tips and hydration pacing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/nutrition/dining-out-log:
+    post:
+      operationId: logDiningOutOption
+      summary: Log a selected dining-out option and optionally rebalance remaining meals of the day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [optionId]
+              properties:
+                optionId: { type: string }
+                date: { type: string, format: date }
+                slot: { type: string, enum: [breakfast, lunch, dinner, snack] }
+                portionMultiplier: { type: number, minimum: 0.25, maximum: 3 }
+                rebalanceRestOfDay: { type: boolean }
+      responses:
+        "201":
+          description: Dining-out meal logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Pro required for rest-of-day rebalance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/coaching/consultation:
+    post:
+      operationId: consultSpecialistTeam
+      summary: 3-Specialist Interactive Care Room (Nutrition Specialist, Training Captain, Follow-Up Specialist) grounded in live D1 logs with hard clinical guardrails
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, maxLength: 1000 }
+                threadId: { type: string, maxLength: 64 }
+                specialistRole: { type: string, enum: [nutrition_specialist, training_captain, followup_specialist] }
+                locale: { type: string }
+      responses:
+        "200":
+          description: Grounded specialist reply with citations and deep-link actions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Free monthly quota reached; Pro required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+  /v1/coaching/consultation/history:
+    get:
+      operationId: listConsultationHistory
+      summary: Retrieve paginated 3-Specialist Care Room message history (always readable regardless of quota or tier)
+      parameters:
+        - name: threadId
+          in: query
+          schema: { type: string, default: default }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: before
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated consultation thread messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
   /v1/coaching/chat:
     post:
-      operationId: aiCoachChatDeferred
-      summary: Deferred to Final AI Phase (returns 501 FEATURE_DEFERRED_TO_AI_PHASE)
+      operationId: consultSpecialistTeamAlias
+      summary: Backward-compatible alias for POST /v1/coaching/consultation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
       responses:
-        "501":
-          description: Feature deferred to final AI phase
+        "200":
+          description: Grounded specialist reply
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
+                $ref: "#/components/schemas/SuccessEnvelope"
   /v1/coaching/chat/history:
     get:
-      operationId: aiCoachChatHistoryDeferred
-      summary: Deferred to Final AI Phase (returns 501 FEATURE_DEFERRED_TO_AI_PHASE)
+      operationId: listConsultationHistoryAlias
+      summary: Backward-compatible alias for GET /v1/coaching/consultation/history
+      parameters:
+        - name: threadId
+          in: query
+          schema: { type: string, default: default }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: before
+          in: query
+          schema: { type: string }
       responses:
-        "501":
-          description: Feature deferred to final AI phase
+        "200":
+          description: Paginated consultation history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/progress/pro-impact:
+    get:
+      operationId: getProImpactLedger
+      summary: Value-led retention ledger quantifying time saved, calibrations, PRs, adherence, and renewal eligibility
+      responses:
+        "200":
+          description: Pro impact ledger metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/subscriptions/retention-intent:
+    post:
+      operationId: recordRetentionIntent
+      summary: Record Pause Plan, Maintenance Mode, or transparent store cancel intent with mandatory Apple/Google billing disclosure
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [intent]
+              properties:
+                intent: { type: string, enum: [pause_14d, pause_30d, maintenance_mode, proceed_to_store_cancel] }
+                reasonCode: { type: string, maxLength: 80 }
+      responses:
+        "200":
+          description: Retention intent recorded with store management URL and billing disclosure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/account/clinical-summary:
+    get:
+      operationId: getClinicalSummaryReport
+      summary: Structured physician/dietitian clinical summary DTO (30-day or 90-day window, Pro-gated)
+      parameters:
+        - name: periodDays
+          in: query
+          schema: { type: integer, enum: [30, 90], default: 30 }
+        - name: locale
+          in: query
+          schema: { type: string, enum: [en, ar], default: en }
+      responses:
+        "200":
+          description: Clinical summary report ready for client PDF rendering
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Pro entitlement required
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/badges:
+    get:
+      operationId: getBadgesVault
+      summary: Unified 24-Badge Discipline Mastery Vault, track-filtered visible badges, newlyUnlockedBadges, and non-punitive Mastery Rank
+      responses:
+        "200":
+          description: Mastery rank and badge vault snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/badges/ack:
+    post:
+      operationId: acknowledgeBadges
+      summary: Mark newly unlocked badges as notified so celebration modals do not repeat across sessions
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                badgeIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: Badges acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/challenges/public:
+    get:
+      operationId: listPublicChallenges
+      summary: List active clinically-filtered public community challenges
+      responses:
+        "200":
+          description: Eligible public challenges with current participation status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/challenges/{id}/join:
+    post:
+      operationId: joinPublicChallenge
+      summary: Join an eligible public community challenge
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: Joined public challenge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "403":
+          description: Clinically or track ineligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+  /v1/challenges/{id}/progress:
+    get:
+      operationId: getPublicChallengeProgress
+      summary: Server-verified D1 progress, cohort percentile, and daily grid for a joined public challenge
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Verified public challenge progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/challenges/friends:
+    get:
+      operationId: listFriendChallenges
+      summary: List private friend challenges the user belongs to
+      responses:
+        "200":
+          description: Private friend challenges list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+    post:
+      operationId: createFriendChallenge
+      summary: Create a private invite-code friend challenge (1 active hosted limit for Free, unlimited for Pro)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, minLength: 2, maxLength: 80 }
+                metricType: { type: string, enum: [hydration, protein, workouts, steps_cardio, sleep, all_round] }
+                durationDays: { type: integer, enum: [7, 14, 30] }
+                startDate: { type: string, format: date }
+                maxMembers: { type: integer, minimum: 2, maximum: 12 }
+      responses:
+        "201":
+          description: Friend challenge created with invite code and deep link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Active hosted limit reached for Free tier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/challenges/friends/join:
+    post:
+      operationId: joinFriendChallenge
+      summary: Join a private friend challenge using a 6-character invite code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inviteCode]
+              properties:
+                inviteCode: { type: string }
+      responses:
+        "200":
+          description: Joined friend challenge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/challenges/friends/{id}:
+    get:
+      operationId: getFriendChallengeDetail
+      summary: Zero-PII fair normalized (0-100%) leaderboard and daily consistency grid for a friend challenge
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Friend challenge detail and fair leaderboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/challenges/friends/{id}/cheer:
+    post:
+      operationId: cheerFriendChallenge
+      summary: Send a rate-limited (3/day/friend) emoji cheer and localized push notification inside a friend challenge
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUserId, reactionCode]
+      responses:
+        "200":
+          description: Cheer recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+  /v1/challenges/friends/{id}/leave:
+    post:
+      operationId: leaveFriendChallenge
+      summary: Leave a private friend challenge
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Left friend challenge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/challenges/friends/{id}/block:
+    post:
+      operationId: blockFriendChallengeUser
+      summary: Block another user from visibility and cheers in friend challenges
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUserId]
+      responses:
+        "200":
+          description: User blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/circles:
+    get:
+      operationId: listPrivateCircles
+      summary: List opt-in private accountability circles the user belongs to
+      responses:
+        "200":
+          description: Private circles list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+    post:
+      operationId: createPrivateCircle
+      summary: Create an opt-in private accountability circle (max 8 members, strict zero-PII binary habit signals)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 60 }
+                maxMembers: { type: integer, minimum: 2, maximum: 8 }
+      responses:
+        "201":
+          description: Private circle created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/circles/join:
+    post:
+      operationId: joinPrivateCircle
+      summary: Join a private accountability circle via invite code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inviteCode]
+      responses:
+        "200":
+          description: Joined private circle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/circles/{id}/feed:
+    get:
+      operationId: getPrivateCircleFeed
+      summary: Zero-PII daily binary habit signals (workoutDone, hydrationDone, mealLogged, streakActive) for circle members
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Private circle feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/circles/{id}/cheer:
+    post:
+      operationId: cheerPrivateCircle
+      summary: Send a rate-limited emoji reaction cheer inside a private circle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUserId, reactionCode]
+      responses:
+        "200":
+          description: Circle cheer recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+  /v1/circles/{id}/leave:
+    post:
+      operationId: leavePrivateCircle
+      summary: Leave a private accountability circle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Left private circle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/circles/{id}/block:
+    post:
+      operationId: blockPrivateCircleUser
+      summary: Block a member from circle feed visibility and cheers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUserId]
+      responses:
+        "200":
+          description: Circle member blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/referrals/code:
+    get:
+      operationId: getReferralCode
+      summary: Retrieve or generate the user's personal friend referral code (+7 days Pro both sides, max 3 rewarded per 12 months)
+      responses:
+        "200":
+          description: Personal referral code and remaining annual slots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/referrals/redeem:
+    post:
+      operationId: redeemReferralCode
+      summary: Redeem a friend referral code with anti-abuse checks (onboarding, distinct device/OAuth, tombstone, annual cap)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+                deviceId: { type: string }
+      responses:
+        "200":
+          description: Referral bonus applied (+7 days Pro for both users)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+  /v1/workouts/session-override-today:
+    post:
+      operationId: createTodaySessionOverride
+      summary: Generate an injury-safe ephemeral travel/hotel/dumbbell session override for today without mutating permanent gym split (Pro-gated)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode: { type: string, enum: [bodyweight_hotel, dumbbell_only], default: bodyweight_hotel }
+                durationMin: { type: integer, enum: [20, 30, 45, 60], default: 30 }
+                date: { type: string, format: date }
+      responses:
+        "200":
+          description: Ephemeral today workout override created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Pro entitlement required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Blocked while RED_FLAG_STOP_ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/workouts/muscle-status:
+    get:
+      operationId: getMuscleRecoveryHeatmap
+      summary: Recovery state (fresh/recovering/fatigued) and weekly working sets vs experience-scaled MEV/MAV across all 14 MUSCLE_REGIONS (Pro-gated)
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: 14-region muscle recovery heatmap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Pro entitlement required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/progress/photos/analyze-diff:
+    post:
+      operationId: analyzeProgressPhotoDiff
+      summary: Opt-in Specialist Visual Difference Analysis correlating 2 same-pose photos (>= 7 days apart) with D1 weight, tape, and workout metrics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [beforePhotoId, afterPhotoId]
+              properties:
+                beforePhotoId: { type: string }
+                afterPhotoId: { type: string }
+                pose: { type: string, enum: [front, side, back] }
+                blurFaceBeforeAnalysis: { type: boolean, default: true }
+                locale: { type: string }
+      responses:
+        "201":
+          description: Visual difference analysis report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "402":
+          description: Starter preview exhausted; Pro required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Explicit visual_progress_analysis consent required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimitedError"
+  /v1/progress/photos/analyses:
+    get:
+      operationId: listPhotoAnalyses
+      summary: List saved Specialist Visual Difference Analyses (always accessible even after Pro downgrade)
+      parameters:
+        - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Paginated visual difference analyses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+  /v1/progress/photos/analyses/{analysisId}:
+    delete:
+      operationId: deletePhotoAnalysis
+      summary: Delete a saved Specialist Visual Difference Analysis (always accessible even after Pro downgrade)
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Analysis deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 components:
   securitySchemes:
     BearerAuth:
@@ -2161,6 +2905,16 @@ components:
                   format: date-time
                 requestId:
                   type: string
+                minAndroidVersion:
+                  type: string
+                minIosVersion:
+                  type: string
+                latestAndroidVersion:
+                  type: string
+                latestIosVersion:
+                  type: string
+                maintenanceMessage:
+                  type: [string, "null"]
                 minSupportedVersion:
                   type: object
                   properties:
@@ -2275,6 +3029,15 @@ components:
                 serviceTrack:
                   type: [string, "null"]
                 consents:
+                  type: array
+                  items: { type: object }
+                cycleState:
+                  type: [object, "null"]
+                coachingPause:
+                  type: [object, "null"]
+                todayWorkoutOverride:
+                  type: [object, "null"]
+                newlyUnlockedBadges:
                   type: array
                   items: { type: object }
                 activeNutritionPlanRef:
@@ -2456,6 +3219,8 @@ components:
             - fasting_log
             - ramadan_mode
             - seasonal_flex
+            - dining_out_log
+            - post_feast_rebalance
             - weight
             - water
             - steps
@@ -2472,6 +3237,7 @@ components:
             - session_delete
             - replace_exercise
             - ad_hoc_exercise
+            - open_workout_session
             - workout_ui_mode
             - reschedule
             - comeback_restart
@@ -2530,6 +3296,9 @@ components:
                     at:
                       type: string
                       format: date-time
+                newlyUnlockedBadges:
+                  type: array
+                  items: { type: object }
                 affected:
                   type: array
                   items:

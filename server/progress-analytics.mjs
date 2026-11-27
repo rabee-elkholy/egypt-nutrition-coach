@@ -24,6 +24,7 @@ function activityDatesSet(s) {
   for (const x of s.weights || []) if (x.date) dates.add(x.date);
   for (const x of s.workoutLogs || []) if (x.date) dates.add(x.date);
   for (const x of s.sessions || []) if (x.date && x.status !== 'missed') dates.add(x.date);
+  for (const x of s.openWorkoutSessions || []) if (x.date) dates.add(x.date);
   for (const x of s.checkins || []) if (x.date) dates.add(x.date);
   const cardioByDate = new Map();
   for (const x of s.cardioLogs || []) {
@@ -42,6 +43,10 @@ export function computeStreakAndEngagement(s, now = clockNow()) {
   if (s.seasonalFlex?.enabled && validDate(s.seasonalFlex.startDate)) {
     const endBound = s.seasonalFlex.endDate && s.seasonalFlex.endDate < today ? s.seasonalFlex.endDate : today;
     for (let d = s.seasonalFlex.startDate; d <= endBound && flexSet.size < 365; d = dateOffset(d, 1)) flexSet.add(d);
+  }
+  if (s.coachingPause?.active && validDate(s.coachingPause.startedOn)) {
+    const pauseBound = s.coachingPause.pauseUntil && s.coachingPause.pauseUntil < today ? s.coachingPause.pauseUntil : today;
+    for (let d = s.coachingPause.startedOn; d <= pauseBound && flexSet.size < 365; d = dateOffset(d, 1)) flexSet.add(d);
   }
   const freezeDates = (s.streakFreezes || []).map(entry => (typeof entry === 'string' ? entry : entry?.date)).filter(Boolean);
   const freezes = new Set(freezeDates);
@@ -291,7 +296,7 @@ export function computeWeeklyWrapped(s, weekEndParam = null, now = clockNow()) {
   };
 }
 
-export function buildWidgetSnapshot(s, now = clockNow()) {
+export function buildWidgetSnapshot(s, now = clockNow(), extras = {}) {
   const tz = s.profile?.timezone || 'Africa/Cairo';
   const date = localDate(now, tz);
   const diary = dayTotals(s, date);
@@ -325,6 +330,8 @@ export function buildWidgetSnapshot(s, now = clockNow()) {
     nextWorkoutFocus: nextScheduled?.focus || null,
     workoutStatus: todaySession?.status || (nextScheduled?.date === date ? 'scheduled' : 'rest'),
     streakDays: streakSummary.currentDays,
+    streakFreezeAvailable: Boolean(streakSummary.freezeAvailable),
+    activeChallenge: extras?.activeChallenge ?? null,
     readinessStatus: ready.status
   };
 }

@@ -1215,9 +1215,22 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
     capProtein: Boolean(profile?.diseases?.includes('kidney') || profile?.diseases?.includes('gout')),
     reduceCarbs: Boolean(hasGlycemic && !['keto', 'low_carb'].includes(p.diet))
   };
+  const batchPrepMode = Boolean(p.batchPrepMode === true || profile?.batchPrepMode === true);
+  const batchSlotTemplates = new Map();
+  const batchPrepBlocks = [];
+  if (batchPrepMode) {
+    targets.batch_prep_mode = true;
+    if (!(targets.noteCodes || []).includes('BATCH_PREP_MODE_ACTIVE')) {
+      targets.notes = [...(targets.notes || []), 'Batch Meal Prep mode active: lunch and dinner dishes repeat across 2-3 consecutive days to reduce kitchen prep time.'];
+      targets.noteCodes = [...(targets.noteCodes || []), 'BATCH_PREP_MODE_ACTIVE'];
+    }
+  }
   let tunaMealsUsed = 0;
 
   for (let day = 0; day < 7; day++) {
+    const batchBlockIndex = day < 3 ? 0 : day < 5 ? 1 : 2;
+    const isBatchBlockStart = day === 0 || day === 3 || day === 5;
+    if (batchPrepMode && isBatchBlockStart) batchSlotTemplates.clear();
     const isWorkoutDay = workoutDayIndices.has(new Date(addDays(startDate, day) + "T12:00:00Z").getUTCDay()) && (targets.training_days || 0) > 0;
     const dayTargets = copy(targets);
     if (carbCyclingEnabled) {
@@ -1323,12 +1336,34 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
           return true;
         })
         .sort((a, b) => a.score - b.score || a.t.id.localeCompare(b.t.id));
-      let candidates = rankCandidates(slotPool);
-      // Variety is a preference within the strict pool. If it removes every
-      // eligible option, reconsider that pool with the same nutrient checks.
-      if(!candidates.length&&slotPool.length<eligibleSlotPool.length)candidates=rankCandidates(eligibleSlotPool);
+      let candidates = [];
+      const batchReuseTpl = batchPrepMode && !isBatchBlockStart && ['lunch', 'dinner'].includes(slot.slot)
+        ? batchSlotTemplates.get(slot.id) || null
+        : null;
+      if (batchReuseTpl && (!isPregnant || tunaMealsUsed < CLINICAL_CONSTANTS.PREGNANCY_TUNA_MAX_WEEKLY_SERVINGS || !batchReuseTpl.items.some(i => i.key === 'tuna'))) {
+        candidates = rankCandidates([batchReuseTpl]);
+      }
+      if (!candidates.length) {
+        candidates = rankCandidates(slotPool);
+        // Variety is a preference within the strict pool. If it removes every
+        // eligible option, reconsider that pool with the same nutrient checks.
+        if (!candidates.length && slotPool.length < eligibleSlotPool.length) candidates = rankCandidates(eligibleSlotPool);
+      }
       if(!candidates.length)throw planCoverageError('NO_CANDIDATE_WITHIN_DIET_LIMITS','No candidate satisfies diet rules for this meal slot with your current preferences.');
       const best = candidates[0];
+      if (batchPrepMode && isBatchBlockStart && ['lunch', 'dinner'].includes(slot.slot)) {
+        batchSlotTemplates.set(slot.id, best.t);
+        const blockLen = batchBlockIndex === 0 ? 3 : 2;
+        batchPrepBlocks.push({
+          blockIndex: batchBlockIndex,
+          slot: slot.slot,
+          templateId: best.t.id,
+          dishName: best.snapshot.name,
+          daysCount: blockLen,
+          startDate: addDays(startDate, day),
+          endDate: addDays(startDate, day + blockLen - 1)
+        });
+      }
       if (isPregnant && (best.snapshot.ingredients || []).some(i => i.key === 'tuna')) tunaMealsUsed += 1;
       const mealFamily = egyptianMealFamily(best.t, lib, p.region);
       counts.set(mealFamily, (counts.get(mealFamily) || 0) + 1);
@@ -1424,6 +1459,7 @@ function buildWeek(profile, prefs, lib, startDate, seed, acceptedEnergy, include
     targets,
     days,
     warnings,
+    ...(batchPrepMode ? { batchPrepMode: true, batchPrepBlocks } : {}),
     engine_version: ENGINE_VERSION,
     data_version: lib.data_version,
     created_at: new Date().toISOString(),

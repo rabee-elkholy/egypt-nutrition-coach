@@ -331,3 +331,24 @@ Generated automatically from [`contracts/error-codes.json`](../contracts/error-c
 | `MULTI_INJURY_REQUIRES_REVIEW` | `422` | No | `injuryCount`, `injuries` | Four or more concurrent injuries (or zero safe exercises for a scheduled day) require specialist review before workout planning; switch to nutrition_only or seek clinical clearance. |
 | `KIDNEY_SODIUM_LIMIT_EXCEEDED` | `400` | No | `limitMg` | Plan exceeds the 2000mg daily sodium limit required for kidney support or lacks sodium measurements. |
 | `CHOLESTEROL_SATURATED_FAT_EXCEEDED` | `400` | No | `maxSatSharePct` | Plan exceeds the 8% daily saturated fat ceiling required for cholesterol management. |
+| `FAIR_USE_LIMIT_REACHED` | `429` | Yes | `feature`, `window`, `limit`, `retryAfterSeconds` | Fair-use limit reached for this CuraFit Specialist Team feature; limit resets in the next window. |
+| `DINING_OUT_CATEGORY_INVALID` | `400` | No | `category` | Dining-out category must be one of grill, shawarma, cafe, pizza, seafood, or family_feast. |
+| `DINING_OUT_OPTION_NOT_FOUND` | `404` | No | `optionId` | Selected dining-out option was not found. |
+| `REBALANCE_BLOCKED_CLINICAL` | `409` | No | `reason`, `minEnergyFloor` | Gentle multi-day calorie spread is disabled for this clinical safety profile or calorie floor; use zero_guilt_reset instead. |
+| `INVALID_RETENTION_INTENT` | `400` | No | `intent` | Retention intent must be pause_14d, pause_30d, maintenance_mode, or proceed_to_store_cancel. |
+| `CIRCLE_NOT_FOUND` | `404` | No | `circleId` | Private circle or member not found. |
+| `INVALID_INVITE_CODE` | `404` | No | — | Invite or referral code is invalid or expired. |
+| `CIRCLE_FULL` | `409` | No | `maxMembers` | This private circle has reached its maximum capacity of members. |
+| `ALREADY_IN_CIRCLE` | `409` | No | `circleId` | You are already a member of this private circle. |
+| `CHEER_RATE_LIMITED` | `429` | Yes | `maxPerDay` | Daily cheer limit (3 per friend per day) has been reached. |
+| `CHALLENGE_NOT_FOUND` | `404` | No | `challengeId` | Challenge or active membership not found. |
+| `CHALLENGE_INELIGIBLE_CLINICAL` | `403` | No | `challengeId` | This challenge is not recommended for your active track or clinical safety profile. |
+| `CHALLENGE_FULL` | `409` | No | `maxMembers` | This friend challenge has reached its maximum capacity of members. |
+| `ALREADY_JOINED` | `409` | No | `challengeId` | You have already joined this challenge. |
+| `REFERRAL_INELIGIBLE` | `409` | No | `reason` | This account or device is not eligible to redeem this referral bonus. |
+| `SESSION_ALREADY_COMPLETED_TODAY` | `409` | No | `date` | Today's scheduled workout session is already marked completed. |
+| `RED_FLAG_STOP_ACTIVE` | `403` | No | — | Workout overrides are paused while a medical red-flag stop or PAR-Q clearance hold is active. |
+| `SAME_PHOTO_PAIR` | `400` | No | — | Select two distinct progress photos to compare. |
+| `POSE_MISMATCH` | `400` | No | `beforePose`, `afterPose` | Both photos must share the same pose (front, side, or back) for an accurate comparison. |
+| `PHOTOS_TOO_CLOSE_DAYS` | `400` | No | `minDays`, `daysBetween` | Progress photos must be at least {minDays} days apart to evaluate meaningful changes. |
+| `VISUAL_ANALYSIS_CONSENT_REQUIRED` | `403` | No | — | Explicit visual_progress_analysis consent is required before running a Specialist Visual Difference Analysis. |

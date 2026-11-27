@@ -1926,6 +1926,172 @@
         "maxSatSharePct"
       ],
       "retryable": false
+    },
+    "FAIR_USE_LIMIT_REACHED": {
+      "httpStatus": 429,
+      "message": "Fair-use limit reached for this CuraFit Specialist Team feature; limit resets in the next window.",
+      "params": [
+        "feature",
+        "window",
+        "limit",
+        "retryAfterSeconds"
+      ],
+      "retryable": true
+    },
+    "DINING_OUT_CATEGORY_INVALID": {
+      "httpStatus": 400,
+      "message": "Dining-out category must be one of grill, shawarma, cafe, pizza, seafood, or family_feast.",
+      "params": [
+        "category"
+      ],
+      "retryable": false
+    },
+    "DINING_OUT_OPTION_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Selected dining-out option was not found.",
+      "params": [
+        "optionId"
+      ],
+      "retryable": false
+    },
+    "REBALANCE_BLOCKED_CLINICAL": {
+      "httpStatus": 409,
+      "message": "Gentle multi-day calorie spread is disabled for this clinical safety profile or calorie floor; use zero_guilt_reset instead.",
+      "params": [
+        "reason",
+        "minEnergyFloor"
+      ],
+      "retryable": false
+    },
+    "INVALID_RETENTION_INTENT": {
+      "httpStatus": 400,
+      "message": "Retention intent must be pause_14d, pause_30d, maintenance_mode, or proceed_to_store_cancel.",
+      "params": [
+        "intent"
+      ],
+      "retryable": false
+    },
+    "CIRCLE_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Private circle or member not found.",
+      "params": [
+        "circleId"
+      ],
+      "retryable": false
+    },
+    "INVALID_INVITE_CODE": {
+      "httpStatus": 404,
+      "message": "Invite or referral code is invalid or expired.",
+      "params": [],
+      "retryable": false
+    },
+    "CIRCLE_FULL": {
+      "httpStatus": 409,
+      "message": "This private circle has reached its maximum capacity of members.",
+      "params": [
+        "maxMembers"
+      ],
+      "retryable": false
+    },
+    "ALREADY_IN_CIRCLE": {
+      "httpStatus": 409,
+      "message": "You are already a member of this private circle.",
+      "params": [
+        "circleId"
+      ],
+      "retryable": false
+    },
+    "CHEER_RATE_LIMITED": {
+      "httpStatus": 429,
+      "message": "Daily cheer limit (3 per friend per day) has been reached.",
+      "params": [
+        "maxPerDay"
+      ],
+      "retryable": true
+    },
+    "CHALLENGE_NOT_FOUND": {
+      "httpStatus": 404,
+      "message": "Challenge or active membership not found.",
+      "params": [
+        "challengeId"
+      ],
+      "retryable": false
+    },
+    "CHALLENGE_INELIGIBLE_CLINICAL": {
+      "httpStatus": 403,
+      "message": "This challenge is not recommended for your active track or clinical safety profile.",
+      "params": [
+        "challengeId"
+      ],
+      "retryable": false
+    },
+    "CHALLENGE_FULL": {
+      "httpStatus": 409,
+      "message": "This friend challenge has reached its maximum capacity of members.",
+      "params": [
+        "maxMembers"
+      ],
+      "retryable": false
+    },
+    "ALREADY_JOINED": {
+      "httpStatus": 409,
+      "message": "You have already joined this challenge.",
+      "params": [
+        "challengeId"
+      ],
+      "retryable": false
+    },
+    "REFERRAL_INELIGIBLE": {
+      "httpStatus": 409,
+      "message": "This account or device is not eligible to redeem this referral bonus.",
+      "params": [
+        "reason"
+      ],
+      "retryable": false
+    },
+    "SESSION_ALREADY_COMPLETED_TODAY": {
+      "httpStatus": 409,
+      "message": "Today's scheduled workout session is already marked completed.",
+      "params": [
+        "date"
+      ],
+      "retryable": false
+    },
+    "RED_FLAG_STOP_ACTIVE": {
+      "httpStatus": 403,
+      "message": "Workout overrides are paused while a medical red-flag stop or PAR-Q clearance hold is active.",
+      "params": [],
+      "retryable": false
+    },
+    "SAME_PHOTO_PAIR": {
+      "httpStatus": 400,
+      "message": "Select two distinct progress photos to compare.",
+      "params": [],
+      "retryable": false
+    },
+    "POSE_MISMATCH": {
+      "httpStatus": 400,
+      "message": "Both photos must share the same pose (front, side, or back) for an accurate comparison.",
+      "params": [
+        "beforePose",
+        "afterPose"
+      ],
+      "retryable": false
+    },
+    "PHOTOS_TOO_CLOSE_DAYS": {
+      "httpStatus": 400,
+      "message": "Progress photos must be at least {minDays} days apart to evaluate meaningful changes.",
+      "params": [
+        "minDays",
+        "daysBetween"
+      ],
+      "retryable": false
+    },
+    "VISUAL_ANALYSIS_CONSENT_REQUIRED": {
+      "httpStatus": 403,
+      "message": "Explicit visual_progress_analysis consent is required before running a Specialist Visual Difference Analysis.",
+      "params": [],
+      "retryable": false
     }
   }
 }

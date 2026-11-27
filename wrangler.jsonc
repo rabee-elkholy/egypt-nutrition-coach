@@ -13,7 +13,9 @@
     "ENABLE_OPENFOODFACTS": "true",
     "STRICT_STORE_VERIFICATION": "true",
     "MIN_ANDROID_VERSION": "1.0.0",
-    "MIN_IOS_VERSION": "1.0.0"
+    "MIN_IOS_VERSION": "1.0.0",
+    "LATEST_ANDROID_VERSION": "1.0.0",
+    "LATEST_IOS_VERSION": "1.0.0"
   },
   // Prerequisite: enable R2 in Cloudflare Dashboard (account 7a3acfb886853d23106e93102fb81731),
   // then run `wrangler r2 bucket create curafit-media-prod` & `curafit-media-dev` and uncomment below:
@@ -38,7 +40,9 @@
         "ENABLE_OPENFOODFACTS": "true",
         "STRICT_STORE_VERIFICATION": "false",
         "MIN_ANDROID_VERSION": "1.0.0",
-        "MIN_IOS_VERSION": "1.0.0"
+        "MIN_IOS_VERSION": "1.0.0",
+        "LATEST_ANDROID_VERSION": "1.0.0",
+        "LATEST_IOS_VERSION": "1.0.0"
       },
       // Uncomment after enabling R2 in Cloudflare Dashboard and creating `curafit-media-dev`:
       // "r2_buckets": [{ "binding": "CURAFIT_MEDIA_BUCKET", "bucket_name": "curafit-media-dev" }],

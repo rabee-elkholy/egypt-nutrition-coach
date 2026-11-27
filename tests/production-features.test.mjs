@@ -109,12 +109,16 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
       );
     };
 
-    // 1. Capabilities, Edge Geo-Detection, Maintenance Mode, Version Gate & Deferred AI
-    await t.test('capabilities, maintenance mode, client version gate, and deferred AI 501', async () => {
+    // 1. Capabilities, Edge Geo-Detection, Maintenance Mode, Version Gate & Promoted Specialist Features
+    await t.test('capabilities, maintenance mode, client version gate, and Day-1 live specialist features', async () => {
       const caps = await okJson(await call('/v1/capabilities'));
       assert.ok(caps.features.includes('social_oauth'));
       assert.ok(caps.features.includes('pantry_finder'));
-      assert.deepEqual(caps.deferredFeatures, ['ai_meal_parse', 'ai_coach_qa']);
+      assert.ok(caps.features.includes('meal_capture'));
+      assert.ok(caps.features.includes('specialist_consultation'));
+      assert.ok(caps.minAndroidVersion);
+      assert.ok(caps.latestAndroidVersion);
+      assert.deepEqual(caps.deferredFeatures, []);
       assert.deepEqual(caps.supportedRegions, ['egypt', 'gulf', 'levant', 'maghreb']);
       assert.deepEqual(caps.detectedGeo, { countryCode: null, region: null, source: 'unknown' });
 
@@ -324,11 +328,24 @@ test('CuraFit Production Suite: OAuth, Onboarding, Nutrition/Workouts, Analytics
     const authHdr = { Authorization: `Bearer ${token}` };
     let rev = 0;
 
-    // Deferred AI routes return 501 when authenticated
-    await t.test('deferred AI routes return 501 FEATURE_DEFERRED_TO_AI_PHASE', async () => {
-      await errJson(await call('/v1/nutrition/ai-parse', { method: 'POST', headers: { ...authHdr, 'Content-Type': 'application/json' }, body: '{}' }), 501, 'FEATURE_DEFERRED_TO_AI_PHASE');
-      await errJson(await call('/v1/coaching/chat', { method: 'POST', headers: { ...authHdr, 'Content-Type': 'application/json' }, body: '{}' }), 501, 'FEATURE_DEFERRED_TO_AI_PHASE');
-      await errJson(await call('/v1/coaching/chat/history', { headers: authHdr }), 501, 'FEATURE_DEFERRED_TO_AI_PHASE');
+    // Promoted Day-1 Specialist Team Meal Capture & Care Room routes (with legacy aliases live)
+    await t.test('promoted Specialist Meal Capture and 3-Specialist Care Room routes are live', async () => {
+      const parsed = await okJson(await call('/v1/nutrition/ai-parse', {
+        method: 'POST',
+        headers: { ...authHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputType: 'text', text: '2 boiled eggs and half baladi bread' }),
+      }));
+      assert.equal(parsed.requiresUserConfirmation, true);
+      assert.ok(parsed.items.length >= 2);
+      const consult = await okJson(await call('/v1/coaching/chat', {
+        method: 'POST',
+        headers: { ...authHdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'What protein should I eat tonight?' }),
+      }));
+      assert.equal(consult.specialistRole, 'nutrition_specialist');
+      assert.ok(consult.reply.length > 10);
+      const hist = await okJson(await call('/v1/coaching/chat/history', { headers: authHdr }));
+      assert.ok(hist.items.length >= 2);
     });
 
     // 4. Generate plan (celiac, kidney, elbow_pain, 7 days, bands alias) + Bootstrap M2 + ETag 304 + Sync afterSeq=0 + Idempotency Rebase

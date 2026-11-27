@@ -15,6 +15,13 @@ import {authenticateSocialOAuth,linkOAuthProvider,unlinkOAuthProvider,listLinked
 import {handleSignedMediaRequest,signAvatarUrlIfNeeded,uploadProfileAvatar,deleteProfileAvatar,createProgressPhotoUploadUrl,confirmProgressPhoto,listProgressPhotos,deleteProgressPhoto,exportSignedMediaRefs,collectUserMediaKeys,purgeMediaKeys} from './media.mjs';
 import {resolveEntitlements,requireProOrConsumeQuota,getSubscriptionOfferings,verifyStoreSubscription,restoreStoreSubscriptions,handleStoreWebhook,isoWeekKeyForDate,recordTrialTombstones} from './subscriptions.mjs';
 import {registerPushToken,deletePushToken,deleteAllPushTokens} from './push.mjs';
+import {getDiningOutOptions,applyDiningOutLog} from './dining-out.mjs';
+import {computeProImpactLedger,recordRetentionIntent,buildClinicalSummaryReport} from './retention.mjs';
+import {syncAndEvaluateBadges,acknowledgeBadges} from './badges.mjs';
+import {listPublicChallenges,joinPublicChallenge,getPublicChallengeProgress,createFriendChallenge,joinFriendChallenge,listFriendChallenges,getFriendChallengeDetail,cheerFriendChallenge,leaveFriendChallenge,blockFriendChallengeUser,createPrivateCircle,joinPrivateCircle,listPrivateCircles,getPrivateCircleFeed,cheerPrivateCircle,leavePrivateCircle,blockPrivateCircleUser,resolveActiveChallengeForWidget,getOrCreateReferralCode,redeemReferralCode} from './social-challenges.mjs';
+import {createTodaySessionOverride,computeMuscleRecoveryHeatmap} from './workouts-wave2.mjs';
+import {parseMealCapture,consultSpecialistTeam,listConsultationHistory} from './specialist-care.mjs';
+import {analyzeProgressPhotoDiff,listPhotoAnalyses,deletePhotoAnalysis} from './photo-analysis.mjs';
 
 import {loadAccount,saveAccount,canonicalCommandDigest,exportFullAccountData,deleteFullAccountData,backfillAccountToNormalizedTables,sha256Hex} from './store.mjs';
 import {mealAlternatives,dayTotals} from './food.mjs';
@@ -133,6 +140,11 @@ export default {async fetch(request,env){
 
  if(url.pathname==='/v1/capabilities'&&request.method==='GET'){
   const maintenanceActive=env?.MAINTENANCE_MODE==='true';
+  const maintenanceMessage=maintenanceActive?(env?.MAINTENANCE_MESSAGE||'Scheduled maintenance in progress.'):null;
+  const minAndroid=env?.MIN_ANDROID_VERSION||'1.0.0';
+  const minIos=env?.MIN_IOS_VERSION||'1.0.0';
+  const latestAndroid=env?.LATEST_ANDROID_VERSION||minAndroid;
+  const latestIos=env?.LATEST_IOS_VERSION||minIos;
   const rawCountry=String(request.cf?.country||request.headers.get('CF-IPCountry')||'').trim().toUpperCase();
   const detectedCountry=/^[A-Z]{2}$/.test(rawCountry)&&rawCountry!=='XX'&&rawCountry!=='T1'?rawCountry:null;
   return json({
@@ -144,8 +156,13 @@ export default {async fetch(request,env){
    foodCatalogVersion:getFoodCatalogManifest().version,
    serverTime:isoNow(),
    requestId:reqId,
-   minSupportedVersion:{android:env?.MIN_ANDROID_VERSION||'1.0.0',ios:env?.MIN_IOS_VERSION||'1.0.0'},
-   maintenanceMode:{active:maintenanceActive,message:maintenanceActive?(env?.MAINTENANCE_MESSAGE||'Scheduled maintenance in progress.'):null},
+   minAndroidVersion:minAndroid,
+   minIosVersion:minIos,
+   latestAndroidVersion:latestAndroid,
+   latestIosVersion:latestIos,
+   maintenanceMessage,
+   minSupportedVersion:{android:minAndroid,ios:minIos},
+   maintenanceMode:{active:maintenanceActive,message:maintenanceMessage},
    auth:{provider:'cloudflare_d1_native_and_oidc',configured:Boolean(env?.AUTH_JWT_SECRET)},
    features:[
     'adaptive_nutrition','adaptive_workouts','recovery_readiness','eligibility_screening',
@@ -154,9 +171,14 @@ export default {async fetch(request,env){
     'automatic_evidence_review','native_cloudflare_auth','social_oauth','pantry_finder',
     'grocery_list','barcode_lookup','ramadan_fasting','body_measurements','progress_photos_r2',
     'store_subscriptions','push_notifications','widgets_snapshot','english_canonical_coaching_codes',
-    'custom_recipes','cardio_tracking','cycle_awareness','seasonal_flex'
+    'custom_recipes','cardio_tracking','cycle_awareness','seasonal_flex',
+    'meal_capture','specialist_consultation','dining_out_concierge','batch_prep_mode',
+    'post_feast_rebalance','pro_impact','retention_pause','clinical_summary_pdf',
+    'public_challenges','friend_challenges','private_circles','badges_vault_24',
+    'referrals','travel_session_override','open_workout_session','muscle_heatmap',
+    'visual_photo_diff'
    ],
-   deferredFeatures:['ai_meal_parse','ai_coach_qa'],
+   deferredFeatures:[],
    supportedRegions:[...SUPPORTED_REGIONS],
    detectedGeo:{
     countryCode:detectedCountry,
@@ -242,11 +264,6 @@ export default {async fetch(request,env){
   if(!env.DB)return errorJson('Database binding is temporarily unavailable.',503,reqId,{code:'DATABASE_UNAVAILABLE',retryable:true});
   if(request.method!=='GET'&&request.method!=='OPTIONS'&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)throw createApiError('Cross-origin write requests are forbidden.',403,{code:'ORIGIN_FORBIDDEN'});
   if(!auth.scopes.includes(request.method==='GET'?'coach:read':'coach:write'))throw createApiError('Token lacks required authorization scope.',403,{code:'AUTH_SCOPE_REQUIRED'});
-
-  // Deferred CuraFit Specialist Team Q&A and meal-parsing routes
-  if(url.pathname==='/v1/nutrition/ai-parse'||url.pathname==='/v1/coaching/chat'||url.pathname==='/v1/coaching/chat/history'){
-   return errorJson('This CuraFit Specialist Team feature is scheduled for an upcoming release.',501,reqId,{code:'FEATURE_DEFERRED_TO_AI_PHASE',params:{feature:url.pathname}});
-  }
 
   // Catalog Reads (require auth)
   if(request.method==='GET'&&url.pathname==='/v1/catalog/manifest')return json({...catalog.manifest,foodCatalog:getFoodCatalogManifest()},200,{},reqId);
@@ -524,6 +541,23 @@ export default {async fetch(request,env){
   const currDate=localDate(clockNow(),tz);
   const etag=`W/"rev-${s.revision}-${currDate}"`;
 
+  // Visual Photo Difference Analysis (KAN-122) — registered BEFORE wildcard /v1/progress/photos/{photoId}
+  if(request.method==='POST'&&url.pathname==='/v1/progress/photos/analyze-diff'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   return json(await analyzeProgressPhotoDiff(env.DB,env,s,user,body,clockNow()),201,{},reqId);
+  }
+  if(request.method==='GET'&&url.pathname==='/v1/progress/photos/analyses'){
+   const offset=cursor(url.searchParams.get('offset'),'offset');
+   const limit=url.searchParams.get('limit')==null?20:integer(url.searchParams.get('limit'),1,100,'limit');
+   return json(await listPhotoAnalyses(env.DB,user,{offset,limit}),200,{},reqId);
+  }
+  if(request.method==='DELETE'&&url.pathname.startsWith('/v1/progress/photos/analyses/')){
+   const analysisId=decodeURIComponent(url.pathname.slice('/v1/progress/photos/analyses/'.length));
+   return json(await deletePhotoAnalysis(env.DB,user,analysisId),200,{},reqId);
+  }
+
   // Progress Photos (R2-backed; GET & DELETE remain accessible for downgraded Free users, only upload-url is Pro-gated)
   if(request.method==='GET'&&url.pathname==='/v1/progress/photos'){
    const offset=cursor(url.searchParams.get('offset'),'offset');
@@ -563,6 +597,210 @@ export default {async fetch(request,env){
    const body=JSON.parse(await requestJson(request));
    return json(await restoreStoreSubscriptions(env.DB,env,s,user,body),200,{},reqId);
   }
+  if(request.method==='POST'&&url.pathname==='/v1/subscriptions/retention-intent'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   const next=structuredClone(s);
+   const retRes=await recordRetentionIntent(env.DB,next,user,body,env);
+   for(const a of next.adaptations||[])if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
+   next.revision=s.revision+1;
+   const retKey=request.headers.get('Idempotency-Key')||`retention-${retRes.intentId}`;
+   await saveAccount(env.DB,user,next,s.revision,{key:retKey,digest:await canonicalCommandDigest({action:'retention_intent',payload:body}),action:'retention_intent',payload:body,previousState:s});
+   return json({...retRes,revision:next.revision},200,{},reqId);
+  }
+
+  // CuraFit Specialist Meal Capture (KAN-61) — JSON (up to 2.5 MB) or multipart/form-data
+  if(request.method==='POST'&&(url.pathname==='/v1/nutrition/meal-parse'||url.pathname==='/v1/nutrition/ai-parse')){
+   const ct=request.headers.get('Content-Type')||'';
+   let parsedBody=null;
+   if(/^application\/json(?:\s*;|$)/i.test(ct)){
+    parsedBody=JSON.parse(await requestJson(request,2_600_000));
+   }else if(!/^multipart\/form-data/i.test(ct)){
+    return errorJson('Content-Type must be application/json or multipart/form-data.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   }
+   return json(await parseMealCapture(env.DB,env,s,user,request,parsedBody,clockNow()),200,{},reqId);
+  }
+
+  // 3-Specialist Interactive Care Room (KAN-84)
+  if(request.method==='POST'&&(url.pathname==='/v1/coaching/consultation'||url.pathname==='/v1/coaching/chat')){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   return json(await consultSpecialistTeam(env.DB,env,s,user,body,clockNow()),200,{},reqId);
+  }
+  if(request.method==='GET'&&(url.pathname==='/v1/coaching/consultation/history'||url.pathname==='/v1/coaching/chat/history')){
+   const threadId=url.searchParams.get('threadId')||'default';
+   const limit=url.searchParams.get('limit')==null?50:integer(url.searchParams.get('limit'),1,100,'limit');
+   const before=url.searchParams.get('before')||null;
+   return json(await listConsultationHistory(env.DB,user,{threadId,limit,before}),200,{},reqId);
+  }
+
+  // Dining-Out Concierge (KAN-119)
+  if(request.method==='GET'&&url.pathname==='/v1/nutrition/dining-out-options'){
+   const ent=await resolveEntitlements(env.DB,s,user,currDate,env);
+   return json(getDiningOutOptions(s,{
+    date:url.searchParams.get('date')||currDate,
+    category:url.searchParams.get('category')||'grill',
+    isPro:ent.tier==='pro',
+    enforcePro:env?.ENFORCE_PRO_ENTITLEMENTS==='true'
+   }),200,{},reqId);
+  }
+  if(request.method==='POST'&&url.pathname==='/v1/nutrition/dining-out-log'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   const next=structuredClone(s);
+   const logged=applyDiningOutLog(next,body);
+   if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'&&body.rebalanceRestOfDay===true){
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'dining_out_concierge'},env);
+   }
+   review(next);
+   if(next.lastReview)next.lastReview.auto=true;
+   reconcileCoaching(next,clockNow());
+   next.revision=s.revision+1;
+   const dKey=request.headers.get('Idempotency-Key')||`dining-${crypto.randomUUID()}`;
+   await saveAccount(env.DB,user,next,s.revision,{key:dKey,digest:await canonicalCommandDigest({action:'dining_out_log',payload:body}),action:'dining_out_log',payload:body,previousState:s});
+   const badgeEval=await syncAndEvaluateBadges(env.DB,next,user,clockNow()).catch(()=>({newlyUnlockedBadges:[]}));
+   return json({revision:next.revision,...logged,newlyUnlockedBadges:badgeEval.newlyUnlockedBadges},201,{},reqId);
+  }
+
+  // KAN-121: Pro Impact Ledger & Clinical Summary DTO
+  if(request.method==='GET'&&url.pathname==='/v1/progress/pro-impact'){
+   return json(await computeProImpactLedger(env.DB,s,user,env,clockNow()),200,{},reqId);
+  }
+  if(request.method==='GET'&&url.pathname==='/v1/account/clinical-summary'){
+   if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'clinical_summary_pdf'},env);
+   }
+   const periodDays=url.searchParams.get('periodDays')==null?30:Number(url.searchParams.get('periodDays'));
+   const locale=url.searchParams.get('locale')||s.profile?.locale||'en';
+   return json(buildClinicalSummaryReport(s,{periodDays,locale},clockNow()),200,{},reqId);
+  }
+
+  // KAN-123: 24-Badge Discipline Mastery Vault & Mastery Rank
+  if(request.method==='GET'&&url.pathname==='/v1/badges'){
+   return json(await syncAndEvaluateBadges(env.DB,s,user,clockNow()),200,{},reqId);
+  }
+  if(request.method==='POST'&&url.pathname==='/v1/badges/ack'){
+   const rawAck=request.body?await requestJson(request).catch(e=>{if(e?.code==='EMPTY_BODY')return '';throw e;}):'';
+   if(rawAck.trim()&&!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=rawAck.trim()?JSON.parse(rawAck):{};
+   return json(await acknowledgeBadges(env.DB,user,body?.badgeIds||null),200,{},reqId);
+  }
+
+  // KAN-123: Friend Challenges (registered BEFORE wildcard /v1/challenges/{id}/*)
+  if(request.method==='POST'&&url.pathname==='/v1/challenges/friends'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   return json(await createFriendChallenge(env.DB,env,s,user,body,clockNow()),201,{},reqId);
+  }
+  if(request.method==='POST'&&url.pathname==='/v1/challenges/friends/join'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   return json(await joinFriendChallenge(env.DB,user,body),200,{},reqId);
+  }
+  if(request.method==='GET'&&url.pathname==='/v1/challenges/friends'){
+   return json(await listFriendChallenges(env.DB,user),200,{},reqId);
+  }
+  if(url.pathname.startsWith('/v1/challenges/friends/')){
+   const fcRest=url.pathname.slice('/v1/challenges/friends/'.length);
+   const fcActionMatch=fcRest.match(/^([^/]+)\/(cheer|leave|block)$/);
+   if(fcActionMatch&&request.method==='POST'){
+    const fcId=decodeURIComponent(fcActionMatch[1]);
+    const fcOp=fcActionMatch[2];
+    if(fcOp==='leave')return json(await leaveFriendChallenge(env.DB,user,fcId),200,{},reqId);
+    if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+    const body=JSON.parse(await requestJson(request));
+    if(fcOp==='cheer')return json(await cheerFriendChallenge(env.DB,env,s,user,fcId,body,clockNow()),200,{},reqId);
+    return json(await blockFriendChallengeUser(env.DB,user,fcId,body),200,{},reqId);
+   }
+   if(request.method==='GET'&&!fcRest.includes('/')){
+    return json(await getFriendChallengeDetail(env.DB,env,url.origin,user,decodeURIComponent(fcRest),clockNow()),200,{},reqId);
+   }
+  }
+
+  // KAN-123: Public Community Challenges
+  if(request.method==='GET'&&url.pathname==='/v1/challenges/public'){
+   return json(await listPublicChallenges(env.DB,s,user,clockNow()),200,{},reqId);
+  }
+  if(url.pathname.startsWith('/v1/challenges/')){
+   const pubRest=url.pathname.slice('/v1/challenges/'.length);
+   const joinMatch=pubRest.match(/^([^/]+)\/join$/);
+   const progMatch=pubRest.match(/^([^/]+)\/progress$/);
+   if(joinMatch&&request.method==='POST'){
+    const rawJ=request.body?await requestJson(request).catch(e=>{if(e?.code==='EMPTY_BODY')return '';throw e;}):'';
+    const body=rawJ.trim()?JSON.parse(rawJ):{};
+    return json(await joinPublicChallenge(env.DB,s,user,decodeURIComponent(joinMatch[1]),body,clockNow()),201,{},reqId);
+   }
+   if(progMatch&&request.method==='GET'){
+    return json(await getPublicChallengeProgress(env.DB,s,user,decodeURIComponent(progMatch[1]),clockNow()),200,{},reqId);
+   }
+  }
+
+  // KAN-120: Opt-In Private Accountability Circles (Max 8 Members, Strict Zero-PII)
+  if(request.method==='POST'&&url.pathname==='/v1/circles'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   return json(await createPrivateCircle(env.DB,user,body),201,{},reqId);
+  }
+  if(request.method==='POST'&&url.pathname==='/v1/circles/join'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   return json(await joinPrivateCircle(env.DB,user,body),200,{},reqId);
+  }
+  if(request.method==='GET'&&url.pathname==='/v1/circles'){
+   return json(await listPrivateCircles(env.DB,user),200,{},reqId);
+  }
+  if(url.pathname.startsWith('/v1/circles/')){
+   const cirRest=url.pathname.slice('/v1/circles/'.length);
+   const cirMatch=cirRest.match(/^([^/]+)\/(feed|cheer|leave|block)$/);
+   if(cirMatch){
+    const cirId=decodeURIComponent(cirMatch[1]);
+    const cirOp=cirMatch[2];
+    if(cirOp==='feed'&&request.method==='GET')return json(await getPrivateCircleFeed(env.DB,env,url.origin,user,cirId,clockNow()),200,{},reqId);
+    if(cirOp==='leave'&&request.method==='POST')return json(await leavePrivateCircle(env.DB,user,cirId),200,{},reqId);
+    if((cirOp==='cheer'||cirOp==='block')&&request.method==='POST'){
+     if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+     const body=JSON.parse(await requestJson(request));
+     if(cirOp==='cheer')return json(await cheerPrivateCircle(env.DB,env,s,user,cirId,body,clockNow()),200,{},reqId);
+     return json(await blockPrivateCircleUser(env.DB,user,cirId,body),200,{},reqId);
+    }
+   }
+  }
+
+  // KAN-123: Anti-Abuse Friend Referrals
+  if(request.method==='GET'&&url.pathname==='/v1/referrals/code'){
+   return json(await getOrCreateReferralCode(env.DB,user),200,{},reqId);
+  }
+  if(request.method==='POST'&&url.pathname==='/v1/referrals/redeem'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   const body=JSON.parse(await requestJson(request));
+   return json(await redeemReferralCode(env.DB,s,user,auth,body),200,{},reqId);
+  }
+
+  // KAN-124: 1-Tap Travel/Hotel Session Override & Muscle Recovery Heatmap
+  if(request.method==='POST'&&url.pathname==='/v1/workouts/session-override-today'){
+   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return errorJson('Content-Type must be application/json.',415,reqId,{code:'UNSUPPORTED_MEDIA_TYPE'});
+   if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'travel_session_override'},env);
+   }
+   const body=JSON.parse(await requestJson(request));
+   if(!body||typeof body!=='object'||Array.isArray(body))return errorJson('Request body must be a JSON object.',400,reqId,{code:'INVALID_REQUEST_BODY'});
+   const next=structuredClone(s);
+   const override=createTodaySessionOverride(next,body,clockNow());
+   for(const a of next.adaptations||[])if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
+   next.revision=s.revision+1;
+   const oKey=request.headers.get('Idempotency-Key')||`override-${override.id}`;
+   await saveAccount(env.DB,user,next,s.revision,{key:oKey,digest:await canonicalCommandDigest({action:'session_override_today',payload:body}),action:'session_override_today',payload:body,previousState:s});
+   return json({...override,revision:next.revision},200,{},reqId);
+  }
+  if(request.method==='GET'&&url.pathname==='/v1/workouts/muscle-status'){
+   if(env?.ENFORCE_PRO_ENTITLEMENTS==='true'){
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'muscle_heatmap'},env);
+   }
+   return json(computeMuscleRecoveryHeatmap(s,url.searchParams.get('date')||null,clockNow()),200,{ETag:etag},reqId);
+  }
 
   // Pantry Alternatives (Free)
   if(request.method==='POST'&&url.pathname==='/v1/pantry/alternatives'){
@@ -573,14 +811,15 @@ export default {async fetch(request,env){
 
   if(request.method==='GET'){
    if(url.pathname==='/v1/bootstrap'){
-    const [consents,entitlements,userRow]=await Promise.all([
+    const [consents,entitlements,userRow,badgeEval]=await Promise.all([
      listUserConsents(env.DB,user),
      resolveEntitlements(env.DB,s,user,currDate,env),
-     env.DB.prepare('SELECT avatar_url FROM coaching_users WHERE user_id=?').bind(user).first().catch(()=>null)
+     env.DB.prepare('SELECT avatar_url FROM coaching_users WHERE user_id=?').bind(user).first().catch(()=>null),
+     syncAndEvaluateBadges(env.DB,s,user,clockNow()).catch(()=>({newlyUnlockedBadges:[]}))
     ]);
     const rawAvatar=userRow?.avatar_url??s.profile?.avatarUrl??null;
     const signedAvatarUrl=await signAvatarUrlIfNeeded(url.origin,rawAvatar,user,env);
-    const bootPayload=presentBootstrap(s,{consents,entitlements,signedAvatarUrl,pushConfigured:hasPushConfigured(env)});
+    const bootPayload=presentBootstrap(s,{consents,entitlements,signedAvatarUrl,pushConfigured:hasPushConfigured(env),newlyUnlockedBadges:badgeEval.newlyUnlockedBadges});
     const fp=await sha256Hex(JSON.stringify([
      s.revision,currDate,entitlements.tier,entitlements.status,entitlements.updatedAt,
      consents.map(c=>`${c.consentType}:${c.accepted}:${c.at}`),
@@ -588,7 +827,9 @@ export default {async fetch(request,env){
      bootPayload.todaySummary?.fastingState?.phase||'',
      bootPayload.todaySummary?.seasonalContext?.mode||'standard',
      bootPayload.pendingAdaptations?.length||0,
-     bootPayload.unreadCoachingInboxCount||0
+     bootPayload.unreadCoachingInboxCount||0,
+     bootPayload.newlyUnlockedBadges?.length||0,
+     s.coachingPause?.pauseUntil||''
     ]));
     const bootEtag=`W/"boot-${s.revision}-${currDate}-${fp.slice(0,12)}"`;
     if(request.headers.get('If-None-Match')===bootEtag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:bootEtag,'X-Request-Id':reqId}});
@@ -609,9 +850,10 @@ export default {async fetch(request,env){
    if(url.pathname==='/v1/progress/weekly-wrapped')return json(computeWeeklyWrapped(s,url.searchParams.get('weekEnd')||null,clockNow()),200,{ETag:etag},reqId);
    if(url.pathname==='/v1/widgets/snapshot'){
     const snapFasting=getFastingState(s,clockNow());
-    const widgetEtag=`W/"rev-${s.revision}-${currDate}-${snapFasting.phase}-${snapFasting.seasonalContext?.mode||'standard'}"`;
+    const activeChallenge=await resolveActiveChallengeForWidget(env.DB,s,user,clockNow());
+    const widgetEtag=`W/"rev-${s.revision}-${currDate}-${snapFasting.phase}-${snapFasting.seasonalContext?.mode||'standard'}-${activeChallenge?.id||'none'}-${activeChallenge?.progressPct??0}"`;
     if(request.headers.get('If-None-Match')===widgetEtag)return new Response(null,{status:304,headers:{...SECURITY_HEADERS,ETag:widgetEtag,'X-Request-Id':reqId}});
-    return json(buildWidgetSnapshot(s,clockNow()),200,{ETag:widgetEtag},reqId);
+    return json(buildWidgetSnapshot(s,clockNow(),{activeChallenge}),200,{ETag:widgetEtag},reqId);
    }
    if(url.pathname==='/v1/measurements')return json(paginateDateCollection(s.bodyMeasurements||[],url),200,{},reqId);
    if(url.pathname==='/v1/recipes')return json(listCustomRecipes(s,{offset:url.searchParams.get('offset'),limit:url.searchParams.get('limit'),q:url.searchParams.get('q')}),200,{},reqId);
@@ -793,7 +1035,7 @@ export default {async fetch(request,env){
   if(!key||key.length>100)return errorJson('Idempotency-Key header (1..100 characters) is required.',400,reqId,{code:'IDEMPOTENCY_KEY_REQUIRED'});
 
   // Enforce withdrawn health_data_processing consent lock on personalized calculation & cycle health commands
-  if(['generate','review','adaptation','renew_plan','comeback_restart','cycle_settings','cycle_log','cycle_gentle_session'].includes(body.action)&&await isHealthConsentWithdrawn(env.DB,user)){
+  if(['generate','review','adaptation','renew_plan','comeback_restart','cycle_settings','cycle_log','cycle_gentle_session','post_feast_rebalance'].includes(body.action)&&await isHealthConsentWithdrawn(env.DB,user)){
    return errorJson('Active health_data_processing consent is required to generate plans or compute coaching reviews.',403,reqId,{code:'HEALTH_CONSENT_REQUIRED'});
   }
 
@@ -861,10 +1103,16 @@ export default {async fetch(request,env){
     if(targetAdapt&&['calories','weekly_volume','maintenance'].includes(targetAdapt.kind)){
      await requireProOrConsumeQuota(env.DB,s,user,{feature:'adaptive_calorie_volume'},env);
     }
+   }else if(body.action==='post_feast_rebalance'&&body.payload?.mode==='gentle_spread'){
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'gentle_spread_rebalance'},env);
+   }else if(body.action==='dining_out_log'&&body.payload?.rebalanceRestOfDay===true){
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'dining_out_concierge'},env);
+   }else if(body.action==='profile_update'&&body.payload?.batchPrepMode===true){
+    await requireProOrConsumeQuota(env.DB,s,user,{feature:'batch_prep_mode'},env);
    }
   }
 
-  if(['recovery','weight','food','food_entry','food_entry_batch','food_entry_update','food_complete','food_delete','copy_meal','session','session_delete','workout','workout_delete','coaching_feedback','renew_plan','comeback_restart','timezone','confirm_health','confirm_schedule'].includes(body.action)){
+  if(['recovery','weight','food','food_entry','food_entry_batch','food_entry_update','food_complete','food_delete','copy_meal','dining_out_log','session','session_delete','workout','workout_delete','coaching_feedback','renew_plan','comeback_restart','timezone','confirm_health','confirm_schedule'].includes(body.action)){
    review(next);
    if(next.lastReview)next.lastReview.auto=true;
   }
@@ -872,18 +1120,19 @@ export default {async fetch(request,env){
    next.lastWeeklyCheckinAt=next.lastReview?.at||isoNow();
   }
   reconcileCoaching(next,clockNow());
-  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log','ad_hoc_exercise'].includes(body.action))next.adaptations=structuredClone(s.adaptations);
-  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log','ad_hoc_exercise','coaching_ack','coaching_decision','coaching_outcome'].includes(body.action))for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
+  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log','ad_hoc_exercise','post_feast_rebalance','open_workout_session'].includes(body.action))next.adaptations=structuredClone(s.adaptations);
+  if(['water','steps','activity','notification_preferences','workout_ui_mode','profile_update','food_favorite','grocery_toggle','fasting_log','ramadan_mode','seasonal_flex','cycle_gentle_session','body_measurement','streak_freeze','recipe_save','recipe_delete','cardio_log','cardio_delete','cycle_settings','cycle_log','ad_hoc_exercise','post_feast_rebalance','open_workout_session','coaching_ack','coaching_decision','coaching_outcome'].includes(body.action))for(const a of next.adaptations)if(a.status==='pending'&&a.baseRevision===s.revision)a.baseRevision=s.revision+1;
   next.revision=s.revision+1;
   await saveAccount(env.DB,user,next,s.revision,{key,digest:intentDigest,action:body.action,payload:body.payload,previousState:s});
   if(body.action==='profile_update'&&body.payload?.name!==undefined&&next.profile?.name){
    await env.DB.prepare('UPDATE coaching_users SET display_name=?, updated_at=? WHERE user_id=?').bind(next.profile.name,isoNow(),user).run().catch(()=>{});
   }
+  const badgeEval=await syncAndEvaluateBadges(env.DB,next,user,clockNow()).catch(()=>({newlyUnlockedBadges:[]}));
 
   if(wantsMinimalResponse(request,url)){
-   return json(presentReceipt(next,body.action,body.payload,false),200,{ETag:`W/"rev-${next.revision}"`},reqId);
+   return json(presentReceipt(next,body.action,body.payload,false,{newlyUnlockedBadges:badgeEval.newlyUnlockedBadges}),200,{ETag:`W/"rev-${next.revision}"`},reqId);
   }
-  return json(present({...next,plans:next.plans.filter(p=>p.id===next.active_plan_id)}),200,{ETag:`W/"rev-${next.revision}"`},reqId);
+  return json({...present({...next,plans:next.plans.filter(p=>p.id===next.active_plan_id)}),newlyUnlockedBadges:badgeEval.newlyUnlockedBadges},200,{ETag:`W/"rev-${next.revision}"`},reqId);
  }catch(error){
   if(!error.status&&(error instanceof TypeError||error instanceof ReferenceError)){
    logEvent('error','unhandled_runtime_error',{requestId:reqId,path:url.pathname,method:request.method,status:500,details:{name:error.name}});

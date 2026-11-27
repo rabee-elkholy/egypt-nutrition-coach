@@ -27,7 +27,7 @@ export function applySettingsCommand(s,action,p){
  }
  if(action==='notification_preferences'){
   const prefs=plainRecord(p,'notificationPreferences'),next={...s.notificationPreferences};
-  for(const k of ['dailyReminder','workoutReminder','waterReminder','weeklyReviewReminder','mealReminders','fastingReminder','ramadanSuhoorReminder','exemptSuhoorFromQuietHours']){
+  for(const k of ['dailyReminder','workoutReminder','waterReminder','weeklyReviewReminder','mealReminders','fastingReminder','ramadanSuhoorReminder','exemptSuhoorFromQuietHours','streakSaverReminder','challengeNotifications']){
    if(prefs[k]!==undefined)next[k]=boolean(prefs[k],k);
   }
   if(prefs.preferredWorkoutReminderMinutesBefore!==undefined){

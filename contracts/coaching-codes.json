@@ -1266,6 +1266,167 @@
         "overlapType"
       ],
       "message": "Vigorous cardio overlaps with or sits adjacent to a lower-body strength session; consider spacing sessions by 6+ hours or choosing low-impact aerobic work to protect leg recovery."
+    },
+    "BATCH_PREP_MODE_ACTIVE": {
+      "domain": "nutrition",
+      "severity": "info",
+      "params": [],
+      "message": "Batch Meal Prep Mode is active: lunch and dinner repeat across 2 to 3 day blocks with consolidated grocery shopping quantities."
+    },
+    "POST_FEAST_ZERO_GUILT_RESET": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [],
+      "message": "Today is tagged as a flex event so your 14-day Specialist Team review stays accurate. Return calmly to your normal plan tomorrow without skipping meals."
+    },
+    "POST_FEAST_GENTLE_SPREAD_ACTIVE": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [
+        "spreadDays",
+        "dailyReductionKcal"
+      ],
+      "message": "A calm multi-day balance adjustment is scheduled starting tomorrow while staying safely above your minimum calorie floor."
+    },
+    "DINING_REBALANCE_LIGHT_PROTEIN_SNACK": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [],
+      "message": "Your planned daily calories are met; if hungry later, choose a light high-protein snack or herbal tea and return to your regular plan tomorrow."
+    },
+    "DINING_REBALANCE_SPREAD_REMAINING": {
+      "domain": "nutrition",
+      "severity": "normal",
+      "params": [
+        "remainingKcal"
+      ],
+      "message": "Distribute your remaining calories calmly across your remaining meal slots with lean protein and fiber."
+    },
+    "DINING_CAFE_CAFFEINE_HYDRATION": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Pair cafe coffee or tea with a full glass of water to stay comfortably hydrated."
+    },
+    "DINING_STANDARD_HYDRATION_PACE": {
+      "domain": "hydration",
+      "severity": "info",
+      "params": [],
+      "message": "Sip water steadily before and during dining out to support digestion and steady pacing."
+    },
+    "STORE_BILLING_MANAGED_BY_PLATFORM": {
+      "domain": "retention",
+      "severity": "info",
+      "params": [],
+      "message": "Pausing coaching goals pauses daily nudges and streak pressure inside CuraFit; subscription billing is managed directly via Apple App Store or Google Play settings."
+    },
+    "CLINICAL_SUMMARY_INFORMATIONAL_ONLY": {
+      "domain": "clinical",
+      "severity": "info",
+      "params": [],
+      "message": "Prepared by the CuraFit Specialist Team for informational review with a licensed physician, registered dietitian, or physical therapist. Not a medical diagnosis."
+    },
+    "URGENT_MEDICAL_ESCALATION": {
+      "domain": "clinical",
+      "severity": "urgent",
+      "params": [],
+      "message": "Stop physical exertion immediately and seek prompt medical evaluation for urgent symptoms such as chest pain, fainting, or shortness of breath."
+    },
+    "MEDICATION_BOUNDARY_REFUSAL": {
+      "domain": "clinical",
+      "severity": "attention",
+      "params": [],
+      "message": "The CuraFit Specialist Team cannot prescribe or adjust medication or insulin dosages; consult your treating physician or clinical pharmacist."
+    },
+    "EATING_DISORDER_CRISIS_SUPPORT": {
+      "domain": "clinical",
+      "severity": "urgent",
+      "params": [],
+      "message": "CuraFit never supports extreme fasting, purging, or starvation practices. Please contact a licensed healthcare professional or support helpline."
+    },
+    "MATERNAL_SAFETY_BOUNDARY": {
+      "domain": "clinical",
+      "severity": "attention",
+      "params": [],
+      "message": "Ketogenic dieting, intermittent fasting, and aggressive calorie cuts remain disabled during pregnancy and breastfeeding for maternal safety."
+    },
+    "RED_FLAGS_STOP_ACTIVE": {
+      "domain": "clinical",
+      "severity": "urgent",
+      "params": [],
+      "message": "Active recovery safety stop: pause resistance training until a licensed physician evaluates your symptoms and clears you to resume."
+    },
+    "MEAL_CAPTURE_CELIAC_GLUTEN_ALERT": {
+      "domain": "clinical",
+      "severity": "urgent",
+      "params": [],
+      "message": "Captured item may contain gluten; confirm a certified gluten-free alternative before logging."
+    },
+    "MEAL_CAPTURE_FAVISM_ALERT": {
+      "domain": "clinical",
+      "severity": "urgent",
+      "params": [],
+      "message": "Captured item contains fava beans, which must be avoided for favism (G6PD) safety."
+    },
+    "MEAL_CAPTURE_DAIRY_ALERT": {
+      "domain": "clinical",
+      "severity": "attention",
+      "params": [],
+      "message": "Captured item contains dairy; confirm a lactose-free alternative if needed."
+    },
+    "MEAL_CAPTURE_NUT_ALLERGY_ALERT": {
+      "domain": "clinical",
+      "severity": "urgent",
+      "params": [],
+      "message": "Captured item contains nuts matching your declared exclusion."
+    },
+    "MEAL_CAPTURE_SEAFOOD_ALERT": {
+      "domain": "clinical",
+      "severity": "urgent",
+      "params": [],
+      "message": "Captured item contains fish or shellfish matching your declared exclusion."
+    },
+    "MEAL_CAPTURE_GOUT_PURINE_NOTE": {
+      "domain": "clinical",
+      "severity": "attention",
+      "params": [],
+      "message": "Captured item is higher in purines; keep portions modest and maintain hydration for gout support."
+    },
+    "MEAL_CAPTURE_KIDNEY_GUARDRAIL": {
+      "domain": "clinical",
+      "severity": "attention",
+      "params": [],
+      "message": "Captured item is higher in sodium or protein; verify portion size against your renal clinician guidance."
+    },
+    "MEAL_CAPTURE_SODIUM_NOTE": {
+      "domain": "clinical",
+      "severity": "attention",
+      "params": [],
+      "message": "Captured item is relatively high in sodium; balance remaining meals today with lower-sodium foods."
+    },
+    "MEAL_CAPTURE_PREGNANCY_LIVER_CAUTION": {
+      "domain": "clinical",
+      "severity": "urgent",
+      "params": [],
+      "message": "Liver is high in preformed vitamin A; limit or avoid organ meats during pregnancy."
+    },
+    "MATERNITY_TIMELINE_MILESTONE": {
+      "domain": "progress",
+      "severity": "normal",
+      "params": [],
+      "message": "Maternity timeline milestone celebrating steady posture, gentle mobility, and maternal nourishment."
+    },
+    "VISUAL_LOW_COMPARABILITY_TIP": {
+      "domain": "progress",
+      "severity": "attention",
+      "params": [],
+      "message": "Photo lighting, distance, or framing differed noticeably; retake under consistent lighting for clearer comparisons."
+    },
+    "VISUAL_RECOMPOSITION_MIDSECTION": {
+      "domain": "progress",
+      "severity": "normal",
+      "params": [],
+      "message": "Body recomposition signal observed: waist tape or strength volume improved while scale weight stayed steady."
     }
   }
 }

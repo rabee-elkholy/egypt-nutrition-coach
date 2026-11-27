@@ -2,7 +2,7 @@
 
 This document lists **every action that requires manual operator intervention** (in Cloudflare Dashboard, Antigravity Desktop / local Wrangler CLI, Google Cloud / Play Console, Apple Developer Console, or Firebase Console) before promoting CuraFit to Cloud Dev (`dev`) and Production (`main`).
 
-> **Scope Note:** All backend code, SQL migrations, pure-English error & coaching contracts, bilingual exercise/muscle i18n (`868` exercises + `69` muscles), canonical OpenAPI spec (`contracts/openapi.yaml`; Postman is retired), and automated tests are maintained on branch **`dev`**. Default runtime `[vars]` (`ENFORCE_PRO_ENTITLEMENTS`, `ENABLE_OPENFOODFACTS`, `STRICT_STORE_VERIFICATION`, `MIN_ANDROID_VERSION`, `MIN_IOS_VERSION`) are explicitly configured in `wrangler.jsonc`. The items below are strictly external infrastructure provisioning, secrets, and release operations.
+> **Scope Note:** All backend code, SQL migrations (`0001`..`0007`), pure-English error & coaching contracts, bilingual exercise/muscle i18n (`868` exercises + `69` muscles), canonical OpenAPI 3.1 specification (`contracts/openapi.yaml`), and verification tests are maintained on branch **`dev`**. Default runtime `[vars]` (`ENFORCE_PRO_ENTITLEMENTS`, `ENABLE_OPENFOODFACTS`, `STRICT_STORE_VERIFICATION`, `MIN_ANDROID_VERSION`, `MIN_IOS_VERSION`, `LATEST_ANDROID_VERSION`, `LATEST_IOS_VERSION`) are explicitly configured in `wrangler.jsonc`. The items below are strictly external infrastructure provisioning, secrets, and release operations.
 
 ---
 
@@ -12,8 +12,8 @@ This document lists **every action that requires manual operator intervention** 
 | :-: | :--- | :--- | :--- |
 | 1 | Create private R2 buckets (`curafit-media-dev`, `curafit-media-prod`) & uncomment `r2_buckets` in `wrangler.jsonc` | Local Wrangler CLI | Cloud Dev & Prod media uploads |
 | 2 | Run `npm run deploy:d1:dev` and `npm run deploy:dev` (verify `/v1/health` & `/v1/capabilities`) | Local Antigravity Desktop | Cloud Dev QA |
-| 3 | Set Worker secrets via `wrangler secret put` (Section 2 below — OAuth, Store Billing, FCM/APNs, `STRICT_STORE_VERIFICATION`, `ENFORCE_PRO_ENTITLEMENTS`) | Local Wrangler CLI / Cloudflare Dashboard | Live OAuth, Push & Subscriptions |
-| 4 | Re-import `postman/CuraFit_API.postman_collection.json` (`16` groups / `140` endpoints) & republish Postman Documenter (plus optional Jira `KAN` sync) | Postman Web / Jira | Team / Mobile QA |
+| 3 | Set Worker secrets via `wrangler secret put` (Section 2 below — OAuth, Store Billing, FCM/APNs, optional `GEMINI_API_KEY`, `STRICT_STORE_VERIFICATION`, `ENFORCE_PRO_ENTITLEMENTS`) | Local Wrangler CLI / Cloudflare Dashboard | Live OAuth, Push, Subscriptions & Photo Vision |
+| 4 | Sync mobile KMM/Swift/Kotlin clients against canonical `contracts/openapi.yaml` (plus optional Jira `KAN` status sync) | Mobile Repo / Jira | Team / Mobile QA |
 | 5 | After Cloud Dev QA & green CI: export Prod D1 backup, fast-forward `dev` -> `main`, run `npm run deploy:d1:prod` & `npm run deploy:prod` | Local Antigravity Desktop | Production Launch |
 
 ---
@@ -32,7 +32,7 @@ Then uncomment the `r2_buckets` binding blocks in [`wrangler.jsonc`](../wrangler
 - Default / Production (`curafit-api`): `binding: "CURAFIT_MEDIA_BUCKET"`, `bucket_name: "curafit-media-prod"`
 - Cloud Dev (`env.dev` / `curafit-api-dev`): `binding: "CURAFIT_MEDIA_BUCKET"`, `bucket_name: "curafit-media-dev"`
 
-### 1.2 Apply D1 SQL Migration `0006_production_features.sql`
+### 1.2 Apply D1 SQL Migrations (`0006_production_features.sql` & `0007_wave2_production.sql`)
 Always migrate **Cloud Dev (`dev`) first**, verify live endpoints, and **back up Production D1 before migrating Production**:
 
 ```bash
@@ -40,14 +40,14 @@ Always migrate **Cloud Dev (`dev`) first**, verify live endpoints, and **back up
 npm run deploy:d1:dev
 
 # 2. Production backup BEFORE Production migration (egypt-nutrition-coaching: 90fa62f1-7866-4156-ac29-f0aec4814bab)
-wrangler d1 export egypt-nutrition-coaching --remote --output ./backup-prod-pre-0006.sql
+wrangler d1 export egypt-nutrition-coaching --remote --output ./backup-prod-pre-0007.sql
 npm run deploy:d1:prod
 ```
 
-> **Important:** `drizzle/0006_production_features.sql` is the single consolidated pre-production migration (there is **no `0007`** migration). It executes `ALTER TABLE coaching_users ADD COLUMN avatar_url text;` plus `CREATE TABLE IF NOT EXISTS` for all **17** production tables — including `coaching_streak_freezes` (with `auto_applied`), `coaching_trial_tombstones`, `coaching_custom_recipes`, `coaching_cardio_logs`, and `coaching_cycle_logs`. It is strictly additive and non-destructive.
+> **Important:** `drizzle/0007_wave2_production.sql` is strictly additive (`CREATE TABLE IF NOT EXISTS` + `INSERT OR IGNORE`). It provisions all **14 Wave 2 tables** (`public_challenges`, `challenge_participations`, `friend_challenges`, `friend_challenge_members`, `friend_challenge_cheers`, `friend_challenge_blocks`, `user_badges`, `private_circles`, `private_circle_members`, `private_circle_cheers`, `private_circle_blocks`, `coaching_referrals`, `coaching_referral_redemptions`, `coaching_photo_analyses`, `coaching_retention_intents`), seeds the curated clinically-tagged public challenges, and pre-seeds verified MENA supermarket barcode SKUs (Egypt, Saudi Arabia, UAE, Levant) into `food_barcodes`.
 
 ### 1.3 Verify Cloudflare Cron Trigger
-`wrangler.jsonc` already configures `"triggers": { "crons": ["0 * * * *"] }` invoking `scheduled()` in `server/cloudflare-entry.mjs` (hourly timezone-aware bilingual AR/EN push reminder dispatch across `ramadan_suhoor_reminder`, `daily_checkin_reminder`, `pre_workout_reminder`, `meal_reminder`, `hydration_reminder`, `coaching_case_review`, `weekly_checkin_due`, `plan_renewal_due`, `trial_ending_day5`, with strict fasting-window suppression for food and hydration reminders). Verify in Cloudflare Dashboard -> Workers -> `curafit-api-dev` / `curafit-api` -> **Triggers** after deploying.
+`wrangler.jsonc` already configures `"triggers": { "crons": ["0 * * * *"] }` invoking `scheduled()` in `server/cloudflare-entry.mjs` (hourly timezone-aware bilingual AR/EN push reminder dispatch across `ramadan_suhoor_reminder`, `daily_checkin_reminder`, `pre_workout_reminder`, `meal_reminder`, `hydration_reminder`, `coaching_case_review`, `weekly_checkin_due`, `plan_renewal_due`, `trial_ending_day5`, `streak_saver_evening`, plus event-driven `friend_challenge_cheer`, with strict fasting-window suppression for food and hydration reminders and active `coachingPause` suppression). Verify in Cloudflare Dashboard -> Workers -> `curafit-api-dev` / `curafit-api` -> **Triggers** after deploying.
 
 ---
 
@@ -96,11 +96,14 @@ Set the following secrets separately for **Cloud Dev** (`--env dev`) and **Produ
 ### 2.5 Optional Feature & Operations Flags
 | Var Name | Default | Purpose |
 | :--- | :--- | :--- |
-| `ENABLE_OPENFOODFACTS` | `"false"` | Set `"true"` to enable live OpenFoodFacts `/api/v2/` fallback on `GET /v1/foods/barcode/{ean}` cache misses |
+| `ENABLE_OPENFOODFACTS` | `"false"` | Set `"true"` to enable live OpenFoodFacts `/api/v2/` fallback on `GET /v1/foods/barcode/{ean}` cache misses (verified MENA SKUs are pre-seeded in `food_barcodes`) |
 | `MIN_ANDROID_VERSION` | `"1.0.0"` | Minimum Android semver before returning `426 CLIENT_UPDATE_REQUIRED` |
 | `MIN_IOS_VERSION` | `"1.0.0"` | Minimum iOS semver before returning `426 CLIENT_UPDATE_REQUIRED` |
+| `LATEST_ANDROID_VERSION` | `"1.0.0"` | Latest Android release version exposed in `/v1/capabilities` for optional update prompts |
+| `LATEST_IOS_VERSION` | `"1.0.0"` | Latest iOS release version exposed in `/v1/capabilities` for optional update prompts |
 | `MAINTENANCE_MODE` | `"false"` | Set `"true"` during emergency maintenance (`503 MAINTENANCE_MODE`, while `/v1/health` and `/v1/capabilities` stay `200 OK`) |
 | `MAINTENANCE_MESSAGE` | `null` | Optional English status banner exposed in `/v1/capabilities` |
+| `GEMINI_API_KEY` | unset (secret) | Optional Worker secret enabling live meal-photo vision identification inside `POST /v1/nutrition/meal-parse` alongside deterministic catalog grounding |
 
 ---
 
@@ -124,11 +127,11 @@ Set the following secrets separately for **Cloud Dev** (`--env dev`) and **Produ
      - Sandbox: `https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
      - Production: `https://curafit-api.egypt-nutrition-coach.workers.dev/v1/webhooks/apple`
 
-3. **Postman Published Documentation (`16` Groups / `140` Endpoints):**
-   - Re-import [`postman/CuraFit_API.postman_collection.json`](../postman/CuraFit_API.postman_collection.json) (`16` groups / `140` endpoints, aligned with `84` OpenAPI paths, `50` command actions, `294` error codes, and `97` coaching codes) and environments (`CuraFit — Cloud Dev`, `CuraFit — Production`, `CuraFit — Local Dev`) into Postman Workspace and republish the public Documenter URL (`https://documenter-api.postman.tech/view/9137216/2sBYPv2s1w`).
+3. **Canonical OpenAPI Specification (`contracts/openapi.yaml`):**
+   - `contracts/openapi.yaml` (OpenAPI 3.1.0) is the single source of truth for KMM, Android, iOS, and backend contracts; validate it locally with `npm run check`.
 
 4. **Jira Backlog Sync (Optional):**
-   - If you keep Jira (`KAN` project) mirrored with `docs/user-stories/`, sync the aligned production stories (`EPIC-01`..`EPIC-10`) using clean `production` and `mobile` labels.
+   - Keep Jira (`KAN` project) synced with implemented Wave 1 and Wave 2 stories (`KAN-61`, `KAN-84`, `KAN-116`, `KAN-119`, `KAN-120`, `KAN-121`, `KAN-122`, `KAN-123`, `KAN-124`).
 
 ---
 
@@ -151,12 +154,12 @@ curl -s https://curafit-api-dev.egypt-nutrition-coach.workers.dev/v1/capabilitie
 
 # 4. Commit & push to origin/dev and wait for green GitHub Actions CI
 git add -A
-git commit -m "Align user stories, pure-English contracts, bilingual exercises, and production API features"
+git commit -m "Implement Backend Wave 2 production features, D1 migration 0007, and OpenAPI sync"
 git push origin dev
 gh run list --branch dev --limit 3
 
 # 5. ONLY after Cloud Dev QA & green CI on dev: backup Prod D1, promote dev -> main, and deploy Prod
-wrangler d1 export egypt-nutrition-coaching --remote --output ./backup-prod-pre-0006.sql
+wrangler d1 export egypt-nutrition-coaching --remote --output ./backup-prod-pre-0007.sql
 git checkout main
 git pull --ff-only origin main
 git merge --ff-only dev
@@ -168,13 +171,14 @@ git push origin main
 
 ---
 
-## 5. Deferred Final AI Phase (Planned Later)
+## 5. CuraFit Specialist Team Care Room, Meal Capture & Visual Difference Analysis (Day-1 Live)
 
-Per product scope decision, AI features are intentionally deferred to the final rollout phase and currently return `501 FEATURE_DEFERRED_TO_AI_PHASE` (`capabilities.deferredFeatures: ["ai_meal_parse", "ai_coach_qa"]`):
-- `POST /v1/nutrition/ai-parse` (`US-NUT-05` — AI photo/voice/text meal parsing)
-- `POST /v1/coaching/chat` & `GET /v1/coaching/chat/history` (`US-CCH-05` — guarded log-grounded AI coach Q&A)
+All Specialist Team endpoints are **live on Day 1** (`capabilities.deferredFeatures: []`) with server-side clinical guardrails, Free Value-Peak starter quotas, and Pro Fair-Use ceilings (`429 FAIR_USE_LIMIT_REACHED`):
+- `POST /v1/nutrition/meal-parse` (alias `/v1/nutrition/ai-parse`) — Meal Capture photo/voice/text parsing grounded in the 3,291-item food catalog with clinical/allergy cross-checks and mandatory human confirmation.
+- `POST /v1/coaching/consultation` & `GET /v1/coaching/consultation/history` (aliases `/v1/coaching/chat`, `/v1/coaching/chat/history`) — 3-Specialist Interactive Care Room (Nutrition Specialist, Training Captain, Follow-Up Specialist) grounded in live D1 logs with urgent medical, medication-boundary, crisis, maternal, and recovery-stop guardrails.
+- `POST /v1/progress/photos/analyze-diff`, `GET /v1/progress/photos/analyses`, `DELETE /v1/progress/photos/analyses/{analysisId}` — Opt-in Specialist Visual Difference Analysis with explicit `visual_progress_analysis` consent gating, multi-signal D1 correlation, and maternity/wellness protective modes.
 
-When ready for the Final AI Phase, provision LLM provider credentials (e.g., Gemini / OpenAI / Cloudflare Workers AI) as Worker secrets, enable the routes, and expose `ai_meal_parse` / `ai_coach_qa` in `/v1/capabilities`.
+To enable optional live image vision extraction on textless meal photos, provision `GEMINI_API_KEY` via `wrangler secret put GEMINI_API_KEY`.
 
 ---
 

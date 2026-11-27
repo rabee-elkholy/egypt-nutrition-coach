@@ -193,3 +193,29 @@ Generated automatically from [`contracts/coaching-codes.json`](../contracts/coac
 | `GLUTEN_OATS_CROSS_CONTACT_WARNING` | `nutrition` | `attention` | — | Oats are naturally gluten-free but frequently processed on shared equipment; choose certified gluten-free oats when avoiding gluten. |
 | `RECENT_SORENESS_TOO_HIGH` | `training` | `info` | — | Recent muscle soreness is above 4/10; weekly set volume is held steady to prioritize recovery. |
 | `CARDIO_LEG_DAY_INTERFERENCE_NOTE` | `training` | `info` | `date`, `modality`, `intensity`, `overlapType` | Vigorous cardio overlaps with or sits adjacent to a lower-body strength session; consider spacing sessions by 6+ hours or choosing low-impact aerobic work to protect leg recovery. |
+| `BATCH_PREP_MODE_ACTIVE` | `nutrition` | `info` | — | Batch Meal Prep Mode is active: lunch and dinner repeat across 2 to 3 day blocks with consolidated grocery shopping quantities. |
+| `POST_FEAST_ZERO_GUILT_RESET` | `nutrition` | `normal` | — | Today is tagged as a flex event so your 14-day Specialist Team review stays accurate. Return calmly to your normal plan tomorrow without skipping meals. |
+| `POST_FEAST_GENTLE_SPREAD_ACTIVE` | `nutrition` | `normal` | `spreadDays`, `dailyReductionKcal` | A calm multi-day balance adjustment is scheduled starting tomorrow while staying safely above your minimum calorie floor. |
+| `DINING_REBALANCE_LIGHT_PROTEIN_SNACK` | `nutrition` | `normal` | — | Your planned daily calories are met; if hungry later, choose a light high-protein snack or herbal tea and return to your regular plan tomorrow. |
+| `DINING_REBALANCE_SPREAD_REMAINING` | `nutrition` | `normal` | `remainingKcal` | Distribute your remaining calories calmly across your remaining meal slots with lean protein and fiber. |
+| `DINING_CAFE_CAFFEINE_HYDRATION` | `hydration` | `info` | — | Pair cafe coffee or tea with a full glass of water to stay comfortably hydrated. |
+| `DINING_STANDARD_HYDRATION_PACE` | `hydration` | `info` | — | Sip water steadily before and during dining out to support digestion and steady pacing. |
+| `STORE_BILLING_MANAGED_BY_PLATFORM` | `retention` | `info` | — | Pausing coaching goals pauses daily nudges and streak pressure inside CuraFit; subscription billing is managed directly via Apple App Store or Google Play settings. |
+| `CLINICAL_SUMMARY_INFORMATIONAL_ONLY` | `clinical` | `info` | — | Prepared by the CuraFit Specialist Team for informational review with a licensed physician, registered dietitian, or physical therapist. Not a medical diagnosis. |
+| `URGENT_MEDICAL_ESCALATION` | `clinical` | `urgent` | — | Stop physical exertion immediately and seek prompt medical evaluation for urgent symptoms such as chest pain, fainting, or shortness of breath. |
+| `MEDICATION_BOUNDARY_REFUSAL` | `clinical` | `attention` | — | The CuraFit Specialist Team cannot prescribe or adjust medication or insulin dosages; consult your treating physician or clinical pharmacist. |
+| `EATING_DISORDER_CRISIS_SUPPORT` | `clinical` | `urgent` | — | CuraFit never supports extreme fasting, purging, or starvation practices. Please contact a licensed healthcare professional or support helpline. |
+| `MATERNAL_SAFETY_BOUNDARY` | `clinical` | `attention` | — | Ketogenic dieting, intermittent fasting, and aggressive calorie cuts remain disabled during pregnancy and breastfeeding for maternal safety. |
+| `RED_FLAGS_STOP_ACTIVE` | `clinical` | `urgent` | — | Active recovery safety stop: pause resistance training until a licensed physician evaluates your symptoms and clears you to resume. |
+| `MEAL_CAPTURE_CELIAC_GLUTEN_ALERT` | `clinical` | `urgent` | — | Captured item may contain gluten; confirm a certified gluten-free alternative before logging. |
+| `MEAL_CAPTURE_FAVISM_ALERT` | `clinical` | `urgent` | — | Captured item contains fava beans, which must be avoided for favism (G6PD) safety. |
+| `MEAL_CAPTURE_DAIRY_ALERT` | `clinical` | `attention` | — | Captured item contains dairy; confirm a lactose-free alternative if needed. |
+| `MEAL_CAPTURE_NUT_ALLERGY_ALERT` | `clinical` | `urgent` | — | Captured item contains nuts matching your declared exclusion. |
+| `MEAL_CAPTURE_SEAFOOD_ALERT` | `clinical` | `urgent` | — | Captured item contains fish or shellfish matching your declared exclusion. |
+| `MEAL_CAPTURE_GOUT_PURINE_NOTE` | `clinical` | `attention` | — | Captured item is higher in purines; keep portions modest and maintain hydration for gout support. |
+| `MEAL_CAPTURE_KIDNEY_GUARDRAIL` | `clinical` | `attention` | — | Captured item is higher in sodium or protein; verify portion size against your renal clinician guidance. |
+| `MEAL_CAPTURE_SODIUM_NOTE` | `clinical` | `attention` | — | Captured item is relatively high in sodium; balance remaining meals today with lower-sodium foods. |
+| `MEAL_CAPTURE_PREGNANCY_LIVER_CAUTION` | `clinical` | `urgent` | — | Liver is high in preformed vitamin A; limit or avoid organ meats during pregnancy. |
+| `MATERNITY_TIMELINE_MILESTONE` | `progress` | `normal` | — | Maternity timeline milestone celebrating steady posture, gentle mobility, and maternal nourishment. |
+| `VISUAL_LOW_COMPARABILITY_TIP` | `progress` | `attention` | — | Photo lighting, distance, or framing differed noticeably; retake under consistent lighting for clearer comparisons. |
+| `VISUAL_RECOMPOSITION_MIDSECTION` | `progress` | `normal` | — | Body recomposition signal observed: waist tape or strength volume improved while scale weight stayed steady. |

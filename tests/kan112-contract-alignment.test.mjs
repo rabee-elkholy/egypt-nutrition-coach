@@ -451,16 +451,17 @@ test('Cross-Epic HTTP contract verification: PAR-Q, consents, recent foods, rama
     // Cross-cutting contracts: Specialist Team voice, additive warningCodes/eligibilityReasonCodes, unit_system & region_id sync, hydration bonuses, and calibrationMetadata
     const FORBIDDEN_VOICE_RE = /\b(AI|AI Coach|Smart Coach|automated|automatic|automatically|algorithm|algorithmic|engine|bot|LLM)\b|\u0622\u0644\u064A|\u0627\u0644\u0630\u0643\u064A|\u0645\u062D\u0631\u0643/i;
 
-    // 1. Deferred Q&A route returns Specialist Team copy (zero "AI" exposure)
+    // 1. Live 3-Specialist Care Room returns Specialist Team copy (zero "AI" exposure)
     const chatRes = await call('coaching/chat', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ message: 'Hello' }),
+      body: JSON.stringify({ message: 'Hello, how is my progress?' }),
     });
-    assert.equal(chatRes.status, 501);
-    const chatErr = (await chatRes.json()).error;
-    assert.equal(chatErr.code, 'FEATURE_DEFERRED_TO_AI_PHASE');
-    assert.ok(!FORBIDDEN_VOICE_RE.test(chatErr.message), `Deferred chat error leaked AI wording: ${chatErr.message}`);
+    assert.equal(chatRes.status, 200);
+    const chatData = (await chatRes.json()).data;
+    assert.ok(chatData.specialistRole);
+    assert.ok(!FORBIDDEN_VOICE_RE.test(chatData.reply), `Specialist consultation reply leaked forbidden wording: ${chatData.reply}`);
+    assert.ok(!FORBIDDEN_VOICE_RE.test(chatData.specialistTitle), `Specialist title leaked forbidden wording: ${chatData.specialistTitle}`);
 
     // 2. Preview with snake_case unit_system & region_id, hypothyroid + gout + knee injury
     const { region: _omitRegion, ...draftWithoutRegion } = BASE_DRAFT;

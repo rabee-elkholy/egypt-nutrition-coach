@@ -21,7 +21,13 @@ export const FREE_FEATURES = [
   'cardio_tracking',
   'cycle_awareness',
   'seasonal_flex',
-  'standard_plan_renewals'
+  'standard_plan_renewals',
+  'zero_guilt_reset',
+  'open_workout_session',
+  'public_challenges',
+  'friend_challenges_join',
+  'badges_vault_24',
+  'private_circles'
 ];
 
 export const PRO_FEATURES = [
@@ -33,7 +39,18 @@ export const PRO_FEATURES = [
   'barcode_scanner',
   'adaptive_calorie_volume',
   'advanced_analytics',
-  'progress_photos_cloud'
+  'progress_photos_cloud',
+  'dining_out_concierge',
+  'batch_prep_mode',
+  'gentle_spread_rebalance',
+  'pro_impact_ledger',
+  'clinical_summary_pdf',
+  'visual_photo_diff_unlimited',
+  'friend_challenges_unlimited',
+  'travel_session_override',
+  'muscle_heatmap',
+  'meal_capture_unlimited',
+  'specialist_consultation_unlimited'
 ];
 
 const ACTIVE_SUB_STATUSES = new Set(['active', 'trialing', 'grace_period', 'cancelled_active']);
@@ -42,12 +59,22 @@ export const FREE_LIMITS = {
   dailyMealSwapsLimit: 2,
   weeklyExerciseSwapsLimit: 2,
   barcodeScansDailyLimit: 3,
+  dailyBarcodeScansLimit: 3,
   mealCaptureMonthlyLimit: 3,
+  mealCaptureStarterLimit: 3,
   specialistConsultationMonthlyLimit: 5,
+  photoDiffStarterLimit: 1,
+  activeHostedFriendChallengesLimit: 1,
   // Backward-compatible keys
   aiParsesFreeTotal: 3,
   aiCoachMessagesFreeTotal: 5
 };
+
+export const PRO_FAIR_USE_LIMITS = Object.freeze({
+  meal_capture: { daily: 15, monthly: 300 },
+  specialist_consultation: { daily: 40, monthly: 600 },
+  photo_diff_analysis: { daily: null, monthly: 4 }
+});
 
 function isoWeekKey(dateStr) {
   const d = new Date(`${dateStr}T12:00:00Z`);
@@ -262,12 +289,37 @@ export async function resolveEntitlements(db, s, userId, todayDate = null, env =
   const isPro = isProFromSub || isProFromState;
 
   const monthKey = today.slice(0, 7);
-  const [mealSwapsUsed, exerciseSwapsUsed, barcodeScansUsed, mealCaptureUsed, specialistConsultUsed] = await Promise.all([
+  const [
+    mealSwapsUsed,
+    exerciseSwapsUsed,
+    barcodeScansUsed,
+    mealCaptureMonthUsed,
+    mealCaptureDayUsed,
+    specialistConsultMonthUsed,
+    specialistConsultDayUsed,
+    photoDiffLifetimeUsed,
+    photoDiffMonthUsed,
+    hostedFriendChallengesActive
+  ] = await Promise.all([
     getQuotaUsage(db, userId, 'meal_swap', today),
     getQuotaUsage(db, userId, 'exercise_swap', weekKey),
     getQuotaUsage(db, userId, 'barcode_scan', today),
     getQuotaUsage(db, userId, 'meal_capture', monthKey),
-    getQuotaUsage(db, userId, 'specialist_consultation', monthKey)
+    getQuotaUsage(db, userId, 'meal_capture_daily', today),
+    getQuotaUsage(db, userId, 'specialist_consultation', monthKey),
+    getQuotaUsage(db, userId, 'specialist_consultation_daily', today),
+    getQuotaUsage(db, userId, 'photo_diff_analysis', 'lifetime'),
+    getQuotaUsage(db, userId, 'photo_diff_analysis', monthKey),
+    (async () => {
+      try {
+        const r = await db.prepare(
+          "SELECT COUNT(*) AS n FROM friend_challenges WHERE creator_user_id=? AND status='active' AND end_date>=?"
+        ).bind(userId, today).first();
+        return Number(r?.n || 0);
+      } catch {
+        return 0;
+      }
+    })()
   ]);
 
   let status = 'none';
@@ -289,9 +341,11 @@ export async function resolveEntitlements(db, s, userId, todayDate = null, env =
         : 'https://play.google.com/store/account/subscriptions')
       : null;
 
-  const mealCaptureRemaining = isPro ? null : Math.max(0, FREE_LIMITS.mealCaptureMonthlyLimit - mealCaptureUsed);
-  const specialistConsultRemaining = isPro ? null : Math.max(0, FREE_LIMITS.specialistConsultationMonthlyLimit - specialistConsultUsed);
+  const mealCaptureRemaining = isPro ? null : Math.max(0, FREE_LIMITS.mealCaptureMonthlyLimit - mealCaptureMonthUsed);
+  const specialistConsultRemaining = isPro ? null : Math.max(0, FREE_LIMITS.specialistConsultationMonthlyLimit - specialistConsultMonthUsed);
   const barcodeScansRemaining = isPro ? null : Math.max(0, FREE_LIMITS.barcodeScansDailyLimit - barcodeScansUsed);
+  const photoDiffRemainingFree = isPro ? null : Math.max(0, FREE_LIMITS.photoDiffStarterLimit - photoDiffLifetimeUsed);
+  const hostedFriendChallengesRemaining = isPro ? null : Math.max(0, FREE_LIMITS.activeHostedFriendChallengesLimit - hostedFriendChallengesActive);
 
   return {
     tier: isPro ? 'pro' : 'free',
@@ -307,14 +361,43 @@ export async function resolveEntitlements(db, s, userId, todayDate = null, env =
     managementUrl,
     features: isPro ? PRO_FEATURES : FREE_FEATURES,
     quotas: {
+      dailyBarcodeScansLimit: isPro ? null : FREE_LIMITS.dailyBarcodeScansLimit,
+      dailyBarcodeScansRemaining: barcodeScansRemaining,
       barcodeScansDailyLimit: isPro ? null : FREE_LIMITS.barcodeScansDailyLimit,
       barcodeScansDailyRemaining: barcodeScansRemaining,
+      mealCaptureStarterLimit: isPro ? null : FREE_LIMITS.mealCaptureStarterLimit,
       mealCaptureMonthly: isPro
-        ? { limit: null, used: mealCaptureUsed, remaining: null }
-        : { limit: FREE_LIMITS.mealCaptureMonthlyLimit, used: mealCaptureUsed, remaining: mealCaptureRemaining },
+        ? { limit: null, used: mealCaptureMonthUsed, remaining: null, fairUseDailyLimit: PRO_FAIR_USE_LIMITS.meal_capture.daily, fairUseMonthlyLimit: PRO_FAIR_USE_LIMITS.meal_capture.monthly }
+        : { limit: FREE_LIMITS.mealCaptureMonthlyLimit, used: mealCaptureMonthUsed, remaining: mealCaptureRemaining },
       specialistConsultationMonthly: isPro
-        ? { limit: null, used: specialistConsultUsed, remaining: null }
-        : { limit: FREE_LIMITS.specialistConsultationMonthlyLimit, used: specialistConsultUsed, remaining: specialistConsultRemaining },
+        ? { limit: null, used: specialistConsultMonthUsed, remaining: null, fairUseDailyLimit: PRO_FAIR_USE_LIMITS.specialist_consultation.daily, fairUseMonthlyLimit: PRO_FAIR_USE_LIMITS.specialist_consultation.monthly }
+        : { limit: FREE_LIMITS.specialistConsultationMonthlyLimit, used: specialistConsultMonthUsed, remaining: specialistConsultRemaining },
+      photoDiffStarterLimit: isPro ? null : FREE_LIMITS.photoDiffStarterLimit,
+      photoDiffRemainingFree,
+      photoDiffMonthly: isPro
+        ? { limit: PRO_FAIR_USE_LIMITS.photo_diff_analysis.monthly, used: photoDiffMonthUsed, remaining: Math.max(0, PRO_FAIR_USE_LIMITS.photo_diff_analysis.monthly - photoDiffMonthUsed) }
+        : { limit: FREE_LIMITS.photoDiffStarterLimit, used: photoDiffLifetimeUsed, remaining: photoDiffRemainingFree },
+      activeHostedFriendChallengesLimit: isPro ? null : FREE_LIMITS.activeHostedFriendChallengesLimit,
+      activeHostedFriendChallengesActive: hostedFriendChallengesActive,
+      activeHostedFriendChallengesRemaining: hostedFriendChallengesRemaining,
+      fairUseCaps: {
+        mealCapture: {
+          dailyLimit: PRO_FAIR_USE_LIMITS.meal_capture.daily,
+          dailyUsed: mealCaptureDayUsed,
+          monthlyLimit: PRO_FAIR_USE_LIMITS.meal_capture.monthly,
+          monthlyUsed: mealCaptureMonthUsed
+        },
+        specialistConsultation: {
+          dailyLimit: PRO_FAIR_USE_LIMITS.specialist_consultation.daily,
+          dailyUsed: specialistConsultDayUsed,
+          monthlyLimit: PRO_FAIR_USE_LIMITS.specialist_consultation.monthly,
+          monthlyUsed: specialistConsultMonthUsed
+        },
+        photoDiffAnalysis: {
+          monthlyLimit: PRO_FAIR_USE_LIMITS.photo_diff_analysis.monthly,
+          monthlyUsed: photoDiffMonthUsed
+        }
+      },
       // Backward-compatible quota aliases
       aiParsesRemainingFree: mealCaptureRemaining,
       aiCoachMessagesRemainingFree: specialistConsultRemaining,
@@ -325,6 +408,94 @@ export async function resolveEntitlements(db, s, userId, todayDate = null, env =
       weeklyExerciseSwapsRemaining: isPro ? null : Math.max(0, FREE_LIMITS.weeklyExerciseSwapsLimit - exerciseSwapsUsed)
     },
     updatedAt: sub?.updated_at || s?.entitlements?.updatedAt || null
+  };
+}
+
+export async function enforceProFairUseCap(db, userId, { feature, quotaKey, today, dailyLimit = null, monthlyLimit = null }) {
+  const monthKey = String(today || isoNow().slice(0, 10)).slice(0, 7);
+  const dailyKey = `${quotaKey}_daily`;
+  const [usedDay, usedMonth] = await Promise.all([
+    dailyLimit != null ? getQuotaUsage(db, userId, dailyKey, today) : Promise.resolve(0),
+    monthlyLimit != null ? getQuotaUsage(db, userId, quotaKey, monthKey) : Promise.resolve(0)
+  ]);
+  if (dailyLimit != null && usedDay >= dailyLimit) {
+    throw createApiError(
+      'You have reached today\'s generous CuraFit Pro fair-use ceiling for this feature. Standard manual, barcode, and catalog tools remain completely unrestricted.',
+      429,
+      {
+        code: 'FAIR_USE_LIMIT_REACHED',
+        retryable: true,
+        params: { feature, window: 'daily', limit: dailyLimit }
+      }
+    );
+  }
+  if (monthlyLimit != null && usedMonth >= monthlyLimit) {
+    throw createApiError(
+      'You have reached this month\'s generous CuraFit Pro fair-use ceiling for this feature. Standard manual, barcode, and catalog tools remain completely unrestricted.',
+      429,
+      {
+        code: 'FAIR_USE_LIMIT_REACHED',
+        retryable: true,
+        params: { feature, window: 'monthly', limit: monthlyLimit }
+      }
+    );
+  }
+  if (dailyLimit != null) await incrementQuotaUsage(db, userId, dailyKey, today);
+  if (monthlyLimit != null) await incrementQuotaUsage(db, userId, quotaKey, monthKey);
+  return {
+    dailyRemaining: dailyLimit != null ? Math.max(0, dailyLimit - usedDay - 1) : null,
+    monthlyRemaining: monthlyLimit != null ? Math.max(0, monthlyLimit - usedMonth - 1) : null
+  };
+}
+
+export async function consumeFeatureAccess(
+  db,
+  s,
+  userId,
+  {
+    feature,
+    quotaKey,
+    today,
+    freeWindowKey,
+    freeLimit = 0,
+    proDailyLimit = null,
+    proMonthlyLimit = null,
+    enforceEntitlements = true
+  },
+  env = null
+) {
+  const ent = await resolveEntitlements(db, s, userId, today, env);
+  const monthKey = String(today || isoNow().slice(0, 10)).slice(0, 7);
+  if (ent.tier === 'pro') {
+    const cap = await enforceProFairUseCap(db, userId, {
+      feature,
+      quotaKey,
+      today,
+      dailyLimit: proDailyLimit,
+      monthlyLimit: proMonthlyLimit
+    });
+    return { tier: 'pro', remainingFree: null, ...cap };
+  }
+  const winKey = freeWindowKey || monthKey;
+  const used = await getQuotaUsage(db, userId, quotaKey, winKey);
+  if (enforceEntitlements && used >= freeLimit) {
+    throw createApiError('This feature requires an active CuraFit Pro subscription.', 402, {
+      code: 'PRO_ENTITLEMENT_REQUIRED',
+      params: { feature }
+    });
+  }
+  await incrementQuotaUsage(db, userId, quotaKey, winKey);
+  if (proDailyLimit != null) {
+    await incrementQuotaUsage(db, userId, `${quotaKey}_daily`, today);
+  }
+  if (winKey !== monthKey && proMonthlyLimit != null) {
+    await incrementQuotaUsage(db, userId, quotaKey, monthKey);
+  }
+  return {
+    tier: 'free',
+    remainingFree: Math.max(0, freeLimit - used - 1),
+    dailyRemaining: null,
+    monthlyRemaining: null
   };
 }
 
@@ -389,11 +560,11 @@ export async function verifyStoreSubscription(db, env, s, userId, body = {}) {
   let trialUsed = 0;
   let autoRenew = 1;
 
-  // Cross-store double-billing guard: prevent subscribing on a second store while Pro is already active on the first
+  // Cross-store double-billing guard: prevent subscribing on a second store while Pro is already active on the first (referral bonus passes excluded)
   const nowIso = isoNow();
   try {
     const otherActive = await db.prepare(
-      'SELECT provider, status, expires_at FROM coaching_subscriptions WHERE user_id=? AND provider!=? ORDER BY expires_at DESC LIMIT 1'
+      "SELECT provider, status, expires_at FROM coaching_subscriptions WHERE user_id=? AND provider!=? AND provider!='referral' ORDER BY expires_at DESC LIMIT 1"
     ).bind(userId, provider).first();
     if (otherActive && ACTIVE_SUB_STATUSES.has(otherActive.status) && otherActive.expires_at > nowIso) {
       throw createApiError(
